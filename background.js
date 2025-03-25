@@ -7,7 +7,7 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
         chrome.tabs.query({windowId: tab.windowId})
             .then(tabs => {
                 tabs.forEach(tab => {
-                    if (tab.url.match(/https:\/\/.+?\.octopus\.app\/.*/)) {
+                    if (tab.url.match(/https:\/\/.+?\.octopus\.app\/app#\/Spaces-.*/)) {
                         try {
                             chrome.scripting.executeScript({
                                 target: {tabId: tab.id},
