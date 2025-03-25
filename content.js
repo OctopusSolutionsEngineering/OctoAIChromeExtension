@@ -139,6 +139,7 @@ newButton.addEventListener("click", function (event) {
     textarea.style.boxSizing = "border-box"; // include padding in width calculation
     textarea.style.border = "2px solid #4444ff"; // matching the button color
     textarea.style.outline = "none"; // remove outline when focused
+    textarea.style.fontSize = "24px";
     linksContainer.appendChild(textarea);
 
     // Create send button
