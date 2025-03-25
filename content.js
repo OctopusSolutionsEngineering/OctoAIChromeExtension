@@ -1,15 +1,3 @@
-// 1. Find element using the XPath
-function findElementByXPath(xpath) {
-    return document.evaluate(
-        xpath,
-        document,
-        null,
-        XPathResult.FIRST_ORDERED_NODE_TYPE,
-        null
-    ).singleNodeValue;
-}
-
-// 2. Find the element and its parent
 const styleSheet = document.createElement("style");
 styleSheet.textContent = `
 @keyframes siriWave {
@@ -76,7 +64,7 @@ newButton.addEventListener("click", function (event) {
     event.preventDefault();
     console.log("New button clicked!");
 
-    // 1. Create a semi-transparent black overlay div
+    // Create a semi-transparent black overlay div
     const overlayDiv = document.createElement("div");
     overlayDiv.style.position = "absolute";
     overlayDiv.style.top = "0";
@@ -84,11 +72,20 @@ newButton.addEventListener("click", function (event) {
     overlayDiv.style.width = "100%";
     overlayDiv.style.height = "100%";
     overlayDiv.style.backgroundColor = "rgb(0,0,0)";
-    overlayDiv.style.opacity = "0.8";
+    overlayDiv.style.opacity = "0.9";
     overlayDiv.style.zIndex = "100";
     document.body.appendChild(overlayDiv);
 
-    // 2. Create container for links
+    // Add click event to hide the overlay and its children when clicked directly
+    overlayDiv.addEventListener("click", function(event) {
+        // Only hide if the click was directly on the overlay (not on its children)
+        if (event.target === this) {
+            document.body.removeChild(overlayDiv);
+            document.body.removeChild(linksContainer);
+        }
+    });
+
+    // Create container for links
     const linksContainer = document.createElement("div");
     linksContainer.style.position = "absolute";
     linksContainer.style.top = "30%";
@@ -99,21 +96,37 @@ newButton.addEventListener("click", function (event) {
     linksContainer.style.textAlign = "center";
 
     // Add five links
-    const linkTexts = ["Link 1", "Link 2", "Link 3", "Link 4", "Link 5"];
-    linkTexts.forEach(text => {
-        const link = document.createElement("a");
-        link.href = "#";
-        link.textContent = text;
-        link.style.display = "block";
-        link.style.margin = "10px";
-        link.style.color = "white";
-        link.style.textDecoration = "none";
-        link.style.fontSize = "18px";
-        linksContainer.appendChild(link);
+    const buttonTexts = ["Link 1", "Link 2", "Link 3", "Link 4", "Link 5"];
+    buttonTexts.forEach(text => {
+        const button = document.createElement("button");
+        button.textContent = text;
+        button.style.display = "block";
+        button.style.margin = "10px auto";
+        button.style.width = "80%";
+        button.style.color = "white";
+        button.style.backgroundColor = "transparent";
+        button.style.border = "none";
+        button.style.fontSize = "18px";
+        button.style.padding = "5px";
+        button.style.transition = "all 0.3s ease";
+        button.style.cursor = "default"; // Default cursor since they're just displaying text
+
+        // Add hover effect
+        button.addEventListener("mouseover", function() {
+            this.style.backgroundColor = "rgba(68, 68, 255, 0.3)";
+            this.style.transform = "scale(1.02)";
+        });
+
+        button.addEventListener("mouseout", function() {
+            this.style.backgroundColor = "transparent";
+            this.style.transform = "scale(1)";
+        });
+
+        linksContainer.appendChild(button);
     });
     document.body.appendChild(linksContainer);
 
-    // 3. Create textarea
+    // Create textarea
     const textarea = document.createElement("textarea");
     textarea.style.display = "block";
     textarea.style.width = "80%"; // 80% of page width
@@ -128,7 +141,7 @@ newButton.addEventListener("click", function (event) {
     textarea.style.outline = "none"; // remove outline when focused
     linksContainer.appendChild(textarea);
 
-    // 4. Create send button
+    // Create send button
     const sendButton = document.createElement("button");
     sendButton.textContent = "Send";
     sendButton.style.padding = "8px 16px";
@@ -139,5 +152,10 @@ newButton.addEventListener("click", function (event) {
     sendButton.style.cursor = "pointer";
     sendButton.style.zIndex = "101";
     sendButton.style.position = "relative";
+    sendButton.style.height = "64px"; // Set height to 128px
+    sendButton.style.width = "80%"; // Set width to 80%
+    sendButton.style.margin = "10px auto"; // Center the button with auto margins
+    sendButton.style.display = "block"; // Ensure it's a block element for margin auto to work
+    sendButton.style.fontSize = "18px"; // Increase font size to match button size
     linksContainer.appendChild(sendButton);
 });
