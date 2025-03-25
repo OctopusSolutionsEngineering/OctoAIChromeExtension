@@ -38,6 +38,23 @@ function addAiToPage() {
 }`;
     document.head.appendChild(styleSheet);
 
+    // Add additional styling for markdown elements
+    const markdownStyles = document.createElement("style");
+    markdownStyles.textContent = `
+        #octoai-overlay p,
+        #octoai-overlay li, 
+        #octoai-overlay ul, 
+        #octoai-overlay h1, 
+        #octoai-overlay h2, 
+        #octoai-overlay h3,
+        #octoai-overlay h4,
+        #octoai-overlay h5,
+        #octoai-overlay h6 {
+            color: black;
+        }
+    `;
+    document.head.appendChild(markdownStyles);
+
     const newButton = document.createElement("button");
     newButton.id = "octoai"
 
@@ -114,7 +131,7 @@ function displayPromptUI() {
     // Add five links
     const buttonTexts = [
         "List the projects in the Default space",
-        "Help me fix the deployment version \"0.1.1316%2B480f701.1323.1\" for the project \"Octopus Octoterra Function\" to the \"Production\" environment in the \"Octopus Copilot\" space.",
+        "Help me fix the deployment version \"0.1.1316+480f701.1323.1\" for the project \"Octopus Octoterra Function\" to the \"Production\" environment in the \"Octopus Copilot\" space.",
         "Find unused variables in the project \"Octopus Octoterra Function\" in the \"Octopus Copilot\" space.",
         "Generate a terraform module with three environments and a project called \"My Application\"",
         "Help"];
