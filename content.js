@@ -250,8 +250,8 @@ function displayMarkdownResponse(markdownContent) {
     contentDiv.style.overflowY = "auto";
     contentDiv.style.overflowX = "auto";
     contentDiv.style.zIndex = "101";
-    contentDiv.style.backgroundColor = "black";
-    contentDiv.style.color = "white";
+    contentDiv.style.backgroundColor = "white";
+    contentDiv.style.color = "black";
     contentDiv.style.border = "#2e475d;"
     contentDiv.style.borderWidth = "thin";
     contentDiv.style.borderStyle = "solid";
