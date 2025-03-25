@@ -1,4 +1,8 @@
 function addAiToPage() {
+    if (document.getElementById("octoai")) {
+        return
+    }
+
     const styleSheet = document.createElement("style");
     styleSheet.textContent = `
 @keyframes siriWave {
@@ -35,6 +39,7 @@ function addAiToPage() {
     document.head.appendChild(styleSheet);
 
     const newButton = document.createElement("button");
+    newButton.id = "octoai"
 
     newButton.className = "siri-button";
     newButton.style.position = "absolute";
@@ -141,6 +146,7 @@ function addAiToPage() {
         textarea.style.border = "2px solid #4444ff"; // matching the button color
         textarea.style.outline = "none"; // remove outline when focused
         textarea.style.fontSize = "24px";
+        textarea.value = "get the projects in the Default space"
         linksContainer.appendChild(textarea);
 
         // Create send button
@@ -161,8 +167,9 @@ function addAiToPage() {
         sendButton.style.fontSize = "18px"; // Increase font size to match button size
 
         sendButton.onclick = function () {
-            getOrCreateOctopusApiKey()
-                .then(apiKey => console.log("Api key retrieved"))
+            callOctoAi(textarea.value)
+                .then(result => console.log(result))
+                .catch(e => console.log(e))
         }
 
         linksContainer.appendChild(sendButton);
@@ -290,4 +297,50 @@ function getOctopusCsrfTokenFromCookie() {
     }
 }
 
+function convertFromSseResponse(sseResponse) {
+    const responses = sseResponse
+        .split('\n')
+        .filter(line => line.trim())
+        .map(line => JSON.parse(line.replace('data: ', '')));
+
+    const contentResponses = responses
+        .filter(response => 'content' in response.choices[0].delta);
+
+    return contentResponses
+        .map(line => line.choices[0].delta.content.trim())
+        .join('\n');
+}
+
+async function callOctoAi(prompt) {
+    try {
+        // Get the API key
+        const apiKey = await getOrCreateOctopusApiKey();
+
+        // Get the server URL from the current location
+        const serverUrl = window.location.origin;
+
+        const response = await fetch('https://aiagent.octopus.com/api/form_handler', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Octopus-ApiKey': apiKey,
+                'X-Octopus-Server': serverUrl
+            },
+            body: JSON.stringify({"messages": [{"content": prompt}]})
+        });
+
+        if (!response.ok) {
+            throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.text();
+        console.log('OctoAI response received:', data);
+        return convertFromSseResponse(data);
+    } catch (error) {
+        console.error('Error calling OctoAI:', error);
+        throw error;
+    }
+}
+
+console.log("Loaded OctoAI")
 addAiToPage()

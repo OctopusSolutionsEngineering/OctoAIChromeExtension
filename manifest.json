@@ -1,0 +1,29 @@
+{
+  "name": "OctoAI",
+  "description": "Octopus AI Integration",
+  "version": "0.1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_icon": "octopusai.png",
+    "default_title": "Open the Octopus AI overlay"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "host_permissions": [
+    "https://aiagent.octopus.com/*",
+    "https://*.octopus.app/*"
+  ],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [{
+    "matches": ["https://*.octopus.app/*"],
+    "resources": []
+  }]
+}

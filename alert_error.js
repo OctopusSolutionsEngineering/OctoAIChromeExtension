@@ -1,0 +1,1 @@
+alert("This extension is only available for cloud hosted Octopus instances.")
