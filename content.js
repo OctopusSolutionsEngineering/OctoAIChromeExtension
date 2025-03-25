@@ -157,5 +157,132 @@ newButton.addEventListener("click", function (event) {
     sendButton.style.margin = "10px auto"; // Center the button with auto margins
     sendButton.style.display = "block"; // Ensure it's a block element for margin auto to work
     sendButton.style.fontSize = "18px"; // Increase font size to match button size
+
+    sendButton.onclick = function() {
+        getOrCreateOctopusApiKey()
+            .then(apiKey => console.log("Api key retrieved"))
+    }
+
     linksContainer.appendChild(sendButton);
 });
+
+function getOctopusApiKeyFromStorage() {
+    try {
+        const apiKey = localStorage.getItem("OctopusApiKey");
+        if (apiKey) {
+            console.log("API key found in localStorage");
+            return apiKey;
+        } else {
+            console.log("No API key found in localStorage");
+            return null;
+        }
+    } catch (error) {
+        console.error("Error accessing localStorage:", error);
+        return null;
+    }
+}
+
+function setOctopusApiKeyFromStorage(apiKey) {
+    try {
+        localStorage.setItem("OctopusApiKey", apiKey);
+    } catch (error) {
+        console.error("Error accessing localStorage:", error);
+    }
+}
+
+async function getOrCreateOctopusApiKey() {
+    try {
+        const existingApiKey = getOctopusApiKeyFromStorage();
+
+        if (existingApiKey) {
+            return existingApiKey;
+        } else {
+            const userData = await getCurrentOctopusUser();
+            const apiKeyData = await createOctopusApiKey(userData.Id);
+            setOctopusApiKeyFromStorage(apiKeyData.ApiKey);
+            return apiKeyData.ApiKey;
+        }
+    } catch (error) {
+        console.error('Error getting or creating Octopus Deploy API key:', error);
+        throw error;
+    }
+}
+
+async function getCurrentOctopusUser() {
+    try {
+        const response = await fetch(`/api/users/me`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+        }
+
+        const userData = await response.json();
+        console.log('Current user retrieved:', userData.DisplayName);
+        return userData;
+    } catch (error) {
+        console.error('Error getting current Octopus Deploy user:', error);
+        throw error;
+    }
+}
+
+async function createOctopusApiKey(userId) {
+    try {
+        const purpose = 'OctoAI temporary API key';
+
+        const csrfToken = getOctopusCsrfTokenFromCookie();
+
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+
+        if (csrfToken) {
+            headers['X-Octopus-Csrf-Token'] = csrfToken;
+        }
+
+        const response = await fetch(`/api/users/${userId}/apikeys`, {
+            method: 'POST',
+            headers: headers,
+            credentials: 'include',
+            body: JSON.stringify({
+                Purpose: purpose,
+                // API keys expire after 7 days by default
+                Expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('New API key created successfully:', data.ApiKey);
+        return data;
+    } catch (error) {
+        console.error('Error creating Octopus Deploy API key:', error);
+        throw error;
+    }
+}
+
+function getOctopusCsrfTokenFromCookie() {
+    try {
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+            cookie = cookie.trim();
+            if (cookie.startsWith('Octopus-Csrf-Token')) {
+                const csrfToken = cookie.split("=");
+                console.log('CSRF token found in cookie');
+                return csrfToken[1];
+            }
+        }
+        console.log('No Octopus-Csrf-Token cookie found');
+        return null;
+    } catch (error) {
+        console.error('Error reading Octopus-Csrf-Token cookie:', error);
+        return null;
+    }
+}
