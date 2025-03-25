@@ -119,7 +119,7 @@ function displayPromptUI() {
         "Find unused variables in the project \"Octopus Octoterra Function\" in the \"Octopus Copilot\" space.",
         "Generate a terraform module with three environments and a project called \"My Application\"",
         "Help"];
-    buttonTexts.forEach(text => {
+    const buttons = buttonTexts.map(text => {
         const button = document.createElement("button");
         button.textContent = text;
         button.style.display = "block";
@@ -149,6 +149,8 @@ function displayPromptUI() {
         })
 
         linksContainer.appendChild(button);
+
+        return button
     });
     overlayDiv.appendChild(linksContainer);
 
@@ -187,6 +189,14 @@ function displayPromptUI() {
 
     sendButton.onclick = function () {
         sendButton.disabled = true;
+
+        buttons.forEach(button => {
+            button.disabled = true
+        })
+
+        textarea.disabled = true
+        textarea.style.backgroundColor = "gray";
+        textarea.style.color = "black";
 
         let dots = 0;
         sendButton.textContent = "Thinking"
