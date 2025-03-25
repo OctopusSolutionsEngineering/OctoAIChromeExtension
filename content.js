@@ -328,7 +328,7 @@ async function callOctoAi(prompt) {
 
         return convertFromSseResponse(response.response);
     } catch (error) {
-        console.error('Error calling OctoAI:', error);
+        console.error('Error calling OctoAI:', error.message);
         throw error;
     }
 }

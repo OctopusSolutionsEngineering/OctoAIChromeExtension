@@ -37,10 +37,14 @@ chrome.runtime.onMessage.addListener(
                 if (!response.ok) {
                     throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
                 }
+                return response.text()
             })
-            .then(response => response.text())
-            .then(text => sendResponse({response: text}))
-            .catch(error => sendResponse({error: error}));
+            .then(text => {
+                sendResponse({response: text})
+            })
+            .catch(error => {
+                sendResponse({error: error})
+            });
 
         return true;
     }
