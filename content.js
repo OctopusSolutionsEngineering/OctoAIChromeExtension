@@ -62,118 +62,209 @@ function addAiToPage() {
         this.style.filter = "brightness(1)";
     });
 
-// Add the button to the parent element
     document.body.appendChild(newButton);
 
-// 4. Add an "on click" event to the new button
     newButton.addEventListener("click", function (event) {
         event.preventDefault();
-        console.log("New button clicked!");
-
-        // Create a semi-transparent black overlay div
-        const overlayDiv = document.createElement("div");
-        overlayDiv.style.position = "absolute";
-        overlayDiv.style.top = "0";
-        overlayDiv.style.left = "0";
-        overlayDiv.style.width = "100%";
-        overlayDiv.style.height = "100%";
-        overlayDiv.style.backgroundColor = "rgb(0,0,0)";
-        overlayDiv.style.opacity = "0.9";
-        overlayDiv.style.zIndex = "100";
-        document.body.appendChild(overlayDiv);
-
-        // Add click event to hide the overlay and its children when clicked directly
-        overlayDiv.addEventListener("click", function (event) {
-            // Only hide if the click was directly on the overlay (not on its children)
-            if (event.target === this) {
-                document.body.removeChild(overlayDiv);
-                document.body.removeChild(linksContainer);
-            }
-        });
-
-        // Create container for links
-        const linksContainer = document.createElement("div");
-        linksContainer.style.position = "absolute";
-        linksContainer.style.top = "30%";
-        linksContainer.style.left = "50%";
-        linksContainer.style.width = "100%";
-        linksContainer.style.transform = "translateX(-50%)";
-        linksContainer.style.zIndex = "101";
-        linksContainer.style.textAlign = "center";
-
-        // Add five links
-        const buttonTexts = ["Link 1", "Link 2", "Link 3", "Link 4", "Link 5"];
-        buttonTexts.forEach(text => {
-            const button = document.createElement("button");
-            button.textContent = text;
-            button.style.display = "block";
-            button.style.margin = "10px auto";
-            button.style.width = "80%";
-            button.style.color = "white";
-            button.style.backgroundColor = "transparent";
-            button.style.border = "none";
-            button.style.fontSize = "18px";
-            button.style.padding = "5px";
-            button.style.transition = "all 0.3s ease";
-            button.style.cursor = "default"; // Default cursor since they're just displaying text
-
-            // Add hover effect
-            button.addEventListener("mouseover", function () {
-                this.style.backgroundColor = "rgba(68, 68, 255, 0.3)";
-                this.style.transform = "scale(1.02)";
-            });
-
-            button.addEventListener("mouseout", function () {
-                this.style.backgroundColor = "transparent";
-                this.style.transform = "scale(1)";
-            });
-
-            linksContainer.appendChild(button);
-        });
-        document.body.appendChild(linksContainer);
-
-        // Create textarea
-        const textarea = document.createElement("textarea");
-        textarea.style.display = "block";
-        textarea.style.width = "80%"; // 80% of page width
-        textarea.style.height = "100px"; // enough for about 5 lines
-        textarea.style.margin = "20px auto";
-        textarea.style.zIndex = "101";
-        textarea.style.position = "relative";
-        textarea.style.borderRadius = "8px"; // rounded borders
-        textarea.style.padding = "10px"; // add some padding for better text appearance
-        textarea.style.boxSizing = "border-box"; // include padding in width calculation
-        textarea.style.border = "2px solid #4444ff"; // matching the button color
-        textarea.style.outline = "none"; // remove outline when focused
-        textarea.style.fontSize = "24px";
-        textarea.value = "Get the projects in the Default space"
-        linksContainer.appendChild(textarea);
-
-        // Create send button
-        const sendButton = document.createElement("button");
-        sendButton.textContent = "Send";
-        sendButton.style.padding = "8px 16px";
-        sendButton.style.backgroundColor = "#4444ff";
-        sendButton.style.color = "white";
-        sendButton.style.border = "none";
-        sendButton.style.borderRadius = "4px";
-        sendButton.style.cursor = "pointer";
-        sendButton.style.zIndex = "101";
-        sendButton.style.position = "relative";
-        sendButton.style.height = "64px"; // Set height to 128px
-        sendButton.style.width = "80%"; // Set width to 80%
-        sendButton.style.margin = "10px auto"; // Center the button with auto margins
-        sendButton.style.display = "block"; // Ensure it's a block element for margin auto to work
-        sendButton.style.fontSize = "18px"; // Increase font size to match button size
-
-        sendButton.onclick = function () {
-            callOctoAi(textarea.value)
-                .then(result => console.log(result))
-                .catch(e => console.log(e))
-        }
-
-        linksContainer.appendChild(sendButton);
+        displayPromptUI();
     });
+}
+
+function removeExistingOverlay() {
+    const overlay = document.getElementById("octoai-overlay");
+    if (overlay) {
+        overlay.parentElement.removeChild(overlay);
+    }
+}
+
+function displayPromptUI() {
+    removeExistingOverlay();
+
+    const overlayDiv = document.createElement("div");
+    overlayDiv.id = "octoai-overlay";
+    overlayDiv.style.position = "absolute";
+    overlayDiv.style.top = "0";
+    overlayDiv.style.left = "0";
+    overlayDiv.style.width = "100%";
+    overlayDiv.style.height = "100%";
+    overlayDiv.style.backgroundColor = "rgb(0,0,0)";
+    overlayDiv.style.opacity = "0.9";
+    overlayDiv.style.zIndex = "100";
+
+    document.body.appendChild(overlayDiv);
+
+    // Add click event to hide the overlay and its children when clicked directly
+    overlayDiv.addEventListener("click", function (event) {
+        // Only hide if the click was directly on the overlay (not on its children)
+        if (event.target === this) {
+            document.body.removeChild(overlayDiv);
+            document.body.removeChild(linksContainer);
+        }
+    });
+
+    // Create container for links
+    const linksContainer = document.createElement("div");
+    linksContainer.style.position = "relative";
+    linksContainer.style.top = "30%";
+    linksContainer.style.width = "100%";
+    linksContainer.style.zIndex = "101";
+    linksContainer.style.textAlign = "center";
+
+    // Add five links
+    const buttonTexts = ["Link 1", "Link 2", "Link 3", "Link 4", "Link 5"];
+    buttonTexts.forEach(text => {
+        const button = document.createElement("button");
+        button.textContent = text;
+        button.style.display = "block";
+        button.style.margin = "10px auto";
+        button.style.width = "80%";
+        button.style.color = "white";
+        button.style.backgroundColor = "transparent";
+        button.style.border = "none";
+        button.style.fontSize = "18px";
+        button.style.padding = "5px";
+        button.style.transition = "all 0.3s ease";
+        button.style.cursor = "default"; // Default cursor since they're just displaying text
+
+        // Add hover effect
+        button.addEventListener("mouseover", function () {
+            this.style.backgroundColor = "rgba(68, 68, 255, 0.3)";
+            this.style.transform = "scale(1.02)";
+        });
+
+        button.addEventListener("mouseout", function () {
+            this.style.backgroundColor = "transparent";
+            this.style.transform = "scale(1)";
+        });
+
+        linksContainer.appendChild(button);
+    });
+    overlayDiv.appendChild(linksContainer);
+
+    // Create textarea
+    const textarea = document.createElement("textarea");
+    textarea.style.display = "block";
+    textarea.style.width = "80%"; // 80% of page width
+    textarea.style.height = "100px"; // enough for about 5 lines
+    textarea.style.margin = "20px auto";
+    textarea.style.zIndex = "101";
+    textarea.style.position = "relative";
+    textarea.style.borderRadius = "8px"; // rounded borders
+    textarea.style.padding = "10px"; // add some padding for better text appearance
+    textarea.style.boxSizing = "border-box"; // include padding in width calculation
+    textarea.style.border = "2px solid #4444ff"; // matching the button color
+    textarea.style.outline = "none"; // remove outline when focused
+    textarea.style.fontSize = "24px";
+    textarea.value = "Get the projects in the Default space"
+    linksContainer.appendChild(textarea);
+
+    // Create send button
+    const sendButton = document.createElement("button");
+    sendButton.textContent = "Send";
+    sendButton.style.padding = "8px 16px";
+    sendButton.style.backgroundColor = "#4444ff";
+    sendButton.style.color = "white";
+    sendButton.style.border = "none";
+    sendButton.style.borderRadius = "4px";
+    sendButton.style.cursor = "pointer";
+    sendButton.style.zIndex = "101";
+    sendButton.style.position = "relative";
+    sendButton.style.height = "64px";
+    sendButton.style.width = "80%";
+    sendButton.style.margin = "10px auto";
+    sendButton.style.display = "block";
+    sendButton.style.fontSize = "18px";
+
+    sendButton.onclick = function () {
+        sendButton.disabled = true;
+
+        let dots = 0;
+        const thinkingAnimation = setInterval(() => {
+            dots = (dots + 1) % 4;  // Cycle through 0-3 dots
+            sendButton.textContent = "Thinking" + ".".repeat(dots);
+        }, 500);
+
+        callOctoAi(textarea.value)
+            .then(result =>
+                displayMarkdownResponse(result))
+            .catch(e =>
+                console.log(e))
+            .finally(() =>
+                clearInterval(thinkingAnimation)
+            );
+    }
+
+    linksContainer.appendChild(sendButton);
+}
+
+function displayMarkdownResponse(markdownContent) {
+    removeExistingOverlay();
+
+    const overlayDiv = document.createElement("div");
+    overlayDiv.id = "octoai-overlay";
+    overlayDiv.style.position = "absolute";
+    overlayDiv.style.top = "0";
+    overlayDiv.style.left = "0";
+    overlayDiv.style.width = "100%";
+    overlayDiv.style.height = "100%";
+    overlayDiv.style.backgroundColor = "rgb(0,0,0)";
+    overlayDiv.style.opacity = "0.9";
+    overlayDiv.style.zIndex = "100";
+
+    document.body.appendChild(overlayDiv);
+
+    overlayDiv.addEventListener("click", function (event) {
+        if (event.target === this) {
+            document.body.removeChild(overlayDiv);
+            document.body.removeChild(linksContainer);
+        }
+    });
+
+    const contentDiv = document.createElement("div");
+    contentDiv.style.position = "absolute";
+    contentDiv.style.top = "10%";
+    contentDiv.style.left = "10%";
+    contentDiv.style.right = "10%";
+    contentDiv.style.bottom = "20%";
+    contentDiv.style.backgroundColor = "white";
+    contentDiv.style.borderRadius = "8px";
+    contentDiv.style.overflowY = "auto";
+    contentDiv.style.overflowX = "auto";
+    contentDiv.style.zIndex = "101";
+    contentDiv.style.backgroundColor = "black";
+    contentDiv.style.color = "white";
+    contentDiv.style.opacity = "1";
+    contentDiv.style.border = "#2e475d;"
+    contentDiv.style.borderWidth = "thin";
+    contentDiv.style.borderStyle = "solid";
+    contentDiv.style.padding = "10px";
+
+    contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
+
+    overlayDiv.appendChild(contentDiv);
+
+    const backButton = document.createElement("button");
+    backButton.textContent = "Back";
+    backButton.style.position = "absolute";
+    backButton.style.bottom = "10%";
+    backButton.style.left = "10%";
+    backButton.style.right = "10%";
+    backButton.style.backgroundColor = "#4444ff";
+    backButton.style.color = "white";
+    backButton.style.border = "none";
+    backButton.style.borderRadius = "4px";
+    backButton.style.cursor = "pointer";
+    backButton.style.zIndex = "101";
+    backButton.style.fontSize = "18px";
+    backButton.style.padding = "5px";
+    backButton.style.height = "64px";
+
+    backButton.addEventListener("click", function() {
+        displayPromptUI();
+    });
+
+    // Add the back button to the overlay
+    overlayDiv.appendChild(backButton);
 }
 
 function getOctopusApiKeyFromStorage() {
@@ -323,12 +414,12 @@ async function callOctoAi(prompt) {
             .sendMessage({prompt: prompt, apiKey: apiKey, serverUrl: serverUrl});
 
         if (response.error) {
-            throw new Error(`OctoAI API call failed: ${response.error}`);
+            throw new Error(`OctoAI API call failed: ${response.error.message}`);
         }
 
         return convertFromSseResponse(response.response);
     } catch (error) {
-        console.error('Error calling OctoAI:', error.message);
+        console.error(error.message);
         throw error;
     }
 }

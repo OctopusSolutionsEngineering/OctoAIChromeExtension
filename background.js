@@ -11,6 +11,14 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                         try {
                             chrome.scripting.executeScript({
                                 target: {tabId: tab.id},
+                                files: ['marked.min.js']
+                            });
+                            chrome.scripting.executeScript({
+                                target: {tabId: tab.id},
+                                files: ['purify.min.js']
+                            });
+                            chrome.scripting.executeScript({
+                                target: {tabId: tab.id},
                                 files: ['content.js']
                             });
                         } catch {
