@@ -110,8 +110,15 @@ function displayPromptUI() {
     linksContainer.style.zIndex = "101";
     linksContainer.style.textAlign = "center";
 
+    const textarea = document.createElement("textarea");
+
     // Add five links
-    const buttonTexts = ["Link 1", "Link 2", "Link 3", "Link 4", "Link 5"];
+    const buttonTexts = [
+        "List the projects in the Default space",
+        "Help me fix the deployment version \"0.1.1316%2B480f701.1323.1\" for the project \"Octopus Octoterra Function\" to the \"Production\" environment in the \"Octopus Copilot\" space.",
+        "Find unused variables in the project \"Octopus Octoterra Function\" in the \"Octopus Copilot\" space.",
+        "Generate a terraform module with three environments and a project called \"My Application\"",
+        "Help"];
     buttonTexts.forEach(text => {
         const button = document.createElement("button");
         button.textContent = text;
@@ -137,15 +144,18 @@ function displayPromptUI() {
             this.style.transform = "scale(1)";
         });
 
+        button.addEventListener("click", function() {
+            textarea.value = button.textContent
+        })
+
         linksContainer.appendChild(button);
     });
     overlayDiv.appendChild(linksContainer);
 
     // Create textarea
-    const textarea = document.createElement("textarea");
     textarea.style.display = "block";
     textarea.style.width = "80%"; // 80% of page width
-    textarea.style.height = "100px"; // enough for about 5 lines
+    textarea.style.height = "150px"; // enough for about 5 lines
     textarea.style.margin = "20px auto";
     textarea.style.zIndex = "101";
     textarea.style.position = "relative";
@@ -179,6 +189,7 @@ function displayPromptUI() {
         sendButton.disabled = true;
 
         let dots = 0;
+        sendButton.textContent = "Thinking"
         const thinkingAnimation = setInterval(() => {
             dots = (dots + 1) % 4;  // Cycle through 0-3 dots
             sendButton.textContent = "Thinking" + ".".repeat(dots);
