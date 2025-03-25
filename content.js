@@ -87,8 +87,7 @@ function displayPromptUI() {
     overlayDiv.style.left = "0";
     overlayDiv.style.width = "100%";
     overlayDiv.style.height = "100%";
-    overlayDiv.style.backgroundColor = "rgb(0,0,0)";
-    overlayDiv.style.opacity = "0.9";
+    overlayDiv.style.backgroundColor = "rgb(0,0,0, 0.9)";
     overlayDiv.style.zIndex = "100";
 
     document.body.appendChild(overlayDiv);
@@ -228,8 +227,7 @@ function displayMarkdownResponse(markdownContent) {
     overlayDiv.style.left = "0";
     overlayDiv.style.width = "100%";
     overlayDiv.style.height = "100%";
-    overlayDiv.style.backgroundColor = "rgb(0,0,0)";
-    overlayDiv.style.opacity = "0.9";
+    overlayDiv.style.backgroundColor = "rgb(0,0,0, 0.9)";
     overlayDiv.style.zIndex = "100";
 
     document.body.appendChild(overlayDiv);
@@ -254,7 +252,6 @@ function displayMarkdownResponse(markdownContent) {
     contentDiv.style.zIndex = "101";
     contentDiv.style.backgroundColor = "black";
     contentDiv.style.color = "white";
-    contentDiv.style.opacity = "1";
     contentDiv.style.border = "#2e475d;"
     contentDiv.style.borderWidth = "thin";
     contentDiv.style.borderStyle = "solid";
