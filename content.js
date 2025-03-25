@@ -146,7 +146,7 @@ function addAiToPage() {
         textarea.style.border = "2px solid #4444ff"; // matching the button color
         textarea.style.outline = "none"; // remove outline when focused
         textarea.style.fontSize = "24px";
-        textarea.value = "get the projects in the Default space"
+        textarea.value = "Get the projects in the Default space"
         linksContainer.appendChild(textarea);
 
         // Create send button
@@ -319,23 +319,14 @@ async function callOctoAi(prompt) {
         // Get the server URL from the current location
         const serverUrl = window.location.origin;
 
-        const response = await fetch('https://aiagent.octopus.com/api/form_handler', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Octopus-ApiKey': apiKey,
-                'X-Octopus-Server': serverUrl
-            },
-            body: JSON.stringify({"messages": [{"content": prompt}]})
-        });
+        const response = await chrome.runtime
+            .sendMessage({prompt: prompt, apiKey: apiKey, serverUrl: serverUrl});
 
-        if (!response.ok) {
-            throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
+        if (response.error) {
+            throw new Error(`OctoAI API call failed: ${response.error}`);
         }
 
-        const data = await response.text();
-        console.log('OctoAI response received:', data);
-        return convertFromSseResponse(data);
+        return convertFromSseResponse(response.response);
     } catch (error) {
         console.error('Error calling OctoAI:', error);
         throw error;

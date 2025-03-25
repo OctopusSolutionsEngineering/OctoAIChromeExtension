@@ -21,3 +21,27 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
             })
     }
 })
+
+chrome.runtime.onMessage.addListener(
+    function (request, sender, sendResponse) {
+        fetch('https://aiagent.octopus.com/api/form_handler', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Octopus-ApiKey': request.apiKey,
+                'X-Octopus-Server': request.serverUrl
+            },
+            body: JSON.stringify({"messages": [{"content": request.prompt}]})
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
+                }
+            })
+            .then(response => response.text())
+            .then(text => sendResponse({response: text}))
+            .catch(error => sendResponse({error: error}));
+
+        return true;
+    }
+);
