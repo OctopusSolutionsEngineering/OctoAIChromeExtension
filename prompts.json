@@ -10,7 +10,8 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/[^?]*\\??.*",
     "prompts" : [
-      "Describe what the steps in the project \"#{Octopus.Project.Name}\" do"
+      "Describe what the steps in the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\"  do",
+      "Given the steps in the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\", find any potential errors in any scripts"
     ]
   }
 ]
