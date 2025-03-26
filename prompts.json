@@ -2,8 +2,8 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/projects\\??.*?",
     "prompts" : [
-      "Check my space for unused projects",
-      "Check my space for unused targets",
+      "Check space \"#{Octopus.Space.Name}\" for unused projects",
+      "Check space \"#{Octopus.Space.Name}\" for unused targets",
       "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"; a project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
     ]
   }

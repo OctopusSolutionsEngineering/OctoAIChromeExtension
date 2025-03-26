@@ -473,7 +473,7 @@ async function getSamplePrompts() {
             .map(prompt => prompt.prompts);
 
         if (matches.length > 0) {
-            return matches[0];
+            return await processPrompts(matches[0]);
         }
 
         return defaultPrompts
@@ -481,6 +481,21 @@ async function getSamplePrompts() {
         console.error(error.message);
         return defaultPrompts
     }
+}
+
+async function getSpaceName() {
+    const match = window.location.href.match(/(Spaces-\\d+)/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function processPrompts(prompts) {
+    const spaceName = await getSpaceName();
+    return prompts.map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName));
 }
 
 console.log("Loaded OctoAI")
