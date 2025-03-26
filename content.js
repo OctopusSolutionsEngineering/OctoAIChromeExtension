@@ -178,7 +178,7 @@ async function displayPromptUI() {
     textarea.style.border = "2px solid #4444ff"; // matching the button color
     textarea.style.outline = "none"; // remove outline when focused
     textarea.style.fontSize = "24px";
-    textarea.value = "Get the projects in the Default space"
+    textarea.value = "What do you do?";
     linksContainer.appendChild(textarea);
 
     // Create send button
@@ -199,6 +199,10 @@ async function displayPromptUI() {
     sendButton.style.fontSize = "18px";
 
     sendButton.onclick = function () {
+        if (textarea.value.trim() === "") {
+            return
+        }
+
         sendButton.disabled = true;
 
         buttons.forEach(button => {
@@ -493,9 +497,22 @@ async function getSpaceName() {
     return null;
 }
 
+async function getProjectName() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/[^?]*\\??.*/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
 async function processPrompts(prompts) {
     const spaceName = await getSpaceName();
-    return prompts.map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName));
+    const projectName = await getProjectName();
+    return prompts
+        .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
+        .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName));
 }
 
 console.log("Loaded OctoAI")
