@@ -1,6 +1,6 @@
 [
   {
-    "page": "https://.*?/app#/Spaces-.*?/projects\\??.*?",
+    "url": "https://.*?/app#/Spaces-.*?/projects\\??.*?",
     "prompts" : [
       "Check my space for unused projects",
       "Check my space for unused targets",

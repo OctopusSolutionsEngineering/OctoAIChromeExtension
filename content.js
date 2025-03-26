@@ -94,7 +94,7 @@ function removeExistingOverlay() {
     }
 }
 
-function displayPromptUI() {
+async function displayPromptUI() {
     removeExistingOverlay();
 
     const overlayDiv = document.createElement("div");
@@ -129,12 +129,7 @@ function displayPromptUI() {
     const textarea = document.createElement("textarea");
 
     // Add five links
-    const buttonTexts = [
-        "List the projects in the Default space",
-        "Help me fix the deployment version \"0.1.1316+480f701.1323.1\" for the project \"Octopus Octoterra Function\" to the \"Production\" environment in the \"Octopus Copilot\" space.",
-        "Find unused variables in the project \"Octopus Octoterra Function\" in the \"Octopus Copilot\" space.",
-        "Generate a terraform module with three environments and a project called \"My Application\"",
-        "Help"];
+    const buttonTexts = await getSamplePrompts();
     const buttons = buttonTexts.map(text => {
         const button = document.createElement("button");
         button.textContent = text;
@@ -446,7 +441,7 @@ async function callOctoAi(prompt) {
         const serverUrl = window.location.origin;
 
         const response = await chrome.runtime
-            .sendMessage({prompt: prompt, apiKey: apiKey, serverUrl: serverUrl});
+            .sendMessage({action: "prompt", prompt: prompt, apiKey: apiKey, serverUrl: serverUrl});
 
         if (response.error) {
             throw new Error(`OctoAI API call failed: ${response.error.message}`);
@@ -456,6 +451,35 @@ async function callOctoAi(prompt) {
     } catch (error) {
         console.error(error.message);
         throw error;
+    }
+}
+
+async function getSamplePrompts() {
+    const defaultPrompts = [
+        "List the projects in the Default space",
+        "Generate a terraform module with three environments and a project called \"My Application\"",
+        "Help"
+    ]
+
+    try {
+        const response = await chrome.runtime.sendMessage({action: "getPrompts"});
+
+        if (response.error) {
+            throw new Error(`OctoAI API call failed: ${response.error.message}`);
+        }
+
+        const matches = response.response
+            .filter(prompt => window.location.href.match(prompt.url))
+            .map(prompt => prompt.prompts);
+
+        if (matches.length > 0) {
+            return matches[0];
+        }
+
+        return defaultPrompts
+    } catch (error) {
+        console.error(error.message);
+        return defaultPrompts
     }
 }
 
