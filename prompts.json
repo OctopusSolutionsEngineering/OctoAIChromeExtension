@@ -1,6 +1,6 @@
 [
   {
-    "url": "https://.*?/app#/Spaces-.*?/projects\\??.*",
+    "url": "https://.*?/app#/Spaces-.*?/projects/?(\\??.*|$)",
     "prompts" : [
       "Check space \"#{Octopus.Space.Name}\" for unused projects",
       "Check space \"#{Octopus.Space.Name}\" for unused targets",
