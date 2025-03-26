@@ -484,7 +484,7 @@ async function getSamplePrompts() {
 }
 
 async function getSpaceName() {
-    const match = window.location.href.match(/(Spaces-\\d+)/);
+    const match = window.location.href.match(/(Spaces-\d+)/);
     if (match) {
         return await fetch("/api/Spaces/" + match[1], {credentials: 'include'})
             .then(response => response.json())
