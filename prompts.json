@@ -20,5 +20,11 @@
     "prompts" : [
       "Find Library Variable Set variable values in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords."
     ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/.*?/variables",
+    "prompts" : [
+      "Find project variables values from the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords."
+    ]
   }
 ]
