@@ -495,6 +495,22 @@ async function getSamplePrompts() {
     }
 }
 
+async function getFirstEnvironmentName() {
+    const match = window.location.href.match(/(Spaces-\d+)/);
+    if (match) {
+        const names = await fetch("/api/Spaces/" + match[1] + "/Environments", {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Items.map(item => item.Name))
+
+        if (names.length > 0) {
+            return names[0]
+        }
+
+        return "MyEnvironment"
+    }
+    return null;
+}
+
 async function getSpaceName() {
     const match = window.location.href.match(/(Spaces-\d+)/);
     if (match) {
@@ -518,9 +534,11 @@ async function getProjectName() {
 async function processPrompts(prompts) {
     const spaceName = await getSpaceName();
     const projectName = await getProjectName();
+    const firstEnvironmentName = await getFirstEnvironmentName();
     return prompts
         .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
-        .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName));
+        .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
+        .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
 }
 
 console.log("Loaded OctoAI")
