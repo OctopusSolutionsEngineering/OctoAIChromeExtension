@@ -48,8 +48,8 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/accounts",
     "prompts" : [
-      "Which accounts in the \"#{Octopus.Space.Name}\" space are configured with OIDC?.",
-      "Which accounts in the \"#{Octopus.Space.Name}\" are available from the \"#{Octopus.Environment[0].Name} environment\"?."
+      "Which accounts in the \"#{Octopus.Space.Name}\" space are configured with OIDC?",
+      "Which accounts in the \"#{Octopus.Space.Name}\" are available from the \"#{Octopus.Environment[0].Name} environment\"?"
     ]
   }
 ]
