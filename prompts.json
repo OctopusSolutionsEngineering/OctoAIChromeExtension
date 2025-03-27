@@ -34,5 +34,11 @@
     "prompts" : [
       "Find deployments of the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" from the last week that failed."
     ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/infrastructure/machines",
+    "prompts" : [
+      "Given all the Kubernetes targets, list all the cluster endpoint URLs."
+    ]
   }
 ]
