@@ -38,7 +38,7 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machines",
     "prompts" : [
-      "Given all the Kubernetes targets, list all the cluster endpoint URLs."
+      "Given all the Kubernetes targets, list all the unique cluster endpoint URLs."
     ]
   }
 ]
