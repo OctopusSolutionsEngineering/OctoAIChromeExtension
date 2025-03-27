@@ -178,7 +178,7 @@ async function displayPromptUI() {
     textarea.style.border = "2px solid #00874d"; // matching the button color
     textarea.style.outline = "none"; // remove outline when focused
     textarea.style.fontSize = "24px";
-    textarea.value = localStorage.get("octoai-prompt") || "What do you do?";
+    textarea.value = localStorage.getItem("octoai-prompt") || "What do you do?";
     linksContainer.appendChild(textarea);
 
     // Create send button
