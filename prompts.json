@@ -51,5 +51,12 @@
       "Which accounts in the \"#{Octopus.Space.Name}\" space are configured with OIDC?",
       "Which accounts in the \"#{Octopus.Space.Name}\" are available from the \"#{Octopus.Environment[0].Name} environment\"?"
     ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/infrastructure/workers",
+    "prompts" : [
+      "Which workers in the \"#{Octopus.Space.Name}\" space are are hosted on Kubernetes?",
+      "List the machine policies used by the workers in the \"#{Octopus.Space.Name}\"."
+    ]
   }
 ]
