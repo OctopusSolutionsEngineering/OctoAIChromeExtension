@@ -537,7 +537,7 @@ async function processPrompts(prompts) {
     const firstEnvironmentName = await getFirstEnvironmentName();
     return prompts
         .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
-        .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
+        .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName))
         .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
 }
 
