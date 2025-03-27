@@ -40,9 +40,9 @@
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machines",
     "prompts" : [
       "Check space \"#{Octopus.Space.Name}\" for unused targets",
+      "Given all the targets in the space \"#{Octopus.Space.Name}\", list all the targets that are insecure because they use HTTP.",
       "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs.",
-      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to AWS.",
-      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the targets that are insecure because they use HTTP."
+      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to AWS."
     ]
   },
   {
