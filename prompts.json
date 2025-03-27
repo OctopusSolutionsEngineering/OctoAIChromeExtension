@@ -49,7 +49,7 @@
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/accounts",
     "prompts" : [
       "Which accounts in the \"#{Octopus.Space.Name}\" space are configured with OIDC?",
-      "Which accounts in the \"#{Octopus.Space.Name}\" are available from the \"#{Octopus.Environment[0].Name} environment\"?"
+      "Which accounts in the \"#{Octopus.Space.Name}\" are available from the \"#{Octopus.Environment[0].Name}\" environment?"
     ]
   },
   {
@@ -64,6 +64,18 @@
     "prompts" : [
       "List the feeds in the space \"#{Octopus.Space.Name}\" that are insecure because they use HTTP.",
       "Given all the feeds in the space \"#{Octopus.Space.Name}\", generate a table that groups feeds by feed type in the rows and has columns for: feed name, feed url."
+    ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/library/gitcredentials",
+    "prompts" : [
+      "Which Git credentials in the space \"#{Octopus.Space.Name}\" have the username \"x-access-token\"?"
+    ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/library/lifecycles",
+    "prompts" : [
+      "Which lifecycles in the space \"#{Octopus.Space.Name}\" include the environment \"#{Octopus.Environment[0].Name}\"?"
     ]
   }
 ]
