@@ -18,13 +18,15 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/library/variables/?(\\?.*|$)",
     "prompts" : [
-      "Find Library Variable Set variable values in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords."
+      "Find Library Variable Set variable values in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords.",
+      "Find Library Variable Set variable values in the space \"#{Octopus.Space.Name}\" that look like URLs."
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/.*?/variables",
     "prompts" : [
-      "Find project variables values from the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords."
+      "Find project variables values from the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords.",
+      "Find project variables values from the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" that look like URLs."
     ]
   }
 ]
