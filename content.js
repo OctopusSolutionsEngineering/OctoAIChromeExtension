@@ -303,25 +303,25 @@ function displayMarkdownResponse(markdownContent) {
 
 function getOctopusApiKeyFromStorage() {
     try {
-        const apiKey = localStorage.getItem("OctopusApiKey");
+        const apiKey = sessionStorage.getItem("OctopusApiKey");
         if (apiKey) {
-            console.log("API key found in localStorage");
+            console.log("API key found in sessionStorage");
             return apiKey;
         } else {
-            console.log("No API key found in localStorage");
+            console.log("No API key found in sessionStorage");
             return null;
         }
     } catch (error) {
-        console.error("Error accessing localStorage:", error);
+        console.error("Error accessing sessionStorage:", error);
         return null;
     }
 }
 
 function setOctopusApiKeyFromStorage(apiKey) {
     try {
-        localStorage.setItem("OctopusApiKey", apiKey);
+        sessionStorage.setItem("OctopusApiKey", apiKey);
     } catch (error) {
-        console.error("Error accessing localStorage:", error);
+        console.error("Error accessing sessionStorage:", error);
     }
 }
 
