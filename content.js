@@ -204,6 +204,9 @@ async function displayPromptUI() {
         }
 
         sendButton.disabled = true;
+        sendButton.style.backgroundColor = "#2e475d";
+        sendButton.style.color = "#557999";
+        textarea.style.borderColor = "#557999";
 
         buttons.forEach(button => {
             button.disabled = true
