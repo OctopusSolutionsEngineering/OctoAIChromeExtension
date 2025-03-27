@@ -56,7 +56,13 @@
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/workers",
     "prompts" : [
       "Which workers in the \"#{Octopus.Space.Name}\" space are are hosted on Kubernetes?",
-      "List the machine policies used by the workers in the \"#{Octopus.Space.Name}\"."
+      "List the machine policies used by the workers in the \"#{Octopus.Space.Name}\" space."
+    ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/infrastructure/machinepolicies",
+    "prompts" : [
+      "What do the health check scripts do in the machine policies for the space \"#{Octopus.Space.Name}\\?"
     ]
   },
   {
