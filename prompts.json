@@ -58,5 +58,12 @@
       "Which workers in the \"#{Octopus.Space.Name}\" space are are hosted on Kubernetes?",
       "List the machine policies used by the workers in the \"#{Octopus.Space.Name}\"."
     ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/library/feeds",
+    "prompts" : [
+      "List the feeds in the space \"#{Octopus.Space.Name}\" that are insecure because they use HTTP.",
+      "Given all the feeds in the space \"#{Octopus.Space.Name}\", generate a table that groups feeds by feed type in the rows and has columns for: feed name, feed url."
+    ]
   }
 ]
