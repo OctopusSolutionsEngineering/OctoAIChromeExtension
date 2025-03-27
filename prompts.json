@@ -77,5 +77,11 @@
     "prompts" : [
       "Which lifecycles in the space \"#{Octopus.Space.Name}\" include the environment \"#{Octopus.Environment[0].Name}\"?"
     ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/library/scripts",
+    "prompts" : [
+      "What do the script modules in the space \"#{Octopus.Space.Name}\" do?"
+    ]
   }
 ]
