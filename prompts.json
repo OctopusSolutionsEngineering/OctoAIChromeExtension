@@ -28,5 +28,11 @@
       "Find project variables values from the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords.",
       "Find project variables values from the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" that look like URLs."
     ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases",
+    "prompts" : [
+      "Find deployments of the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" from the last week that failed."
+    ]
   }
 ]
