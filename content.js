@@ -175,7 +175,7 @@ async function displayPromptUI() {
     textarea.style.borderRadius = "8px"; // rounded borders
     textarea.style.padding = "10px"; // add some padding for better text appearance
     textarea.style.boxSizing = "border-box"; // include padding in width calculation
-    textarea.style.border = "2px solid #4444ff"; // matching the button color
+    textarea.style.border = "2px solid #00874d"; // matching the button color
     textarea.style.outline = "none"; // remove outline when focused
     textarea.style.fontSize = "24px";
     textarea.value = "What do you do?";
@@ -185,7 +185,7 @@ async function displayPromptUI() {
     const sendButton = document.createElement("button");
     sendButton.textContent = "Send";
     sendButton.style.padding = "8px 16px";
-    sendButton.style.backgroundColor = "#4444ff";
+    sendButton.style.backgroundColor = "#00874d";
     sendButton.style.color = "white";
     sendButton.style.border = "none";
     sendButton.style.borderRadius = "4px";
@@ -283,7 +283,7 @@ function displayMarkdownResponse(markdownContent) {
     backButton.style.bottom = "10%";
     backButton.style.left = "10%";
     backButton.style.right = "10%";
-    backButton.style.backgroundColor = "#4444ff";
+    backButton.style.backgroundColor = "#00874d";
     backButton.style.color = "white";
     backButton.style.border = "none";
     backButton.style.borderRadius = "4px";
