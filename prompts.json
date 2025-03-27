@@ -3,7 +3,6 @@
     "url": "https://.*?/app#/Spaces-.*?/projects/?(\\?.*|$)",
     "prompts" : [
       "Check space \"#{Octopus.Space.Name}\" for unused projects",
-      "Check space \"#{Octopus.Space.Name}\" for unused targets",
       "Which projects in the \"#{Octopus.Space.Name}\" space deploy to Kubernetes?",
       "Which projects in the \"#{Octopus.Space.Name}\" space have the \"Deploy a Release\" step?",
       "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
@@ -40,6 +39,7 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machines",
     "prompts" : [
+      "Check space \"#{Octopus.Space.Name}\" for unused targets",
       "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs.",
       "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to AWS.",
       "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to Azure."
