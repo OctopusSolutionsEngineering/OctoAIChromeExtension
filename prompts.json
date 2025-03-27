@@ -38,7 +38,9 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machines",
     "prompts" : [
-      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs."
+      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs.",
+      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to AWS.",
+      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to Azure."
     ]
   }
 ]
