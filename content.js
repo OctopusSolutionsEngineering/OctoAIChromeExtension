@@ -61,7 +61,7 @@ function addAiToPage() {
     newButton.className = "siri-button";
     newButton.style.position = "absolute";
     newButton.style.top = "16px";
-    newButton.style.right = "80px";
+    newButton.style.right = "120px";
     newButton.style.width = "32px";
     newButton.style.height = "32px";
     newButton.style.padding = "0";
@@ -333,6 +333,11 @@ async function getOrCreateOctopusApiKey() {
             return existingApiKey;
         } else {
             const userData = await getCurrentOctopusUser();
+
+            if (userData.Id === "users-guest") {
+                return "API-GUEST";
+            }
+
             const apiKeyData = await createOctopusApiKey(userData.Id);
             setOctopusApiKeyFromStorage(apiKeyData.ApiKey);
             return apiKeyData.ApiKey;
