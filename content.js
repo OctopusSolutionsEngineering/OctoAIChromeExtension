@@ -254,7 +254,6 @@ function displayMarkdownResponse(markdownContent) {
     overlayDiv.addEventListener("click", function (event) {
         if (event.target === this) {
             document.body.removeChild(overlayDiv);
-            document.body.removeChild(linksContainer);
         }
     });
 
