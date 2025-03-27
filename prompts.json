@@ -43,5 +43,11 @@
       "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to AWS.",
       "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to Azure."
     ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/infrastructure/accounts",
+    "prompts" : [
+      "Which accounts in the \"#{Octopus.Space.Name}\" space are configured with OIDC?."
+    ]
   }
 ]
