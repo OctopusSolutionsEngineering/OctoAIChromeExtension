@@ -549,9 +549,9 @@ async function getProjectName() {
 }
 
 async function getStepName() {
-    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/process\/steps\\?.*/);
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/process\/steps\\?.*/);
     if (match) {
-        const queryParams = getQueryParamsFromUrl(window.location.href);
+        const parentStepId = new URLSearchParams(window.location.href.split("?")[1]).get("parentStepId");
 
         const steps = await fetch("/api/Spaces/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
             .then(response => response.json())
@@ -561,7 +561,7 @@ async function getStepName() {
             .then(json => json.Steps)
 
         const step = steps
-            .filter(step => step.Id === queryParams["parentStepId"])
+            .filter(step => step.Id === parentStepId)
             .map(step => step.Name);
 
         if (step.length > 0) {
@@ -569,22 +569,6 @@ async function getStepName() {
         }
     }
     return null;
-}
-
-function getQueryParamsFromUrl(url) {
-    // Create URL object for easier parsing
-    const urlObj = new URL(url);
-
-    // Get URLSearchParams object
-    const searchParams = urlObj.searchParams;
-
-    // Convert to plain object
-    const params = {};
-    for (const [key, value] of searchParams.entries()) {
-        params[key] = value;
-    }
-
-    return params;
 }
 
 async function processPrompts(prompts) {
