@@ -548,13 +548,54 @@ async function getProjectName() {
     return null;
 }
 
+async function getStepName() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/process\/steps\\?.*/);
+    if (match) {
+        const queryParams = getQueryParamsFromUrl(window.location.href);
+
+        const steps = await fetch("/api/Spaces/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.DeploymentProcessId)
+            .then(deploymentProcessId => fetch("/api/Spaces/" + match[1] + "/DeploymentProcesses/" + deploymentProcessId, {credentials: 'include'}))
+            .then(response => response.json())
+            .then(json => json.Steps)
+
+        const step = steps
+            .filter(step => step.Id === queryParams["parentStepId"])
+            .map(step => step.Name);
+
+        if (step.length > 0) {
+            return step[0]
+        }
+    }
+    return null;
+}
+
+function getQueryParamsFromUrl(url) {
+    // Create URL object for easier parsing
+    const urlObj = new URL(url);
+
+    // Get URLSearchParams object
+    const searchParams = urlObj.searchParams;
+
+    // Convert to plain object
+    const params = {};
+    for (const [key, value] of searchParams.entries()) {
+        params[key] = value;
+    }
+
+    return params;
+}
+
 async function processPrompts(prompts) {
     const spaceName = await getSpaceName();
     const projectName = await getProjectName();
     const firstEnvironmentName = await getFirstEnvironmentName();
+    const stepName = await getStepName();
     return prompts
         .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
         .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName))
+        .map(prompt => prompt.replace("#{Octopus.Step.Name}", stepName))
         .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
 }
 
