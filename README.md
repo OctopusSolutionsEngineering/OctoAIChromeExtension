@@ -22,7 +22,7 @@ git clone https://github.com/OctopusSolutionsEngineering/OctoAIChromeExtension.g
 ```
 
 2. Edit the style or functionality of the extension in the `content.js` file
-3Save your changes
+3. Save your changes
 
 ![](reload.png)
 
