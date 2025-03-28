@@ -34,14 +34,22 @@ chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
 
         if (request.action === 'prompt') {
+            headers = {
+                'Content-Type': 'application/json',
+                'X-Octopus-Server': request.serverUrl
+            }
+
+            if (request.apiKey) {
+                headers['X-Octopus-ApiKey'] = request.apiKey
+            }
+
+            if (request.accessToken) {
+                headers['X-Octopus-AccessToken'] = request.accessToken
+            }
+
             fetch('https://aiagent.octopus.com/api/form_handler', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Octopus-AccessToken': request.accessToken,
-                    'X-Octopus-ApiKey': request.apiKey,
-                    'X-Octopus-Server': request.serverUrl
-                },
+                headers: headers,
                 body: JSON.stringify({"messages": [{"content": request.prompt}]})
             })
                 .then(response => {
