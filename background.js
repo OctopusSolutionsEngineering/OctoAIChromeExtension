@@ -56,7 +56,7 @@ chrome.runtime.onMessage.addListener(
                     sendResponse({error: error})
                 });
         } else if (request.action === 'getPrompts') {
-            fetch('https://raw.githubusercontent.com/mcasperson/OctoAIChromeExtension/main/prompts.json')
+            fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/prompts.json')
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);

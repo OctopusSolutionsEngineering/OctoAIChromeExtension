@@ -306,6 +306,14 @@ function displayMarkdownResponse(markdownContent) {
 }
 
 async function createOctopusApiKey() {
+    // cached results as static variables
+    if (createOctopusApiKey.token && createOctopusApiKey.expiry > Date.now()) {
+        return createOctopusApiKey.token;
+    } else {
+        createOctopusApiKey.token = null;
+        createOctopusApiKey.expiry = null;
+    }
+
     try {
         const csrfToken = getOctopusCsrfTokenFromCookie();
 
@@ -329,6 +337,10 @@ async function createOctopusApiKey() {
 
         const data = await response.json();
         console.log('New API key created successfully');
+
+        createOctopusApiKey.token = data.AccessToken;
+        createOctopusApiKey.expiry = Date.now() + 45 * 60 * 1000; // 45 min expiry
+
         return data.AccessToken;
     } catch (error) {
         console.error('Error creating Octopus Deploy API key:', error);
