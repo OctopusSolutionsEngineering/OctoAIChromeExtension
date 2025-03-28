@@ -305,95 +305,8 @@ function displayMarkdownResponse(markdownContent) {
     overlayDiv.appendChild(backButton);
 }
 
-async function getOctopusApiKeyFromStorage() {
+async function createOctopusApiKey() {
     try {
-        const apiKey = sessionStorage.getItem("OctopusApiKey");
-        if (apiKey) {
-            console.log("API key found in sessionStorage");
-            return await checkApiKey(apiKey) ? apiKey : null;
-        } else {
-            console.log("No API key found in sessionStorage");
-            return null;
-        }
-    } catch (error) {
-        console.error("Error accessing sessionStorage:", error);
-        return null;
-    }
-}
-
-function setOctopusApiKeyFromStorage(apiKey) {
-    try {
-        sessionStorage.setItem("OctopusApiKey", apiKey);
-    } catch (error) {
-        console.error("Error accessing sessionStorage:", error);
-    }
-}
-
-async function getOrCreateOctopusApiKey() {
-    try {
-        const existingApiKey = await getOctopusApiKeyFromStorage();
-
-        if (existingApiKey) {
-            return existingApiKey;
-        } else {
-            const userData = await getCurrentOctopusUser();
-
-            if (userData.Id === "users-guest") {
-                return "API-GUEST";
-            }
-
-            const apiKeyData = await createOctopusApiKey(userData.Id);
-            setOctopusApiKeyFromStorage(apiKeyData.ApiKey);
-            return apiKeyData.ApiKey;
-        }
-    } catch (error) {
-        console.error('Error getting or creating Octopus Deploy API key:', error);
-        throw error;
-    }
-}
-
-async function getCurrentOctopusUser() {
-    try {
-        const response = await fetch(`/api/users/me`, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`API call failed: ${response.status} ${response.statusText}`);
-        }
-
-        const userData = await response.json();
-        console.log('Current user retrieved:', userData.DisplayName);
-        return userData;
-    } catch (error) {
-        console.error('Error getting current Octopus Deploy user:', error);
-        throw error;
-    }
-}
-
-async function checkApiKey(apiKey) {
-    try {
-        const response = await fetch(`/api/users/me`, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'X-Octopus-ApiKey': apiKey
-            }
-        });
-
-        return response.ok
-    } catch (error) {
-        return false
-    }
-}
-
-async function createOctopusApiKey(userId) {
-    try {
-        const purpose = 'OctoAI temporary API key';
-
         const csrfToken = getOctopusCsrfTokenFromCookie();
 
         const headers = {
@@ -404,24 +317,19 @@ async function createOctopusApiKey(userId) {
             headers['X-Octopus-Csrf-Token'] = csrfToken;
         }
 
-        const response = await fetch(`/api/users/${userId}/apikeys`, {
+        const response = await fetch(`/api/users/access-token`, {
             method: 'POST',
             headers: headers,
-            credentials: 'include',
-            body: JSON.stringify({
-                Purpose: purpose,
-                // API keys expire after 7 days by default
-                Expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-            })
-        });
+            credentials: 'include'
+        })
 
         if (!response.ok) {
             throw new Error(`API call failed: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();
-        console.log('New API key created successfully:', data.ApiKey);
-        return data;
+        console.log('New API key created successfully');
+        return data.AccessToken;
     } catch (error) {
         console.error('Error creating Octopus Deploy API key:', error);
         throw error;
@@ -463,14 +371,13 @@ function convertFromSseResponse(sseResponse) {
 
 async function callOctoAi(prompt) {
     try {
-        // Get the API key
-        const apiKey = await getOrCreateOctopusApiKey();
-
         // Get the server URL from the current location
         const serverUrl = window.location.origin;
 
+        const accessToken = await createOctopusApiKey();
+
         const response = await chrome.runtime
-            .sendMessage({action: "prompt", prompt: prompt, apiKey: apiKey, serverUrl: serverUrl});
+            .sendMessage({action: "prompt", prompt: prompt, accessToken: accessToken, serverUrl: serverUrl});
 
         if (response.error) {
             throw new Error(`OctoAI API call failed: ${response.error.message}`);
