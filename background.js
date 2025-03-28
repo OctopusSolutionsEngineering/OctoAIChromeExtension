@@ -39,6 +39,7 @@ chrome.runtime.onMessage.addListener(
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Octopus-AccessToken': request.accessToken,
+                    'X-Octopus-ApiKey': request.apiKey,
                     'X-Octopus-Server': request.serverUrl
                 },
                 body: JSON.stringify({"messages": [{"content": request.prompt}]})

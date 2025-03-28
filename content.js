@@ -341,10 +341,10 @@ async function createOctopusApiKey() {
         createOctopusApiKey.token = data.AccessToken;
         createOctopusApiKey.expiry = Date.now() + 45 * 60 * 1000; // 45 min expiry
 
-        return data.AccessToken;
+        return {accessToken: data.AccessToken, apiKey: null};
     } catch (error) {
-        console.error('Error creating Octopus Deploy API key:', error);
-        throw error;
+        // Assume we have a guest account
+        return {accessToken: null, apiKey: "API-GUEST"};
     }
 }
 
@@ -386,10 +386,10 @@ async function callOctoAi(prompt) {
         // Get the server URL from the current location
         const serverUrl = window.location.origin;
 
-        const accessToken = await createOctopusApiKey();
+        const creds = await createOctopusApiKey();
 
         const response = await chrome.runtime
-            .sendMessage({action: "prompt", prompt: prompt, accessToken: accessToken, serverUrl: serverUrl});
+            .sendMessage({action: "prompt", prompt: prompt, accessToken: creds.accessToken, apiKey: creds.apiKey, serverUrl: serverUrl});
 
         if (response.error) {
             throw new Error(`OctoAI API call failed: ${response.error.message}`);
