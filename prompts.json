@@ -1,5 +1,11 @@
 [
   {
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/process/steps\\?.*",
+    "prompts" : [
+      "Find any potential errors in the script step called \"#{Octopus.Step.Name}\"  in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
+    ]
+  },
+  {
     "url": "https://.*?/app#/Spaces-.*?/projects/?(\\?.*|$)",
     "prompts" : [
       "Check space \"#{Octopus.Space.Name}\" for unused projects",
@@ -13,12 +19,6 @@
     "prompts" : [
       "Describe what the steps in the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\"  do",
       "Find unused variables in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
-    ]
-  },
-  {
-    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/process/steps\\?.*",
-    "prompts" : [
-      "Find any potential errors in the script step called \"#{Octopus.Step.Name}\"  in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
     ]
   },
   {
