@@ -1,0 +1,1 @@
+A Chrome extension used to prototype Octopus AI integrations.
