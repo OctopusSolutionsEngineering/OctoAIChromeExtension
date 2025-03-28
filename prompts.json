@@ -95,5 +95,11 @@
     "prompts" : [
       "What do the script modules in the space \"#{Octopus.Space.Name}\" do?"
     ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/tenants",
+    "prompts" : [
+      "Find any unused tenants in the space \"#{Octopus.Space.Name}\"."
+    ]
   }
 ]
