@@ -6,19 +6,19 @@
     ]
   },
   {
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/[^?]*\\??.*",
+    "prompts" : [
+      "Describe what the steps in the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\"  do",
+      "Find unused variables in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
+    ]
+  },
+  {
     "url": "https://.*?/app#/Spaces-.*?/projects/?(\\?.*|$)",
     "prompts" : [
       "Check space \"#{Octopus.Space.Name}\" for unused projects",
       "Which projects in the \"#{Octopus.Space.Name}\" space deploy to Kubernetes?",
       "Which projects in the \"#{Octopus.Space.Name}\" space have the \"Deploy a Release\" step?",
       "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
-    ]
-  },
-  {
-    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/[^?]*\\??.*",
-    "prompts" : [
-      "Describe what the steps in the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\"  do",
-      "Find unused variables in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
     ]
   },
   {
