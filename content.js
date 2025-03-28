@@ -305,12 +305,12 @@ function displayMarkdownResponse(markdownContent) {
     overlayDiv.appendChild(backButton);
 }
 
-function getOctopusApiKeyFromStorage() {
+async function getOctopusApiKeyFromStorage() {
     try {
         const apiKey = sessionStorage.getItem("OctopusApiKey");
         if (apiKey) {
             console.log("API key found in sessionStorage");
-            return apiKey;
+            return await checkApiKey(apiKey) ? apiKey : null;
         } else {
             console.log("No API key found in sessionStorage");
             return null;
@@ -331,7 +331,7 @@ function setOctopusApiKeyFromStorage(apiKey) {
 
 async function getOrCreateOctopusApiKey() {
     try {
-        const existingApiKey = getOctopusApiKeyFromStorage();
+        const existingApiKey = await getOctopusApiKeyFromStorage();
 
         if (existingApiKey) {
             return existingApiKey;
@@ -371,6 +371,22 @@ async function getCurrentOctopusUser() {
     } catch (error) {
         console.error('Error getting current Octopus Deploy user:', error);
         throw error;
+    }
+}
+
+async function checkApiKey(apiKey) {
+    try {
+        const response = await fetch(`/api/users/me`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'X-Octopus-ApiKey': apiKey
+            }
+        });
+
+        return response.ok
+    } catch (error) {
+        return false
     }
 }
 
