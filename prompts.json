@@ -11,7 +11,7 @@
     "prompts" : [
       "Describe what the steps in the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\"  do",
       "Find unused variables in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\"",
-      "List the packages used by the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
+      "List the packages used by the steps in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
     ]
   },
   {
