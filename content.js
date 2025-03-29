@@ -479,6 +479,96 @@ async function getTenantName() {
     return null;
 }
 
+async function getLibraryVariableSet() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/([^\/]+)(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/LibraryVariableSet/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getMachine() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/machines\/([^\/]+)\/[^?]*(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Machines/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getAccount() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/accounts\/([^\/]+)(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Accounts/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getCertificate() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/certificates\/([^\/]+)(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Certificates/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getFeed() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/feeds\/([^\/]+)(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Feeds/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getGitCredential() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/gitcredentials\/([^\/]+)(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/GitCredentials/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getLifecycle() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/lifecycles\/([^\/]+)(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Lifecycles/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getWorker() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/workers\/([^\/]+)\/[^?]*(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Workers/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getWorkerPool() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/workerpools\/([^\/]+)\/[^?]*(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/WorkerPools/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
 async function getStepName() {
     const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/process\/steps\\?.*/);
     if (match) {
@@ -508,9 +598,27 @@ async function processPrompts(prompts) {
     const firstEnvironmentName = await getFirstEnvironmentName();
     const stepName = await getStepName();
     const tenantName = await getTenantName();
+    const lbsSet = await getLibraryVariableSet();
+    const machineName = await getMachine();
+    const accountName = await getAccount();
+    const workerName = await getWorker();
+    const workerPoolName = await getWorkerPool();
+    const certificateName = await getCertificate();
+    const gitCredential = await getGitCredential();
+    const feedName = await getFeed();
+    const lifecycle = await getLifecycle();
     return prompts
         .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
+        .map(prompt => prompt.replace("#{Octopus.Worker.Name}", workerName))
+        .map(prompt => prompt.replace("#{Octopus.Lifecycle.Name}", lifecycle))
+        .map(prompt => prompt.replace("#{Octopus.GitCredential.Name}", gitCredential))
+        .map(prompt => prompt.replace("#{Octopus.Feed.Name}", feedName))
+        .map(prompt => prompt.replace("#{Octopus.Certificate.Name}", certificateName))
+        .map(prompt => prompt.replace("#{Octopus.WorkerPool.Name}", workerPoolName))
         .map(prompt => prompt.replace("#{Octopus.Tenant.Name}", tenantName))
+        .map(prompt => prompt.replace("#{Octopus.Account.Name}", accountName))
+        .map(prompt => prompt.replace("#{Octopus.Machine.Name}", machineName))
+        .map(prompt => prompt.replace("#{Octopus.LibraryVariableSet.Name}", lbsSet))
         .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName))
         .map(prompt => prompt.replace("#{Octopus.Step.Name}", stepName))
         .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
@@ -533,9 +641,22 @@ async function enrichPrompt(prompt) {
         {type: "Project", name: await getProjectName()},
         {type: "Step", name: await getStepName()},
         {type: "Tenant", name: await getTenantName()},
+        {type: "Library Variable Set", name: await getLibraryVariableSet()},
+        {type: "Machine", name: await getMachine()},
+        {type: "Account", name: await getAccount()},
+        {type: "Worker", name: await getWorker()},
+        {type: "Worker Pool", name: await getWorkerPool()},
+        {type: "Certificate", name: await getCertificate()},
+        {type: "Feed", name: await getFeed()},
+        {type: "Git Credential", name: await getGitCredential()},
+        {type: "Lifecycle", name: await getLifecycle()},
     ]
 
-    return currentContext.reduce((accumulator, currentValue) => accumulator.includes(currentValue.name) ? accumulator : accumulator + "\nCurrent " + currentValue.type + " is \"" + currentValue.name + "\"", prompt);
+    return currentContext.reduce((accumulator, currentValue) =>
+            currentValue.name == null || accumulator.includes(currentValue.name) ?
+                accumulator :
+                accumulator + "\nCurrent " + currentValue.type + " is \"" + currentValue.name + "\"",
+            prompt);
 }
 
 console.log("Loaded OctoAI")
