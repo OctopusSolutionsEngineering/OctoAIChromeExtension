@@ -19,11 +19,11 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/library/variables/[^/]+/?(\\?.*|$)",
     "prompts" : [
-      "Find Library Variable Set variable values that look like plaintext passwords.",
-      "Find Library Variable Set variable values that look like URLs.",
-      "Find Library Variable Set variable values that look like file paths.",
-      "Find Library Variable Set variable values that look like JSON.",
-      "Find Library Variable Set variable values that look like YAML."
+      "Find Library Variable Set variable values that look like plaintext passwords. Display the name of the library variable set and the details of the variable.",
+      "Find Library Variable Set variable values that look like URLs. Display the name of the library variable set and the details of the variable.",
+      "Find Library Variable Set variable values that look like file paths. Display the name of the library variable set and the details of the variable.",
+      "Find Library Variable Set variable values that look like JSON. Display the name of the library variable set and the details of the variable.",
+      "Find Library Variable Set variable values that look like YAML. Display the name of the library variable set and the details of the variable."
     ]
   },
   {
