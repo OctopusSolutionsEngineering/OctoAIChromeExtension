@@ -55,6 +55,7 @@ function addAiToPage() {
     `;
     document.head.appendChild(markdownStyles);
 
+    // This is the button used to open the prompt interface
     const newButton = document.createElement("button");
     newButton.id = "octoai"
 
@@ -225,7 +226,8 @@ async function displayPromptUI() {
             sendButton.textContent = "Thinking" + ".".repeat(dots);
         }, 500);
 
-        callOctoAi(textarea.value)
+        enrichPrompt(textarea.value)
+            .then(prompt => callOctoAi(prompt))
             .then(result =>
                 displayMarkdownResponse(result))
             .catch(e =>
@@ -500,6 +502,27 @@ async function processPrompts(prompts) {
         .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName))
         .map(prompt => prompt.replace("#{Octopus.Step.Name}", stepName))
         .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
+}
+
+/**
+ * The LLM needs to know the resource that is being prompted. This can be included in the prompt
+ * by the end user. But if it isn't, this function adds the name of the resource that is being
+ * viewed in the Octopus UI to the prompt.
+ * @param prompt The prompt entered by the end user
+ * @returns The prompt with the names of the currently viewed resources
+ */
+async function enrichPrompt(prompt) {
+    if (!prompt) {
+        return ""
+    }
+
+    const currentContext = [
+        {type: "Space", name: await getSpaceName()},
+        {type: "Project", name: await getProjectName()},
+        {type: "Step", name: await getStepName()},
+    ]
+
+    return currentContext.reduce((accumulator, currentValue) => accumulator.includes(currentValue.name) ? accumulator : accumulator + "\nCurrent " + currentValue.type + " is \"" + currentValue.name + "\"", prompt);
 }
 
 console.log("Loaded OctoAI")
