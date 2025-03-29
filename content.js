@@ -121,7 +121,7 @@ async function displayPromptUI() {
     // Create container for links
     const linksContainer = document.createElement("div");
     linksContainer.style.position = "relative";
-    linksContainer.style.top = "30%";
+    linksContainer.style.top = "10%";
     linksContainer.style.width = "100%";
     linksContainer.style.zIndex = "101";
     linksContainer.style.textAlign = "center";
