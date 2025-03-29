@@ -3,7 +3,7 @@
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/process/steps\\?.*",
     "prompts" : [
       "Describe what the step called \"#{Octopus.Step.Name}\" in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\" does.",
-      "Find any potential errors in the script step called \"#{Octopus.Step.Name}\"  in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
+      "Find any potential errors in the script step called \"#{Octopus.Step.Name}\"  in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\". If the step is not a script step, you must say so."
     ]
   },
   {
