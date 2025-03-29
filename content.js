@@ -544,7 +544,7 @@ async function getFeed() {
 async function getGitCredential() {
     const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/gitcredentials\/([^\/]+)(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/GitCredentials/" + match[2], {credentials: 'include'})
+        return await fetch("/api/Spaces/" + match[1] + "/Git-Credentials/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
