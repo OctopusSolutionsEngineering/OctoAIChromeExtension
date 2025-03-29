@@ -469,6 +469,16 @@ async function getProjectName() {
     return null;
 }
 
+async function getTenantName() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/tenants\/([^\/]+)\/[^?]*\\??.*/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Tenants/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
 async function getStepName() {
     const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/process\/steps\\?.*/);
     if (match) {
@@ -497,8 +507,10 @@ async function processPrompts(prompts) {
     const projectName = await getProjectName();
     const firstEnvironmentName = await getFirstEnvironmentName();
     const stepName = await getStepName();
+    const tenantName = await getTenantName();
     return prompts
         .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
+        .map(prompt => prompt.replace("#{Octopus.Tenant.Name}", tenantName))
         .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName))
         .map(prompt => prompt.replace("#{Octopus.Step.Name}", stepName))
         .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
@@ -520,6 +532,7 @@ async function enrichPrompt(prompt) {
         {type: "Space", name: await getSpaceName()},
         {type: "Project", name: await getProjectName()},
         {type: "Step", name: await getStepName()},
+        {type: "Tenant", name: await getTenantName()},
     ]
 
     return currentContext.reduce((accumulator, currentValue) => accumulator.includes(currentValue.name) ? accumulator : accumulator + "\nCurrent " + currentValue.type + " is \"" + currentValue.name + "\"", prompt);
