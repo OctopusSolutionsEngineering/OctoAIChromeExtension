@@ -384,6 +384,8 @@ function convertFromSseResponse(sseResponse) {
 }
 
 async function callOctoAi(prompt) {
+    console.log(prompt)
+
     try {
         // Get the server URL from the current location
         const serverUrl = window.location.origin;
@@ -510,7 +512,7 @@ async function getAccount() {
 }
 
 async function getCertificate() {
-    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/certificates\/([^\/]+)(\\??.*)?/);
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/certificates\/([^\/]+)(\\??.*)?/);
     if (match) {
         return await fetch("/api/Spaces/" + match[1] + "/Certificates/" + match[2], {credentials: 'include'})
             .then(response => response.json())
