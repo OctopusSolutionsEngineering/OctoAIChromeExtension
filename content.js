@@ -511,6 +511,16 @@ async function getAccount() {
     return null;
 }
 
+async function getEnvironment() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments\/([^\/]+)(\\??.*)?/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Environments/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
 async function getCertificate() {
     const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/certificates\/([^\/]+)(\\??.*)?/);
     if (match) {
@@ -603,6 +613,7 @@ async function processPrompts(prompts) {
     const lbsSet = await getLibraryVariableSet();
     const machineName = await getMachine();
     const accountName = await getAccount();
+    const environmentName = await getEnvironment();
     const workerName = await getWorker();
     const workerPoolName = await getWorkerPool();
     const certificateName = await getCertificate();
@@ -612,6 +623,7 @@ async function processPrompts(prompts) {
     return prompts
         .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
         .map(prompt => prompt.replace("#{Octopus.Worker.Name}", workerName))
+        .map(prompt => prompt.replace("#{Octopus.Environment.Name}", environmentName))
         .map(prompt => prompt.replace("#{Octopus.Lifecycle.Name}", lifecycle))
         .map(prompt => prompt.replace("#{Octopus.GitCredential.Name}", gitCredential))
         .map(prompt => prompt.replace("#{Octopus.Feed.Name}", feedName))
@@ -646,6 +658,7 @@ async function enrichPrompt(prompt) {
         {type: "Library Variable Set", name: await getLibraryVariableSet()},
         {type: "Machine", name: await getMachine()},
         {type: "Account", name: await getAccount()},
+        {type: "Environment", name: await getEnvironment()},
         {type: "Worker", name: await getWorker()},
         {type: "Worker Pool", name: await getWorkerPool()},
         {type: "Certificate", name: await getCertificate()},
