@@ -2,39 +2,39 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/process/steps\\?.*",
     "prompts" : [
-      "Describe what the step called \"#{Octopus.Step.Name}\" in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\" does.",
-      "Find any potential errors in the script step called \"#{Octopus.Step.Name}\"  in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\". If the step is not a script step, you must say so."
+      "Describe what the step does.",
+      "Find any potential errors in the script step. If the step is not a script step, you must say so."
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/[^?]*\\??.*",
     "prompts" : [
-      "Describe what the steps in the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\"  do",
-      "Find unused variables in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\"",
-      "List the packages used by the steps in the project \"#{Octopus.Project.Name}\" from the space \"#{Octopus.Space.Name}\""
+      "Describe what the steps do",
+      "Find unused variables",
+      "List the packages used by the steps"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/?(\\?.*|$)",
     "prompts" : [
-      "Check space \"#{Octopus.Space.Name}\" for unused projects",
-      "Which projects in the \"#{Octopus.Space.Name}\" space deploy to Kubernetes?",
-      "Which projects in the \"#{Octopus.Space.Name}\" space have the \"Deploy a Release\" step?",
+      "Check space for unused projects",
+      "Which projects deploy to Kubernetes?",
+      "Which projects have the \"Deploy a Release\" step?",
       "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/library/variables/?(\\?.*|$)",
     "prompts" : [
-      "Find Library Variable Set variable values in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords.",
-      "Find Library Variable Set variable values in the space \"#{Octopus.Space.Name}\" that look like URLs."
+      "Find Library Variable Set variable values that look like plaintext passwords.",
+      "Find Library Variable Set variable values that look like URLs."
     ]
   },
   {
-    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/.*?/variables",
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/variables",
     "prompts" : [
-      "Find project variables values from the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" that look like plaintext passwords.",
-      "Find project variables values from the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" that look like URLs."
+      "Find project variable values that look like plaintext passwords.",
+      "Find project variable values that look like URLs."
     ]
   },
   {
@@ -46,61 +46,61 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machines",
     "prompts" : [
-      "Check space \"#{Octopus.Space.Name}\" for unused targets",
-      "Given all the targets in the space \"#{Octopus.Space.Name}\", list all the targets that are insecure because they use HTTP.",
-      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs.",
-      "Given all the Kubernetes targets in the space \"#{Octopus.Space.Name}\", list all the unique cluster endpoint URLs that point to AWS."
+      "Check space for unused targets",
+      "Given all the targets, list all the targets that are insecure because they use HTTP.",
+      "Given all the Kubernetes targets, list all the unique cluster endpoint URLs.",
+      "Given all the Kubernetes targets, list all the unique cluster endpoint URLs that point to AWS."
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/accounts",
     "prompts" : [
-      "Which accounts in the \"#{Octopus.Space.Name}\" space are configured with OIDC?",
-      "Which accounts in the \"#{Octopus.Space.Name}\" are available from the \"#{Octopus.Environment[0].Name}\" environment?"
+      "Which accounts space are configured with OIDC?",
+      "Which accounts are available from the \"#{Octopus.Environment[0].Name}\" environment?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/workers",
     "prompts" : [
-      "Which workers in the \"#{Octopus.Space.Name}\" space are are hosted on Kubernetes?",
-      "List the machine policies used by the workers in the \"#{Octopus.Space.Name}\" space."
+      "Which workers are are hosted on Kubernetes?",
+      "List the machine policies used by the workers?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machinepolicies",
     "prompts" : [
-      "What do the health check scripts do in the machine policies for the space \"#{Octopus.Space.Name}\"?"
+      "What do the health check scripts do in the machine policies?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/library/feeds",
     "prompts" : [
-      "List the feeds in the space \"#{Octopus.Space.Name}\" that are insecure because they use HTTP.",
-      "Given all the feeds in the space \"#{Octopus.Space.Name}\", generate a table that groups feeds by feed type in the rows and has columns for: feed name, feed url."
+      "List the feeds that are insecure because they use HTTP.",
+      "Given all the feeds, generate a table that groups feeds by feed type in the rows and has columns for: feed name, feed url."
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/library/gitcredentials",
     "prompts" : [
-      "Which Git credentials in the space \"#{Octopus.Space.Name}\" have the username \"x-access-token\"?"
+      "Which Git credentials  have the username \"x-access-token\"?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/library/lifecycles",
     "prompts" : [
-      "Which lifecycles in the space \"#{Octopus.Space.Name}\" include the environment \"#{Octopus.Environment[0].Name}\"?"
+      "Which lifecycles include the environment \"#{Octopus.Environment[0].Name}\"?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/library/scripts",
     "prompts" : [
-      "What do the script modules in the space \"#{Octopus.Space.Name}\" do?"
+      "What do the script modules do?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/tenants",
     "prompts" : [
-      "Find any unused tenants in the space \"#{Octopus.Space.Name}\"."
+      "Find any unused tenants."
     ]
   }
 ]
