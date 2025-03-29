@@ -471,6 +471,16 @@ async function getProjectName() {
     return null;
 }
 
+async function getRunbookName() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/[^?]*\\??.*/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Runbooks/" + match[3], {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.Name)
+    }
+    return null;
+}
+
 async function getTenantName() {
     const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/tenants\/([^\/]+)\/[^?]*\\??.*/);
     if (match) {
@@ -607,6 +617,7 @@ async function getStepName() {
 async function processPrompts(prompts) {
     const spaceName = await getSpaceName();
     const projectName = await getProjectName();
+    const runbookName = await getRunbookName();
     const firstEnvironmentName = await getFirstEnvironmentName();
     const stepName = await getStepName();
     const tenantName = await getTenantName();
@@ -634,6 +645,7 @@ async function processPrompts(prompts) {
         .map(prompt => prompt.replace("#{Octopus.Machine.Name}", machineName))
         .map(prompt => prompt.replace("#{Octopus.LibraryVariableSet.Name}", lbsSet))
         .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName))
+        .map(prompt => prompt.replace("#{Octopus.Runbook.Name}", runbookName))
         .map(prompt => prompt.replace("#{Octopus.Step.Name}", stepName))
         .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
 }
@@ -665,6 +677,7 @@ async function enrichPrompt(prompt) {
         {type: "Feed", name: await getFeed()},
         {type: "Git Credential", name: await getGitCredential()},
         {type: "Lifecycle", name: await getLifecycle()},
+        {type: "Runbook", name: await getRunbookName()},
     ]
 
     return currentContext.reduce((accumulator, currentValue) =>
