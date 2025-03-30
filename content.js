@@ -310,7 +310,7 @@ function displayMarkdownResponse(markdownContent) {
 async function createOctopusApiKey() {
     // cached results as static variables
     if (createOctopusApiKey.token && createOctopusApiKey.expiry > Date.now()) {
-        return createOctopusApiKey.token;
+        return {accessToken: createOctopusApiKey.token, apiKey: null};
     } else {
         createOctopusApiKey.token = null;
         createOctopusApiKey.expiry = null;
