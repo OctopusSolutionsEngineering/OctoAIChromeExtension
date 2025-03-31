@@ -1,3 +1,5 @@
+const OctopusServerUrlRegex = /https:\/\/.+?\.(test)octopus\.app\/app#\/Spaces-.*/
+
 chrome.action.onClicked.addListener((tab) => {
 
 });
@@ -7,7 +9,7 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
         chrome.tabs.query({windowId: tab.windowId})
             .then(tabs => {
                 tabs.forEach(tab => {
-                    if (tab.url.match(/https:\/\/.+?\.octopus\.app\/app#\/Spaces-.*/)) {
+                    if (tab.url.match(OctopusServerUrlRegex)) {
                         try {
                             chrome.scripting.executeScript({
                                 target: {tabId: tab.id},

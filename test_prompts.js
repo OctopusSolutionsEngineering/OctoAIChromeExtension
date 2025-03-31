@@ -1,3 +1,8 @@
+// An adhoc script to test the regex used to match Octopus Server URLs as found in prompts.json
+// Run with:
+// node test_prompts.js
+
+
 function testRegex() {
     // Import the patterns from prompts.json
     const patterns = [
