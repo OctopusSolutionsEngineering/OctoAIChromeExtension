@@ -1,4 +1,4 @@
-const OctopusServerUrlRegex = /https:\/\/.+?\.(test)octopus\.app\/app#\/Spaces-.*/
+const OctopusServerUrlRegex = /https:\/\/.+?\.(test)?octopus\.app\/app#\/Spaces-.*/
 
 chrome.action.onClicked.addListener((tab) => {
 
