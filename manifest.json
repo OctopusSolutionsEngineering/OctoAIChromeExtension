@@ -12,7 +12,8 @@
   },
   "host_permissions": [
     "https://aiagent.octopus.com/*",
-    "https://*.octopus.app/*"
+    "https://*.octopus.app/*",
+    "https://*.testoctopus.app/*"
   ],
   "permissions": [
     "activeTab",
