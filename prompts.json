@@ -39,7 +39,19 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/operations/runbooks/[^/]+/snapshots/[^/]+/runs/[^?]+/?(\\?.*|$)",
     "prompts" : [
-      "Why did the runbook run \"#{Octopus.RunbookRun.Id}\" fail?"
+      "Why did the runbook run fail?"
+    ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases/[^/]+/deployments/[^/]+/?(\\?.*|$)",
+    "prompts" : [
+      "Why did the deployment fail?"
+    ]
+  },
+  {
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases",
+    "prompts" : [
+      "Find deployments of the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" from the last week that failed."
     ]
   },
   {
@@ -57,12 +69,6 @@
       "Which projects deploy to Kubernetes?",
       "Which projects have the \"Deploy a Release\" step?",
       "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
-    ]
-  },
-  {
-    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases",
-    "prompts" : [
-      "Find deployments of the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" from the last week that failed."
     ]
   },
   {
