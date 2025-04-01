@@ -39,13 +39,13 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/operations/runbooks/[^/]+/snapshots/[^/]+/runs/[^?]+/?(\\?.*|$)",
     "prompts" : [
-      "Why did the runbook run fail?"
+      "Why did the runbook run fail? If the runbook run didn't fail, say so."
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases/[^/]+/deployments/[^?]+/?(\\?.*|$)",
     "prompts" : [
-      "Why did the deployment fail?"
+      "Why did the deployment fail? If the deployment didn't fail, say so."
     ]
   },
   {
