@@ -37,6 +37,12 @@
     ]
   },
   {
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/operations/runbooks/[^/]+/snapshots/[^/]+/runs/[^?]+/?(\\?.*|$)",
+    "prompts" : [
+      "Why did the runbook run \"#{Octopus.RunbookRun.Id}\" fail?"
+    ]
+  },
+  {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/[^?]*\\??.*",
     "prompts" : [
       "Describe what the steps do",
@@ -57,12 +63,6 @@
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases",
     "prompts" : [
       "Find deployments of the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" from the last week that failed."
-    ]
-  },
-  {
-    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/operations/runbooks/[^/]+/snapshots/[^/]+/runs/[^?]+/?(\\?.*|$)",
-    "prompts" : [
-      "Why did the runbook run \"#{Octopus.RunbookRun.Id}\" fail?"
     ]
   },
   {
