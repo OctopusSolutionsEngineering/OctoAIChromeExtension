@@ -451,6 +451,14 @@ async function getFirstEnvironmentName() {
     return null;
 }
 
+async function getSpaceId() {
+    const match = window.location.href.match(/(Spaces-\d+)/);
+    if (match) {
+        return match[1]
+    }
+    return null;
+}
+
 async function getSpaceName() {
     const match = window.location.href.match(/(Spaces-\d+)/);
     if (match) {
@@ -544,6 +552,23 @@ async function getEnvironment() {
             .then(response => response.json())
             .then(json => json.Name)
     }
+
+    // We can also extract an environment from a deployment
+    const deploymentId = await getDeploymentName()
+    const spaceId = await getSpaceId()
+
+    if (deploymentId) {
+        const environmentId = await fetch("/api/Spaces/" +spaceId + "/Deployments/" + deploymentId, {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.EnvironmentId)
+
+        if (environmentId) {
+            return await fetch("/api/Spaces/" + spaceId + "/Environments/" + environmentId, {credentials: 'include'})
+                .then(response => response.json())
+                .then(json => json.Name)
+        }
+    }
+
     return null;
 }
 
