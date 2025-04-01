@@ -84,7 +84,7 @@ function addAiToPage() {
 
     newButton.addEventListener("click", function (event) {
         event.preventDefault();
-        displayPromptUI();
+        displayAIChat();
     });
 }
 
@@ -764,6 +764,12 @@ async function enrichPrompt(prompt) {
             prompt);
 }
 
+async function displayAIChat() {
+    const buttonTexts = await getSamplePrompts();
+    displayPromptUIV2();
+    displayExamples(buttonTexts);
+}
+
 function displayExamples(buttons) {
     const examplesContainer = document.getElementById('octoai-examples');
 
@@ -969,9 +975,6 @@ function displayMarkdownResponseV2(markdownContent) {
     const response = document.getElementById('octoai-response');
     response.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
 }
-
-displayPromptUIV2()
-displayExamples(["Example 1", "Example 2", "Example 3", "Example 4"])
 
 console.log("Loaded OctoAI")
 addAiToPage()
