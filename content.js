@@ -541,9 +541,16 @@ async function enrichPrompt(prompt) {
 }
 
 async function displayAIChat() {
-    displayPromptUIV2();
-    const buttonTexts = await getSamplePrompts();
-    displayExamples(buttonTexts);
+
+    const existingContainer = document.getElementById('octoai-container');
+
+    if (existingContainer) {
+        hidePromptUI()
+    } else {
+        displayPromptUIV2();
+        const buttonTexts = await getSamplePrompts();
+        displayExamples(buttonTexts);
+    }
 }
 
 function displayExamples(buttons) {
@@ -605,6 +612,13 @@ function displayExamples(buttons) {
     });
 }
 
+function hidePromptUI() {
+    const container = document.getElementById('octoai-container');
+    if (container) {
+        container.parentElement.removeChild(container);
+    }
+}
+
 function displayPromptUIV2() {
     const existingContainer = document.getElementById('octoai-container');
 
@@ -619,7 +633,7 @@ function displayPromptUIV2() {
     container.style.border = '1px solid #E0E0E0';
     container.style.borderRadius = '8px';
     container.style.padding = '16px';
-    container.style.width = '600px';
+    container.style.width = '800px';
     container.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
     container.style.backgroundColor = '#FFFFFF';
 
@@ -662,10 +676,7 @@ function displayPromptUIV2() {
 
     // Add click event to remove the container
     closeButton.addEventListener('click', () => {
-        const container = document.getElementById('octoai-container');
-        if (container) {
-            container.parentElement.removeChild(container);
-        }
+        hidePromptUI()
     });
 
     header.appendChild(closeButton);
@@ -677,6 +688,8 @@ function displayPromptUIV2() {
     const message = document.createElement('div');
     message.id = 'octoai-response';
     message.style.display = 'none';
+    message.style.maxHeight = '300px';
+    message.style.overflowY = 'scroll';
     container.appendChild(message);
 
     // Create the feedback section
@@ -776,6 +789,7 @@ function displayPromptUIV2() {
         hideExamples()
 
         input.disabled = true
+        submitButton.disabled = true
 
         let dots = 0;
         input.value = "Thinking"
@@ -796,6 +810,7 @@ function displayPromptUIV2() {
                     clearInterval(thinkingAnimation)
                     input.disabled = false
                     input.value = ""
+                    submitButton.disabled = false
                     showExamples()
                 }
             );
@@ -831,14 +846,20 @@ function showExamples() {
 
 function hideResponse() {
     const response = document.getElementById('octoai-response');
-    response.innerHTML = '';
-    response.style.display = 'node';
+
+    if (response) {
+        response.innerHTML = '';
+        response.style.display = 'node';
+    }
 }
 
 function displayMarkdownResponseV2(markdownContent) {
     const response = document.getElementById('octoai-response');
-    response.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
-    response.style.display = 'block';
+
+    if (response) {
+        response.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
+        response.style.display = 'block';
+    }
 }
 
 console.log("Loaded OctoAI")
