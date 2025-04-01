@@ -790,6 +790,7 @@ function displayPromptUIV2() {
 
         input.disabled = true
         submitButton.disabled = true
+        submitButton.style.cursor = 'not-allowed';
 
         let dots = 0;
         input.value = "Thinking"
@@ -811,6 +812,7 @@ function displayPromptUIV2() {
                     input.disabled = false
                     input.value = ""
                     submitButton.disabled = false
+                    submitButton.style.cursor = 'pointer';
                     showExamples()
                 }
             );
