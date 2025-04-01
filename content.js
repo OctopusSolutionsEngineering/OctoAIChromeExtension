@@ -487,6 +487,14 @@ async function getDeploymentName() {
     return null;
 }
 
+async function getRunbookRun() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/snapshots\/([^\/]*)\/runs\/([^?]*)\\??.*/);
+    if (match) {
+        return match[5]
+    }
+    return null;
+}
+
 async function getReleaseVersion() {
     const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)(\/.*)/);
     if (match) {
@@ -559,6 +567,20 @@ async function getEnvironment() {
 
     if (deploymentId) {
         const environmentId = await fetch("/api/Spaces/" +spaceId + "/Deployments/" + deploymentId, {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.EnvironmentId)
+
+        if (environmentId) {
+            return await fetch("/api/Spaces/" + spaceId + "/Environments/" + environmentId, {credentials: 'include'})
+                .then(response => response.json())
+                .then(json => json.Name)
+        }
+    }
+
+    const runbookRun = await getRunbookRun()
+
+    if (runbookRun) {
+        const environmentId = await fetch("/api/Spaces/" +spaceId + "/RunbookRuns/" + runbookRun, {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.EnvironmentId)
 
@@ -673,7 +695,8 @@ async function processPrompts(prompts) {
     const feedName = await getFeed();
     const lifecycle = await getLifecycle();
     const deploymentVersion = await getDeploymentName();
-    const releaseVersion = await getReleaseVersion()
+    const releaseVersion = await getReleaseVersion();
+    const runbookRun = await getRunbookRun();
     return prompts
         .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
         .map(prompt => prompt.replace("#{Octopus.Worker.Name}", workerName))
@@ -691,7 +714,8 @@ async function processPrompts(prompts) {
         .map(prompt => prompt.replace("#{Octopus.Runbook.Name}", runbookName))
         .map(prompt => prompt.replace("#{Octopus.Step.Name}", stepName))
         .map(prompt => prompt.replace("#{Octopus.Deployment.Id}", deploymentVersion))
-        .map(prompt => prompt.replace("#{Octopus.Release.Version}", releaseVersion))
+        .map(prompt => prompt.replace("#{Octopus.RunbookRun.Id}", runbookRun))
+        .map(prompt => prompt.replace("#{Octopus.Release.Number}", releaseVersion))
         .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
 }
 
@@ -711,6 +735,7 @@ async function enrichPrompt(prompt) {
         {type: "Space", name: await getSpaceName()},
         {type: "Project", name: await getProjectName()},
         {type: "Deployment ID", name: await getDeploymentName()},
+        {type: "Runbook Run", name: await getRunbookRun()},
         {type: "Release Version", name: await getReleaseVersion()},
         {type: "Step", name: await getStepName()},
         {type: "Tenant", name: await getTenantName()},
