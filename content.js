@@ -41,15 +41,15 @@ function addAiToPage() {
     // Add additional styling for markdown elements
     const markdownStyles = document.createElement("style");
     markdownStyles.textContent = `
-        #octoai-overlay p,
-        #octoai-overlay li, 
-        #octoai-overlay ul, 
-        #octoai-overlay h1, 
-        #octoai-overlay h2, 
-        #octoai-overlay h3,
-        #octoai-overlay h4,
-        #octoai-overlay h5,
-        #octoai-overlay h6 {
+        #octoai-container p,
+        #octoai-container li, 
+        #octoai-container ul, 
+        #octoai-container h1, 
+        #octoai-container h2, 
+        #octoai-container h3,
+        #octoai-container h4,
+        #octoai-container h5,
+        #octoai-container h6 {
             color: black;
         }
     `;
@@ -765,8 +765,8 @@ async function enrichPrompt(prompt) {
 }
 
 async function displayAIChat() {
-    const buttonTexts = await getSamplePrompts();
     displayPromptUIV2();
+    const buttonTexts = await getSamplePrompts();
     displayExamples(buttonTexts);
 }
 
@@ -812,7 +812,11 @@ function displayExamples(buttons) {
 
         // Add click event
         button.addEventListener('click', () => {
-            console.log(`${text} clicked`);
+            const input = document.getElementById('octoai-input');
+            if (input) {
+                input.value = text;
+                input.focus();
+            }
         });
 
         return button;
@@ -853,6 +857,7 @@ function displayPromptUIV2() {
     const header = document.createElement('div');
     header.style.display = 'flex';
     header.style.alignItems = 'center';
+    header.style.margin = '0 0 16px 0';
 
     // Add the OctoAI logo
     const logo = document.createElement('span');
@@ -868,7 +873,6 @@ function displayPromptUIV2() {
     // Create the response markdown
     const message = document.createElement('div');
     message.id = 'octoai-response';
-    message.style.margin = '0 0 16px 0';
     message.style.display = 'none';
     container.appendChild(message);
 
@@ -928,6 +932,7 @@ function displayPromptUIV2() {
 
     // Create an input element
     const input = document.createElement('input');
+    input.id = 'octoai-input';
     input.type = 'text';
     input.placeholder = 'Ask Octopus about your instance';
     input.style.flex = '1';
@@ -938,6 +943,7 @@ function displayPromptUIV2() {
 
     // Create the submit button
     const submitButton = document.createElement('button');
+    submitButton.id = 'octoai-submit';
     submitButton.type = 'submit';
     submitButton.innerHTML = '&#8594;'; // Unicode for the right arrow
     submitButton.style.border = 'none';
@@ -956,7 +962,42 @@ function displayPromptUIV2() {
     // Add a submit event listener
     form.addEventListener('submit', (event) => {
         event.preventDefault();
-        alert(`You submitted: ${input.value}`);
+
+        const originalPrompt = input.value.trim();
+
+        if (!originalPrompt) {
+            return
+        }
+
+        localStorage.setItem("octoai-prompt", originalPrompt);
+
+        const examplesContainer = document.getElementById('octoai-examples');
+
+        if (examplesContainer) {
+            examplesContainer.style.display = 'none';
+        }
+
+        input.disabled = true
+
+        let dots = 0;
+        input.value = "Thinking"
+        const thinkingAnimation = setInterval(() => {
+            dots = (dots + 1) % 4;  // Cycle through 0-3 dots
+            input.value = "Thinking" + ".".repeat(dots);
+        }, 500);
+
+        enrichPrompt(originalPrompt)
+            .then(prompt => callOctoAi(prompt))
+            .then(result =>
+                displayMarkdownResponseV2(result))
+            .catch(e =>
+                console.log(e))
+            .finally(() => {
+                    clearInterval(thinkingAnimation)
+                    input.disabled = false
+                    input.value = ""
+                }
+            );
     });
 
     // Add the final note
@@ -974,6 +1015,7 @@ function displayPromptUIV2() {
 function displayMarkdownResponseV2(markdownContent) {
     const response = document.getElementById('octoai-response');
     response.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
+    response.style.display = 'block';
 }
 
 console.log("Loaded OctoAI")
