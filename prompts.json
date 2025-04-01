@@ -60,7 +60,7 @@
     ]
   },
   {
-    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/operations/runbooks/[^/]+/snapshots/[^/]+/runs/[^/]+/?(\\?.*|$)",
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/operations/runbooks/[^/]+/snapshots/[^/]+/runs/[^?]+/?(\\?.*|$)",
     "prompts" : [
       "Why did the runbook run \"#{Octopus.RunbookRun.Id}\" fail?"
     ]
