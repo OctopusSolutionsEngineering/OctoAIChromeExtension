@@ -462,19 +462,27 @@ async function getSpaceName() {
 }
 
 async function getProjectName() {
-    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)\/deployments\/([^?]*)\\??.*/);
-    if (match) {
-        return match[3]
-    }
-    return null;
-}
-
-async function getDeploymentName() {
     const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/[^?]*\\??.*/);
     if (match) {
         return await fetch("/api/Spaces/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
+    }
+    return null;
+}
+
+async function getDeploymentName() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)\/deployments\/([^?]*)\\??.*/);
+    if (match) {
+        return match[4]
+    }
+    return null;
+}
+
+async function getReleaseVersion() {
+    const match = window.location.href.match(/https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)(\/.*)/);
+    if (match) {
+        return decodeURIComponent(match[3])
     }
     return null;
 }
@@ -640,6 +648,7 @@ async function processPrompts(prompts) {
     const feedName = await getFeed();
     const lifecycle = await getLifecycle();
     const deploymentVersion = await getDeploymentName();
+    const releaseVersion = await getReleaseVersion()
     return prompts
         .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
         .map(prompt => prompt.replace("#{Octopus.Worker.Name}", workerName))
@@ -657,6 +666,7 @@ async function processPrompts(prompts) {
         .map(prompt => prompt.replace("#{Octopus.Runbook.Name}", runbookName))
         .map(prompt => prompt.replace("#{Octopus.Step.Name}", stepName))
         .map(prompt => prompt.replace("#{Octopus.Deployment.Id}", deploymentVersion))
+        .map(prompt => prompt.replace("#{Octopus.Release.Version}", releaseVersion))
         .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
 }
 
@@ -676,6 +686,7 @@ async function enrichPrompt(prompt) {
         {type: "Space", name: await getSpaceName()},
         {type: "Project", name: await getProjectName()},
         {type: "Deployment ID", name: await getDeploymentName()},
+        {type: "Release Version", name: await getReleaseVersion()},
         {type: "Step", name: await getStepName()},
         {type: "Tenant", name: await getTenantName()},
         {type: "Library Variable Set", name: await getLibraryVariableSet()},
