@@ -60,6 +60,12 @@
     ]
   },
   {
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/operations/runbooks/[^/]+/snapshots/[^/]+/runs/[^/]+/?(\\?.*|$)",
+    "prompts" : [
+      "Why did the runbook run \"#{Octopus.RunbookRun.Id}\" fail?"
+    ]
+  },
+  {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machines",
     "prompts" : [
       "Check space for unused targets",
