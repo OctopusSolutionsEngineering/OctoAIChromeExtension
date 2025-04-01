@@ -180,7 +180,7 @@ async function callOctoAi(prompt) {
             throw new Error(`OctoAI API call failed: ${response.error.message}`);
         }
 
-        return convertFromSseResponse(response.response);
+        return {prompt: prompt, response: convertFromSseResponse(response.response)};
     } catch (error) {
         console.error(error.message);
         throw error;
@@ -855,13 +855,42 @@ function hideResponse() {
     }
 }
 
-function displayMarkdownResponseV2(markdownContent) {
+function displayMarkdownResponseV2(llmResponse) {
     const response = document.getElementById('octoai-response');
 
     if (response) {
-        response.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
+        response.innerHTML = DOMPurify.sanitize(marked.parse(llmResponse.response));
+        response.prepend(buildMessageBubble(llmResponse.prompt))
         response.style.display = 'block';
     }
+}
+
+function buildMessageBubble(message) {
+    // Create the bubble element
+    const bubble = document.createElement('div');
+
+    // Style the bubble
+    bubble.style.position = 'relative';
+    bubble.style.display = 'inline-block';
+    bubble.style.padding = '10px 20px';
+    bubble.style.backgroundColor = '#f1f1f1';
+    bubble.style.borderRadius = '20px';
+    bubble.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+    bubble.style.fontFamily = 'Arial, sans-serif';
+    bubble.style.fontSize = '14px';
+    bubble.style.color = '#333';
+    bubble.textContent = message;
+
+    // Create a wrapper div to allow right alignment
+    const wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.justifyContent = 'flex-end';
+    wrapper.style.width = '100%';
+    wrapper.style.marginBottom = '10px';
+
+    wrapper.appendChild(bubble);
+
+    return wrapper
 }
 
 console.log("Loaded OctoAI")
