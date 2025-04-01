@@ -124,7 +124,6 @@ async function displayPromptUIV2() {
     const header = document.createElement('div');
     header.style.display = 'flex';
     header.style.alignItems = 'center';
-    header.style.marginBottom = '16px';
 
     // Add the OctoAI logo
     const logo = document.createElement('span');
@@ -177,6 +176,67 @@ async function displayPromptUIV2() {
 
     // Add the feedback section to the container
     container.appendChild(feedback);
+
+    // Create a container for the UI
+    const examplesContainer = document.createElement('div');
+    examplesContainer.style.fontFamily = 'Arial, sans-serif';
+    examplesContainer.style.padding = '20px';
+
+    // Create and append the header
+    const examplesHeader = document.createElement('h2');
+    examplesHeader.textContent = 'Examples';
+    examplesHeader.style.marginBottom = '20px';
+    examplesHeader.style.color = 'rgb(74, 74, 74)';
+    examplesContainer.appendChild(examplesHeader);
+
+    // Button data
+    const buttons = [
+        { id: 'button1', text: 'List the packages used by steps in this project' },
+        { id: 'button2', text: 'Find unused variables' },
+        { id: 'button3', text: 'Describe what this deployment process does' }
+    ];
+
+    // Function to create a button
+    function createButton(id, text) {
+        const button = document.createElement('div');
+        button.id = id;
+        button.textContent = text;
+        button.style.display = 'block';
+        button.style.width = '100%';
+        button.style.padding = '10px';
+        button.style.marginBottom = '10px';
+        button.style.backgroundColor = '#f0f0f0';
+        button.style.border = '1px solid #ccc';
+        button.style.borderRadius = '5px';
+        button.style.textAlign = 'left';
+        button.style.cursor = 'pointer';
+        button.style.fontSize = '16px';
+        button.style.color = 'rgb(74, 74, 74)';
+
+        // Add hover effect
+        button.addEventListener('mouseover', () => {
+            button.style.backgroundColor = '#e0e0e0';
+        });
+        button.addEventListener('mouseout', () => {
+            button.style.backgroundColor = '#f0f0f0';
+        });
+
+        // Add click event
+        button.addEventListener('click', () => {
+            console.log(`${text} clicked`);
+        });
+
+        return button;
+    }
+
+    // Generate buttons and append them to the container
+    buttons.forEach(({ id, text }) => {
+        const button = createButton(id, text);
+        examplesContainer.appendChild(button);
+    });
+
+    // Append the container to the body
+    container.appendChild(examplesContainer);
 
     // Create a form element
     const form = document.createElement('form');
