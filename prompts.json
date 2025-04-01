@@ -43,7 +43,7 @@
     ]
   },
   {
-    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases/[^/]+/deployments/[^/]+/?(\\?.*|$)",
+    "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases/[^/]+/deployments/[^?]+/?(\\?.*|$)",
     "prompts" : [
       "Why did the deployment fail?"
     ]
