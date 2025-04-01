@@ -93,6 +93,151 @@ function removeExistingOverlay() {
     if (overlay) {
         overlay.parentElement.removeChild(overlay);
     }
+
+    const container = document.getElementById("octoai-container");
+    if (container) {
+        container.parentElement.removeChild(container);
+    }
+}
+
+async function displayPromptUIV2() {
+    removeExistingOverlay();
+
+    // Create the main container div
+    const container = document.createElement('div');
+    container.id = 'octoai-container';
+    container.style.fontFamily = 'Arial, sans-serif';
+    container.style.border = '1px solid #E0E0E0';
+    container.style.borderRadius = '8px';
+    container.style.padding = '16px';
+    container.style.width = '600px';
+    container.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+    container.style.backgroundColor = '#FFFFFF';
+
+    // Set absolute positioning in the bottom-right corner
+    container.style.position = 'absolute';
+    container.style.bottom = '16px';
+    container.style.right = '16px';
+    container.style.zIndex = '1000';
+
+    // Create the header
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.marginBottom = '16px';
+
+    // Add the OctoAI logo
+    const logo = document.createElement('span');
+    logo.textContent = '✨ OctoAI';
+    logo.style.fontWeight = 'bold';
+    logo.style.fontSize = '16px';
+    logo.style.color = '#4A4A4A';
+    header.appendChild(logo);
+
+    // Add the header to the container
+    container.appendChild(header);
+
+    // Create the response markdown
+    const message = document.createElement('div');
+    message.id = 'octoai-response';
+    message.style.margin = '0 0 16px 0';
+    message.style.display = 'none';
+    container.appendChild(message);
+
+    // Create the feedback section
+    const feedback = document.createElement('div');
+    feedback.style.display = 'none';
+
+    // Add the "Was this response helpful?" text
+    const feedbackText = document.createElement('span');
+    feedbackText.id = 'octoai-feedback';
+    feedbackText.textContent = 'Was this response helpful?';
+    feedbackText.style.fontSize = '14px';
+    feedbackText.style.color = '#4A4A4A';
+    feedback.appendChild(feedbackText);
+
+    // Add thumbs up and thumbs down buttons
+    const thumbsUp = document.createElement('button');
+    thumbsUp.textContent = '👍';
+    thumbsUp.style.border = 'none';
+    thumbsUp.style.background = 'none';
+    thumbsUp.style.cursor = 'pointer';
+    thumbsUp.style.fontSize = '16px';
+    thumbsUp.style.color = '#4A4A4A';
+    feedback.appendChild(thumbsUp);
+
+    const thumbsDown = document.createElement('button');
+    thumbsDown.textContent = '👎';
+    thumbsDown.style.border = 'none';
+    thumbsDown.style.background = 'none';
+    thumbsDown.style.cursor = 'pointer';
+    thumbsDown.style.fontSize = '16px';
+    thumbsDown.style.color = '#4A4A4A';
+    feedback.appendChild(thumbsDown);
+
+    // Add the feedback section to the container
+    container.appendChild(feedback);
+
+    // Create a form element
+    const form = document.createElement('form');
+    form.style.display = 'flex';
+    form.style.margin = '0 0 16px 0';
+    form.style.alignItems = 'center';
+    form.style.border = '1px solid #ccc';
+    form.style.borderRadius = '4px';
+    form.style.padding = '8px 12px';
+    form.style.fontFamily = 'Arial, sans-serif';
+    form.style.fontSize = '14px';
+    form.style.backgroundColor = '#fff';
+
+    // Create an input element
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Ask Octopus about your instance';
+    input.style.flex = '1';
+    input.style.border = 'none';
+    input.style.outline = 'none';
+    input.style.fontSize = '14px';
+    input.style.color = '#333';
+
+    // Create the submit button
+    const submitButton = document.createElement('button');
+    submitButton.type = 'submit';
+    submitButton.innerHTML = '&#8594;'; // Unicode for the right arrow
+    submitButton.style.border = 'none';
+    submitButton.style.backgroundColor = 'transparent';
+    submitButton.style.cursor = 'pointer';
+    submitButton.style.color = '#007bff';
+    submitButton.style.fontSize = '16px';
+
+    // Append the input and button to the form
+    form.appendChild(input);
+    form.appendChild(submitButton);
+
+    // Append the form to the body
+    container.appendChild(form);
+
+    // Add a submit event listener
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        alert(`You submitted: ${input.value}`);
+    });
+
+    // Add the final note
+    const finalNote = document.createElement('p');
+    finalNote.textContent = 'AI responses can be inaccurate.';
+    finalNote.style.fontSize = '12px';
+    finalNote.style.color = '#9E9E9E';
+    finalNote.style.marginTop = '16px';
+    container.appendChild(finalNote);
+
+    // Append the container to the body
+    document.body.appendChild(container);
+}
+
+function displayMarkdownResponseV2(markdownContent) {
+    const response = document.getElementById('octoai-response');
+    response.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
 }
 
 async function displayPromptUI() {
