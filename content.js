@@ -643,6 +643,33 @@ function displayPromptUIV2() {
     logo.style.color = '#4A4A4A';
     header.appendChild(logo);
 
+    // Add close button (right side)
+    const closeButton = document.createElement('span');
+    closeButton.textContent = '✕';
+    closeButton.style.cursor = 'pointer';
+    closeButton.style.color = '#4A4A4A';
+    closeButton.style.fontSize = '16px';
+    closeButton.style.fontWeight = 'bold';
+    closeButton.style.padding = '0 4px';
+
+    // Add hover effect
+    closeButton.addEventListener('mouseover', () => {
+        closeButton.style.color = '#000000';
+    });
+    closeButton.addEventListener('mouseout', () => {
+        closeButton.style.color = '#4A4A4A';
+    });
+
+    // Add click event to remove the container
+    closeButton.addEventListener('click', () => {
+        const container = document.getElementById('octoai-container');
+        if (container) {
+            container.parentElement.removeChild(container);
+        }
+    });
+
+    header.appendChild(closeButton);
+
     // Add the header to the container
     container.appendChild(header);
 
