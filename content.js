@@ -41,15 +41,15 @@ function addAiToPage() {
     // Add additional styling for markdown elements
     const markdownStyles = document.createElement("style");
     markdownStyles.textContent = `
-        #octoai-overlay p,
-        #octoai-overlay li, 
-        #octoai-overlay ul, 
-        #octoai-overlay h1, 
-        #octoai-overlay h2, 
-        #octoai-overlay h3,
-        #octoai-overlay h4,
-        #octoai-overlay h5,
-        #octoai-overlay h6 {
+        #octoai-container p,
+        #octoai-container li, 
+        #octoai-container ul, 
+        #octoai-container h1, 
+        #octoai-container h2, 
+        #octoai-container h3,
+        #octoai-container h4,
+        #octoai-container h5,
+        #octoai-container h6 {
             color: black;
         }
     `;
@@ -84,227 +84,8 @@ function addAiToPage() {
 
     newButton.addEventListener("click", function (event) {
         event.preventDefault();
-        displayPromptUI();
+        displayAIChat();
     });
-}
-
-function removeExistingOverlay() {
-    const overlay = document.getElementById("octoai-overlay");
-    if (overlay) {
-        overlay.parentElement.removeChild(overlay);
-    }
-}
-
-async function displayPromptUI() {
-    removeExistingOverlay();
-
-    const overlayDiv = document.createElement("div");
-    overlayDiv.id = "octoai-overlay";
-    overlayDiv.style.position = "absolute";
-    overlayDiv.style.top = "0";
-    overlayDiv.style.left = "0";
-    overlayDiv.style.width = "100%";
-    overlayDiv.style.height = "100%";
-    overlayDiv.style.backgroundColor = "rgb(0,0,0, 0.9)";
-    overlayDiv.style.zIndex = "100";
-
-    document.body.appendChild(overlayDiv);
-
-    // Add click event to hide the overlay and its children when clicked directly
-    overlayDiv.addEventListener("click", function (event) {
-        // Only hide if the click was directly on the overlay (not on its children)
-        if (event.target === this) {
-            document.body.removeChild(overlayDiv);
-            document.body.removeChild(linksContainer);
-        }
-    });
-
-    // Create container for links
-    const linksContainer = document.createElement("div");
-    linksContainer.style.position = "relative";
-    linksContainer.style.top = "10%";
-    linksContainer.style.width = "100%";
-    linksContainer.style.zIndex = "101";
-    linksContainer.style.textAlign = "center";
-
-    const textarea = document.createElement("textarea");
-
-    // Add five links
-    const buttonTexts = await getSamplePrompts();
-    const buttons = buttonTexts.map(text => {
-        const button = document.createElement("button");
-        button.textContent = text;
-        button.style.display = "block";
-        button.style.margin = "10px auto";
-        button.style.width = "80%";
-        button.style.color = "white";
-        button.style.backgroundColor = "transparent";
-        button.style.border = "none";
-        button.style.fontSize = "18px";
-        button.style.padding = "5px";
-        button.style.transition = "all 0.3s ease";
-        button.style.cursor = "default"; // Default cursor since they're just displaying text
-
-        // Add hover effect
-        button.addEventListener("mouseover", function () {
-            this.style.backgroundColor = "rgba(68, 68, 255, 0.3)";
-            this.style.transform = "scale(1.02)";
-        });
-
-        button.addEventListener("mouseout", function () {
-            this.style.backgroundColor = "transparent";
-            this.style.transform = "scale(1)";
-        });
-
-        button.addEventListener("click", function() {
-            textarea.value = button.textContent
-        })
-
-        linksContainer.appendChild(button);
-
-        return button
-    });
-    overlayDiv.appendChild(linksContainer);
-
-    // Create textarea
-    textarea.style.display = "block";
-    textarea.style.width = "80%"; // 80% of page width
-    textarea.style.height = "150px"; // enough for about 5 lines
-    textarea.style.margin = "20px auto";
-    textarea.style.zIndex = "101";
-    textarea.style.position = "relative";
-    textarea.style.borderRadius = "8px"; // rounded borders
-    textarea.style.padding = "10px"; // add some padding for better text appearance
-    textarea.style.boxSizing = "border-box"; // include padding in width calculation
-    textarea.style.border = "2px solid #00874d"; // matching the button color
-    textarea.style.outline = "none"; // remove outline when focused
-    textarea.style.fontSize = "24px";
-    textarea.value = localStorage.getItem("octoai-prompt") || "What do you do?";
-    linksContainer.appendChild(textarea);
-
-    // Create send button
-    const sendButton = document.createElement("button");
-    sendButton.textContent = "Send";
-    sendButton.style.padding = "8px 16px";
-    sendButton.style.backgroundColor = "#00874d";
-    sendButton.style.color = "white";
-    sendButton.style.border = "none";
-    sendButton.style.borderRadius = "4px";
-    sendButton.style.cursor = "pointer";
-    sendButton.style.zIndex = "101";
-    sendButton.style.position = "relative";
-    sendButton.style.height = "64px";
-    sendButton.style.width = "80%";
-    sendButton.style.margin = "10px auto";
-    sendButton.style.display = "block";
-    sendButton.style.fontSize = "18px";
-
-    sendButton.onclick = function () {
-        if (textarea.value.trim() === "") {
-            return
-        }
-
-        localStorage.setItem("octoai-prompt", textarea.value);
-
-        sendButton.disabled = true;
-        sendButton.style.backgroundColor = "#2e475d";
-        sendButton.style.color = "#557999";
-        textarea.style.borderColor = "#557999";
-
-        buttons.forEach(button => {
-            button.disabled = true
-        })
-
-        textarea.disabled = true
-        textarea.style.backgroundColor = "gray";
-        textarea.style.color = "black";
-
-        let dots = 0;
-        sendButton.textContent = "Thinking"
-        const thinkingAnimation = setInterval(() => {
-            dots = (dots + 1) % 4;  // Cycle through 0-3 dots
-            sendButton.textContent = "Thinking" + ".".repeat(dots);
-        }, 500);
-
-        enrichPrompt(textarea.value)
-            .then(prompt => callOctoAi(prompt))
-            .then(result =>
-                displayMarkdownResponse(result))
-            .catch(e =>
-                console.log(e))
-            .finally(() =>
-                clearInterval(thinkingAnimation)
-            );
-    }
-
-    linksContainer.appendChild(sendButton);
-}
-
-function displayMarkdownResponse(markdownContent) {
-    removeExistingOverlay();
-
-    const overlayDiv = document.createElement("div");
-    overlayDiv.id = "octoai-overlay";
-    overlayDiv.style.position = "absolute";
-    overlayDiv.style.top = "0";
-    overlayDiv.style.left = "0";
-    overlayDiv.style.width = "100%";
-    overlayDiv.style.height = "100%";
-    overlayDiv.style.backgroundColor = "rgb(0,0,0, 0.9)";
-    overlayDiv.style.zIndex = "100";
-
-    document.body.appendChild(overlayDiv);
-
-    overlayDiv.addEventListener("click", function (event) {
-        if (event.target === this) {
-            document.body.removeChild(overlayDiv);
-        }
-    });
-
-    const contentDiv = document.createElement("div");
-    contentDiv.style.position = "absolute";
-    contentDiv.style.top = "10%";
-    contentDiv.style.left = "10%";
-    contentDiv.style.right = "10%";
-    contentDiv.style.bottom = "20%";
-    contentDiv.style.backgroundColor = "white";
-    contentDiv.style.borderRadius = "8px";
-    contentDiv.style.overflowY = "auto";
-    contentDiv.style.overflowX = "auto";
-    contentDiv.style.zIndex = "101";
-    contentDiv.style.backgroundColor = "white";
-    contentDiv.style.color = "black";
-    contentDiv.style.border = "#2e475d;"
-    contentDiv.style.borderWidth = "thin";
-    contentDiv.style.borderStyle = "solid";
-    contentDiv.style.padding = "10px";
-
-    contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
-
-    overlayDiv.appendChild(contentDiv);
-
-    const backButton = document.createElement("button");
-    backButton.textContent = "Back";
-    backButton.style.position = "absolute";
-    backButton.style.bottom = "10%";
-    backButton.style.left = "10%";
-    backButton.style.right = "10%";
-    backButton.style.backgroundColor = "#00874d";
-    backButton.style.color = "white";
-    backButton.style.border = "none";
-    backButton.style.borderRadius = "4px";
-    backButton.style.cursor = "pointer";
-    backButton.style.zIndex = "101";
-    backButton.style.fontSize = "18px";
-    backButton.style.padding = "5px";
-    backButton.style.height = "64px";
-
-    backButton.addEventListener("click", function() {
-        displayPromptUI();
-    });
-
-    // Add the back button to the overlay
-    overlayDiv.appendChild(backButton);
 }
 
 async function createOctopusApiKey() {
@@ -757,6 +538,330 @@ async function enrichPrompt(prompt) {
                 accumulator :
                 accumulator + "\nCurrent " + currentValue.type + " is \"" + currentValue.name + "\"",
             prompt);
+}
+
+async function displayAIChat() {
+
+    const existingContainer = document.getElementById('octoai-container');
+
+    if (existingContainer) {
+        hidePromptUI()
+    } else {
+        displayPromptUIV2();
+        const buttonTexts = await getSamplePrompts();
+        displayExamples(buttonTexts);
+    }
+}
+
+function displayExamples(buttons) {
+    const examplesContainer = document.getElementById('octoai-examples');
+
+    if (!examplesContainer) {
+        return
+    }
+
+    examplesContainer.innerHTML = '';
+
+    // Create and append the header
+    const examplesHeader = document.createElement('h2');
+    examplesHeader.textContent = 'Examples';
+    examplesHeader.style.marginBottom = '20px';
+    examplesHeader.style.color = 'rgb(74, 74, 74)';
+    examplesContainer.appendChild(examplesHeader);
+
+    // Function to create a button
+    function createButton(text) {
+        const button = document.createElement('div');
+        button.textContent = text;
+        button.style.display = 'block';
+        button.style.width = '100%';
+        button.style.padding = '10px';
+        button.style.marginBottom = '10px';
+        button.style.backgroundColor = '#f0f0f0';
+        button.style.border = '1px solid #ccc';
+        button.style.borderRadius = '5px';
+        button.style.textAlign = 'left';
+        button.style.cursor = 'pointer';
+        button.style.fontSize = '16px';
+        button.style.color = 'rgb(74, 74, 74)';
+
+        // Add hover effect
+        button.addEventListener('mouseover', () => {
+            button.style.backgroundColor = '#e0e0e0';
+        });
+        button.addEventListener('mouseout', () => {
+            button.style.backgroundColor = '#f0f0f0';
+        });
+
+        // Add click event
+        button.addEventListener('click', () => {
+            const input = document.getElementById('octoai-input');
+            if (input) {
+                input.value = text;
+                input.focus();
+            }
+        });
+
+        return button;
+    }
+
+    // Generate buttons and append them to the container
+    buttons.forEach(text => {
+        const button = createButton(text);
+        examplesContainer.appendChild(button);
+    });
+}
+
+function hidePromptUI() {
+    const container = document.getElementById('octoai-container');
+    if (container) {
+        container.parentElement.removeChild(container);
+    }
+}
+
+function displayPromptUIV2() {
+    const existingContainer = document.getElementById('octoai-container');
+
+    if (existingContainer) {
+        existingContainer.parentElement.removeChild(existingContainer);
+    }
+
+    // Create the main container div
+    const container = document.createElement('div');
+    container.id = 'octoai-container';
+    container.style.fontFamily = 'Arial, sans-serif';
+    container.style.border = '1px solid #E0E0E0';
+    container.style.borderRadius = '8px';
+    container.style.padding = '16px';
+    container.style.width = '800px';
+    container.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+    container.style.backgroundColor = '#FFFFFF';
+
+    // Set absolute positioning in the bottom-right corner
+    container.style.position = 'absolute';
+    container.style.bottom = '16px';
+    container.style.right = '16px';
+    container.style.zIndex = '1000';
+
+    // Create the header
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.margin = '0 0 16px 0';
+
+    // Add the OctoAI logo
+    const logo = document.createElement('span');
+    logo.textContent = '✨ OctoAI';
+    logo.style.fontWeight = 'bold';
+    logo.style.fontSize = '16px';
+    logo.style.color = '#4A4A4A';
+    header.appendChild(logo);
+
+    // Add close button (right side)
+    const closeButton = document.createElement('span');
+    closeButton.textContent = '✕';
+    closeButton.style.cursor = 'pointer';
+    closeButton.style.color = '#4A4A4A';
+    closeButton.style.fontSize = '16px';
+    closeButton.style.fontWeight = 'bold';
+    closeButton.style.padding = '0 4px';
+
+    // Add hover effect
+    closeButton.addEventListener('mouseover', () => {
+        closeButton.style.color = '#000000';
+    });
+    closeButton.addEventListener('mouseout', () => {
+        closeButton.style.color = '#4A4A4A';
+    });
+
+    // Add click event to remove the container
+    closeButton.addEventListener('click', () => {
+        hidePromptUI()
+    });
+
+    header.appendChild(closeButton);
+
+    // Add the header to the container
+    container.appendChild(header);
+
+    // Create the response markdown
+    const message = document.createElement('div');
+    message.id = 'octoai-response';
+    message.style.display = 'none';
+    message.style.maxHeight = '300px';
+    message.style.overflowY = 'scroll';
+    container.appendChild(message);
+
+    // Create the feedback section
+    const feedback = document.createElement('div');
+    feedback.style.display = 'none';
+
+    // Add the "Was this response helpful?" text
+    const feedbackText = document.createElement('span');
+    feedbackText.id = 'octoai-feedback';
+    feedbackText.textContent = 'Was this response helpful?';
+    feedbackText.style.fontSize = '14px';
+    feedbackText.style.color = '#4A4A4A';
+    feedback.appendChild(feedbackText);
+
+    // Add thumbs up and thumbs down buttons
+    const thumbsUp = document.createElement('button');
+    thumbsUp.textContent = '👍';
+    thumbsUp.style.border = 'none';
+    thumbsUp.style.background = 'none';
+    thumbsUp.style.cursor = 'pointer';
+    thumbsUp.style.fontSize = '16px';
+    thumbsUp.style.color = '#4A4A4A';
+    feedback.appendChild(thumbsUp);
+
+    const thumbsDown = document.createElement('button');
+    thumbsDown.textContent = '👎';
+    thumbsDown.style.border = 'none';
+    thumbsDown.style.background = 'none';
+    thumbsDown.style.cursor = 'pointer';
+    thumbsDown.style.fontSize = '16px';
+    thumbsDown.style.color = '#4A4A4A';
+    feedback.appendChild(thumbsDown);
+
+    // Add the feedback section to the container
+    container.appendChild(feedback);
+
+    // Create a form element
+    const form = document.createElement('form');
+    form.style.display = 'flex';
+    form.style.margin = '0 0 16px 0';
+    form.style.alignItems = 'center';
+    form.style.border = '1px solid #ccc';
+    form.style.borderRadius = '4px';
+    form.style.padding = '8px 12px';
+    form.style.fontFamily = 'Arial, sans-serif';
+    form.style.fontSize = '14px';
+    form.style.backgroundColor = '#fff';
+
+    // Create an input element
+    const input = document.createElement('input');
+    input.id = 'octoai-input';
+    input.type = 'text';
+    input.placeholder = 'Ask Octopus about your instance';
+    input.style.flex = '1';
+    input.style.border = 'none';
+    input.style.outline = 'none';
+    input.style.fontSize = '14px';
+    input.style.color = '#333';
+
+    // Create the submit button
+    const submitButton = document.createElement('button');
+    submitButton.id = 'octoai-submit';
+    submitButton.type = 'submit';
+    submitButton.innerHTML = '&#8594;'; // Unicode for the right arrow
+    submitButton.style.border = 'none';
+    submitButton.style.backgroundColor = 'transparent';
+    submitButton.style.cursor = 'pointer';
+    submitButton.style.color = '#007bff';
+    submitButton.style.fontSize = '16px';
+
+    // Append the input and button to the form
+    form.appendChild(input);
+    form.appendChild(submitButton);
+
+    // Append the form to the body
+    container.appendChild(form);
+
+    // Create a container for the UI
+    const examplesContainer = document.createElement('div');
+    examplesContainer.id = 'octoai-examples';
+    examplesContainer.style.fontFamily = 'Arial, sans-serif';
+
+    container.appendChild(examplesContainer)
+
+    // Add a submit event listener
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        const originalPrompt = input.value.trim();
+
+        if (!originalPrompt) {
+            return
+        }
+
+        localStorage.setItem("octoai-prompt", originalPrompt);
+
+        hideExamples()
+
+        input.disabled = true
+        submitButton.disabled = true
+        submitButton.style.cursor = 'not-allowed';
+
+        let dots = 0;
+        input.value = "Thinking"
+        const thinkingAnimation = setInterval(() => {
+            dots = (dots + 1) % 4;  // Cycle through 0-3 dots
+            input.value = "Thinking" + ".".repeat(dots);
+        }, 500);
+
+        hideResponse()
+
+        enrichPrompt(originalPrompt)
+            .then(prompt => callOctoAi(prompt))
+            .then(result =>
+                displayMarkdownResponseV2(result))
+            .catch(e =>
+                console.log(e))
+            .finally(() => {
+                    clearInterval(thinkingAnimation)
+                    input.disabled = false
+                    input.value = ""
+                    submitButton.disabled = false
+                    submitButton.style.cursor = 'pointer';
+                    showExamples()
+                }
+            );
+    });
+
+    // Add the final note
+    const finalNote = document.createElement('p');
+    finalNote.textContent = 'AI responses can be inaccurate.';
+    finalNote.style.fontSize = '12px';
+    finalNote.style.color = '#9E9E9E';
+    finalNote.style.marginTop = '16px';
+    container.appendChild(finalNote);
+
+    // Append the container to the body
+    document.body.appendChild(container);
+}
+
+function hideExamples() {
+    const examplesContainer = document.getElementById('octoai-examples');
+
+    if (examplesContainer) {
+        examplesContainer.style.display = 'none';
+    }
+}
+
+function showExamples() {
+    const examplesContainer = document.getElementById('octoai-examples');
+
+    if (examplesContainer) {
+        examplesContainer.style.display = 'block';
+    }
+}
+
+function hideResponse() {
+    const response = document.getElementById('octoai-response');
+
+    if (response) {
+        response.innerHTML = '';
+        response.style.display = 'node';
+    }
+}
+
+function displayMarkdownResponseV2(markdownContent) {
+    const response = document.getElementById('octoai-response');
+
+    if (response) {
+        response.innerHTML = DOMPurify.sanitize(marked.parse(markdownContent));
+        response.style.display = 'block';
+    }
 }
 
 console.log("Loaded OctoAI")
