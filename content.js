@@ -893,5 +893,17 @@ function buildMessageBubble(message) {
     return wrapper
 }
 
+function watchForChange() {
+    window.onhashchange = function(){
+        const existingContainer = document.getElementById('octoai-container');
+
+        if (existingContainer) {
+            getSamplePrompts()
+                .then(buttonTexts => displayExamples(buttonTexts));
+        }
+    }
+}
+
 console.log("Loaded OctoAI")
 addAiToPage()
+watchForChange()
