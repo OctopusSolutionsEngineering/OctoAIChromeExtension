@@ -690,6 +690,7 @@ function displayPromptUIV2() {
     message.style.display = 'none';
     message.style.maxHeight = '300px';
     message.style.overflowY = 'scroll';
+    message.style.margin = '0 0 16px 0';
     container.appendChild(message);
 
     // Create the feedback section
