@@ -51,7 +51,7 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/deployments/releases",
     "prompts" : [
-      "Find deployments of the project \"#{Octopus.Project.Name}\" in the space \"#{Octopus.Space.Name}\" from the last week that failed."
+      "Find deployments of the project \"#{Octopus.Project.Name}\" to the environment \"#{Octopus.Environment[0].Name}\" environment in the space \"#{Octopus.Space.Name}\" from the last week that failed."
     ]
   },
   {
