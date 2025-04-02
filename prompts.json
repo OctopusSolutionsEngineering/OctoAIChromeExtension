@@ -20,11 +20,11 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/library/variables/[^/]+/?(\\?.*|$)",
     "prompts" : [
+      "What is an Octopus library variable set?",
       "Find Library Variable Set variable values that look like plaintext passwords. Display the name of the library variable set and the details of the variable.",
       "Find Library Variable Set variable values that look like URLs. Display the name of the library variable set and the details of the variable.",
       "Find Library Variable Set variable values that look like file paths. Display the name of the library variable set and the details of the variable.",
-      "Find Library Variable Set variable values that look like JSON. Display the name of the library variable set and the details of the variable.",
-      "Find Library Variable Set variable values that look like YAML. Display the name of the library variable set and the details of the variable."
+      "Find Library Variable Set variable values that look like JSON. Display the name of the library variable set and the details of the variable."
     ]
   },
   {
