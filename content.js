@@ -41,6 +41,7 @@ function addAiToPage() {
     // Add additional styling for markdown elements
     const markdownStyles = document.createElement("style");
     markdownStyles.textContent = `
+        #octoai-container td,
         #octoai-container p,
         #octoai-container li, 
         #octoai-container ul, 
@@ -51,6 +52,10 @@ function addAiToPage() {
         #octoai-container h5,
         #octoai-container h6 {
             color: black;
+        }
+        
+        #octoai-container a:hover {
+            color: #87bfec
         }
     `;
     document.head.appendChild(markdownStyles);
