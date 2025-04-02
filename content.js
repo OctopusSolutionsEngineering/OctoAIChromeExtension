@@ -42,6 +42,7 @@ function addAiToPage() {
     const markdownStyles = document.createElement("style");
     markdownStyles.textContent = `
         #octoai-container td,
+        #octoai-container th,
         #octoai-container p,
         #octoai-container li, 
         #octoai-container ul, 
