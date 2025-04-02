@@ -827,7 +827,7 @@ function displayPromptUIV2() {
 
     // Add the final note
     const finalNote = document.createElement('p');
-    finalNote.textContent = 'AI responses can be inaccurate.';
+    finalNote.textContent = '⚠️ AI responses can be inaccurate.';
     finalNote.style.fontSize = '12px';
     finalNote.style.color = '#9E9E9E';
     finalNote.style.marginTop = '16px';
