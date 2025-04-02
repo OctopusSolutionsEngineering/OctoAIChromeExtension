@@ -66,7 +66,7 @@
     "url": "https://.*?/app#/Spaces-.*?/projects/?(\\?.*|$)",
     "prompts" : [
       "Check space for unused projects.",
-      "Which projects deploy to Kubernetes?",
+      "Which projects have steps that deploy to Kubernetes?",
       "Which projects have the \"Deploy a Release\" step?",
       "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
     ]
