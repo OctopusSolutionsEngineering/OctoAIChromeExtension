@@ -58,6 +58,7 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/[^/]+/[^?]*\\??.*",
     "prompts" : [
+      "What is an Octopus project?",
       "Describe what the steps do.",
       "Find unused variables.",
       "List the packages used by the steps."
@@ -66,6 +67,7 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/projects/?(\\?.*|$)",
     "prompts" : [
+      "What is an Octopus project?",
       "Check space for unused projects.",
       "Which projects have steps that deploy to Kubernetes?",
       "Which projects have the \"Deploy a Release\" step?",
@@ -75,6 +77,7 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machines",
     "prompts" : [
+      "What is an Octopus target?",
       "Check space for unused targets",
       "Given all the targets, list all the targets that are insecure because they use HTTP.",
       "Given all the Kubernetes targets, list all the unique cluster endpoint URLs.",
@@ -84,6 +87,7 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/accounts",
     "prompts" : [
+      "What is an Octopus account?",
       "Which accounts space are configured with OIDC?",
       "Which accounts are available from the \"#{Octopus.Environment[0].Name}\" environment?"
     ]
@@ -91,6 +95,7 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/workers",
     "prompts" : [
+      "What is an Octopus worker?",
       "Which workers are are hosted on Kubernetes?",
       "List the machine policies used by the workers?"
     ]
@@ -98,12 +103,14 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/infrastructure/machinepolicies",
     "prompts" : [
+      "What is an Octopus machine policy?",
       "What do the health check scripts do in the machine policies?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/library/feeds",
     "prompts" : [
+      "What is an Octopus feed?",
       "List the feeds that are insecure because they use HTTP.",
       "Given all the feeds, generate a table that groups feeds by feed type in the rows and has columns for: feed name, feed url."
     ]
@@ -111,24 +118,28 @@
   {
     "url": "https://.*?/app#/Spaces-.*?/library/gitcredentials",
     "prompts" : [
+      "What is an Octopus git credential?",
       "Which Git credentials  have the username \"x-access-token\"?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/library/lifecycles",
     "prompts" : [
+      "What is an Octopus lifecycle?",
       "Which lifecycles include the environment \"#{Octopus.Environment[0].Name}\"?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/library/scripts",
     "prompts" : [
+      "What is an Octopus script module?",
       "What do the script modules do?"
     ]
   },
   {
     "url": "https://.*?/app#/Spaces-.*?/tenants",
     "prompts" : [
+      "What is an Octopus tenant?",
       "Find any unused tenants."
     ]
   }
