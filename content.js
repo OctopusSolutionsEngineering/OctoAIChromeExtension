@@ -553,13 +553,13 @@ async function displayAIChat() {
     if (existingContainer) {
         hidePromptUI()
     } else {
-        displayPromptUIV2();
+        displayPromptUIV2(getColors());
         const buttonTexts = await getSamplePrompts();
-        displayExamples(buttonTexts);
+        displayExamples(buttonTexts, getColors());
     }
 }
 
-function displayExamples(buttons) {
+function displayExamples(buttons, theme) {
     const examplesContainer = document.getElementById('octoai-examples');
 
     if (!examplesContainer) {
@@ -572,31 +572,32 @@ function displayExamples(buttons) {
     const examplesHeader = document.createElement('h2');
     examplesHeader.textContent = 'Examples';
     examplesHeader.style.marginBottom = '20px';
-    examplesHeader.style.color = 'rgb(74, 74, 74)';
+    examplesHeader.style.color = theme.text;
     examplesContainer.appendChild(examplesHeader);
 
     // Function to create a button
-    function createButton(text) {
+    function createButton(text, theme) {
         const button = document.createElement('div');
         button.textContent = text;
         button.style.display = 'block';
         button.style.width = '100%';
         button.style.padding = '10px';
         button.style.marginBottom = '10px';
-        button.style.backgroundColor = '#f0f0f0';
+        button.style.backgroundColor = theme.backgroundSecondaryButton;
         button.style.border = '1px solid #ccc';
         button.style.borderRadius = '5px';
+        button.style.borderColor = theme.border;
         button.style.textAlign = 'left';
         button.style.cursor = 'pointer';
         button.style.fontSize = '16px';
-        button.style.color = 'rgb(74, 74, 74)';
+        button.style.color = theme.text;
 
         // Add hover effect
         button.addEventListener('mouseover', () => {
-            button.style.backgroundColor = '#e0e0e0';
+            button.style.backgroundColor = theme.backgroundButton;
         });
         button.addEventListener('mouseout', () => {
-            button.style.backgroundColor = '#f0f0f0';
+            button.style.backgroundColor = theme.backgroundSecondaryButton;
         });
 
         // Add click event
@@ -613,7 +614,7 @@ function displayExamples(buttons) {
 
     // Generate buttons and append them to the container
     buttons.forEach(text => {
-        const button = createButton(text);
+        const button = createButton(text, getColors());
         examplesContainer.appendChild(button);
     });
 }
@@ -625,7 +626,7 @@ function hidePromptUI() {
     }
 }
 
-function displayPromptUIV2() {
+function displayPromptUIV2(theme) {
     const existingContainer = document.getElementById('octoai-container');
 
     if (existingContainer) {
@@ -641,7 +642,8 @@ function displayPromptUIV2() {
     container.style.padding = '16px';
     container.style.width = '800px';
     container.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
-    container.style.backgroundColor = '#FFFFFF';
+    container.style.backgroundColor = theme.background;
+    container.style.borderColor = theme.border;
 
     // Set absolute positioning in the bottom-right corner
     container.style.position = 'absolute';
@@ -660,24 +662,24 @@ function displayPromptUIV2() {
     logo.textContent = '✨ OctoAI';
     logo.style.fontWeight = 'bold';
     logo.style.fontSize = '16px';
-    logo.style.color = '#4A4A4A';
+    logo.style.color = theme.text;
     header.appendChild(logo);
 
     // Add close button (right side)
     const closeButton = document.createElement('span');
     closeButton.textContent = '✕';
     closeButton.style.cursor = 'pointer';
-    closeButton.style.color = '#4A4A4A';
+    closeButton.style.color = theme.textSecondary;
     closeButton.style.fontSize = '16px';
     closeButton.style.fontWeight = 'bold';
     closeButton.style.padding = '0 4px';
 
     // Add hover effect
     closeButton.addEventListener('mouseover', () => {
-        closeButton.style.color = '#000000';
+        closeButton.style.color = theme.text;
     });
     closeButton.addEventListener('mouseout', () => {
-        closeButton.style.color = '#4A4A4A';
+        closeButton.style.color = theme.textSecondary;
     });
 
     // Add click event to remove the container
@@ -708,7 +710,7 @@ function displayPromptUIV2() {
     feedbackText.id = 'octoai-feedback';
     feedbackText.textContent = 'Was this response helpful?';
     feedbackText.style.fontSize = '14px';
-    feedbackText.style.color = '#4A4A4A';
+    feedbackText.style.color = theme.textSecondary;
     feedback.appendChild(feedbackText);
 
     // Add thumbs up and thumbs down buttons
@@ -718,7 +720,7 @@ function displayPromptUIV2() {
     thumbsUp.style.background = 'none';
     thumbsUp.style.cursor = 'pointer';
     thumbsUp.style.fontSize = '16px';
-    thumbsUp.style.color = '#4A4A4A';
+    thumbsUp.style.color = theme.textSecondary;
     feedback.appendChild(thumbsUp);
 
     const thumbsDown = document.createElement('button');
@@ -727,7 +729,7 @@ function displayPromptUIV2() {
     thumbsDown.style.background = 'none';
     thumbsDown.style.cursor = 'pointer';
     thumbsDown.style.fontSize = '16px';
-    thumbsDown.style.color = '#4A4A4A';
+    thumbsDown.style.color = theme.textSecondary;
     feedback.appendChild(thumbsDown);
 
     // Add the feedback section to the container
@@ -743,7 +745,8 @@ function displayPromptUIV2() {
     form.style.padding = '8px 12px';
     form.style.fontFamily = 'Arial, sans-serif';
     form.style.fontSize = '14px';
-    form.style.backgroundColor = '#fff';
+    form.style.backgroundColor = theme.background;
+    form.style.borderColor = theme.border;
 
     // Create an input element
     const input = document.createElement('input');
@@ -754,7 +757,8 @@ function displayPromptUIV2() {
     input.style.border = 'none';
     input.style.outline = 'none';
     input.style.fontSize = '14px';
-    input.style.color = '#333';
+    input.style.color = theme.text;
+    input.style.background = 'rgba(0, 0, 0, 0)';
 
     // Create the submit button
     const submitButton = document.createElement('button');
@@ -764,7 +768,7 @@ function displayPromptUIV2() {
     submitButton.style.border = 'none';
     submitButton.style.backgroundColor = 'transparent';
     submitButton.style.cursor = 'pointer';
-    submitButton.style.color = '#007bff';
+    submitButton.style.color = theme.text;
     submitButton.style.fontSize = '16px';
 
     // Append the input and button to the form
@@ -811,7 +815,7 @@ function displayPromptUIV2() {
         enrichPrompt(originalPrompt)
             .then(prompt => callOctoAi(prompt))
             .then(result =>
-                displayMarkdownResponseV2(result))
+                displayMarkdownResponseV2(result, theme))
             .catch(e =>
                 console.log(e))
             .finally(() => {
@@ -829,7 +833,7 @@ function displayPromptUIV2() {
     const finalNote = document.createElement('p');
     finalNote.textContent = '⚠️ AI responses can be inaccurate.';
     finalNote.style.fontSize = '12px';
-    finalNote.style.color = '#9E9E9E';
+    finalNote.style.color = theme.textSecondary;
     finalNote.style.marginTop = '16px';
     container.appendChild(finalNote);
 
@@ -862,17 +866,17 @@ function hideResponse() {
     }
 }
 
-function displayMarkdownResponseV2(llmResponse) {
+function displayMarkdownResponseV2(llmResponse, theme) {
     const response = document.getElementById('octoai-response');
 
     if (response) {
         response.innerHTML = DOMPurify.sanitize(marked.parse(llmResponse.response));
-        response.prepend(buildMessageBubble(llmResponse.prompt))
+        response.prepend(buildMessageBubble(llmResponse.prompt, theme))
         response.style.display = 'block';
     }
 }
 
-function buildMessageBubble(message) {
+function buildMessageBubble(message, theme) {
     // Create the bubble element
     const bubble = document.createElement('div');
 
@@ -880,12 +884,12 @@ function buildMessageBubble(message) {
     bubble.style.position = 'relative';
     bubble.style.display = 'inline-block';
     bubble.style.padding = '10px 20px';
-    bubble.style.backgroundColor = '#f1f1f1';
+    bubble.style.backgroundColor = theme.text;
     bubble.style.borderRadius = '20px';
     bubble.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
     bubble.style.fontFamily = 'Arial, sans-serif';
     bubble.style.fontSize = '14px';
-    bubble.style.color = '#333';
+    bubble.style.color = theme.backgroundSecondary;
     bubble.textContent = message;
 
     // Create a wrapper div to allow right alignment
@@ -908,6 +912,20 @@ function watchForChange() {
             getSamplePrompts()
                 .then(buttonTexts => displayExamples(buttonTexts));
         }
+    }
+}
+
+function getColors() {
+    return {
+        background: '#1f303f',
+        backgroundSecondary: '#2e475d',
+        backgroundInput: '#111a23',
+        backgroundButton: '#13314b',
+        backgroundSecondaryButton: '#2e475d',
+        text: '#f4f6f8',
+        textSecondary: '#98aaba',
+        link: '#87bfec',
+        border: '#2e475d'
     }
 }
 
