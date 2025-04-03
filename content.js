@@ -1,4 +1,4 @@
-function addAiToPage() {
+function addAiToPage(theme) {
     if (document.getElementById("octoai")) {
         return
     }
@@ -52,11 +52,11 @@ function addAiToPage() {
         #octoai-container h4,
         #octoai-container h5,
         #octoai-container h6 {
-            color: black;
+            color: ${theme.text};
         }
         
         #octoai-container a:hover {
-            color: #87bfec
+            color: ${theme.text};
         }
     `;
     document.head.appendChild(markdownStyles);
@@ -889,7 +889,8 @@ function buildMessageBubble(message, theme) {
     bubble.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
     bubble.style.fontFamily = 'Arial, sans-serif';
     bubble.style.fontSize = '14px';
-    bubble.style.color = theme.backgroundSecondary;
+    bubble.style.color = theme.text;
+    bubble.style.backgroundColor = theme.backgroundSecondary;
     bubble.textContent = message;
 
     // Create a wrapper div to allow right alignment
@@ -930,5 +931,5 @@ function getColors() {
 }
 
 console.log("Loaded OctoAI")
-addAiToPage()
+addAiToPage(getColors())
 watchForChange()
