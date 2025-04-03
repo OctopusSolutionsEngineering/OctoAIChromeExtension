@@ -745,7 +745,7 @@ function displayPromptUIV2(theme) {
     form.style.padding = '8px 12px';
     form.style.fontFamily = 'Arial, sans-serif';
     form.style.fontSize = '14px';
-    form.style.backgroundColor = theme.background;
+    form.style.backgroundColor = theme.backgroundInput;
     form.style.borderColor = theme.border;
 
     // Create an input element
