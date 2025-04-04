@@ -207,12 +207,19 @@ async function getSamplePrompts() {
             throw new Error(`OctoAI API call failed: ${response.error.message}`);
         }
 
-        const matches = response.response
-            .filter(prompt => window.location.href.match(prompt.url))
-            .map(prompt => prompt.prompts);
+        // Get the longest page name where the regex matches
+        const pageName = Object.keys(getPageRegex())
+            .filter(key => window.location.href.match(getPageRegex()[key]))
+            .sort()
+            .pop()
 
-        if (matches.length > 0) {
-            return await processPrompts(matches[0]);
+        const match = response.response
+            .filter(prompt => prompt.name === pageName)
+            .map(prompt => prompt.prompts)
+            .pop()
+
+        if (match) {
+            return await processPrompts(match);
         }
 
         return defaultPrompts
@@ -911,7 +918,7 @@ function watchForChange() {
 
         if (existingContainer) {
             getSamplePrompts()
-                .then(buttonTexts => displayExamples(buttonTexts));
+                .then(buttonTexts => displayExamples(buttonTexts, getColors()));
         }
     }
 }
@@ -930,11 +937,14 @@ function getColors() {
     }
 }
 
+/*
+    Returns an object that maps page URLs to plain english path breadcrumbs.
+ */
 function getPageRegex() {
     return {
         "Dashboard": /https:\/\/.*?\/app#\/Spaces-.*?\/projects\/?(\\?.*|$)/,
         "Project": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/[^?]*\\??.*/,
-        "Project.Step": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/steps(\\??.*)?/,
+        "Project.Step": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/(branches\/([^\/]+)\/)?deployments\/process\/steps(\\??.*)?/,
         "Project.Variables": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/variables/,
         "LibraryVariableSets": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables(\\??.*)?/,
         "LibraryVariableSets.LibraryVariableSet": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/([^\/]+)(\\??.*)?/,

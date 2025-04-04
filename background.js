@@ -1,4 +1,5 @@
-const OctopusServerUrlRegex = /https:\/\/.+?\.(test)?octopus\.app\/app#\/Spaces-.*/
+// A regex that matches the ui of an Octopus server
+const OctopusServerUrlRegex = /https:\/\/.+?\/app#\/Spaces-.*/
 
 chrome.action.onClicked.addListener((tab) => {
 
@@ -67,7 +68,7 @@ chrome.runtime.onMessage.addListener(
                     sendResponse({error: error})
                 });
         } else if (request.action === 'getPrompts') {
-            fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/prompts.json')
+            fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/promptsv2.json')
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
