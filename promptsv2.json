@@ -1,0 +1,146 @@
+[
+  {
+    "url": "Project.Step",
+    "prompts" : [
+      "Describe what the step does.",
+      "Find any potential errors in the script step. If the step is not a script step, you must say so.",
+      "How do I write an Octopus highlight message in Powershell or Bash?"
+    ]
+  },
+  {
+    "url": "LibraryVariableSets.LibraryVariableSet",
+    "prompts" : [
+      "Find project variable values that look like plaintext passwords.",
+      "Find project variable values that look like URLs.",
+      "Find project variable values that look like file paths.",
+      "Find project variable values that look like JSON.",
+      "Find project variable values that look like YAML."
+    ]
+  },
+  {
+    "url": "LibraryVariableSets",
+    "prompts" : [
+      "What is an Octopus library variable set?",
+      "Find Library Variable Set variable values that look like plaintext passwords. Display the name of the library variable set and the details of the variable.",
+      "Find Library Variable Set variable values that look like URLs. Display the name of the library variable set and the details of the variable.",
+      "Find Library Variable Set variable values that look like file paths. Display the name of the library variable set and the details of the variable.",
+      "Find Library Variable Set variable values that look like JSON. Display the name of the library variable set and the details of the variable."
+    ]
+  },
+  {
+    "url": "Project.Variables",
+    "prompts" : [
+      "Find Library Variable Set variable values that look like plaintext passwords.",
+      "Find Library Variable Set variable values that look like URLs.",
+      "Find Library Variable Set variable values that look like file paths.",
+      "Find Library Variable Set variable values that look like JSON.",
+      "Find Library Variable Set variable values that look like YAML."
+    ]
+  },
+  {
+    "url": "Project.Runbooks.Runbook.Run",
+    "prompts" : [
+      "Why did the runbook run fail? If the runbook run didn't fail, say so. Provide suggestions for resolving the issue."
+    ]
+  },
+  {
+    "url": "Project.Deployment",
+    "prompts" : [
+      "Why did the deployment fail? If the deployment didn't fail, say so. Provide suggestions for resolving the issue."
+    ]
+  },
+  {
+    "url": "Project.Release",
+    "prompts" : [
+      "Find deployments of the project \"#{Octopus.Project.Name}\" to the environment \"#{Octopus.Environment[0].Name}\" environment in the space \"#{Octopus.Space.Name}\" from the last week that failed."
+    ]
+  },
+  {
+    "url": "Project",
+    "prompts" : [
+      "What is an Octopus project?",
+      "Describe what the steps do.",
+      "Find unused variables.",
+      "List the packages used by the steps."
+    ]
+  },
+  {
+    "url": "Dashboard",
+    "prompts" : [
+      "What is an Octopus project?",
+      "Check space for unused projects.",
+      "Which projects have steps that deploy to Kubernetes?",
+      "Which projects have the \"Deploy a Release\" step?",
+      "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
+    ]
+  },
+  {
+    "url": "Machines",
+    "prompts" : [
+      "What is an Octopus target?",
+      "Check space for unused targets",
+      "Given all the targets, list all the targets that are insecure because they use HTTP.",
+      "Given all the Kubernetes targets, list all the unique cluster endpoint URLs.",
+      "Given all the Kubernetes targets, list all the unique cluster endpoint URLs that point to AWS."
+    ]
+  },
+  {
+    "url": "Accounts",
+    "prompts" : [
+      "What is an Octopus account?",
+      "Which accounts space are configured with OIDC?",
+      "Which accounts are available from the \"#{Octopus.Environment[0].Name}\" environment?"
+    ]
+  },
+  {
+    "url": "Workers",
+    "prompts" : [
+      "What is an Octopus worker?",
+      "Which workers are are hosted on Kubernetes?",
+      "List the machine policies used by the workers?"
+    ]
+  },
+  {
+    "url": "MachinePolicies",
+    "prompts" : [
+      "What is an Octopus machine policy?",
+      "What do the health check scripts do in the machine policies?"
+    ]
+  },
+  {
+    "url": "Feeds",
+    "prompts" : [
+      "What is an Octopus feed?",
+      "List the feeds that are insecure because they use HTTP.",
+      "Given all the feeds, generate a table that groups feeds by feed type in the rows and has columns for: feed name, feed url."
+    ]
+  },
+  {
+    "url": "GitCredentials",
+    "prompts" : [
+      "What is an Octopus git credential?",
+      "Which Git credentials  have the username \"x-access-token\"?"
+    ]
+  },
+  {
+    "url": "Lifecycles",
+    "prompts" : [
+      "What is an Octopus lifecycle?",
+      "Which lifecycles include the environment \"#{Octopus.Environment[0].Name}\"?"
+    ]
+  },
+  {
+    "url": "ScriptModules",
+    "prompts" : [
+      "What is an Octopus script module?",
+      "What do the script modules do?"
+    ]
+  },
+  {
+    "url": "Tenants",
+    "prompts" : [
+      "What is an Octopus tenant?",
+      "Find any unused tenants."
+    ]
+  }
+]
