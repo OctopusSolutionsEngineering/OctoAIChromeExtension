@@ -1,6 +1,6 @@
 [
   {
-    "url": "Project.Step",
+    "name":"Project.Step",
     "prompts" : [
       "Describe what the step does.",
       "Find any potential errors in the script step. If the step is not a script step, you must say so.",
@@ -8,7 +8,7 @@
     ]
   },
   {
-    "url": "LibraryVariableSets.LibraryVariableSet",
+    "name":"LibraryVariableSets.LibraryVariableSet",
     "prompts" : [
       "Find project variable values that look like plaintext passwords.",
       "Find project variable values that look like URLs.",
@@ -18,7 +18,7 @@
     ]
   },
   {
-    "url": "LibraryVariableSets",
+    "name":"LibraryVariableSets",
     "prompts" : [
       "What is an Octopus library variable set?",
       "Find Library Variable Set variable values that look like plaintext passwords. Display the name of the library variable set and the details of the variable.",
@@ -28,7 +28,7 @@
     ]
   },
   {
-    "url": "Project.Variables",
+    "name":"Project.Variables",
     "prompts" : [
       "Find Library Variable Set variable values that look like plaintext passwords.",
       "Find Library Variable Set variable values that look like URLs.",
@@ -38,25 +38,25 @@
     ]
   },
   {
-    "url": "Project.Runbooks.Runbook.Run",
+    "name":"Project.Runbooks.Runbook.Run",
     "prompts" : [
       "Why did the runbook run fail? If the runbook run didn't fail, say so. Provide suggestions for resolving the issue."
     ]
   },
   {
-    "url": "Project.Deployment",
+    "name":"Project.Deployment",
     "prompts" : [
       "Why did the deployment fail? If the deployment didn't fail, say so. Provide suggestions for resolving the issue."
     ]
   },
   {
-    "url": "Project.Release",
+    "name":"Project.Release",
     "prompts" : [
       "Find deployments of the project \"#{Octopus.Project.Name}\" to the environment \"#{Octopus.Environment[0].Name}\" environment in the space \"#{Octopus.Space.Name}\" from the last week that failed."
     ]
   },
   {
-    "url": "Project",
+    "name":"Project",
     "prompts" : [
       "What is an Octopus project?",
       "Describe what the steps do.",
@@ -65,7 +65,7 @@
     ]
   },
   {
-    "url": "Dashboard",
+    "name":"Dashboard",
     "prompts" : [
       "What is an Octopus project?",
       "Check space for unused projects.",
@@ -75,7 +75,7 @@
     ]
   },
   {
-    "url": "Machines",
+    "name":"Machines",
     "prompts" : [
       "What is an Octopus target?",
       "Check space for unused targets",
@@ -85,7 +85,7 @@
     ]
   },
   {
-    "url": "Accounts",
+    "name":"Accounts",
     "prompts" : [
       "What is an Octopus account?",
       "Which accounts space are configured with OIDC?",
@@ -93,7 +93,7 @@
     ]
   },
   {
-    "url": "Workers",
+    "name":"Workers",
     "prompts" : [
       "What is an Octopus worker?",
       "Which workers are are hosted on Kubernetes?",
@@ -101,14 +101,14 @@
     ]
   },
   {
-    "url": "MachinePolicies",
+    "name":"MachinePolicies",
     "prompts" : [
       "What is an Octopus machine policy?",
       "What do the health check scripts do in the machine policies?"
     ]
   },
   {
-    "url": "Feeds",
+    "name":"Feeds",
     "prompts" : [
       "What is an Octopus feed?",
       "List the feeds that are insecure because they use HTTP.",
@@ -116,28 +116,28 @@
     ]
   },
   {
-    "url": "GitCredentials",
+    "name":"GitCredentials",
     "prompts" : [
       "What is an Octopus git credential?",
       "Which Git credentials  have the username \"x-access-token\"?"
     ]
   },
   {
-    "url": "Lifecycles",
+    "name":"Lifecycles",
     "prompts" : [
       "What is an Octopus lifecycle?",
       "Which lifecycles include the environment \"#{Octopus.Environment[0].Name}\"?"
     ]
   },
   {
-    "url": "ScriptModules",
+    "name":"ScriptModules",
     "prompts" : [
       "What is an Octopus script module?",
       "What do the script modules do?"
     ]
   },
   {
-    "url": "Tenants",
+    "name":"Tenants",
     "prompts" : [
       "What is an Octopus tenant?",
       "Find any unused tenants."
