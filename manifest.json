@@ -11,9 +11,7 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },
   "host_permissions": [
-    "https://aiagent.octopus.com/*",
-    "https://*.octopus.app/*",
-    "https://*.testoctopus.app/*"
+    "*://*/app#/Spaces-*/*"
   ],
   "permissions": [
     "activeTab",
