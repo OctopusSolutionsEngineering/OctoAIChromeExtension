@@ -210,7 +210,7 @@ async function getSamplePrompts() {
         // Get the longest page name where the regex matches
         const pageName = Object.keys(getPageRegex())
             .filter(key => window.location.href.match(getPageRegex()[key]))
-            .sort()
+            .sort((a, b) => a.length - b.length)
             .pop()
 
         const match = response.response
@@ -942,31 +942,33 @@ function getColors() {
  */
 function getPageRegex() {
     return {
-        "Dashboard": /https:\/\/.*?\/app#\/Spaces-.*?\/projects\/?(\\?.*|$)/,
-        "Project": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/[^?]*\\??.*/,
-        "Project.Step": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/(branches\/([^\/]+)\/)?deployments\/process\/steps(\\??.*)?/,
+        "Dashboard": /https:\/\/.*?\/app#\/Spaces-.*?\/projects\/?(\?.*)$/,
+        "Project": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/?(\?.*)$/,
+        "Project.Step": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/(branches\/([^\/]+)\/)?deployments\/process\/steps(\?.*)?/,
         "Project.Variables": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/variables/,
-        "LibraryVariableSets": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables(\\??.*)?/,
-        "LibraryVariableSets.LibraryVariableSet": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/([^\/]+)(\\??.*)?/,
-        "Project.Runbooks.Runbook": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/[^?]*\\??.*/,
-        "Project.Runbooks.Runbook.Run": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/snapshots\/([^\/]*)\/runs\/([^?]*)\\??.*/,
-        "Project.Deployment": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)\/deployments\/([^?]*)\\??.*/,
-        "Project.Release": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)(\/.*)/,
+        "LibraryVariableSets": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/?(\?.*)?/,
+        "LibraryVariableSets.LibraryVariableSet": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/([^\/]+)(\?.*)?/,
+        "Project.Runbooks.Runbook": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/[^?]*(\?.*)?/,
+        "Project.Runbooks.Runbook.Run": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/snapshots\/([^\/]*)\/runs\/([^?]*)\/?(\?.*)?/,
+        "Project.Deployment": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)\/deployments\/([^?]*)\/?(\?.*)?/,
+        "Project.Release": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases$/,
         "Machines": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/machines/,
-        "Machines.Machine": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/machines\/([^\/]+)\/[^?]*(\\??.*)?/,
+        "Machines.Machine": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/machines\/([^\/]+)\/[^?]*(\?.*)?/,
         "Accounts": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/accounts/,
-        "Accounts.Account": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/accounts\/([^\/]+)(\\??.*)?/,
+        "Accounts.Account": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/accounts\/([^\/]+)(\?.*)?/,
         "Workers": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/workers/,
+        "WorkerPools": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/workerpools/,
         "MachinePolicies": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/machinepolicies/,
         "Feeds": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/feeds/,
         "GitCredentials": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/gitcredentials/,
         "Lifecycles": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/lifecycles/,
         "ScriptModules": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/scripts/,
         "Tenants": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/tenants/,
-        "Tenants.Tenant": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/tenants\/([^\/]+)\/[^?]*\\??.*/,
+        "Tenants.Tenant": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/tenants\/([^\/]+)\/[^?]*(\?.*)?/,
         "Certificates": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/certificates/,
         "Environments": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments/,
-        "Environments.Environment": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments\/([^\/]+)(\\??.*)?/
+        "Environments.Environment": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments\/([^\/]+)(\?.*)?/,
+        "Proxies": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/proxies/
     }
 }
 
