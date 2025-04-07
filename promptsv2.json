@@ -46,7 +46,7 @@
   {
     "name":"Project.Deployment",
     "prompts" : [
-      "Help me understand why the deployment failed? If the deployment didn't fail, say so. Provide suggestions for resolving the issue."
+      "Help me understand why the deployment failed. If the deployment didn't fail, say so. Provide suggestions for resolving the issue."
     ]
   },
   {
