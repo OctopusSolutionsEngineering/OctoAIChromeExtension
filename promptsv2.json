@@ -2,7 +2,7 @@
   {
     "name":"Project.Step",
     "prompts" : [
-      "Describe what the step does.",
+      "Help me understand what the step does.",
       "Find any potential errors in the script step. If the step is not a script step, you must say so.",
       "How do I write an Octopus highlight message in Powershell or Bash?"
     ]
@@ -60,7 +60,7 @@
     "prompts" : [
       "What is an Octopus project?",
       "Describe what the steps do.",
-      "Find unused variables.",
+      "Find unused variables to help improve the maintainability of the project.",
       "List the packages used by the steps."
     ]
   },
@@ -68,7 +68,7 @@
     "name":"Dashboard",
     "prompts" : [
       "What is an Octopus project?",
-      "Check space for unused projects.",
+      "Check space for unused projects to help reduce license costs.",
       "Which projects have steps that deploy to Kubernetes?",
       "Which projects have the \"Deploy a Release\" step?",
       "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
@@ -78,7 +78,7 @@
     "name":"Machines",
     "prompts" : [
       "What is an Octopus target?",
-      "Check space for unused targets",
+      "Check space for unused targets to help reduce license costs.",
       "Given all the targets, list all the targets that are insecure because they use HTTP.",
       "Given all the Kubernetes targets, list all the unique cluster endpoint URLs.",
       "Given all the Kubernetes targets, list all the unique cluster endpoint URLs that point to AWS."
@@ -140,7 +140,7 @@
     "name":"Tenants",
     "prompts" : [
       "What is an Octopus tenant?",
-      "Find any unused tenants."
+      "Find any unused tenants to help reduce license costs."
     ]
   }
 ]
