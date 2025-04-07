@@ -4,7 +4,7 @@
     "prompts" : [
       "Help me understand what the step does.",
       "Help me any potential errors in the script step. If the step is not a script step, you must say so.",
-      "How do I write an Octopus highlight message in Powershell or Bash?"
+      "How do I write an Octopus highlight message in Powershell or Bash to make my task summaries more informative?"
     ]
   },
   {
@@ -60,16 +60,16 @@
     "prompts" : [
       "Help me understand what an Octopus project is.",
       "Find unused variables to help improve the maintainability of the project.",
-      "Describe what the steps do.",
-      "List the packages used by the steps."
+      "Help me understand what the project steps do.",
+      "Show me the packages used by the steps."
     ]
   },
   {
     "name":"Project.Process",
     "prompts" : [
-      "Help me understand what an Octopus project is.",
+      "What is an Octopus project?",
       "Find unused variables to help improve the maintainability of the project.",
-      "Help me understand what the project steps do",
+      "Help me understand what the project steps do.",
       "Show me the packages used by the steps."
     ]
   },
@@ -106,7 +106,7 @@
     "prompts" : [
       "What is an Octopus worker?",
       "Which workers are are hosted on Kubernetes?",
-      "List the machine policies used by the workers?"
+      "List the machine policies used by the workers."
     ]
   },
   {
