@@ -944,6 +944,7 @@ function getPageRegex() {
     return {
         "Dashboard": /https:\/\/.*?\/app#\/Spaces-.*?\/projects\/?(\?.*)$/,
         "Project": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/?(\?.*)$/,
+        "Project.Process": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/(([^\/]+)\/)*deployments\/process$/,
         "Project.Step": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/(branches\/([^\/]+)\/)?deployments\/process\/steps(\?.*)?/,
         "Project.Variables": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/variables/,
         "LibraryVariableSets": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/?(\?.*)?/,

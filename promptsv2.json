@@ -3,38 +3,38 @@
     "name":"Project.Step",
     "prompts" : [
       "Help me understand what the step does.",
-      "Find any potential errors in the script step. If the step is not a script step, you must say so.",
+      "Help me any potential errors in the script step. If the step is not a script step, you must say so.",
       "How do I write an Octopus highlight message in Powershell or Bash?"
     ]
   },
   {
     "name":"LibraryVariableSets.LibraryVariableSet",
     "prompts" : [
-      "Find project variable values that look like plaintext passwords.",
-      "Find project variable values that look like URLs.",
-      "Find project variable values that look like file paths.",
-      "Find project variable values that look like JSON.",
-      "Find project variable values that look like YAML."
+      "Help me find Library Variable Set variable values that look like plaintext passwords.",
+      "Help me find Library Variable Set variable values that look like URLs.",
+      "Help me find Library Variable Set variable values that look like file paths.",
+      "Help me find Library Variable Set variable values that look like JSON.",
+      "Help me find Library Variable Set variable values that look like YAML."
     ]
   },
   {
     "name":"LibraryVariableSets",
     "prompts" : [
       "What is an Octopus library variable set?",
-      "Find Library Variable Set variable values that look like plaintext passwords. Display the name of the library variable set and the details of the variable.",
-      "Find Library Variable Set variable values that look like URLs. Display the name of the library variable set and the details of the variable.",
-      "Find Library Variable Set variable values that look like file paths. Display the name of the library variable set and the details of the variable.",
-      "Find Library Variable Set variable values that look like JSON. Display the name of the library variable set and the details of the variable."
+      "Help me find Library Variable Set variable values that look like plaintext passwords. Display the name of the library variable set and the details of the variable.",
+      "Help me find Library Variable Set variable values that look like URLs. Display the name of the library variable set and the details of the variable.",
+      "Help me find Library Variable Set variable values that look like file paths. Display the name of the library variable set and the details of the variable.",
+      "Help me find Library Variable Set variable values that look like JSON. Display the name of the library variable set and the details of the variable."
     ]
   },
   {
     "name":"Project.Variables",
     "prompts" : [
-      "Find Library Variable Set variable values that look like plaintext passwords.",
-      "Find Library Variable Set variable values that look like URLs.",
-      "Find Library Variable Set variable values that look like file paths.",
-      "Find Library Variable Set variable values that look like JSON.",
-      "Find Library Variable Set variable values that look like YAML."
+      "Help me find project variable values that look like plaintext passwords.",
+      "Help me find project variable values that look like URLs.",
+      "Help me find project variable values that look like file paths.",
+      "Help me find project variable values that look like JSON.",
+      "Help me find project variable values that look like YAML."
     ]
   },
   {
@@ -46,7 +46,7 @@
   {
     "name":"Project.Deployment",
     "prompts" : [
-      "Why did the deployment fail? If the deployment didn't fail, say so. Provide suggestions for resolving the issue."
+      "Help me understand why the deployment failed? If the deployment didn't fail, say so. Provide suggestions for resolving the issue."
     ]
   },
   {
@@ -58,10 +58,19 @@
   {
     "name":"Project",
     "prompts" : [
-      "What is an Octopus project?",
-      "Describe what the steps do.",
+      "Help me understand what an Octopus project is.",
       "Find unused variables to help improve the maintainability of the project.",
+      "Describe what the steps do.",
       "List the packages used by the steps."
+    ]
+  },
+  {
+    "name":"Project.Process",
+    "prompts" : [
+      "Help me understand what an Octopus project is.",
+      "Find unused variables to help improve the maintainability of the project.",
+      "Help me understand what the project steps do",
+      "Show me the packages used by the steps."
     ]
   },
   {
