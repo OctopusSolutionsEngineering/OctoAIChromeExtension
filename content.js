@@ -973,16 +973,24 @@ function getPageRegex() {
         "Workers": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/workers/,
         "WorkerPools": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/workerpools/,
         "MachinePolicies": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/machinepolicies/,
+        "MachineProxies": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/proxies/,
         "Feeds": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/feeds/,
         "GitCredentials": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/gitcredentials/,
+        "GitConnections": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/gitconnections/,
         "Lifecycles": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/lifecycles/,
+        "Packages": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/builtinrepository/,
         "ScriptModules": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/scripts/,
+        "StepTemplates": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/steptemplates/,
+        "TagSets": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/tagsets/,
+        "TagSets.TagSet": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/tagsets\/(TagSets-\d+)/,
         "Tenants": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/tenants/,
         "Tenants.Tenant": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/tenants\/([^\/]+)\/[^?]*(\?.*)?/,
         "Certificates": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/certificates/,
         "Environments": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments/,
         "Environments.Environment": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments\/([^\/]+)(\?.*)?/,
-        "Proxies": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/proxies/
+        "Proxies": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/proxies/,
+        "Infrastructure": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/overview/,
+        "BuildInformation": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/buildinformation/
     }
 }
 
