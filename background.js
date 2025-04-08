@@ -37,36 +37,7 @@ chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
 
         if (request.action === 'prompt') {
-            headers = {
-                'Content-Type': 'application/json',
-                'X-Octopus-Server': request.serverUrl
-            }
-
-            if (request.apiKey) {
-                headers['X-Octopus-ApiKey'] = request.apiKey
-            }
-
-            if (request.accessToken) {
-                headers['X-Octopus-AccessToken'] = request.accessToken
-            }
-
-            fetch('https://aiagent.octopus.com/api/form_handler', {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({"messages": [{"content": request.prompt}]})
-            })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
-                    }
-                    return response.text()
-                })
-                .then(text => {
-                    sendResponse({response: text})
-                })
-                .catch(error => {
-                    sendResponse({error: error})
-                });
+            callOctoAIAPI(request, sendResponse, 0)
         } else if (request.action === 'getPrompts') {
             fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/promptsv2.json')
                 .then(response => {
@@ -84,3 +55,41 @@ chrome.runtime.onMessage.addListener(
         return true;
     }
 );
+
+function callOctoAIAPI(request, sendResponse, count) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'X-Octopus-Server': request.serverUrl
+    }
+
+    if (request.apiKey) {
+        headers['X-Octopus-ApiKey'] = request.apiKey
+    }
+
+    if (request.accessToken) {
+        headers['X-Octopus-AccessToken'] = request.accessToken
+    }
+
+    fetch('https://aiagent.octopus.com/api/form_handler', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({"messages": [{"content": request.prompt}]})
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
+            }
+            return response.text()
+        })
+        .then(text => {
+            sendResponse({response: text})
+        })
+        .catch(error => {
+            // retry once
+            if (count >= 1) {
+                sendResponse({error: error})
+            } else {
+                callOctoAIAPI(prompt, serverUrl, apiKey, accessToken, sendResponse, count + 1)
+            }
+        });
+}
