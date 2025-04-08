@@ -183,7 +183,7 @@ async function callOctoAi(prompt) {
             .sendMessage({action: "prompt", prompt: prompt, accessToken: creds.accessToken, apiKey: creds.apiKey, serverUrl: serverUrl});
 
         if (response.error) {
-            throw new Error(`OctoAI API call failed: ${response.error.message}`);
+            return {prompt: prompt, response: "There was an error processing your request. You may try the prompt again."};
         }
 
         return {prompt: prompt, response: convertFromSseResponse(response.response)};
