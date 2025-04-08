@@ -151,5 +151,13 @@
       "What is an Octopus tenant?",
       "Find any unused tenants to help reduce license costs."
     ]
+  },
+  {
+    "name":"Environments",
+    "prompts" : [
+      "What is an Octopus environment?",
+      "How do I create an environment?",
+      "What is the difference between an environment and a tenant?"
+    ]
   }
 ]
