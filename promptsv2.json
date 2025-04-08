@@ -59,6 +59,7 @@
     "name":"Project",
     "prompts" : [
       "Help me understand what an Octopus project is.",
+      "What is the difference between a project and a runbook?",
       "Find unused variables to help improve the maintainability of the project.",
       "Help me understand what the project steps do.",
       "Show me the packages used by the steps."
@@ -158,6 +159,13 @@
       "What is an Octopus environment?",
       "How do I create an environment?",
       "What is the difference between an environment and a tenant?"
+    ]
+  },
+  {
+    "name":"Project.Runbooks.Runbook",
+    "prompts" : [
+      "What is a runbook?",
+      "What is the difference between a runbook and a project?"
     ]
   }
 ]
