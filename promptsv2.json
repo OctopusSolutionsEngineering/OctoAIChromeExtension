@@ -167,5 +167,12 @@
       "What is a runbook?",
       "What is the difference between a runbook and a project?"
     ]
+  },
+  {
+    "name":"Project.Operations",
+    "prompts" : [
+      "What is a runbook?",
+      "What is the difference between a runbook and a project?"
+    ]
   }
 ]
