@@ -949,6 +949,7 @@ function getPageRegex() {
         "Project.Variables": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/variables/,
         "LibraryVariableSets": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/?(\?.*)?/,
         "LibraryVariableSets.LibraryVariableSet": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/([^\/]+)(\?.*)?/,
+        "Project.Runbooks": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations$/,
         "Project.Runbooks.Runbook": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/[^?]*(\?.*)?/,
         "Project.Runbooks.Runbook.Run": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/snapshots\/([^\/]*)\/runs\/([^?]*)\/?(\?.*)?/,
         "Project.Deployment": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)\/deployments\/([^?]*)\/?(\?.*)?/,

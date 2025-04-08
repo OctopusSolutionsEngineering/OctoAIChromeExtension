@@ -162,7 +162,7 @@
     ]
   },
   {
-    "name":"Project.Runbooks.Runbook",
+    "name":"Project.Runbooks",
     "prompts" : [
       "What is a runbook?",
       "What is the difference between a runbook and a project?"
