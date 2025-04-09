@@ -89,7 +89,7 @@ function callOctoAIAPI(request, sendResponse, count) {
             if (count >= 1) {
                 sendResponse({error: error})
             } else {
-                callOctoAIAPI(prompt, serverUrl, apiKey, accessToken, sendResponse, count + 1)
+                callOctoAIAPI(request, sendResponse, count + 1)
             }
         });
 }
