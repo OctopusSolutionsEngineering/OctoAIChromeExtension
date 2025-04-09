@@ -340,7 +340,8 @@
   {
     "name":"Infrastructure",
     "prompts" : [
-      "What is an Octopus target?"
+      "What is an Octopus target?",
+      "Check space for unused targets to help reduce license costs."
     ]
   },
   {
