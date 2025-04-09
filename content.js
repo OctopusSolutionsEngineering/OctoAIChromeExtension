@@ -988,7 +988,6 @@ function getPageRegex() {
         "Certificates": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/certificates/,
         "Environments": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments/,
         "Environments.Environment": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments\/([^\/]+)(\?.*)?/,
-        "Proxies": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/proxies/,
         "Infrastructure": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/overview/,
         "BuildInformation": /https:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/buildinformation/
     }

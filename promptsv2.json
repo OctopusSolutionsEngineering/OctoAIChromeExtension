@@ -331,7 +331,7 @@
     ]
   },
   {
-    "name":"Proxies",
+    "name":"MachineProxies",
     "prompts" : [
       "What is an Octopus proxy?",
       "What are the different types of proxies Octopus can use?"
