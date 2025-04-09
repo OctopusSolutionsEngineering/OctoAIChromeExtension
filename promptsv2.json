@@ -1,5 +1,75 @@
 [
   {
+    "name":"Dashboard",
+    "prompts" : [
+      "What is an Octopus project?",
+      "Check space for unused projects to help reduce license costs.",
+      "Which projects have steps that deploy to Kubernetes?",
+      "Which projects have the \"Deploy a Release\" step?",
+      "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
+    ]
+  },
+  {
+    "name":"Tasks",
+    "prompts" : [
+      "What is an Octopus task?",
+      "What is a task cap?"
+    ]
+  },
+  {
+    "name":"Project",
+    "prompts" : [
+      "Help me understand what an Octopus project is.",
+      "What is the difference between a project and a runbook?",
+      "Find unused variables to help improve the maintainability of the project.",
+      "Help me understand what the project steps do.",
+      "Show me the packages used by the steps."
+    ]
+  },
+  {
+    "name":"Project.Settings",
+    "prompts" : [
+      "How to I configure the project release notes template?",
+      "What is guided failure mode?"
+    ]
+  },
+  {
+    "name":"Project.VersionControl",
+    "prompts" : [
+      "How do I configure config as code (CaC)?",
+      "What are the benefits of config as code (CaC)?"
+    ]
+  },
+  {
+    "name":"Project.ITSMProviders",
+    "prompts" : [
+      "How to I configure an ITSM provider?",
+      "What ITSM providers does Octopus support?"
+    ]
+  },
+  {
+    "name":"Project.Channels",
+    "prompts" : [
+      "What is an Octopus channel?",
+      "What are channels used for?"
+    ]
+  },
+  {
+    "name":"Project.Triggers",
+    "prompts" : [
+      "What is an Octopus trigger?"
+    ]
+  },
+  {
+    "name":"Project.Process",
+    "prompts" : [
+      "What is an Octopus project?",
+      "Find unused variables to help improve the maintainability of the project.",
+      "Help me understand what the project steps do.",
+      "Show me the packages used by the steps."
+    ]
+  },
+  {
     "name":"Project.Step",
     "prompts" : [
       "Help me understand what the step does.",
@@ -8,13 +78,45 @@
     ]
   },
   {
-    "name":"LibraryVariableSets.LibraryVariableSet",
+    "name":"Project.Variables",
     "prompts" : [
-      "Help me find Library Variable Set variable values that look like plaintext passwords.",
-      "Help me find Library Variable Set variable values that look like URLs.",
-      "Help me find Library Variable Set variable values that look like file paths.",
-      "Help me find Library Variable Set variable values that look like JSON.",
-      "Help me find Library Variable Set variable values that look like YAML."
+      "Help me find project variable values that look like plaintext passwords.",
+      "Help me find project variable values that look like URLs.",
+      "Help me find project variable values that look like file paths.",
+      "Help me find project variable values that look like JSON.",
+      "Help me find project variable values that look like YAML."
+    ]
+  },
+  {
+    "name":"Project.AllVariables",
+    "prompts" : [
+      "Help me find project variable values that look like plaintext passwords.",
+      "Help me find project variable values that look like URLs.",
+      "Help me find project variable values that look like file paths.",
+      "Help me find project variable values that look like JSON.",
+      "Help me find project variable values that look like YAML."
+    ]
+  },
+  {
+    "name":"Project.PreviewVariables",
+    "prompts" : [
+      "Help me find project variable values that look like plaintext passwords.",
+      "Help me find project variable values that look like URLs.",
+      "Help me find project variable values that look like file paths.",
+      "Help me find project variable values that look like JSON.",
+      "Help me find project variable values that look like YAML."
+    ]
+  },
+  {
+    "name":"Project.VariableSets",
+    "prompts" : [
+      "What is a library variable set?"
+    ]
+  },
+  {
+    "name":"Project.TenantVariables",
+    "prompts" : [
+      "What is a tenant project variable?"
     ]
   },
   {
@@ -28,13 +130,40 @@
     ]
   },
   {
-    "name":"Project.Variables",
+    "name":"LibraryVariableSets.LibraryVariableSet",
     "prompts" : [
-      "Help me find project variable values that look like plaintext passwords.",
-      "Help me find project variable values that look like URLs.",
-      "Help me find project variable values that look like file paths.",
-      "Help me find project variable values that look like JSON.",
-      "Help me find project variable values that look like YAML."
+      "Help me find Library Variable Set variable values that look like plaintext passwords.",
+      "Help me find Library Variable Set variable values that look like URLs.",
+      "Help me find Library Variable Set variable values that look like file paths.",
+      "Help me find Library Variable Set variable values that look like JSON.",
+      "Help me find Library Variable Set variable values that look like YAML."
+    ]
+  },
+  {
+    "name":"Project.Operations",
+    "prompts" : [
+      "What is a runbook?",
+      "What is the difference between a runbook and a project?"
+    ]
+  },
+  {
+    "name":"Project.Operations.Triggers",
+    "prompts" : [
+      "What are runbook triggers?"
+    ]
+  },
+  {
+    "name":"Project.Runbooks",
+    "prompts" : [
+      "What is a runbook?",
+      "What is the difference between a runbook and a project?"
+    ]
+  },
+  {
+    "name":"Project.Runbooks.Runbook",
+    "prompts" : [
+      "What is a runbook?",
+      "What is the difference between a runbook and a project?"
     ]
   },
   {
@@ -56,35 +185,6 @@
     ]
   },
   {
-    "name":"Project",
-    "prompts" : [
-      "Help me understand what an Octopus project is.",
-      "What is the difference between a project and a runbook?",
-      "Find unused variables to help improve the maintainability of the project.",
-      "Help me understand what the project steps do.",
-      "Show me the packages used by the steps."
-    ]
-  },
-  {
-    "name":"Project.Process",
-    "prompts" : [
-      "What is an Octopus project?",
-      "Find unused variables to help improve the maintainability of the project.",
-      "Help me understand what the project steps do.",
-      "Show me the packages used by the steps."
-    ]
-  },
-  {
-    "name":"Dashboard",
-    "prompts" : [
-      "What is an Octopus project?",
-      "Check space for unused projects to help reduce license costs.",
-      "Which projects have steps that deploy to Kubernetes?",
-      "Which projects have the \"Deploy a Release\" step?",
-      "Create a sample terraform module with:\nthree environments called \"Development\", \"Test\", and \"Production\"\na docker feed pointing to dockerhub\nthree tenants called \"US\", \"Europe\", and \"Asia\"\na project group called \"Web App\"\na project called \"Audits\" with a single powershell script step that echoes \"Hello World\"\nand all tenants linked to the project and all environments"
-    ]
-  },
-  {
     "name":"Machines",
     "prompts" : [
       "What is an Octopus target?",
@@ -92,6 +192,12 @@
       "Given all the targets, list all the targets that are insecure because they use HTTP.",
       "Given all the Kubernetes targets, list all the unique cluster endpoint URLs.",
       "Given all the Kubernetes targets, list all the unique cluster endpoint URLs that point to AWS."
+    ]
+  },
+  {
+    "name":"Machines.Machine",
+    "prompts" : [
+      "What is an Octopus target?"
     ]
   },
   {
@@ -103,11 +209,23 @@
     ]
   },
   {
+    "name":"Accounts.Account",
+    "prompts" : [
+      "What is an Octopus account?"
+    ]
+  },
+  {
     "name":"Workers",
     "prompts" : [
       "What is an Octopus worker?",
       "Which workers are are hosted on Kubernetes?",
       "List the machine policies used by the workers."
+    ]
+  },
+  {
+    "name":"WorkerPools",
+    "prompts" : [
+      "What is an Octopus worker pool?"
     ]
   },
   {
@@ -133,10 +251,22 @@
     ]
   },
   {
+    "name":"GitConnections",
+    "prompts" : [
+      "What is the Octopus GitHub app?"
+    ]
+  },
+  {
     "name":"Lifecycles",
     "prompts" : [
       "What is an Octopus lifecycle?",
       "Which lifecycles include the environment \"#{Octopus.Environment[0].Name}\"?"
+    ]
+  },
+  {
+    "name":"Packages",
+    "prompts" : [
+      "What is the Octopus built-in feed?"
     ]
   },
   {
@@ -147,10 +277,41 @@
     ]
   },
   {
+    "name":"StepTemplates",
+    "prompts" : [
+      "What is an Octopus step template?"
+    ]
+  },
+  {
+    "name":"TagSets",
+    "prompts" : [
+      "What is an tenant tag set?"
+    ]
+  },
+  {
+    "name":"TagSets.TagSet",
+    "prompts" : [
+      "What is an tenant tag set?"
+    ]
+  },
+  {
     "name":"Tenants",
     "prompts" : [
       "What is an Octopus tenant?",
       "Find any unused tenants to help reduce license costs."
+    ]
+  },
+  {
+    "name":"Tenants.Tenant",
+    "prompts" : [
+      "What is an Octopus tenant?",
+      "Find any unused tenants to help reduce license costs."
+    ]
+  },
+  {
+    "name":"Certificates",
+    "prompts" : [
+      "What is an Octopus certificate?"
     ]
   },
   {
@@ -162,24 +323,30 @@
     ]
   },
   {
-    "name":"Project.Runbooks",
+    "name":"Environments.Environment",
     "prompts" : [
-      "What is a runbook?",
-      "What is the difference between a runbook and a project?"
+      "What is an Octopus environment?",
+      "How do I create an environment?",
+      "What is the difference between an environment and a tenant?"
     ]
   },
   {
-    "name":"Project.Runbooks.Runbook",
+    "name":"Proxies",
     "prompts" : [
-      "What is a runbook?",
-      "What is the difference between a runbook and a project?"
+      "What is an Octopus proxy?",
+      "What are the different types of proxies Octopus can use?"
     ]
   },
   {
-    "name":"Project.Operations",
+    "name":"Infrastructure",
     "prompts" : [
-      "What is a runbook?",
-      "What is the difference between a runbook and a project?"
+      "What is an Octopus target?"
+    ]
+  },
+  {
+    "name":"BuildInformation",
+    "prompts" : [
+      "What is build information?"
     ]
   }
 ]
