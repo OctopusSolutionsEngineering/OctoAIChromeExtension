@@ -711,7 +711,7 @@ function displayPromptUIV2(theme) {
     message.id = 'octoai-response';
     message.style.display = 'none';
     message.style.maxHeight = '300px';
-    message.style.overflowY = 'scroll';
+    message.style.overflowY = 'auto';
     message.style.margin = '0 0 16px 0';
     container.appendChild(message);
 
