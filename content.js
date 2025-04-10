@@ -925,6 +925,8 @@ function displayMarkdownResponseV2(llmResponse, theme) {
         response.prepend(buildMessageBubble(llmResponse.prompt, theme))
         response.style.display = 'block';
         feedback.style.display = 'block';
+        feedback.classList.remove('octo-ai-hidden');
+        feedback.classList.remove('octo-ai-fade-out');
         thumbsUp.disabled = false;
         thumbsDown.disabled = false;
     }
