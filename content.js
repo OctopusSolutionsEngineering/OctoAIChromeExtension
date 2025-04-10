@@ -5,6 +5,13 @@ function addAiToPage(theme) {
 
     const styleSheet = document.createElement("style");
     styleSheet.textContent = `
+.octo-ai-fade-out {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.octo-ai-hidden {
+  display: none;
+}
 @keyframes siriWave {
     0% {
         transform: scale(0.95);
@@ -723,6 +730,7 @@ function displayPromptUIV2(theme) {
 
     // Add thumbs up and thumbs down buttons
     const thumbsUp = document.createElement('button');
+    thumbsUp.id = 'octo-ai-thumbs-up';
     thumbsUp.textContent = '👍';
     thumbsUp.style.border = 'none';
     thumbsUp.style.background = 'none';
@@ -732,6 +740,7 @@ function displayPromptUIV2(theme) {
     feedback.appendChild(thumbsUp);
 
     const thumbsDown = document.createElement('button');
+    thumbsDown.id = 'octo-ai-thumbs-down';
     thumbsDown.textContent = '👎';
     thumbsDown.style.border = 'none';
     thumbsDown.style.background = 'none';
@@ -886,7 +895,9 @@ function hideResponse() {
 function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
     thumbsUp.onclick = function(event) {
         event.preventDefault();
-        feedback.style.display = 'none';
+        thumbsUp.disabled = true;
+        thumbsDown.disabled = true;
+        fadeOutAndHide(feedback);
         console.log("Feedback thumbs up");
         createOctopusApiKey()
             .then(creds => chrome.runtime.sendMessage({action: "feedback", prompt: prompt, accessToken: creds.accessToken, thumbsUp: true}))
@@ -894,7 +905,9 @@ function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
 
     thumbsDown.onclick = function(event) {
         event.preventDefault();
-        feedback.style.display = 'none';
+        thumbsUp.disabled = true;
+        thumbsDown.disabled = true;
+        fadeOutAndHide(feedback);
         console.log("Feedback thumbs down");
         createOctopusApiKey()
             .then(creds => chrome.runtime.sendMessage({action: "feedback", prompt: prompt, accessToken: creds.accessToken, thumbsUp: false}))
@@ -904,12 +917,16 @@ function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
 function displayMarkdownResponseV2(llmResponse, theme) {
     const response = document.getElementById('octoai-response');
     const feedback = document.getElementById('octoai-feedback');
+    const thumbsUp = document.getElementById('octo-ai-thumbs-up');
+    const thumbsDown = document.getElementById('octo-ai-thumbs-down');
 
     if (response) {
         response.innerHTML = DOMPurify.sanitize(marked.parse(llmResponse.response));
         response.prepend(buildMessageBubble(llmResponse.prompt, theme))
         response.style.display = 'block';
         feedback.style.display = 'block';
+        thumbsUp.disabled = false;
+        thumbsDown.disabled = false;
     }
 }
 
@@ -965,6 +982,13 @@ function getColors() {
         link: '#87bfec',
         border: '#2e475d'
     }
+}
+
+function fadeOutAndHide(element) {
+    element.classList.add('octo-ai-fade-out');
+    element.addEventListener('transitionend', () => {
+        element.classList.add('octo-ai-hidden');
+    }, { once: true });
 }
 
 /*
