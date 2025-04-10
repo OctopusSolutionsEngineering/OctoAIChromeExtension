@@ -710,11 +710,12 @@ function displayPromptUIV2(theme) {
 
     // Create the feedback section
     const feedback = document.createElement('div');
+    feedback.style.marginBottom = '8px';
     feedback.style.display = 'none';
+    feedback.id = 'octoai-feedback';
 
     // Add the "Was this response helpful?" text
     const feedbackText = document.createElement('span');
-    feedbackText.id = 'octoai-feedback';
     feedbackText.textContent = 'Was this response helpful?';
     feedbackText.style.fontSize = '14px';
     feedbackText.style.color = theme.textSecondary;
@@ -820,9 +821,13 @@ function displayPromptUIV2(theme) {
         hideResponse()
 
         enrichPrompt(originalPrompt)
-            .then(prompt => callOctoAi(prompt))
-            .then(result =>
-                displayMarkdownResponseV2(result, theme))
+            .then(prompt => {
+                addFeedbackListener(thumbsUp, thumbsDown, prompt);
+                return callOctoAi(prompt);
+            })
+            .then(result => {
+                displayMarkdownResponseV2(result, theme);
+            })
             .catch(e =>
                 console.log(e))
             .finally(() => {
@@ -866,20 +871,43 @@ function showExamples() {
 
 function hideResponse() {
     const response = document.getElementById('octoai-response');
+    const feedback = document.getElementById('octoai-feedback');
 
     if (response) {
         response.innerHTML = '';
-        response.style.display = 'node';
+        response.style.display = 'none';
+    }
+
+    if (feedback) {
+        feedback.style.display = 'none';
+    }
+}
+
+function addFeedbackListener(thumbsUp, thumbsDown, prompt) {
+    thumbsUp.onclick = function(event) {
+        event.preventDefault();
+        console.log("Feedback thumbs up");
+        createOctopusApiKey()
+            .then(creds => chrome.runtime.sendMessage({action: "feedback", prompt: prompt, accessToken: creds.accessToken, thumbsUp: true}))
+    }
+
+    thumbsDown.onclick = function(event) {
+        event.preventDefault();
+        console.log("Feedback thumbs down");
+        createOctopusApiKey()
+            .then(creds => chrome.runtime.sendMessage({action: "feedback", prompt: prompt, accessToken: creds.accessToken, thumbsUp: false}))
     }
 }
 
 function displayMarkdownResponseV2(llmResponse, theme) {
     const response = document.getElementById('octoai-response');
+    const feedback = document.getElementById('octoai-feedback');
 
     if (response) {
         response.innerHTML = DOMPurify.sanitize(marked.parse(llmResponse.response));
         response.prepend(buildMessageBubble(llmResponse.prompt, theme))
         response.style.display = 'block';
+        feedback.style.display = 'block';
     }
 }
 

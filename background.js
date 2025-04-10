@@ -38,6 +38,8 @@ chrome.runtime.onMessage.addListener(
 
         if (request.action === 'prompt') {
             callOctoAIAPI(request, sendResponse, 0)
+        } else if (request.action == 'feedback') {
+            addFeedback(request)
         } else if (request.action === 'getPrompts') {
             fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/promptsv2.json')
                 .then(response => {
@@ -56,19 +58,35 @@ chrome.runtime.onMessage.addListener(
     }
 );
 
+function addFeedback(request) {
+    const headers= {
+        'Authorization': `Bearer ${request.accessToken}`,
+    }
+
+    const feedback = {
+        "data": {
+            "type": "feedback",
+            "attributes": {
+                "prompt": request.prompt,
+                "comment": request.comment,
+                "thumbsUp": request.thumbsUp,
+            },
+        }
+    }
+
+    fetch('https://feedback-fsevb4dmecepamh0.a02.azurefd.net/api/feedback', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(feedback)
+    })
+        .catch(error => {
+            // Oh well, this is just a best effort
+            console.log(error)
+        });
+}
+
 function callOctoAIAPI(request, sendResponse, count) {
-    const headers = {
-        'Content-Type': 'application/json',
-        'X-Octopus-Server': request.serverUrl
-    }
-
-    if (request.apiKey) {
-        headers['X-Octopus-ApiKey'] = request.apiKey
-    }
-
-    if (request.accessToken) {
-        headers['X-Octopus-AccessToken'] = request.accessToken
-    }
+    const headers = buildHeaders(request)
 
     fetch('https://aiagent.octopus.com/api/form_handler', {
         method: 'POST',
@@ -92,4 +110,21 @@ function callOctoAIAPI(request, sendResponse, count) {
                 callOctoAIAPI(request, sendResponse, count + 1)
             }
         });
+}
+
+function buildHeaders(request) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'X-Octopus-Server': request.serverUrl
+    }
+
+    if (request.apiKey) {
+        headers['X-Octopus-ApiKey'] = request.apiKey
+    }
+
+    if (request.accessToken) {
+        headers['X-Octopus-AccessToken'] = request.accessToken
+    }
+
+    return headers
 }
