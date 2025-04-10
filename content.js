@@ -822,7 +822,7 @@ function displayPromptUIV2(theme) {
 
         enrichPrompt(originalPrompt)
             .then(prompt => {
-                addFeedbackListener(thumbsUp, thumbsDown, prompt);
+                addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt);
                 return callOctoAi(prompt);
             })
             .then(result => {
@@ -883,9 +883,10 @@ function hideResponse() {
     }
 }
 
-function addFeedbackListener(thumbsUp, thumbsDown, prompt) {
+function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
     thumbsUp.onclick = function(event) {
         event.preventDefault();
+        feedback.style.display = 'none';
         console.log("Feedback thumbs up");
         createOctopusApiKey()
             .then(creds => chrome.runtime.sendMessage({action: "feedback", prompt: prompt, accessToken: creds.accessToken, thumbsUp: true}))
@@ -893,6 +894,7 @@ function addFeedbackListener(thumbsUp, thumbsDown, prompt) {
 
     thumbsDown.onclick = function(event) {
         event.preventDefault();
+        feedback.style.display = 'none';
         console.log("Feedback thumbs down");
         createOctopusApiKey()
             .then(creds => chrome.runtime.sendMessage({action: "feedback", prompt: prompt, accessToken: creds.accessToken, thumbsUp: false}))
