@@ -300,7 +300,8 @@
     "name":"Tenants",
     "prompts" : [
       "What is an Octopus tenant?",
-      "Find any unused tenants to help reduce license costs."
+      "Find any unused tenants to help reduce license costs.",
+      "Suggest tenant tags to make tenants more manageable"
     ]
   },
   {
