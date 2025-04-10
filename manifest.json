@@ -1,7 +1,7 @@
 {
   "name": "OctoAI",
   "description": "Octopus AI Integration Testing",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "manifest_version": 3,
   "action": {
     "default_icon": "octopusai.png",

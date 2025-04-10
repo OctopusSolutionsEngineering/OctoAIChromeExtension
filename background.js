@@ -91,7 +91,8 @@ function callOctoAIAPI(request, sendResponse, count) {
     fetch('https://aiagent.octopus.com/api/form_handler', {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify({"messages": [{"content": request.prompt}]})
+        body: JSON.stringify({"messages": [{"content": request.prompt}]}),
+        signal: AbortSignal.timeout(60000)
     })
         .then(response => {
             if (!response.ok) {
