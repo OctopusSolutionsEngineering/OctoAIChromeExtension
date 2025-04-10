@@ -205,6 +205,7 @@
     "name":"Accounts",
     "prompts" : [
       "What is an Octopus account?",
+      "Find accounts with long lived credentials to improve security.",
       "Which accounts space are configured with OIDC?",
       "Which accounts are available from the \"#{Octopus.Environment[0].Name}\" environment?"
     ]
