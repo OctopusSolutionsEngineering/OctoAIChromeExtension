@@ -888,6 +888,7 @@ function displayPromptUIV2(theme) {
     input.style.fontSize = '14px';
     input.style.color = theme.text;
     input.style.background = 'rgba(0, 0, 0, 0)';
+    input.value = localStorage.getItem("octoai-prompt") || '';
 
     // Create the submit button
     const submitButton = document.createElement('button');
@@ -977,7 +978,7 @@ function submitPrompt(systemPrompt, originalPrompt) {
         .finally(() => {
                 clearInterval(thinkingAnimation)
                 input.disabled = false
-                input.value = ""
+                input.value = localStorage.getItem("octoai-prompt");
                 submitButton.disabled = false
                 submitButton.style.cursor = 'pointer';
                 showExamples()
