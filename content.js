@@ -177,23 +177,29 @@ function convertFromSseResponse(sseResponse) {
         .join('\n');
 }
 
-async function callOctoAi(prompt) {
+async function callOctoAi(systemPrompt, prompt) {
+    console.log(systemPrompt)
     console.log(prompt)
 
     try {
+        const combinedPrompt = [systemPrompt, prompt]
+            .filter(p => p.trim())
+            .map(p => p.trim())
+            .join("\n");
+
         // Get the server URL from the current location
         const serverUrl = window.location.origin;
 
         const creds = await createOctopusApiKey();
 
         const response = await chrome.runtime
-            .sendMessage({action: "prompt", prompt: prompt, accessToken: creds.accessToken, apiKey: creds.apiKey, serverUrl: serverUrl});
+            .sendMessage({action: "prompt", prompt: combinedPrompt, accessToken: creds.accessToken, apiKey: creds.apiKey, serverUrl: serverUrl});
 
         if (response.error) {
-            return {prompt: prompt, response: "There was an error processing your request. You may try the prompt again."};
+            return {prompt: prompt, systemPrompt: systemPrompt, response: "There was an error processing your request. You may try the prompt again."};
         }
 
-        return {prompt: prompt, response: convertFromSseResponse(response.response)};
+        return {prompt: prompt, systemPrompt: systemPrompt, response: convertFromSseResponse(response.response)};
     } catch (error) {
         console.error(error.message);
         throw error;
@@ -233,9 +239,17 @@ async function getLocalPrompts() {
 
             const prompts = []
             for (let i = 0; i < maxPrompts; i++) {
-                const prompt = octoAiLvsVariables.filter(v => v.Name.trim() === pageName + "[" + i + "].Prompt");
-                if (prompt.length > 0) {
-                    prompts.push(prompt[0].Value);
+                const prompt = octoAiLvsVariables
+                    .filter(v => v.Name.trim() === pageName + "[" + i + "].Prompt")
+                    .map(v => v.Value)
+                    .pop();
+                const systemPrompt = octoAiLvsVariables
+                    .filter(v => v.Name.trim() === pageName + "[" + i + "].SystemPrompt")
+                    .map(v => v.Value)
+                    .pop();
+
+                if (prompt) {
+                    prompts.push({"prompt": prompt, "systemPrompt": systemPrompt});
                 }
             }
 
@@ -259,34 +273,20 @@ function getPageName() {
 
 async function getSamplePrompts() {
     const defaultPrompts = [
-        "List the projects in the Default space",
-        "Generate a terraform module with three environments and a project called \"My Application\"",
-        "Help"
+        {prompt: "List the projects in the Default space"},
+        {prompt: "Generate a terraform module with three environments and a project called \"My Application\""},
+        {prompt: "Help"}
     ]
 
-    const localPrompts = await getLocalPrompts();
-
-    if (localPrompts && localPrompts.length > 0) {
-        return localPrompts;
-    }
-
     try {
-        const response = await chrome.runtime.sendMessage({action: "getPrompts"});
+        const localPrompts = await getLocalPrompts();
 
-        if (response.error) {
-            throw new Error(`OctoAI API call failed: ${response.error.message}`);
-        }
+        const suggestedPrompts = await getSuggestedPrompts();
 
-        // Get the longest page name where the regex matches
-        const pageName = getPageName();
+        const prompts = arrayNotNullOrEmpty(localPrompts) || arrayNotNullOrEmpty(suggestedPrompts) || defaultPrompts;
 
-        const match = response.response
-            .filter(prompt => prompt.name === pageName)
-            .map(prompt => prompt.prompts)
-            .pop();
-
-        if (match) {
-            return await processPrompts(match);
+        if (prompts) {
+            return await processPrompts(prompts);
         }
 
         return defaultPrompts;
@@ -294,6 +294,30 @@ async function getSamplePrompts() {
         console.error(error.message);
         return defaultPrompts;
     }
+}
+
+function arrayNotNullOrEmpty(array) {
+    if (!array) {
+        return null
+    }
+
+    return array.length > 0 ? array : null
+}
+
+async function getSuggestedPrompts() {
+    const response = await chrome.runtime.sendMessage({action: "getPrompts"});
+
+    if (response.error) {
+        throw new Error(`OctoAI API call failed: ${response.error.message}`);
+    }
+
+    // Get the longest page name where the regex matches
+    const pageName = getPageName();
+
+    return response.response
+        .filter(prompt => prompt.name === pageName)
+        .map(prompt => prompt.prompts)
+        .flatMap(prompts => prompts.map(prompt => {{return {prompt: prompt}}}));
 }
 
 async function getFirstEnvironmentName() {
@@ -559,25 +583,37 @@ async function processPrompts(prompts) {
     const releaseVersion = await getReleaseVersion();
     const runbookRun = await getRunbookRun();
     return prompts
-        .map(prompt => prompt.replace("#{Octopus.Space.Name}", spaceName))
-        .map(prompt => prompt.replace("#{Octopus.Worker.Name}", workerName))
-        .map(prompt => prompt.replace("#{Octopus.Environment.Name}", environmentName))
-        .map(prompt => prompt.replace("#{Octopus.Lifecycle.Name}", lifecycle))
-        .map(prompt => prompt.replace("#{Octopus.GitCredential.Name}", gitCredential))
-        .map(prompt => prompt.replace("#{Octopus.Feed.Name}", feedName))
-        .map(prompt => prompt.replace("#{Octopus.Certificate.Name}", certificateName))
-        .map(prompt => prompt.replace("#{Octopus.WorkerPool.Name}", workerPoolName))
-        .map(prompt => prompt.replace("#{Octopus.Tenant.Name}", tenantName))
-        .map(prompt => prompt.replace("#{Octopus.Account.Name}", accountName))
-        .map(prompt => prompt.replace("#{Octopus.Machine.Name}", machineName))
-        .map(prompt => prompt.replace("#{Octopus.LibraryVariableSet.Name}", lbsSet))
-        .map(prompt => prompt.replace("#{Octopus.Project.Name}", projectName))
-        .map(prompt => prompt.replace("#{Octopus.Runbook.Name}", runbookName))
-        .map(prompt => prompt.replace("#{Octopus.Step.Name}", stepName))
-        .map(prompt => prompt.replace("#{Octopus.Deployment.Id}", deploymentVersion))
-        .map(prompt => prompt.replace("#{Octopus.RunbookRun.Id}", runbookRun))
-        .map(prompt => prompt.replace("#{Octopus.Release.Number}", releaseVersion))
-        .map(prompt => prompt.replace("#{Octopus.Environment[0].Name}", firstEnvironmentName));
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Space.Name}", spaceName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Space.Name}", spaceName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Worker.Name}", workerName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Worker.Name}", workerName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Environment.Name}", environmentName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Environment.Name}", environmentName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Lifecycle.Name}", lifecycle), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Lifecycle.Name}", lifecycle)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.GitCredential.Name}", gitCredential), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.GitCredential.Name}", gitCredential)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Feed.Name}", feedName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Feed.Name}", feedName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Certificate.Name}", certificateName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Certificate.Name}", certificateName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.WorkerPool.Name}", workerPoolName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.WorkerPool.Name}", workerPoolName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Tenant.Name}", tenantName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Tenant.Name}", tenantName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Account.Name}", accountName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Account.Name}", accountName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Machine.Name}", machineName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Machine.Name}", machineName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.LibraryVariableSet.Name}", lbsSet), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.LibraryVariableSet.Name}", lbsSet)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Project.Name}", projectName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Project.Name}", projectName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Runbook.Name}", runbookName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Runbook.Name}", runbookName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Step.Name}", stepName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Step.Name}", stepName)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Deployment.Id}", deploymentVersion), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Deployment.Id}", deploymentVersion)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.RunbookRun.Id}", runbookRun), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.RunbookRun.Id}", runbookRun)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Release.Number}", releaseVersion), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Release.Number}", releaseVersion)}})
+        .map(p => {return {"prompt": replaceMarker(p.prompt, "#{Octopus.Environment[0].Name}", firstEnvironmentName), "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Environment[0].Name}", firstEnvironmentName)}});
+}
+
+function replaceMarker(prompt, marker, replacement) {
+    if (!prompt) {
+        return "";
+    }
+
+    if (!marker) {
+        return prompt;
+    }
+    
+    return prompt.replace(marker, replacement);
 }
 
 /**
@@ -628,12 +664,12 @@ async function displayAIChat() {
         hidePromptUI()
     } else {
         displayPromptUIV2(getColors());
-        const buttonTexts = await getSamplePrompts();
-        displayExamples(buttonTexts, getColors());
+        const prompts = await getSamplePrompts();
+        displayExamples(prompts, getColors());
     }
 }
 
-function displayExamples(buttons, theme) {
+function displayExamples(prompts, theme) {
     const examplesContainer = document.getElementById('octoai-examples');
 
     if (!examplesContainer) {
@@ -650,10 +686,10 @@ function displayExamples(buttons, theme) {
     examplesContainer.appendChild(examplesHeader);
 
     // Function to create a button
-    function createButton(text, theme) {
+    function createButton(prompt, theme) {
         const button = document.createElement('div');
-        button.textContent = text;
-        button.title = text;
+        button.textContent = prompt.prompt;
+        button.title = prompt.prompt;
         button.style.display = 'block';
         button.style.width = '100%';
         button.style.padding = '10px';
@@ -678,21 +714,33 @@ function displayExamples(buttons, theme) {
             button.style.backgroundColor = theme.backgroundSecondaryButton;
         });
 
-        // Add click event
-        button.addEventListener('click', () => {
-            const input = document.getElementById('octoai-input');
-            if (input) {
-                input.value = text;
-                input.focus();
-            }
-        });
+        if (prompt.systemPrompt) {
+            button.textContent = "SYSTEM: " + prompt.prompt;
+
+            // Add click event
+            button.addEventListener('click', () => {
+                submitPrompt(prompt.systemPrompt, prompt.prompt);
+            });
+
+        } else {
+            button.textContent = prompt.prompt;
+
+            // Add click event
+            button.addEventListener('click', () => {
+                const input = document.getElementById('octoai-input');
+                if (input) {
+                    input.value = prompt.prompt;
+                    input.focus();
+                }
+            });
+        }
 
         return button;
     }
 
     // Generate buttons and append them to the container
-    buttons.forEach(text => {
-        const button = createButton(text, getColors());
+    prompts.forEach(prompt => {
+        const button = createButton(prompt, getColors());
         examplesContainer.appendChild(button);
     });
 }
@@ -869,49 +917,7 @@ function displayPromptUIV2(theme) {
     // Add a submit event listener
     form.addEventListener('submit', (event) => {
         event.preventDefault();
-
-        const originalPrompt = input.value.trim();
-
-        if (!originalPrompt) {
-            return
-        }
-
-        localStorage.setItem("octoai-prompt", originalPrompt);
-
-        hideExamples()
-
-        input.disabled = true
-        submitButton.disabled = true
-        submitButton.style.cursor = 'not-allowed';
-
-        let dots = 0;
-        input.value = "Thinking"
-        const thinkingAnimation = setInterval(() => {
-            dots = (dots + 1) % 4;  // Cycle through 0-3 dots
-            input.value = "Thinking" + ".".repeat(dots);
-        }, 500);
-
-        hideResponse()
-
-        enrichPrompt(originalPrompt)
-            .then(prompt => {
-                addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt);
-                return callOctoAi(prompt);
-            })
-            .then(result => {
-                displayMarkdownResponseV2(result, theme);
-            })
-            .catch(e =>
-                console.log(e))
-            .finally(() => {
-                    clearInterval(thinkingAnimation)
-                    input.disabled = false
-                    input.value = ""
-                    submitButton.disabled = false
-                    submitButton.style.cursor = 'pointer';
-                    showExamples()
-                }
-            );
+        submitPrompt("", input.value.trim());
     });
 
     // Add the final note
@@ -924,6 +930,59 @@ function displayPromptUIV2(theme) {
 
     // Append the container to the body
     document.body.appendChild(container);
+}
+
+function submitPrompt(systemPrompt, originalPrompt) {
+    if (!originalPrompt) {
+        return
+    }
+
+    if (systemPrompt) {
+        localStorage.setItem("octoai-prompt", "");
+    } else {
+        localStorage.setItem("octoai-prompt", originalPrompt);
+    }
+
+    hideExamples()
+
+    const input = document.getElementById('octoai-input');
+    const submitButton = document.getElementById('octoai-submit');
+    const feedback = document.getElementById('octoai-feedback');
+    const thumbsUp = document.getElementById('octo-ai-thumbs-up');
+    const thumbsDown = document.getElementById('octo-ai-thumbs-down');
+
+    input.disabled = true
+    submitButton.disabled = true
+    submitButton.style.cursor = 'not-allowed';
+
+    let dots = 0;
+    input.value = "Thinking"
+    const thinkingAnimation = setInterval(() => {
+        dots = (dots + 1) % 4;  // Cycle through 0-3 dots
+        input.value = "Thinking" + ".".repeat(dots);
+    }, 500);
+
+    hideResponse()
+
+    enrichPrompt(originalPrompt)
+        .then(prompt => {
+            addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt);
+            return callOctoAi(systemPrompt, prompt);
+        })
+        .then(result => {
+            displayMarkdownResponseV2(result, getColors());
+        })
+        .catch(e =>
+            console.log(e))
+        .finally(() => {
+                clearInterval(thinkingAnimation)
+                input.disabled = false
+                input.value = ""
+                submitButton.disabled = false
+                submitButton.style.cursor = 'pointer';
+                showExamples()
+            }
+        );
 }
 
 function hideExamples() {
@@ -1031,7 +1090,7 @@ function watchForChange() {
 
         if (existingContainer) {
             getSamplePrompts()
-                .then(buttonTexts => displayExamples(buttonTexts, getColors()));
+                .then(prompts => displayExamples(prompts, getColors()));
         }
     }
 }
@@ -1043,6 +1102,7 @@ function getColors() {
         backgroundInput: '#111a23',
         backgroundButton: '#13314b',
         backgroundSecondaryButton: '#2e475d',
+        backgroundTertiaryButton: '#1e2d3b',
         text: '#f4f6f8',
         textSecondary: '#98aaba',
         link: '#87bfec',
