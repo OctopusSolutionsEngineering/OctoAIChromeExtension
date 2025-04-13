@@ -200,12 +200,75 @@ async function callOctoAi(prompt) {
     }
 }
 
+async function getLocalPrompts() {
+    const octoAILvsName = "OctoAI Prompts"
+    const maxPrompts = 5
+
+    const pageName = getPageName();
+
+    if (!pageName) {
+        return null;
+    }
+
+    try {
+        const match = window.location.href.match(/(Spaces-\d+)/);
+        if (match) {
+            const collection = await fetch("/api/Spaces/" + match[1] + "/LibraryVariableSets", {credentials: 'include'})
+                .then(response => response.json())
+                .then(json => json.Items);
+
+            const octoAiLvs = collection.filter(lvs => lvs.Name === octoAILvsName).pop();
+
+            if (!octoAiLvs) {
+                return null;
+            }
+
+            const octoAiLvsVariableSetId = await fetch("/api/Spaces/" + match[1] + "/LibraryVariableSets/" + octoAiLvs.Id, {credentials: 'include'})
+                .then(response => response.json())
+                .then(json => json.VariableSetId);
+
+            const octoAiLvsVariables = await fetch("/api/Spaces/" + match[1] + "/Variables/" + octoAiLvsVariableSetId, {credentials: 'include'})
+                .then(response => response.json())
+                .then(json => json.Variables);
+
+            const prompts = []
+            for (let i = 0; i < maxPrompts; i++) {
+                const prompt = octoAiLvsVariables.filter(v => v.Name.trim() === pageName + "[" + i + "].Prompt");
+                if (prompt.length > 0) {
+                    prompts.push(prompt[0].Value);
+                }
+            }
+
+            return prompts;
+        }
+    }
+    catch (error) {
+        console.error(error.message);
+    }
+
+    return null;
+
+}
+
+function getPageName() {
+    return  Object.keys(getPageRegex())
+        .filter(key => window.location.href.match(getPageRegex()[key]))
+        .sort((a, b) => a.length - b.length)
+        .pop();
+}
+
 async function getSamplePrompts() {
     const defaultPrompts = [
         "List the projects in the Default space",
         "Generate a terraform module with three environments and a project called \"My Application\"",
         "Help"
     ]
+
+    const localPrompts = await getLocalPrompts();
+
+    if (localPrompts && localPrompts.length > 0) {
+        return localPrompts;
+    }
 
     try {
         const response = await chrome.runtime.sendMessage({action: "getPrompts"});
@@ -215,24 +278,21 @@ async function getSamplePrompts() {
         }
 
         // Get the longest page name where the regex matches
-        const pageName = Object.keys(getPageRegex())
-            .filter(key => window.location.href.match(getPageRegex()[key]))
-            .sort((a, b) => a.length - b.length)
-            .pop()
+        const pageName = getPageName();
 
         const match = response.response
             .filter(prompt => prompt.name === pageName)
             .map(prompt => prompt.prompts)
-            .pop()
+            .pop();
 
         if (match) {
             return await processPrompts(match);
         }
 
-        return defaultPrompts
+        return defaultPrompts;
     } catch (error) {
         console.error(error.message);
-        return defaultPrompts
+        return defaultPrompts;
     }
 }
 
@@ -593,6 +653,7 @@ function displayExamples(buttons, theme) {
     function createButton(text, theme) {
         const button = document.createElement('div');
         button.textContent = text;
+        button.title = text;
         button.style.display = 'block';
         button.style.width = '100%';
         button.style.padding = '10px';
@@ -604,6 +665,9 @@ function displayExamples(buttons, theme) {
         button.style.textAlign = 'left';
         button.style.cursor = 'pointer';
         button.style.fontSize = '16px';
+        button.style.whiteSpace = 'nowrap';
+        button.style.overflow = 'hidden';
+        button.style.textOverflow = 'ellipsis';
         button.style.color = theme.text;
 
         // Add hover effect
