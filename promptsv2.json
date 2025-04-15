@@ -30,7 +30,7 @@
   {
     "name":"Project.Settings",
     "prompts" : [
-      "How to I configure the project release notes template?",
+      "How do I configure the project release notes template?",
       "What is guided failure mode?"
     ]
   },
@@ -44,7 +44,7 @@
   {
     "name":"Project.ITSMProviders",
     "prompts" : [
-      "How to I configure an ITSM provider?",
+      "How do I configure an ITSM provider?",
       "What ITSM providers does Octopus support?"
     ]
   },
