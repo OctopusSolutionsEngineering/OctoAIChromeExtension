@@ -923,7 +923,7 @@ function displayPromptUIV2(theme) {
 
     // Add the final note
     const finalNote = document.createElement('p');
-    finalNote.textContent = '⚠️ AI responses can be inaccurate.';
+    finalNote.textContent = '⚠️ AI responses can be inaccurate. OctoAI is an Alpha feature.';
     finalNote.style.fontSize = '12px';
     finalNote.style.color = theme.textSecondary;
     finalNote.style.marginTop = '16px';
