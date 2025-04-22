@@ -232,6 +232,7 @@ async function callOctoAi(systemPrompt, prompt) {
             });
 
         if (response.error) {
+            showExamples();
             return {
                 prompt: prompt,
                 systemPrompt: systemPrompt,
