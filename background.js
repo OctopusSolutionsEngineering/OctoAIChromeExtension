@@ -1,5 +1,8 @@
 // A regex that matches the ui of an Octopus server
 const OctopusServerUrlRegex = /https:\/\/.+?\/app#\/Spaces-.*/
+
+// Some of the more complex queries, like building project Terraform, can take a while.
+// So we need a generous timeout.
 const Timeout = 240000 // 4 minutes
 
 chrome.action.onClicked.addListener((tab) => {
