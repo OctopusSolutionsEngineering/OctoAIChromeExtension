@@ -1,5 +1,6 @@
 // A regex that matches the ui of an Octopus server
 const OctopusServerUrlRegex = /https:\/\/.+?\/app#\/Spaces-.*/
+const Timeout = 240000 // 4 minutes
 
 chrome.action.onClicked.addListener((tab) => {
 
@@ -93,7 +94,7 @@ function callOctoAIAPIConfirmation(request, sendResponse, count) {
     fetch('https://aiagent.octopus.com/api/form_handler?confirmation_id=' + encodeURIComponent(request.id) + '&confirmation_state=accepted', {
         method: 'POST',
         headers: headers,
-        signal: AbortSignal.timeout(60000)
+        signal: AbortSignal.timeout(Timeout)
     })
         .then(response => {
             if (!response.ok) {
@@ -123,7 +124,7 @@ function callOctoAIAPI(request, sendResponse, count) {
         method: 'POST',
         headers: headers,
         body: JSON.stringify({"messages": [{"content": request.prompt}]}),
-        signal: AbortSignal.timeout(60000)
+        signal: AbortSignal.timeout(Timeout)
     })
         .then(response => {
             if (!response.ok) {

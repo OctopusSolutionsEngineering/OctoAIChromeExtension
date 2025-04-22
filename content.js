@@ -231,16 +231,7 @@ async function callOctoAi(systemPrompt, prompt) {
                 serverUrl: serverUrl
             });
 
-        if (response.error) {
-            showExamples();
-            return {
-                prompt: prompt,
-                systemPrompt: systemPrompt,
-                response: "There was an error processing your request. You may try the prompt again."
-            };
-        }
-
-        if (isActionSseResponse(response.response)) {
+        if (!response.error && isActionSseResponse(response.response)) {
             // This is a confirmation prompt rather than an answer
             showConfirmation();
             hideForm();
@@ -258,6 +249,16 @@ async function callOctoAi(systemPrompt, prompt) {
         }
 
         showExamples();
+
+        if (response.error) {
+
+            return {
+                prompt: prompt,
+                systemPrompt: systemPrompt,
+                response: "There was an error processing your request. You may try the prompt again."
+            };
+        }
+
         return {prompt: prompt, systemPrompt: systemPrompt, response: convertFromSseResponse(response.response)};
     } catch (error) {
         console.error(error.message);
