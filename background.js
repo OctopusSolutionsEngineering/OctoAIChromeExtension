@@ -38,6 +38,8 @@ chrome.runtime.onMessage.addListener(
 
         if (request.action === 'prompt') {
             callOctoAIAPI(request, sendResponse, 0)
+        } else if (request.action === 'confirmation') {
+            callOctoAIAPIConfirmation(request, sendResponse, 0)
         } else if (request.action == 'feedback') {
             addFeedback(request)
         } else if (request.action === 'getPrompts') {
@@ -83,6 +85,35 @@ function addFeedback(request) {
             // Oh well, this is just a best effort
             console.log(error)
         });
+}
+
+function callOctoAIAPIConfirmation(request, sendResponse, count) {
+    const headers = buildHeaders(request)
+
+    fetch('https://aiagent.octopus.com/api/form_handler?confirmation_id=' + encodeURIComponent(request.id) + '&confirmation_state=accepted', {
+        method: 'POST',
+        headers: headers,
+        signal: AbortSignal.timeout(60000)
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
+            }
+            return response.text()
+        })
+        .then(text => {
+            sendResponse({response: text})
+        })
+        .catch(error => {
+            // retry once
+            if (count >= 1) {
+                sendResponse({error: error})
+            } else {
+                callOctoAIAPIConfirmation(request, sendResponse, count + 1)
+            }
+        });
+
+
 }
 
 function callOctoAIAPI(request, sendResponse, count) {
