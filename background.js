@@ -148,7 +148,7 @@ function callOctoAIAPI(request, sendResponse, count) {
 }
 
 function buildHeaders(request) {
-    return chrome.storage.local.get(["apiKey", "rules"])
+    return chrome.storage.local.get(["apiKey", "rules", "enableRedirect"])
         .then(data => {
                 const headers = {
                     'Content-Type': 'application/json',
@@ -163,7 +163,7 @@ function buildHeaders(request) {
                     headers['X-Octopus-AccessToken'] = request.accessToken
                 }
 
-                if (data.apiKey && data.rules) {
+                if (data.enableRedirect && data.apiKey && data.rules) {
                     headers['X_REDIRECTION_REDIRECTIONS'] = data.rules;
                     headers['X_REDIRECTION_API_KEY'] = data.apiKey;
                 }
