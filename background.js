@@ -116,19 +116,18 @@ function callOctoAIAPIConfirmation(request, sendResponse, count) {
                 callOctoAIAPIConfirmation(request, sendResponse, count + 1)
             }
         });
-
-
 }
 
 function callOctoAIAPI(request, sendResponse, count) {
-    const headers = buildHeaders(request)
-
-    fetch('https://aiagent.octopus.com/api/form_handler', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify({"messages": [{"content": request.prompt}]}),
-        signal: AbortSignal.timeout(Timeout)
-    })
+    buildHeaders(request)
+        .then(headers =>
+            fetch('https://aiagent.octopus.com/api/form_handler', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({"messages": [{"content": request.prompt}]}),
+                signal: AbortSignal.timeout(Timeout)
+            })
+        )
         .then(response => {
             if (!response.ok) {
                 throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
@@ -149,18 +148,27 @@ function callOctoAIAPI(request, sendResponse, count) {
 }
 
 function buildHeaders(request) {
-    const headers = {
-        'Content-Type': 'application/json',
-        'X-Octopus-Server': request.serverUrl
-    }
+    return chrome.storage.local.get(["apiKey", "rules"])
+        .then(data => {
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'X-Octopus-Server': request.serverUrl
+                }
 
-    if (request.apiKey) {
-        headers['X-Octopus-ApiKey'] = request.apiKey
-    }
+                if (request.apiKey) {
+                    headers['X-Octopus-ApiKey'] = request.apiKey
+                }
 
-    if (request.accessToken) {
-        headers['X-Octopus-AccessToken'] = request.accessToken
-    }
+                if (request.accessToken) {
+                    headers['X-Octopus-AccessToken'] = request.accessToken
+                }
 
-    return headers
+                if (data.apiKey && data.rules) {
+                    headers['X_REDIRECTION_REDIRECTIONS'] = data.rules;
+                    headers['X_REDIRECTION_API_KEY'] = data.apiKey;
+                }
+
+                return headers;
+            }
+        )
 }
