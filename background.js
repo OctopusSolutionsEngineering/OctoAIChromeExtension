@@ -92,13 +92,14 @@ function addFeedback(request) {
 }
 
 function callOctoAIAPIConfirmation(request, sendResponse, count) {
-    const headers = buildHeaders(request)
-
-    fetch('https://aiagent.octopus.com/api/form_handler?confirmation_id=' + encodeURIComponent(request.id) + '&confirmation_state=accepted', {
-        method: 'POST',
-        headers: headers,
-        signal: AbortSignal.timeout(Timeout)
-    })
+    buildHeaders(request)
+        .then(headers =>
+            fetch('https://aiagent.octopus.com/api/form_handler?confirmation_id=' + encodeURIComponent(request.id) + '&confirmation_state=accepted', {
+                method: 'POST',
+                headers: headers,
+                signal: AbortSignal.timeout(Timeout)
+            })
+        )
         .then(response => {
             if (!response.ok) {
                 throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
