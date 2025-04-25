@@ -3,7 +3,7 @@ const OctopusServerUrlRegex = /https:\/\/.+?\/app#\/Spaces-.*/
 
 // Some of the more complex queries, like building project Terraform, can take a while.
 // So we need a generous timeout.
-const Timeout = 240000 // 4 minutes
+const Timeout = 8 * 60 * 1000 // 8 minutes
 
 chrome.action.onClicked.addListener((tab) => {
 
