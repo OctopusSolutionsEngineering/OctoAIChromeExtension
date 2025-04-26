@@ -239,6 +239,8 @@ async function callOctoAi(systemPrompt, prompt) {
 
             // 4 minutes to approve
             const timeout = setTimeout(function() {
+                hideConfirmation();
+                showForm();
                 showExamples();
                 showPrompt();
                 enableSubmitButton();
@@ -274,6 +276,7 @@ async function callOctoAi(systemPrompt, prompt) {
 }
 
 async function approveConfirmation(timeout, id) {
+    clearTimeout(timeout);
     hideResponse();
     hideConfirmation();
     disableSubmitButton();
@@ -320,7 +323,6 @@ async function approveConfirmation(timeout, id) {
         showExamples();
         showPrompt();
         enableSubmitButton();
-        clearTimeout(timeout);
     }
 }
 
