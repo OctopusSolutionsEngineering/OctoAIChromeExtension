@@ -240,6 +240,7 @@ async function callOctoAi(systemPrompt, prompt) {
             // 4 minutes to approve
             const timeout = setTimeout(function() {
                 hideConfirmation();
+                hideResponse();
                 showForm();
                 showExamples();
                 showPrompt();
