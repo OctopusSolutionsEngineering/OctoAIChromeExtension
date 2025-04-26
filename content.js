@@ -237,8 +237,15 @@ async function callOctoAi(systemPrompt, prompt) {
             hideForm();
             const titleAndMessage = getConfirmationTitleAndMessage(response.response);
 
+            // 4 minutes to approve
+            const timeout = setTimeout(function() {
+                showExamples();
+                showPrompt();
+                enableSubmitButton();
+            }, 4 * 60 * 1000)
+
             document.getElementById("octo-ai-approve").onclick = function() {
-                approveConfirmation(titleAndMessage.id);
+                approveConfirmation(timeout, titleAndMessage.id);
             }
 
             return {
@@ -266,7 +273,7 @@ async function callOctoAi(systemPrompt, prompt) {
     }
 }
 
-async function approveConfirmation(id) {
+async function approveConfirmation(timeout, id) {
     hideResponse();
     hideConfirmation();
     disableSubmitButton();
@@ -313,6 +320,7 @@ async function approveConfirmation(id) {
         showExamples();
         showPrompt();
         enableSubmitButton();
+        clearTimeout(timeout);
     }
 }
 
