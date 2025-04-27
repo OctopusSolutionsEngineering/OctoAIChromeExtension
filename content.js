@@ -1212,10 +1212,13 @@ function showThinking() {
     const input = document.getElementById('octoai-input');
     input.disabled = true;
     let dots = 0;
+    let start = new Date();
     input.value = "Thinking";
     return setInterval(() => {
-        dots = (dots + 1) % 4;  // Cycle through 0-3 dots
-        input.value = "Thinking" + ".".repeat(dots);
+        const timeElapsed = new Date() - start;
+        const message = timeElapsed > 30000 ? "Some prompts can take a minute or two to process. Please be patient" : "Thinking";
+        dots = (dots + 1) % 4;
+        input.value = message + ".".repeat(dots);
     }, 500);
 }
 
