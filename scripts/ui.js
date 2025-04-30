@@ -625,3 +625,22 @@ function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
             }))
     }
 }
+
+window.OctoAIUI = {
+    addAiToPage: addAiToPage,
+    getColors: getColors,
+    hidePromptUI: hidePromptUI,
+    showThinking: showThinking,
+    hideAllButtons: hideAllButtons,
+    hideResponse: hideResponse,
+    showExamples: showExamples,
+    showForm: showForm,
+    displayMarkdownResponseV2: displayMarkdownResponseV2,
+    addFeedbackListener: addFeedbackListener,
+    showPrompt: showPrompt,
+    enableSubmitButton: enableSubmitButton,
+    disableSubmitButton: disableSubmitButton,
+    hideConfirmation: hideConfirmation,
+    showConfirmation: showConfirmation,
+    displayExamples: displayExamples
+};

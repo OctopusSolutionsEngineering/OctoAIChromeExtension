@@ -130,18 +130,18 @@ async function callOctoAi(systemPrompt, prompt) {
 
         if (!response.error && isActionSseResponse(response.response)) {
             // This is a confirmation prompt rather than an answer
-            showConfirmation();
-            hideForm();
+            window.OctoAIUI.showConfirmation();
+            window.OctoAIUI.hideForm();
             const titleAndMessage = getConfirmationTitleAndMessage(response.response);
 
             // 4 minutes to approve
             const timeout = setTimeout(function() {
-                hideConfirmation();
-                hideResponse();
-                showForm();
-                showExamples();
-                showPrompt();
-                enableSubmitButton();
+                window.OctoAIUI.hideConfirmation();
+                window.OctoAIUI.hideResponse();
+                window.OctoAIUI.showForm();
+                window.OctoAIUI.showExamples();
+                window.OctoAIUI.showPrompt();
+                window.OctoAIUI.enableSubmitButton();
             }, 4 * 60 * 1000)
 
             document.getElementById("octo-ai-approve").onclick = function() {
@@ -155,7 +155,7 @@ async function callOctoAi(systemPrompt, prompt) {
             };
         }
 
-        showExamples();
+        window.OctoAIUI.showExamples();
 
         if (response.error) {
 
@@ -783,11 +783,11 @@ function submitPrompt(systemPrompt, originalPrompt) {
         localStorage.setItem("octoai-prompt", originalPrompt);
     }
 
-    hideAllButtons();
-    disableSubmitButton();
-    hideResponse();
+    window.OctoAIUI.hideAllButtons();
+    window.OctoAIUI.disableSubmitButton();
+    window.OctoAIUI.hideResponse();
 
-    const thinkingAnimation = showThinking();
+    const thinkingAnimation = window.OctoAIUI.showThinking();
 
     const feedback = document.getElementById('octoai-feedback');
     const thumbsUp = document.getElementById('octo-ai-thumbs-up');
@@ -795,18 +795,19 @@ function submitPrompt(systemPrompt, originalPrompt) {
 
     enrichPrompt(originalPrompt)
         .then(prompt => {
-            addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt);
+            window.OctoAIUI.addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt);
             return callOctoAi(systemPrompt, prompt);
         })
         .then(result => {
-            displayMarkdownResponseV2(result, getColors());
+            window.OctoAIUI.displayMarkdownResponseV2(result, window.OctoAIUI.getColors());
         })
         .catch(e =>
             console.log(e))
-        .finally(() => {
+        .finally(() =>
+            {
                 clearInterval(thinkingAnimation)
-                showPrompt();
-                enableSubmitButton();
+                window.OctoAIUI.showPrompt();
+                window.OctoAIUI.enableSubmitButton();
             }
         );
 }
@@ -817,7 +818,7 @@ function watchForChange() {
 
         if (existingContainer) {
             getSamplePrompts()
-                .then(prompts => displayExamples(prompts, getColors()));
+                .then(prompts => window.OctoAIUI.displayExamples(prompts, window.OctoAIUI.getColors()));
         }
     }
 }
@@ -879,5 +880,5 @@ function getPageRegex() {
 }
 
 console.log("Loaded OctoAI")
-addAiToPage(getColors())
+window.OctoAIUI.addAiToPage(window.OctoAIUI.getColors())
 watchForChange()

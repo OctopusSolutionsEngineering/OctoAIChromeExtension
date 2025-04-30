@@ -19,17 +19,22 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                             chrome.scripting.executeScript({
                                 target: {tabId: tab.id},
                                 files: ['marked.min.js']
-                            });
-                            chrome.scripting.executeScript({
+                            })
+                            .then(() => chrome.scripting.executeScript({
                                 target: {tabId: tab.id},
                                 files: ['purify.min.js']
-                            });
-                            chrome.scripting.executeScript({
+                            }))
+                            .then(() => chrome.scripting.executeScript({ 
+                                target: {tabId: tab.id},
+                                files: ['scripts/ui.js']
+                            }))
+                            .then(() => chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
                                 files: ['content.js']
-                            });
-                        } catch {
-                            // probably an invalid URL
+                            }))
+                            .catch(err => console.error('Error injecting scripts:', err)); 
+                        } catch (e) { 
+                            console.error('Synchronous error during script injection setup:', e);
                         }
                     }
                 })

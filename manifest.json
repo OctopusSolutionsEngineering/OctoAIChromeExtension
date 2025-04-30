@@ -23,16 +23,5 @@
   ],
   "background": {
     "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["*://*/app#/Spaces-*/*"],
-      "js": [
-        "scripts/ui.js",
-        "content.js"
-      ],
-      "css": [],
-      "run_at": "document_idle"
-    }
-  ]
+  }
 }
