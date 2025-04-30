@@ -16,6 +16,7 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                 tabs.forEach(tab => {
                     if (tab.url.match(OctopusServerUrlRegex)) {
                         try {
+
                             chrome.scripting.executeScript({
                                 target: {tabId: tab.id},
                                 files: ['marked.min.js']
@@ -23,7 +24,7 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                             .then(() => chrome.scripting.executeScript({
                                 target: {tabId: tab.id},
                                 files: ['purify.min.js']
-                            }))
+                            }));
 
                             chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
@@ -50,6 +51,7 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                                 files: ['content.js']
                             }))
                             .catch(err => console.error('Error injecting scripts:', err)); 
+                            
                         } catch (e) { 
                             console.error('Synchronous error during script injection setup:', e);
                         }
