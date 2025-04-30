@@ -24,6 +24,7 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                                 target: {tabId: tab.id},
                                 files: ['purify.min.js']
                             }))
+
                             chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
                                 files: ['scripts/ui.js']
@@ -31,6 +32,14 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                             .then(() => chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
                                 files: ['scripts/api.js']
+                            }))
+                            .then(() => chrome.scripting.executeScript({ 
+                                target: {tabId: tab.id},
+                                files: ['scripts/context.js']
+                            }))
+                            .then(() => chrome.scripting.executeScript({ 
+                                target: {tabId: tab.id},
+                                files: ['scripts/prompts.js']
                             }))
                             .then(() => chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
