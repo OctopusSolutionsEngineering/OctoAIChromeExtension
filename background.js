@@ -27,8 +27,12 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
 
                             chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
-                                files: ['scripts/ui.js']
+                                files: ['scripts/utils.js']
                             })
+                            .then(() => chrome.scripting.executeScript({ 
+                                target: {tabId: tab.id},
+                                files: ['scripts/ui.js']
+                            }))
                             .then(() => chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
                                 files: ['scripts/api.js']

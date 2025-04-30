@@ -600,7 +600,7 @@ function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
         thumbsUp.disabled = true;
         thumbsDown.disabled = true;
         fadeOutAndHide(feedback);
-        console.log("Feedback thumbs up");
+        Logger.info("Feedback thumbs up");
         createOctopusApiKey()
             .then(creds => chrome.runtime.sendMessage({
                 action: "feedback",
@@ -615,7 +615,7 @@ function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
         thumbsUp.disabled = true;
         thumbsDown.disabled = true;
         fadeOutAndHide(feedback);
-        console.log("Feedback thumbs down");
+        Logger.info("Feedback thumbs down");
         createOctopusApiKey()
             .then(creds => chrome.runtime.sendMessage({
                 action: "feedback",

@@ -29,7 +29,7 @@ async function createOctopusApiKey() {
         }
 
         const data = await response.json();
-        console.log('New API key created successfully');
+        Logger.info('New API key created successfully');
 
         createOctopusApiKey.token = data.AccessToken;
         createOctopusApiKey.expiry = Date.now() + 45 * 60 * 1000; // 45 min expiry
@@ -48,21 +48,21 @@ function getOctopusCsrfTokenFromCookie() {
             cookie = cookie.trim();
             if (cookie.startsWith('Octopus-Csrf-Token')) {
                 const csrfToken = cookie.split("=");
-                console.log('CSRF token found in cookie');
+                Logger.info('CSRF token found in cookie');
                 return csrfToken[1];
             }
         }
-        console.log('No Octopus-Csrf-Token cookie found');
+        Logger.info('No Octopus-Csrf-Token cookie found');
         return null;
     } catch (error) {
-        console.error('Error reading Octopus-Csrf-Token cookie:', error);
+        Logger.error('Error reading Octopus-Csrf-Token cookie:', error);
         return null;
     }
 }
 
 async function callOctoAi(systemPrompt, prompt) {
-    console.log(systemPrompt)
-    console.log(prompt)
+    Logger.info(systemPrompt)
+    Logger.info(prompt)
 
     try {
         const combinedPrompt = [systemPrompt, prompt]
@@ -124,7 +124,7 @@ async function callOctoAi(systemPrompt, prompt) {
 
         return {prompt: prompt, systemPrompt: systemPrompt, response: convertFromSseResponse(response.response)};
     } catch (error) {
-        console.error(error.message);
+        Logger.error(error.message);
         throw error;
     }
 }

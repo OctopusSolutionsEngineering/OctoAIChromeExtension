@@ -1,12 +1,3 @@
-function arrayNotNullOrEmpty(array) {
-    if (!array) {
-        return null
-    }
-
-    return array.length > 0 ? array : null
-}
-
-
 function watchForChange() {
     window.onhashchange = function () {
         const existingContainer = document.getElementById('octoai-container');
@@ -18,6 +9,6 @@ function watchForChange() {
     }
 }
 
-console.log("Loaded OctoAI")
+Logger.info("Loaded")
 addAiToPage(getColors())
 watchForChange()

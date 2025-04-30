@@ -48,7 +48,7 @@ async function getLocalPrompts() {
             return prompts;
         }
     } catch (error) {
-        console.error(error.message);
+        Logger.error(error.message);
     }
 
     return null;
@@ -75,7 +75,7 @@ async function getSamplePrompts() {
 
         return defaultPrompts;
     } catch (error) {
-        console.error(error.message);
+        Logger.error(error.message);
         return defaultPrompts;
     }
 }
@@ -321,7 +321,7 @@ function submitPrompt(systemPrompt, originalPrompt) {
             displayMarkdownResponseV2(result, getColors());
         })
         .catch(e =>
-            console.log(e))
+            Logger.error(e))
         .finally(() =>
             {
                 clearInterval(thinkingAnimation)
