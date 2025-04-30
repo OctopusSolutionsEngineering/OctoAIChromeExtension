@@ -6,7 +6,7 @@ function arrayNotNullOrEmpty(array) {
     return array.length > 0 ? array : null
 }
 
-const Logger = {
+window.Logger = {
     info: function(message) {
         console.log(`OctoAI: ${message}`);
     },
