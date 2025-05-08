@@ -8,23 +8,24 @@ async function createOctopusApiKey() {
     }
 
     try {
-        const csrfToken = getOctopusCsrfTokenFromCookie();
+        const promises = getOctopusCsrfTokenFromCookie()
+            .map(csrfToken => {
+                return {
+                    'Content-Type': 'application/json',
+                    'X-Octopus-Csrf-Token': csrfToken
+                }
+            })
+            .map(headers => fetch(`/api/users/access-token`, {
+                method: 'POST',
+                headers: headers,
+                credentials: 'include'
+            }));
 
-        const headers = {
-            'Content-Type': 'application/json'
-        };
+        const response = (await Promise.all(promises))
+            .filter(response => response.ok)
+            .pop();
 
-        if (csrfToken) {
-            headers['X-Octopus-Csrf-Token'] = csrfToken;
-        }
-
-        const response = await fetch(`/api/users/access-token`, {
-            method: 'POST',
-            headers: headers,
-            credentials: 'include'
-        })
-
-        if (!response.ok) {
+        if (!response) {
             throw new Error(`API call failed: ${response.status} ${response.statusText}`);
         }
 
@@ -44,13 +45,19 @@ async function createOctopusApiKey() {
 function getOctopusCsrfTokenFromCookie() {
     try {
         const cookies = document.cookie.split(';');
+        const csrfTokens = []
+        // I've seen cases where there were multiple CSRF cookies, but one was expired.
+        // We get all the cookies and try them one by one.
         for (let cookie of cookies) {
             cookie = cookie.trim();
             if (cookie.startsWith('Octopus-Csrf-Token')) {
                 const csrfToken = cookie.split("=");
                 Logger.info('CSRF token found in cookie');
-                return csrfToken[1];
+                csrfTokens.push(csrfToken[1]);
             }
+        }
+        if (csrfTokens.length > 0) {
+            return csrfTokens;
         }
         Logger.info('No Octopus-Csrf-Token cookie found');
         return null;
