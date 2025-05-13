@@ -169,7 +169,7 @@ function displayExamples(prompts, theme) {
         const button = createButton(prompt.prompt, theme);
 
         if (prompt.systemPrompt) {
-            button.textContent = "SYSTEM: " + prompt.prompt;
+            button.textContent = "TEAM: " + prompt.prompt;
 
             // Add click event
             button.addEventListener('click', () => {
