@@ -270,9 +270,10 @@ function displayPromptUIV2(theme) {
 
     const info = document.createElement('span');
     info.setAttribute('title', 'AI responses can be inaccurate. OctoAI is an Alpha feature.');
-    info.textContent = ' 🛈️';
+    info.textContent = '🛈️';
     info.style.fontSize = '16px';
     info.style.color = theme.textSecondary;
+    info.style.paddingLeft = '8px';
     header.appendChild(info);
 
     // Add close button (right side)
@@ -532,13 +533,12 @@ function getColors() {
         gradientStart: '#1FF2FF',              // The start of the gradient
         gradientEnd: '#0d81d8',                // The end of the gradient
         backgroundSecondary: '#1F303F',        // The background colour for prompt bubbles
-        backgroundInput: '#111a23',
         backgroundButton: '#1B242D',           // The background colour for buttons like examples
         backgroundSecondaryButton: '#1F303F',  // The hover background for buttons
-        text: '#f4f6f8',
-        textSecondary: '#98aaba',
-        link: '#87bfec',
-        border: '#2e475d'
+        text: '#f4f6f8',                        // primary text colour
+        textSecondary: '#98aaba',               // secondary text colour, used for title elements
+        link: '#87bfec',                        // link colour
+        border: '#2e475d'                       // popup border colour
     }
 }
 
