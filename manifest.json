@@ -1,8 +1,8 @@
 {
   "name": "OctoAI",
   "description": "Octopus AI Integration Testing",
-  "version": "0.2.19",
-  "version_name": "0.2.19-alpha",
+  "version": "0.2.20",
+  "version_name": "0.2.20-alpha",
   "manifest_version": 3,
   "action": {
     "default_icon": "octopusai.png",
