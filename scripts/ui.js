@@ -356,25 +356,29 @@ function displayPromptUIV2(theme) {
     feedback.appendChild(feedbackText);
 
     // Add thumbs up and thumbs down buttons
-    const thumbsUp = document.createElement('button');
+    const thumbsUp = document.createElement('span');
     thumbsUp.id = 'octo-ai-thumbs-up';
-    thumbsUp.textContent = '👍';
     thumbsUp.style.border = 'none';
     thumbsUp.style.background = 'none';
     thumbsUp.style.cursor = 'pointer';
     thumbsUp.style.fontSize = '16px';
     thumbsUp.style.color = theme.textSecondary;
+    thumbsUp.style.paddingLeft = '8px';
     feedback.appendChild(thumbsUp);
 
-    const thumbsDown = document.createElement('button');
+    addSvgFromFile('img/thumbs-up.svg', 'octo-ai-thumbs-up');
+
+    const thumbsDown = document.createElement('span');
     thumbsDown.id = 'octo-ai-thumbs-down';
-    thumbsDown.textContent = '👎';
     thumbsDown.style.border = 'none';
     thumbsDown.style.background = 'none';
     thumbsDown.style.cursor = 'pointer';
     thumbsDown.style.fontSize = '16px';
     thumbsDown.style.color = theme.textSecondary;
+    thumbsDown.style.paddingLeft = '8px';
     feedback.appendChild(thumbsDown);
+
+    addSvgFromFile('img/thumbs-down.svg', 'octo-ai-thumbs-down');
 
     // Add the feedback section to the container
     container.appendChild(feedback);
