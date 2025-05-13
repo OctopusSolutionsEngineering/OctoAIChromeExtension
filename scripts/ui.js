@@ -4,7 +4,7 @@ function addAiToPage(theme) {
     }
 
     const styleSheet = document.createElement("style");
-    styleSheet.textContent = `
+    styleSheet.textContent = `    
 .octo-ai-fade-out {
   opacity: 0;
   transition: opacity 0.5s ease;
@@ -125,8 +125,8 @@ function createButton(text, theme, id) {
     button.style.width = '100%';
     button.style.padding = '10px';
     button.style.marginBottom = '10px';
-    button.style.backgroundColor = theme.backgroundSecondaryButton;
-    button.style.border = '1px solid #ccc';
+    button.style.backgroundColor = theme.backgroundButton;
+    button.style.border = '0px';
     button.style.borderRadius = '5px';
     button.style.borderColor = theme.border;
     button.style.textAlign = 'left';
@@ -139,10 +139,10 @@ function createButton(text, theme, id) {
 
     // Add hover effect
     button.addEventListener('mouseover', () => {
-        button.style.backgroundColor = theme.backgroundButton;
+        button.style.backgroundColor = theme.backgroundSecondaryButton;
     });
     button.addEventListener('mouseout', () => {
-        button.style.backgroundColor = theme.backgroundSecondaryButton;
+        button.style.backgroundColor = theme.backgroundButton;
     });
 
     return button;
@@ -268,9 +268,18 @@ function displayPromptUIV2(theme) {
     logo.style.color = theme.text;
     header.appendChild(logo);
 
+    const info = document.createElement('span');
+    info.setAttribute('title', 'AI responses can be inaccurate. OctoAI is an Alpha feature.');
+    info.textContent = ' 🛈️';
+    info.style.fontSize = '16px';
+    info.style.color = theme.textSecondary;
+    header.appendChild(info);
+
     // Add close button (right side)
     const closeButton = document.createElement('span');
     closeButton.textContent = '✕';
+    closeButton.style.position = 'absolute';
+    closeButton.style.right = '16px';
     closeButton.style.cursor = 'pointer';
     closeButton.style.color = theme.textSecondary;
     closeButton.style.fontSize = '16px';
@@ -347,25 +356,29 @@ function displayPromptUIV2(theme) {
     form.style.display = 'flex';
     form.style.margin = '0 0 16px 0';
     form.style.alignItems = 'center';
-    form.style.border = '1px solid #ccc';
-    form.style.borderRadius = '4px';
     form.style.padding = '8px 12px';
     form.style.fontFamily = 'Arial, sans-serif';
     form.style.fontSize = '14px';
-    form.style.backgroundColor = theme.backgroundInput;
-    form.style.borderColor = theme.border;
+    form.style.background = "#1b242d";
+    form.style.padding = "0.5rem";
+    form.style.border = "double 3px transparent";
+    form.style.borderRadius = "6px";
+    form.style.backgroundImage = "linear-gradient(" + theme.background + "," + theme.background + "), linear-gradient(to bottom, " + theme.gradientStart + "," + theme.gradientEnd + ")";
+    form.style.backgroundOrigin = "border-box";
+    form.style.backgroundClip = "padding-box, border-box";
 
     // Create an input element
     const input = document.createElement('input');
     input.id = 'octoai-input';
+    input.autocomplete = "off";
     input.type = 'text';
     input.placeholder = 'Ask Octopus about your instance';
-    input.style.flex = '1';
+    input.style.width = '100%';
+    input.style.background = 'transparent';
     input.style.border = 'none';
     input.style.outline = 'none';
-    input.style.fontSize = '14px';
     input.style.color = theme.text;
-    input.style.background = 'rgba(0, 0, 0, 0)';
+    input.style.setProperty("-webkit-autofill:active", "-webkit-text-fill-color: ")
     input.value = localStorage.getItem("octoai-prompt") || '';
 
     // Create the submit button
@@ -421,14 +434,6 @@ function displayPromptUIV2(theme) {
         event.preventDefault();
         submitPrompt("", input.value.trim());
     });
-
-    // Add the final note
-    const finalNote = document.createElement('p');
-    finalNote.textContent = '⚠️ AI responses can be inaccurate. OctoAI is an Alpha feature.';
-    finalNote.style.fontSize = '12px';
-    finalNote.style.color = theme.textSecondary;
-    finalNote.style.marginTop = '16px';
-    container.appendChild(finalNote);
 
     // Append the container to the body
     document.body.appendChild(container);
@@ -523,12 +528,13 @@ function hideResponse() {
 
 function getColors() {
     return {
-        background: '#1f303f',
-        backgroundSecondary: '#2e475d',
+        background: '#1B242D',                 // The background colour of any elements
+        gradientStart: '#1FF2FF',              // The start of the gradient
+        gradientEnd: '#0d81d8',                // The end of the gradient
+        backgroundSecondary: '#1F303F',        // The background colour for prompt bubbles
         backgroundInput: '#111a23',
-        backgroundButton: '#13314b',
-        backgroundSecondaryButton: '#2e475d',
-        backgroundTertiaryButton: '#1e2d3b',
+        backgroundButton: '#1B242D',           // The background colour for buttons like examples
+        backgroundSecondaryButton: '#1F303F',  // The hover background for buttons
         text: '#f4f6f8',
         textSecondary: '#98aaba',
         link: '#87bfec',
