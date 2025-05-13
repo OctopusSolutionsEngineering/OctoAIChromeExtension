@@ -101,6 +101,26 @@ function addAiToPage(theme) {
     });
 }
 
+// Function to load and add an SVG from a file
+function addSvgFromFile(filePath, containerId) {
+    fetch(chrome.runtime.getURL(filePath))
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to load SVG: ${response.statusText}`);
+            }
+            return response.text();
+        })
+        .then(svgContent => {
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = svgContent;
+            } else {
+                console.error(`Container with ID "${containerId}" not found.`);
+            }
+        })
+        .catch(error => console.error(error));
+}
+
 async function displayAIChat() {
 
     const existingContainer = document.getElementById('octoai-container');
@@ -256,17 +276,25 @@ function displayPromptUIV2(theme) {
 
     // Create the header
     const header = document.createElement('div');
+    header.id = 'octoai-header';
     header.style.display = 'flex';
     header.style.alignItems = 'center';
     header.style.margin = '0 0 16px 0';
 
     // Add the OctoAI logo
     const logo = document.createElement('span');
-    logo.textContent = '✨ OctoAI';
-    logo.style.fontWeight = 'bold';
-    logo.style.fontSize = '16px';
-    logo.style.color = theme.text;
+    logo.id = 'octoai-logo';
     header.appendChild(logo);
+    addSvgFromFile('img/sparkles.svg', 'octoai-logo');
+
+    // Add the heading
+    const heading = document.createElement('span');
+    heading.textContent = 'OctoAI';
+    heading.style.fontWeight = 'bold';
+    heading.style.fontSize = '16px';
+    heading.style.paddingLeft = '8px';
+    heading.style.color = theme.text;
+    header.appendChild(heading);
 
     const info = document.createElement('span');
     info.setAttribute('title', 'AI responses can be inaccurate. OctoAI is an Alpha feature.');

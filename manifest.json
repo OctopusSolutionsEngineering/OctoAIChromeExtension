@@ -23,5 +23,9 @@
   ],
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "web_accessible_resources": [{
+    "resources": [ "img/sparkles.svg", "img/thumbs-down.svg", "img/thumbs-up.svg" ],
+    "matches": [ "*://*/*" ]
+  }]
 }
