@@ -3,7 +3,6 @@
     "name":"Dashboard",
     "prompts" : [
       "What is an Octopus project?",
-      "Check space for unused projects to help reduce license costs.",
       "Check space for duplicate project variables to help improve maintainability.",
       "Which projects have steps that deploy to Kubernetes?",
       "Which projects have the \"Deploy a Release\" step?",
