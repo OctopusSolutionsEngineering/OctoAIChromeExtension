@@ -43,7 +43,7 @@ async function getSpaceName() {
 async function getProjectName() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/[^?]*\\??.*/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -77,7 +77,7 @@ async function getReleaseVersion() {
 async function getRunbookName() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/[^?]*\\??.*/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Runbooks/" + match[3], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Runbooks/" + match[3], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -87,7 +87,7 @@ async function getRunbookName() {
 async function getTenantName() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/tenants\/([^\/]+)\/[^?]*\\??.*/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Tenants/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Tenants/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -97,7 +97,7 @@ async function getTenantName() {
 async function getLibraryVariableSet() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/variables\/([^\/]+)(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/LibraryVariableSet/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/LibraryVariableSet/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -107,7 +107,7 @@ async function getLibraryVariableSet() {
 async function getMachine() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/machines\/([^\/]+)\/[^?]*(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Machines/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Machines/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -117,7 +117,7 @@ async function getMachine() {
 async function getAccount() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/accounts\/([^\/]+)(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Accounts/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Accounts/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -127,7 +127,7 @@ async function getAccount() {
 async function getEnvironment() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/environments\/([^\/]+)(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Environments/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Environments/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -137,12 +137,12 @@ async function getEnvironment() {
     const spaceId = await getSpaceId()
 
     if (deploymentId) {
-        const environmentId = await fetch("/api/Spaces/" + spaceId + "/Deployments/" + deploymentId, {credentials: 'include'})
+        const environmentId = await fetch("/api/" + spaceId + "/Deployments/" + deploymentId, {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.EnvironmentId)
 
         if (environmentId) {
-            return await fetch("/api/Spaces/" + spaceId + "/Environments/" + environmentId, {credentials: 'include'})
+            return await fetch("/api/" + spaceId + "/Environments/" + environmentId, {credentials: 'include'})
                 .then(response => response.json())
                 .then(json => json.Name)
         }
@@ -151,12 +151,12 @@ async function getEnvironment() {
     const runbookRun = await getRunbookRun()
 
     if (runbookRun) {
-        const environmentId = await fetch("/api/Spaces/" + spaceId + "/RunbookRuns/" + runbookRun, {credentials: 'include'})
+        const environmentId = await fetch("/api/" + spaceId + "/RunbookRuns/" + runbookRun, {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.EnvironmentId)
 
         if (environmentId) {
-            return await fetch("/api/Spaces/" + spaceId + "/Environments/" + environmentId, {credentials: 'include'})
+            return await fetch("/api/" + spaceId + "/Environments/" + environmentId, {credentials: 'include'})
                 .then(response => response.json())
                 .then(json => json.Name)
         }
@@ -168,7 +168,7 @@ async function getEnvironment() {
 async function getCertificate() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/certificates\/([^\/]+)(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Certificates/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Certificates/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -178,7 +178,7 @@ async function getCertificate() {
 async function getFeed() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/feeds\/([^\/]+)(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Feeds/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Feeds/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -188,7 +188,7 @@ async function getFeed() {
 async function getGitCredential() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/gitcredentials\/([^\/]+)(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Git-Credentials/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Git-Credentials/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -198,7 +198,7 @@ async function getGitCredential() {
 async function getLifecycle() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/library\/lifecycles\/([^\/]+)(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Lifecycles/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Lifecycles/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -208,7 +208,7 @@ async function getLifecycle() {
 async function getWorker() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/workers\/([^\/]+)\/[^?]*(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Workers/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/Workers/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -218,7 +218,7 @@ async function getWorker() {
 async function getWorkerPool() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/infrastructure\/workerpools\/([^\/]+)\/[^?]*(\\??.*)?/);
     if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/WorkerPools/" + match[2], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/WorkerPools/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -230,10 +230,10 @@ async function getStepName() {
     if (match) {
         const parentStepId = new URLSearchParams(window.location.href.split("?")[1]).get("parentStepId");
 
-        const steps = await fetch("/api/Spaces/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
+        const steps = await fetch("/api/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.DeploymentProcessId)
-            .then(deploymentProcessId => fetch("/api/Spaces/" + match[1] + "/DeploymentProcesses/" + deploymentProcessId, {credentials: 'include'}))
+            .then(deploymentProcessId => fetch("/api/" + match[1] + "/DeploymentProcesses/" + deploymentProcessId, {credentials: 'include'}))
             .then(response => response.json())
             .then(json => json.Steps)
 
