@@ -298,11 +298,11 @@ function displayPromptUIV2(theme) {
 
     const info = document.createElement('span');
     info.setAttribute('title', 'AI responses can be inaccurate. OctoAI is an Alpha feature.');
-    info.textContent = '🛈️';
-    info.style.fontSize = '16px';
+    info.id = 'octoai-info';
     info.style.color = theme.textSecondary;
     info.style.paddingLeft = '8px';
     header.appendChild(info);
+    addSvgFromFile('img/info.svg', 'octoai-info');
 
     // Add close button (right side)
     const closeButton = document.createElement('span');
