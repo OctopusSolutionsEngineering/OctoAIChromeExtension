@@ -289,7 +289,7 @@ function displayPromptUIV2(theme) {
 
     // Add the heading
     const heading = document.createElement('span');
-    heading.textContent = 'OctoAI';
+    heading.textContent = '9Brain';
     heading.style.fontWeight = 'bold';
     heading.style.fontSize = '16px';
     heading.style.paddingLeft = '8px';
