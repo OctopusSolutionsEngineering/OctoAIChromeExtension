@@ -289,7 +289,7 @@ function displayPromptUIV2(theme) {
 
     // Add the heading
     const heading = document.createElement('span');
-    heading.textContent = '9Brain';
+    heading.textContent = 'Octopus AI Assistant';
     heading.style.fontWeight = 'bold';
     heading.style.fontSize = '16px';
     heading.style.paddingLeft = '8px';
@@ -297,7 +297,7 @@ function displayPromptUIV2(theme) {
     header.appendChild(heading);
 
     const info = document.createElement('span');
-    info.setAttribute('title', 'AI responses can be inaccurate. OctoAI is an Alpha feature.');
+    info.setAttribute('title', 'AI responses can be inaccurate. The Octopus AI Assistant is an Alpha feature.');
     info.id = 'octoai-info';
     info.style.color = theme.textSecondary;
     info.style.paddingLeft = '8px';

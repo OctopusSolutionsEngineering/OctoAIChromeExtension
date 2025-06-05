@@ -1,8 +1,8 @@
 {
-  "name": "OctoAI",
-  "description": "Octopus AI Integration Testing",
-  "version": "0.2.22",
-  "version_name": "0.2.22-alpha",
+  "name": "Octopus AI Assistant",
+  "description": "Octopus AI Assistant Testing",
+  "version": "0.2.23",
+  "version_name": "0.2.23-alpha",
   "manifest_version": 3,
   "action": {
     "default_icon": "octopusai.png",
