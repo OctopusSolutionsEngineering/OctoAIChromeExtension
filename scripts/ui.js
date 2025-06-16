@@ -12,28 +12,28 @@ function addAiToPage(theme) {
 .octo-ai-hidden {
   display: none;
 }
-@keyframes siriWave {
+@keyframes aiWave {
     0% {
         transform: scale(0.95);
-        box-shadow: 0 0 0 0 rgba(68, 68, 255, 0.7);
+        box-shadow: 0 0 0 0 rgba(31, 242, 255, 0.7);
     }
     70% {
         transform: scale(1);
-        box-shadow: 0 0 0 10px rgba(68, 68, 255, 0);
+        box-shadow: 0 0 0 10px rgba(31, 242, 255, 0);
     }
     100% {
         transform: scale(0.95);
-        box-shadow: 0 0 0 0 rgba(68, 68, 255, 0);
+        box-shadow: 0 0 0 0 rgba(31, 242, 255, 0);
     }
 }
-.siri-button {
+.ai-button {
     position: relative;
-    background: radial-gradient(circle at 30% 30%, #4444ff, #9944ff);
+    background: radial-gradient(circle at 30% 30%, rgb(13, 129, 216), rgb(31, 242, 255));
     z-index: 1;
     transition: all 0.3s ease;
-    animation: siriWave 2s infinite;
+    animation: aiWave 2s infinite;
 }
-.siri-button::after {
+.ai-button::after {
     content: '';
     position: absolute;
     top: 0;
@@ -72,7 +72,7 @@ function addAiToPage(theme) {
     const newButton = document.createElement("button");
     newButton.id = "octoai"
 
-    newButton.className = "siri-button";
+    newButton.className = "ai-button";
     newButton.style.position = "absolute";
     newButton.style.top = "16px";
     newButton.style.right = "120px";
