@@ -77,21 +77,7 @@ async function getReleaseVersion() {
 async function getRunbookName() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/[^?]*\\?([?].*)/);
     if (match) {
-
-        // We need to deal with CaC and database runbooks differently
-        const urlObj = new URL(window.location.href);
-        const params = new URLSearchParams(urlObj.search);
-        const gitRef = params.get("gitRef");
-
-        // The presence of a gitRef param indicates that this is a CaC runbook
-        if (gitRef) {
-            return await fetch("/api/" + match[1] + "/projects/" + match[2] + "/" + gitRef + "/runbooks/" + match[3], {credentials: 'include'})
-                .then(response => response.json())
-                .then(json => json.Name)
-
-        }
-
-        return await fetch("/api/" + match[1] + "/Runbooks/" + match[3], {credentials: 'include'})
+        return await fetch("/api/" + match[1] + "/projects/" + match[2] + "/" + gitRef + "/runbooks/" + match[3], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
