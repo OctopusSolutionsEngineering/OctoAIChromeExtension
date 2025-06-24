@@ -91,6 +91,19 @@ async function getRunbookName() {
 
         }
 
+        // Find CaC runbook details
+        const project = await fetch("/api/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+
+        if (project.PersistenceSettings && project.PersistenceSettings.ConversionState && project.PersistenceSettings.ConversionState.RunbooksAreInGit) {
+            const defaultBranch = project.PersistenceSettings.DefaultBranch
+
+            return await fetch("/api/" + match[1] + "/projects/" + match[2] + "/" + defaultBranch + "/runbooks/" + match[3], {credentials: 'include'})
+                .then(response => response.json())
+                .then(json => json.Name)
+        }
+
+        // Get the runbook name from the database
         return await fetch("/api/" + match[1] + "/projects/" + match[2] + "/runbooks/" + match[3], {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
