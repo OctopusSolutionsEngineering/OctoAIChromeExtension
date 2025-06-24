@@ -78,6 +78,10 @@ async function getRunbookName() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/operations\/runbooks\/([^\/]+)\/[^?]*\\?([?].*)/);
     if (match) {
 
+        // Find CaC runbook details
+        const project = await fetch("/api/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
+            .then(response => response.json())
+
         // We need to deal with CaC and database runbooks differently
         const urlObj = new URL(window.location.href);
         const params = new URLSearchParams(urlObj.search);
@@ -85,20 +89,18 @@ async function getRunbookName() {
 
         // The presence of a gitRef param indicates that this is a CaC runbook
         if (gitRef) {
-            return await fetch("/api/" + match[1] + "/projects/" + match[2] + "/" + gitRef + "/runbooks/" + match[3], {credentials: 'include'})
+            return await fetch("/api/" + match[1] + "/projects/" + project.Id + "/" + gitRef + "/runbooks/" + match[3], {credentials: 'include'})
                 .then(response => response.json())
                 .then(json => json.Name)
 
         }
 
-        // Find CaC runbook details
-        const project = await fetch("/api/" + match[1] + "/projects/" + match[2], {credentials: 'include'})
-            .then(response => response.json())
+
 
         if (project.PersistenceSettings && project.PersistenceSettings.ConversionState && project.PersistenceSettings.ConversionState.RunbooksAreInGit) {
             const defaultBranch = project.PersistenceSettings.DefaultBranch
 
-            return await fetch("/api/" + match[1] + "/projects/" + match[2] + "/" + defaultBranch + "/runbooks/" + match[3], {credentials: 'include'})
+            return await fetch("/api/" + match[1] + "/projects/" + project.Id + "/" + defaultBranch + "/runbooks/" + match[3], {credentials: 'include'})
                 .then(response => response.json())
                 .then(json => json.Name)
         }
