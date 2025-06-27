@@ -8,7 +8,7 @@
         "Create an Azure Functions project called \"Azure Function App\".",
         "Create an AWS Lambda project called \"AWS Lambda App\".",
         "Create a Terraform project called \"Terraform Infrastructure\".",
-        "Create a Script project called \"Script App\".",
+        "Create a Script project called \"Script App\"."
       ],
       "What is an Octopus project?",
       "Check space for duplicate project variables to help improve maintainability.",

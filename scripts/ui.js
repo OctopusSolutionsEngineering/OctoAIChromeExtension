@@ -102,7 +102,7 @@ function addAiToPage(theme) {
 }
 
 // Function to load and add an SVG from a file
-function addSvgFromFile(filePath, container) {
+function addSvgFromFile(filePath, parent) {
     fetch(chrome.runtime.getURL(filePath))
         .then(response => {
             if (!response.ok) {
@@ -111,9 +111,9 @@ function addSvgFromFile(filePath, container) {
             return response.text();
         })
         .then(svgContent => {
-            const container = typeof variable === 'string'
-                ? document.getElementById(container)
-                : container;
+            const container = typeof parent === 'string'
+                ? document.getElementById(parent)
+                : parent;
             if (container) {
                 container.innerHTML = svgContent;
             } else {
