@@ -474,6 +474,7 @@ function displayPromptUIV2(theme) {
     const examplesContainer = document.createElement('div');
     examplesContainer.id = 'octoai-examples';
     examplesContainer.style.fontFamily = 'Arial, sans-serif';
+    examplesContainer.style.overflowY = 'auto';
 
     container.appendChild(examplesContainer)
 
