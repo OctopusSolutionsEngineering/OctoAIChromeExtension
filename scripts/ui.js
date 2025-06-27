@@ -237,9 +237,9 @@ function displayExamples(prompts, theme) {
 
     // Generate buttons and append them to the container
     prompts.forEach(prompt => {
-        const button = Array.isArray(prompt)
-            ? createExampleButton(prompt, getColors())
-            : createExampleFolderButton(prompt, getColors());
+        const button = isObject(prompt)
+            ? createExampleFolderButton(prompt, getColors())
+            : createExampleButton(prompt, getColors());
         examplesContainer.appendChild(button);
     });
 }

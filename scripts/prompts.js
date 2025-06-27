@@ -65,7 +65,8 @@ async function getSamplePrompts() {
     try {
         const localPrompts = await getLocalPrompts();
 
-        const suggestedPrompts = await getSuggestedPrompts();
+        const suggestedPrompts = await getSuggestedPrompts()
+            .catch(() => [])
 
         const prompts = arrayNotNullOrEmpty(localPrompts) || arrayNotNullOrEmpty(suggestedPrompts) || defaultPrompts;
 
@@ -120,121 +121,38 @@ async function processPrompts(prompts) {
     const deploymentVersion = await getDeploymentName();
     const releaseVersion = await getReleaseVersion();
     const runbookRun = await getRunbookRun();
+
+    function mapPrompt(prompt, template, replacement) {
+        if (isObject(prompt)) {
+            return prompt.map(item => mapPrompt(item, template, replacement));
+        }
+
+        return {
+            "prompt": replaceMarker(prompt.prompt, template, replacement),
+            "systemPrompt": replaceMarker(prompt.systemPrompt, template, replacement)
+        }
+    }
+
     return prompts
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Space.Name}", spaceName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Space.Name}", spaceName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Worker.Name}", workerName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Worker.Name}", workerName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Environment.Name}", environmentName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Environment.Name}", environmentName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Lifecycle.Name}", lifecycle),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Lifecycle.Name}", lifecycle)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.GitCredential.Name}", gitCredential),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.GitCredential.Name}", gitCredential)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Feed.Name}", feedName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Feed.Name}", feedName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Certificate.Name}", certificateName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Certificate.Name}", certificateName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.WorkerPool.Name}", workerPoolName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.WorkerPool.Name}", workerPoolName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Tenant.Name}", tenantName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Tenant.Name}", tenantName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Account.Name}", accountName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Account.Name}", accountName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Machine.Name}", machineName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Machine.Name}", machineName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.LibraryVariableSet.Name}", lbsSet),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.LibraryVariableSet.Name}", lbsSet)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Project.Name}", projectName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Project.Name}", projectName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Runbook.Name}", runbookName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Runbook.Name}", runbookName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Step.Name}", stepName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Step.Name}", stepName)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Deployment.Id}", deploymentVersion),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Deployment.Id}", deploymentVersion)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.RunbookRun.Id}", runbookRun),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.RunbookRun.Id}", runbookRun)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Release.Number}", releaseVersion),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Release.Number}", releaseVersion)
-            }
-        })
-        .map(p => {
-            return {
-                "prompt": replaceMarker(p.prompt, "#{Octopus.Environment[0].Name}", firstEnvironmentName),
-                "systemPrompt": replaceMarker(p.systemPrompt, "#{Octopus.Environment[0].Name}", firstEnvironmentName)
-            }
-        });
+        .map(p => mapPrompt(p, "#{Octopus.Space.Name}", spaceName))
+        .map(p => mapPrompt(p, "#{Octopus.Worker.Name}", workerName))
+        .map(p => mapPrompt(p, "#{Octopus.Environment.Name}", environmentName))
+        .map(p => mapPrompt(p, "#{Octopus.Lifecycle.Name}", lifecycle))
+        .map(p => mapPrompt(p, "#{Octopus.GitCredential.Name}", gitCredential))
+        .map(p => mapPrompt(p, "#{Octopus.Feed.Name}", feedName))
+        .map(p => mapPrompt(p, "#{Octopus.Certificate.Name}", certificateName))
+        .map(p => mapPrompt(p, "#{Octopus.WorkerPool.Name}", workerPoolName))
+        .map(p => mapPrompt(p, "#{Octopus.Tenant.Name}", tenantName))
+        .map(p => mapPrompt(p, "#{Octopus.Account.Name}", accountName))
+        .map(p => mapPrompt(p, "#{Octopus.LibraryVariableSet.Name}", lbsSet))
+        .map(p => mapPrompt(p, "#{Octopus.Project.Name}", projectName))
+        .map(p => mapPrompt(p, "#{Octopus.Runbook.Name}", runbookName))
+        .map(p => mapPrompt(p, "#{Octopus.Step.Name}", stepName))
+        .map(p => mapPrompt(p, "#{Octopus.Deployment.Id}", deploymentVersion))
+        .map(p => mapPrompt(p, "#{Octopus.RunbookRun.Id}", runbookRun))
+        .map(p => mapPrompt(p, "#{Octopus.Release.Number}", releaseVersion))
+        .map(p => mapPrompt(p, "#{Octopus.Environment[0].Name}", firstEnvironmentName))
+        .map(p => mapPrompt(p, "#{Octopus.Machine.Name}", machineName))
 }
 
 function replaceMarker(prompt, marker, replacement) {

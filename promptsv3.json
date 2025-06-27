@@ -2,14 +2,17 @@
   {
     "name":"Dashboard",
     "prompts" : [
-      [
-        "Create a Kubernetes project called \"K8s App\".",
-        "Create an Azure Web App project called \"Azure Web App\".",
-        "Create an Azure Functions project called \"Azure Function App\".",
-        "Create an AWS Lambda project called \"AWS Lambda App\".",
-        "Create a Terraform project called \"Terraform Infrastructure\".",
-        "Create a Script project called \"Script App\"."
-      ],
+      {
+        "name": "Create a new project",
+        "prompts": [,
+          "Create a Kubernetes project called \"K8s App\".",
+          "Create an Azure Web App project called \"Azure Web App\".",
+          "Create an Azure Functions project called \"Azure Function App\".",
+          "Create an AWS Lambda project called \"AWS Lambda App\".",
+          "Create a Terraform project called \"Terraform Infrastructure\".",
+          "Create a Script project called \"Script App\"."
+        ]
+      },
       "What is an Octopus project?",
       "Check space for duplicate project variables to help improve maintainability.",
       "Which projects have steps that deploy to Kubernetes?",
