@@ -91,14 +91,23 @@ async function getSuggestedPrompts() {
     // Get the longest page name where the regex matches
     const pageName = getPageName();
 
+    function convertStringToPrompt(promptString) {
+        if (isObject(promptString)) {
+            return {
+                name: promptString.name,
+                prompts: promptString.prompts.map(prompt => convertStringToPrompt(prompt))
+            };
+        }
+
+        return {
+            prompt: promptString
+        };
+    }
+
     return response.response
         .filter(prompt => prompt.name === pageName)
         .map(prompt => prompt.prompts)
-        .flatMap(prompts => prompts.map(prompt => {
-            {
-                return {prompt: prompt}
-            }
-        }));
+        .flatMap(prompts => prompts.map(prompt => convertStringToPrompt(prompt)));
 }
 
 async function processPrompts(prompts) {
@@ -123,8 +132,11 @@ async function processPrompts(prompts) {
     const runbookRun = await getRunbookRun();
 
     function mapPrompt(prompt, template, replacement) {
-        if (isObject(prompt)) {
-            return prompt.map(item => mapPrompt(item, template, replacement));
+        if (Array.isArray(prompt.prompts)) {
+            return {
+                "name": prompt.name,
+                "prompts": prompt.prompts.map(item => mapPrompt(item, template, replacement))
+            };
         }
 
         return {

@@ -132,7 +132,7 @@ async function displayAIChat() {
     } else {
         displayPromptUIV2(getColors());
         const prompts = await getSamplePrompts();
-        displayExamples(prompts, getColors());
+        displayExamples(prompts, null, getColors());
     }
 }
 
@@ -141,15 +141,22 @@ function createButton(text, theme, id, icon) {
 
     if (icon) {
         const iconContainer = document.createElement('span');
+        iconContainer.style.width = '16px'
+        iconContainer.style.height = '16px'
         button.appendChild(iconContainer);
         addSvgFromFile('img/' + icon, iconContainer);
+
+        const textContainer = document.createElement('span');
+        button.appendChild(textContainer);
+        textContainer.textContent = text;
+    } else {
+        button.textContent = text;
     }
 
     if (id) {
         button.id = id;
     }
 
-    button.textContent = text;
     button.title = text;
     button.style.display = 'block';
     button.style.width = '100%';
@@ -178,7 +185,7 @@ function createButton(text, theme, id, icon) {
     return button;
 }
 
-function displayExamples(prompts, theme) {
+function displayExamples(prompts, parentPrompts, theme) {
     const examplesContainer = document.getElementById('octoai-examples');
 
     if (!examplesContainer) {
@@ -207,8 +214,6 @@ function displayExamples(prompts, theme) {
             });
 
         } else {
-            button.textContent = prompt.prompt;
-
             // Add click event
             button.addEventListener('click', () => {
                 const input = document.getElementById('octoai-input');
@@ -222,22 +227,29 @@ function displayExamples(prompts, theme) {
         return button;
     }
 
-    function createExampleFolderButton(prompts, theme) {
-        const button = createButton(prompt.prompt, theme, null, 'folder.svg');
-
-        button.textContent = prompt.prompt;
+    function createExampleFolderButton(childPrompts, theme) {
+        const button = createButton(childPrompts.name, theme, null, 'folder.svg');
 
         // Add click event
         button.addEventListener('click', () => {
-            displayExamples(prompts, theme);
+            displayExamples(childPrompts.prompts, prompts, theme);
         });
 
         return button;
     }
 
+    // Generate a back button if we have parent prompts
+    if (parentPrompts) {
+        const backButton = createButton('Back', theme, null, 'folder.svg');
+        backButton.addEventListener('click', () => {
+            displayExamples(parentPrompts, null, theme);
+        });
+        examplesContainer.appendChild(backButton);
+    }
+
     // Generate buttons and append them to the container
     prompts.forEach(prompt => {
-        const button = isObject(prompt)
+        const button = Array.isArray(prompt.prompts)
             ? createExampleFolderButton(prompt, getColors())
             : createExampleButton(prompt, getColors());
         examplesContainer.appendChild(button);

@@ -4,7 +4,7 @@ function watchForChange() {
 
         if (existingContainer) {
             getSamplePrompts()
-                .then(prompts => displayExamples(prompts, getColors()));
+                .then(prompts => displayExamples(prompts, null, getColors()));
         }
     }
 }
