@@ -3,7 +3,7 @@
     "name":"Dashboard",
     "prompts" : [
       {
-        "name": "Create a new project",
+        "name": "Create a new project...",
         "prompts": [
           "Create a Kubernetes project called \"K8s App\".",
           "Create an Azure Web App project called \"Azure Web App\".",
