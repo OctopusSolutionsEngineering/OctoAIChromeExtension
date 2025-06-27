@@ -300,7 +300,7 @@ function displayPromptUIV2(theme) {
     container.style.border = '1px solid #E0E0E0';
     container.style.borderRadius = '8px';
     container.style.padding = '16px';
-    container.style.maxHeight = 'height: calc(100% - 32px);';
+    container.style.maxHeight = 'calc(100% - 32px);';
     container.style.width = '800px';
     container.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
     container.style.backgroundColor = theme.background;
