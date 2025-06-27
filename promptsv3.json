@@ -4,7 +4,7 @@
     "prompts" : [
       {
         "name": "Create a new project",
-        "prompts": [,
+        "prompts": [
           "Create a Kubernetes project called \"K8s App\".",
           "Create an Azure Web App project called \"Azure Web App\".",
           "Create an Azure Functions project called \"Azure Function App\".",
