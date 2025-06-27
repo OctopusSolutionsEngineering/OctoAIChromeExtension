@@ -305,6 +305,8 @@ function displayPromptUIV2(theme) {
     container.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
     container.style.backgroundColor = theme.background;
     container.style.borderColor = theme.border;
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
 
     // Set absolute positioning in the bottom-right corner
     container.style.position = 'absolute';
@@ -475,6 +477,7 @@ function displayPromptUIV2(theme) {
     examplesContainer.id = 'octoai-examples';
     examplesContainer.style.fontFamily = 'Arial, sans-serif';
     examplesContainer.style.overflowY = 'auto';
+    examplesContainer.style.flexGrow = '1';
 
     container.appendChild(examplesContainer)
 
