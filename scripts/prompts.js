@@ -58,7 +58,7 @@ async function getLocalPrompts() {
 async function getSamplePrompts() {
     const defaultPrompts = [
         {prompt: "List the projects in the Default space"},
-        {prompt: "Generate a terraform module with three environments and a project called \"My Application\""},
+        {prompt: "Create a Kubernetes project called 'K8s Web App'"},
         {prompt: "Help"}
     ]
 

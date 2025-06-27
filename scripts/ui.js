@@ -102,7 +102,7 @@ function addAiToPage(theme) {
 }
 
 // Function to load and add an SVG from a file
-function addSvgFromFile(filePath, containerId) {
+function addSvgFromFile(filePath, container) {
     fetch(chrome.runtime.getURL(filePath))
         .then(response => {
             if (!response.ok) {
@@ -111,11 +111,13 @@ function addSvgFromFile(filePath, containerId) {
             return response.text();
         })
         .then(svgContent => {
-            const container = document.getElementById(containerId);
+            const container = typeof variable === 'string'
+                ? document.getElementById(container)
+                : container;
             if (container) {
                 container.innerHTML = svgContent;
             } else {
-                console.error(`Container with ID "${containerId}" not found.`);
+                console.error(`Container with ID "${container}" not found.`);
             }
         })
         .catch(error => console.error(error));
@@ -134,11 +136,19 @@ async function displayAIChat() {
     }
 }
 
-function createButton(text, theme, id) {
+function createButton(text, theme, id, icon) {
     const button = document.createElement('div');
+
+    if (icon) {
+        const iconContainer = document.createElement('span');
+        button.appendChild(iconContainer);
+        addSvgFromFile('img/' + icon, iconContainer);
+    }
+
     if (id) {
         button.id = id;
     }
+
     button.textContent = text;
     button.title = text;
     button.style.display = 'block';
@@ -212,9 +222,24 @@ function displayExamples(prompts, theme) {
         return button;
     }
 
+    function createExampleFolderButton(prompts, theme) {
+        const button = createButton(prompt.prompt, theme, null, 'folder.svg');
+
+        button.textContent = prompt.prompt;
+
+        // Add click event
+        button.addEventListener('click', () => {
+            displayExamples(prompts, theme);
+        });
+
+        return button;
+    }
+
     // Generate buttons and append them to the container
     prompts.forEach(prompt => {
-        const button = createExampleButton(prompt, getColors());
+        const button = Array.isArray(prompt)
+            ? createExampleButton(prompt, getColors())
+            : createExampleFolderButton(prompt, getColors());
         examplesContainer.appendChild(button);
     });
 }
