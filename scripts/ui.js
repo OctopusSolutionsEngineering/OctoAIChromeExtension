@@ -441,12 +441,13 @@ function displayPromptUIV2(theme) {
     form.style.backgroundClip = "padding-box, border-box";
 
     // Create an input element
-    const input = document.createElement('input');
+    const input = document.createElement('textarea');
     input.id = 'octoai-input';
     input.autocomplete = "off";
     input.type = 'text';
     input.placeholder = 'Ask Octopus about your instance';
     input.style.width = '100%';
+    input.style.height = '5em';
     input.style.background = 'transparent';
     input.style.border = 'none';
     input.style.outline = 'none';
