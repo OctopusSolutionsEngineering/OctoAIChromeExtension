@@ -90,16 +90,8 @@ async function callOctoAi(systemPrompt, prompt) {
         const enrichedPrompts = await Promise.all(
             splitPrompts.map(p => enrichPrompt(p)))
 
-        const promises = enrichedPrompts.map(prompt => chrome.runtime
-            .sendMessage({
-                action: "prompt",
-                prompt: prompt,
-                accessToken: creds.accessToken,
-                apiKey: creds.apiKey,
-                serverUrl: serverUrl
-            }))
-
-        const responses = await Promise.all(promises);
+        // The order of the prompts is important, so we keep the original order.
+        const responses = await sendPrompts(enrichedPrompts, creds, serverUrl);
 
         if (responses.length === 1 && !responses[0].error && isActionSseResponse(responses[0].response)) {
             // This is a confirmation prompt rather than an answer
@@ -158,6 +150,20 @@ async function callOctoAi(systemPrompt, prompt) {
         Logger.error(error.message);
         throw error;
     }
+}
+
+async function sendPrompts(prompts, creds, serverUrl) {
+    const results = []
+    for(const prompt of prompts) {
+        results.push(await chrome.runtime.sendMessage({
+            action: "prompt",
+            prompt: prompt,
+            accessToken: creds.accessToken,
+            apiKey: creds.apiKey,
+            serverUrl: serverUrl
+        }))
+    }
+    return results;
 }
 
 async function approveConfirmation(timeout, id) {
