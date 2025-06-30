@@ -83,9 +83,14 @@ async function callOctoAi(systemPrompt, prompt) {
         const creds = await createOctopusApiKey();
 
         // Compound document prompts are separated by a line with "---" in the middle.
-        const splitPrompts = combinedPrompt.split("\n\n---\n\n");
+        const splitPrompts = combinedPrompt
+            .split("\n\n---\n\n")
+            .filter(p => p.trim());
 
-        const promises = splitPrompts.map(prompt => chrome.runtime
+        const enrichedPrompts = await Promise.all(
+            splitPrompts.map(p => enrichPrompt(p)))
+
+        const promises = enrichedPrompts.map(prompt => chrome.runtime
             .sendMessage({
                 action: "prompt",
                 prompt: prompt,
@@ -126,7 +131,7 @@ async function callOctoAi(systemPrompt, prompt) {
                 .filter(response => response.error)
                 .map(response => response.prompt);
 
-            if (anyErrors) {
+            if (errors.length !== 0) {
                 return {
                     prompt: prompt,
                     systemPrompt: systemPrompt,

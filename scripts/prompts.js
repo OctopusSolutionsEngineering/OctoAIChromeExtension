@@ -242,11 +242,9 @@ function submitPrompt(systemPrompt, originalPrompt) {
     const thumbsUp = document.getElementById('octo-ai-thumbs-up');
     const thumbsDown = document.getElementById('octo-ai-thumbs-down');
 
-    enrichPrompt(originalPrompt)
-        .then(prompt => {
-            addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt);
-            return callOctoAi(systemPrompt, prompt);
-        })
+    addFeedbackListener(feedback, thumbsUp, thumbsDown, originalPrompt);
+
+    callOctoAi(systemPrompt, originalPrompt)
         .then(result => {
             displayMarkdownResponseV2(result, getColors());
         })
