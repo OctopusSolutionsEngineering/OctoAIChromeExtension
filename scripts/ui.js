@@ -516,6 +516,9 @@ function displayPromptUIV2(theme) {
 }
 
 function showThinking() {
+    showThinking.current = 1;
+    showThinking.total = 1;
+
     const input = document.getElementById('octoai-input');
     input.disabled = true;
     let dots = 0;
@@ -523,7 +526,13 @@ function showThinking() {
     input.value = "Thinking";
     return setInterval(() => {
         const timeElapsed = new Date() - start;
-        const message = timeElapsed > 30000 ? "Some prompts can take a minute or two to process. Please be patient" : "Thinking";
+
+        const longMessage = showThinking.total > 1
+            ? "Processing prompt " + showThinking.current + ". Please be patient"
+            : "Some prompts can take a minute or two to process. Please be patient"
+
+        const message = timeElapsed > 30000 ? longMessage : "Thinking";
+
         dots = (dots + 1) % 4;
         input.value = message + ".".repeat(dots);
     }, 500);

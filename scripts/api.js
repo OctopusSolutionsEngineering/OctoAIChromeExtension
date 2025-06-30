@@ -154,14 +154,18 @@ async function callOctoAi(systemPrompt, prompt) {
 
 async function sendPrompts(prompts, creds, serverUrl) {
     const results = []
-    for(const prompt of prompts) {
+
+    showThinking.total = prompts.length + 1;
+    for(var i = 0; i < prompts.length; i++) {
+        showThinking.current = i + 1;
+
         results.push(await chrome.runtime.sendMessage({
             action: "prompt",
-            prompt: prompt,
+            prompt: prompts[i],
             accessToken: creds.accessToken,
             apiKey: creds.apiKey,
             serverUrl: serverUrl
-        }))
+        }));
     }
     return results;
 }
