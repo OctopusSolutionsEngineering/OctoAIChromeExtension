@@ -652,7 +652,7 @@ function buildMessageBubble(message, theme) {
     bubble.style.fontFamily = 'Arial, sans-serif';
     bubble.style.fontSize = '14px';
     bubble.style.whiteSpace = "pre-line";
-    bubble.style.overflowY = "scroll";
+    bubble.style.overflowY = "auto";
     bubble.style.maxHeight = "5em";
     bubble.style.color = theme.text;
     bubble.style.backgroundColor = theme.backgroundSecondary;
