@@ -155,7 +155,7 @@ async function callOctoAi(systemPrompt, prompt) {
 async function sendPrompts(prompts, creds, serverUrl) {
     const results = []
 
-    showThinking.total = prompts.length + 1;
+    showThinking.total = prompts.length;
     for(var i = 0; i < prompts.length; i++) {
         showThinking.current = i + 1;
 
