@@ -97,7 +97,7 @@ async function callOctoAi(systemPrompt, prompt) {
             // This is a confirmation prompt rather than an answer
             showConfirmation();
             hideForm();
-            const titleAndMessage = getConfirmationTitleAndMessage(response.response);
+            const titleAndMessage = getConfirmationTitleAndMessage(responses[0].response);
 
             // 4 minutes to approve
             const timeout = setTimeout(function() {
@@ -136,7 +136,7 @@ async function callOctoAi(systemPrompt, prompt) {
 
         showExamples();
 
-        if (response.error) {
+        if (responses[0].error) {
 
             return {
                 prompt: prompt,
@@ -145,7 +145,7 @@ async function callOctoAi(systemPrompt, prompt) {
             };
         }
 
-        return {prompt: prompt, systemPrompt: systemPrompt, response: convertFromSseResponse(response.response)};
+        return {prompt: prompt, systemPrompt: systemPrompt, response: convertFromSseResponse(responses[0].response)};
     } catch (error) {
         Logger.error(error.message);
         throw error;
