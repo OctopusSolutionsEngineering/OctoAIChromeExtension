@@ -307,6 +307,7 @@ function displayPromptUIV2(theme) {
     container.style.borderColor = theme.border;
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
+    container.style.scrollbarColor = theme.textSecondary + " " + theme.backgroundSecondary;
 
     // Set absolute positioning in the bottom-right corner
     container.style.position = 'absolute';
