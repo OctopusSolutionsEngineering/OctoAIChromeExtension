@@ -82,16 +82,21 @@ async function callOctoAi(systemPrompt, prompt) {
 
         const creds = await createOctopusApiKey();
 
-        const response = await chrome.runtime
+        // Compound document prompts are separated by a line with "---" in the middle.
+        const splitPrompts = combinedPrompt.split("\n\n---\n\n");
+
+        const promises = splitPrompts.map(prompt => chrome.runtime
             .sendMessage({
                 action: "prompt",
-                prompt: combinedPrompt,
+                prompt: prompt,
                 accessToken: creds.accessToken,
                 apiKey: creds.apiKey,
                 serverUrl: serverUrl
-            });
+            }))
 
-        if (!response.error && isActionSseResponse(response.response)) {
+        const responses = await Promise.all(promises);
+
+        if (responses.length === 1 && !responses[0].error && isActionSseResponse(responses[0].response)) {
             // This is a confirmation prompt rather than an answer
             showConfirmation();
             hideForm();
@@ -116,6 +121,20 @@ async function callOctoAi(systemPrompt, prompt) {
                 systemPrompt: systemPrompt,
                 response: titleAndMessage.title + "\n\n" + titleAndMessage.message
             };
+        } else if (responses.length > 1) {
+            const errors = responses
+                .filter(response => response.error)
+                .map(response => response.prompt);
+
+            if (anyErrors) {
+                return {
+                    prompt: prompt,
+                    systemPrompt: systemPrompt,
+                    response: "The following prompts were not processed successfully. You may try the prompts again: " + errors.join("\n\n")
+                };
+            }
+
+            return {prompt: prompt, systemPrompt: systemPrompt, response: "All the prompts were processed successfully."};
         }
 
         showExamples();

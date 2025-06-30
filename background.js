@@ -80,7 +80,7 @@ chrome.runtime.onMessage.addListener(
                 })
                 .then(json => sendResponse({response: json}))
                 .catch(error => {
-                    sendResponse({error: error})
+                    sendResponse({error: error, prompt: request.prompt})
                 });
         }
 
@@ -160,7 +160,7 @@ function callOctoAIAPI(request, sendResponse, count) {
             return response.text()
         })
         .then(text => {
-            sendResponse({response: text})
+            sendResponse({response: text, prompt: request.prompt})
         })
         .catch(error => {
             // retry once
