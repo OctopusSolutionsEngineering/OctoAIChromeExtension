@@ -155,9 +155,9 @@ async function callOctoAi(systemPrompt, prompt) {
 async function sendPrompts(prompts, creds, serverUrl) {
     const results = []
 
-    showThinking.total = prompts.length;
+    window.showThinking.total = prompts.length;
     for(var i = 0; i < prompts.length; i++) {
-        showThinking.current = i + 1;
+        window.showThinking.current = i + 1;
 
         results.push(await chrome.runtime.sendMessage({
             action: "prompt",
