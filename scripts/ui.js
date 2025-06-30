@@ -528,7 +528,7 @@ function showThinking() {
         const timeElapsed = new Date() - start;
 
         const longMessage = showThinking.total > 1
-            ? "Processing prompt " + showThinking.current + ". Please be patient"
+            ? "Processing prompt " + showThinking.current + " of " + showThinking.total + ". Please be patient"
             : "Some prompts can take a minute or two to process. Please be patient"
 
         const message = timeElapsed > 30000 ? longMessage : "Thinking";
