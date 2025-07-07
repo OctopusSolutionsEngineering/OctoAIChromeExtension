@@ -213,7 +213,7 @@ async function enrichPrompt(prompt) {
     ]
 
     return currentContext.reduce((accumulator, currentValue) =>
-            currentValue.name == null || accumulator.includes(currentValue.name) ?
+            currentValue.name == null ?
                 accumulator :
                 accumulator + "\nCurrent " + currentValue.type + " is \"" + currentValue.name + "\".",
         prompt);
