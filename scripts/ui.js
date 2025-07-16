@@ -3,48 +3,6 @@ function addAiToPage(theme) {
         return
     }
 
-    const styleSheet = document.createElement("style");
-    styleSheet.textContent = `    
-.octo-ai-fade-out {
-  opacity: 0;
-  transition: opacity 0.5s ease;
-}
-.octo-ai-hidden {
-  display: none;
-}
-@keyframes aiWave {
-    0% {
-        transform: scale(0.95);
-        box-shadow: 0 0 0 0 rgba(31, 242, 255, 0.7);
-    }
-    70% {
-        transform: scale(1);
-        box-shadow: 0 0 0 10px rgba(31, 242, 255, 0);
-    }
-    100% {
-        transform: scale(0.95);
-        box-shadow: 0 0 0 0 rgba(31, 242, 255, 0);
-    }
-}
-.ai-button {
-    position: relative;
-    background: radial-gradient(circle at 30% 30%, rgb(13, 129, 216), rgb(31, 242, 255));
-    z-index: 1;
-    transition: all 0.3s ease;
-    animation: aiWave 2s infinite;
-}
-.ai-button::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    border-radius: inherit;
-    background: radial-gradient(circle at 70% 70%, rgba(255, 255, 255, 0.4), transparent);
-}`;
-    document.head.appendChild(styleSheet);
-
     // Add additional styling for markdown elements
     const markdownStyles = document.createElement("style");
     markdownStyles.textContent = `
@@ -74,14 +32,21 @@ function addAiToPage(theme) {
 
     newButton.className = "ai-button";
     newButton.style.position = "absolute";
-    newButton.style.top = "16px";
-    newButton.style.right = "120px";
-    newButton.style.width = "32px";
-    newButton.style.height = "32px";
+    newButton.style.bottom = "16px";
+    newButton.style.right = "16px";
+    newButton.style.width = "48px";
+    newButton.style.height = "48px";
     newButton.style.padding = "0";
     newButton.style.margin = "0";
-    newButton.style.border = "none";
+    newButton.style.background = theme.background;
+    newButton.style.border = "double 3px transparent";
+    newButton.style.borderRadius = "6px";
+    newButton.style.backgroundImage = "linear-gradient(" + theme.background + "," + theme.background + "), linear-gradient(to bottom, " + theme.gradientStart + "," + theme.gradientEnd2 + ")";
+    newButton.style.backgroundOrigin = "border-box";
+    newButton.style.backgroundClip = "padding-box, border-box";
     newButton.style.borderRadius = "50%";
+
+    addSvgFromFile('img/sparkles.svg', newButton);
 
     newButton.addEventListener("mouseover", function () {
         this.style.transform = "scale(1.1)";
@@ -617,13 +582,14 @@ function getColors() {
         background: '#1B242D',                 // The background colour of any elements
         gradientStart: '#1FF2FF',              // The start of the gradient
         gradientEnd: '#0d81d8',                // The end of the gradient
+        gradientEnd2: '#a683e5',                // The end of the gradient
         backgroundSecondary: '#1F303F',        // The background colour for prompt bubbles
         backgroundButton: '#1B242D',           // The background colour for buttons like examples
         backgroundSecondaryButton: '#1F303F',  // The hover background for buttons
         text: '#f4f6f8',                        // primary text colour
         textSecondary: '#98aaba',               // secondary text colour, used for title elements
         link: '#87bfec',                        // link colour
-        border: '#2e475d'                       // popup border colour
+        border: '#2e475d',                      // popup border colour
     }
 }
 
