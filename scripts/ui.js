@@ -23,6 +23,15 @@ function addAiToPage(theme) {
         #octoai-container a:hover {
             color: ${theme.text};
         }
+        
+        .octo-ai-fade-out {
+            opacity: 0;
+            transition: opacity 0.5s ease-out;
+        }
+       
+        .octo-ai-hidden {
+            display: none;
+        }
     `;
     document.head.appendChild(markdownStyles);
 
@@ -666,7 +675,8 @@ function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
                 action: "feedback",
                 prompt: prompt,
                 accessToken: creds.accessToken,
-                thumbsUp: true
+                thumbsUp: true,
+                serverUrl: window.location.origin
             }))
     }
 

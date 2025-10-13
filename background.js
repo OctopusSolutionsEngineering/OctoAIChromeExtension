@@ -68,7 +68,7 @@ chrome.runtime.onMessage.addListener(
             callOctoAIAPI(request, sendResponse, 0)
         } else if (request.action === 'confirmation') {
             callOctoAIAPIConfirmation(request, sendResponse, 0)
-        } else if (request.action == 'feedback') {
+        } else if (request.action === 'feedback') {
             addFeedback(request)
         } else if (request.action === 'getPrompts') {
             fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/promptsv3.json')
@@ -91,6 +91,7 @@ chrome.runtime.onMessage.addListener(
 function addFeedback(request) {
     const headers= {
         'Authorization': `Bearer ${request.accessToken}`,
+        'X-Octopus-Url': request.serverUrl,
     }
 
     const feedback = {
