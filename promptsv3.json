@@ -11,7 +11,8 @@
           "Create an AWS Lambda project called \"AWS Lambda App\".",
           "Create a Terraform project called \"Terraform Infrastructure\".",
           "Create a Script project called \"Script App\".",
-          "Create a Argo CD Tag Update project called \"Argo Tag Update\""
+          "Create a Argo CD Tag Update project called \"Argo Tag Update\"",
+          "Create a Tomcat project called \"Tomcat App\""
         ]
       },
       "What is an Octopus project?",
