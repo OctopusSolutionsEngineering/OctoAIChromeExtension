@@ -1,5 +1,5 @@
 
-function getPageName() {
+async function getPageName() {
     const pageName = Object.keys(getPageRegex())
         .filter(key => window.location.href.match(getPageRegex()[key]))
         .sort((a, b) => a.length - b.length)
@@ -10,7 +10,7 @@ function getPageName() {
         return pageName;
     }
 
-    return getProjectCount() === 0 ? "Dashboard.NoProjects" : "Dashboard";
+    return (await getProjectCount()) === 0 ? "Dashboard.NoProjects" : "Dashboard";
 }
 
 async function getProjectCount() {

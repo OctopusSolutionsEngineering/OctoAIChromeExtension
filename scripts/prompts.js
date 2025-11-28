@@ -2,7 +2,7 @@ async function getLocalPrompts() {
     const octoAILvsName = "OctoAI Prompts"
     const maxPrompts = 5
 
-    const pageName = getPageName();
+    const pageName = await getPageName();
 
     if (!pageName) {
         return null;
@@ -55,8 +55,8 @@ async function getLocalPrompts() {
 
 }
 
-function isOnDashboardPage() {
-    return getPageName() === "Dashboard";
+async function isOnEmptyDashboardPage() {
+    return await getPageName() === "Dashboard.NoProjects";
 }
 
 async function getSamplePrompts() {
@@ -93,7 +93,7 @@ async function getSuggestedPrompts() {
     }
 
     // Get the longest page name where the regex matches
-    const pageName = getPageName();
+    const pageName = await getPageName();
 
     function convertStringToPrompt(promptString) {
         if (isObject(promptString)) {

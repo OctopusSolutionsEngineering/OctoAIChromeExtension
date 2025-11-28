@@ -98,10 +98,9 @@ function addSvgFromFile(filePath, parent) {
 }
 
 async function displayAIChatForEmptyProjects() {
-    const projectCount = await getProjectCount();
-    const onProjectPage = isOnDashboardPage();
+    const onProjectPage = await isOnEmptyDashboardPage();
 
-    if (projectCount === 0 && onProjectPage) {
+    if (onProjectPage) {
         const existingContainer = document.getElementById('octoai-container');
         if (!existingContainer) {
             displayPromptUIV2(getColors());
