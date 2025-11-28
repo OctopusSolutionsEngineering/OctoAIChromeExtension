@@ -171,6 +171,8 @@ async function sendPrompts(prompts, creds, serverUrl) {
 }
 
 async function approveConfirmation(timeout, id) {
+    const projectCount = await getProjectCount();
+
     clearTimeout(timeout);
     hideResponse();
     hideConfirmation();
@@ -218,6 +220,13 @@ async function approveConfirmation(timeout, id) {
         showExamples();
         showPrompt();
         enableSubmitButton();
+
+        // We need to refresh the page so the new project appears.
+        const newProjectCount = await getProjectCount();
+
+        if (projectCount === 0 && newProjectCount > 0) {
+            window.location.hash = "#/" + await getSpaceId();
+        }
     }
 }
 

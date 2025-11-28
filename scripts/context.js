@@ -19,6 +19,7 @@ async function getProjectCount() {
         return await fetch("/api/Spaces/" + match[1] + "/Projects", {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.TotalResults)
+            .catch(() => -1)
 
     }
     return null;
