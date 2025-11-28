@@ -97,6 +97,19 @@ function addSvgFromFile(filePath, parent) {
         .catch(error => console.error(error));
 }
 
+async function displayAIChatForEmptyProjects() {
+    const projectCount = await getProjectCount();
+    const onProjectPage = isOnDashboardPage();
+
+    if (projectCount === 0 && onProjectPage) {
+        const existingContainer = document.getElementById('octoai-container');
+        if (!existingContainer) {
+            displayPromptUIV2(getColors());
+            await displayPrompts();
+        }
+    }
+}
+
 async function displayAIChat() {
 
     const existingContainer = document.getElementById('octoai-container');

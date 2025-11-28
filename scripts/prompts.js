@@ -55,6 +55,10 @@ async function getLocalPrompts() {
 
 }
 
+function isOnDashboardPage() {
+    return getPageName() === "Dashboard";
+}
+
 async function getSamplePrompts() {
     const defaultPrompts = [
         {prompt: "List the projects in the space"},

@@ -6,6 +6,17 @@ function getPageName() {
         .pop();
 }
 
+async function getProjectCount() {
+    const match = window.location.href.match(/(Spaces-\d+)/);
+    if (match) {
+        return await fetch("/api/Spaces/" + match[1] + "/Projects", {credentials: 'include'})
+            .then(response => response.json())
+            .then(json => json.TotalResults)
+
+    }
+    return null;
+}
+
 async function getFirstEnvironmentName() {
     const match = window.location.href.match(/(Spaces-\d+)/);
     if (match) {

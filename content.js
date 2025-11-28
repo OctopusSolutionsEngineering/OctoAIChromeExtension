@@ -9,4 +9,8 @@ function refreshPrompts() {
 
 Logger.info("Loaded")
 addAiToPage(getColors())
-refreshPrompts()
+
+displayAIChatForEmptyProjects()
+    .finally(() => refreshPrompts());
+
+
