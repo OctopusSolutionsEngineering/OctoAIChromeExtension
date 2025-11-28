@@ -105,9 +105,13 @@ async function displayAIChat() {
         hidePromptUI()
     } else {
         displayPromptUIV2(getColors());
-        const prompts = await getSamplePrompts();
-        displayExamples(prompts, null, getColors());
+        await displayPrompts();
     }
+}
+
+async function displayPrompts() {
+    const prompts = await getSamplePrompts();
+    displayExamples(prompts, null, getColors());
 }
 
 function createButton(text, theme, id, icon) {
