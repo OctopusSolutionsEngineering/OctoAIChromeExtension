@@ -1,5 +1,18 @@
 [
   {
+    "name":"Dashboard.NoProjects",
+    "prompts" : [
+      "Create a Kubernetes project called \"K8s App\".",
+      "Create an Azure Web App project called \"Azure Web App\".",
+      "Create an Azure Functions project called \"Azure Function App\".",
+      "Create an AWS Lambda project called \"AWS Lambda App\".",
+      "Create a Terraform project called \"Terraform Infrastructure\".",
+      "Create a Script project called \"Script App\".",
+      "Create a Argo CD Tag Update project called \"Argo Tag Update\"",
+      "Create a Tomcat project called \"Tomcat App\""
+    ]
+  },
+  {
     "name":"Dashboard",
     "prompts" : [
       {

@@ -1,9 +1,16 @@
 
 function getPageName() {
-    return Object.keys(getPageRegex())
+    const pageName = Object.keys(getPageRegex())
         .filter(key => window.location.href.match(getPageRegex()[key]))
         .sort((a, b) => a.length - b.length)
         .pop();
+
+    // The dashboard has some special handling
+    if (pageName !== "Dashboard") {
+        return pageName;
+    }
+
+    return getProjectCount() === 0 ? "Dashboard.NoProjects" : "Dashboard";
 }
 
 async function getProjectCount() {
