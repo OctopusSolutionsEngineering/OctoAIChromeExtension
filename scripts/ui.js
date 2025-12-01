@@ -328,7 +328,7 @@ function displayPromptUIV2(theme) {
     header.appendChild(heading);
 
     const info = document.createElement('span');
-    info.setAttribute('title', 'AI responses can be inaccurate. The Octopus AI Assistant is an Alpha feature.');
+    info.setAttribute('title', 'AI responses can be inaccurate.');
     info.id = 'octoai-info';
     info.style.color = theme.textSecondary;
     info.style.paddingLeft = '8px';
