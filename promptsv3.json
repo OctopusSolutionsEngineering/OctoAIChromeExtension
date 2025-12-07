@@ -9,7 +9,8 @@
       "Create a Terraform project called \"Terraform Infrastructure\".",
       "Create a Script project called \"Script App\".",
       "Create a Argo CD Tag Update project called \"Argo Tag Update\"",
-      "Create a Tomcat project called \"Tomcat App\""
+      "Create a Tomcat project called \"Tomcat App\"",
+      "Create a Blue/Green Deployment project called \"BlueGreen App\""
     ]
   },
   {
@@ -25,7 +26,8 @@
           "Create a Terraform project called \"Terraform Infrastructure\".",
           "Create a Script project called \"Script App\".",
           "Create a Argo CD Tag Update project called \"Argo Tag Update\"",
-          "Create a Tomcat project called \"Tomcat App\""
+          "Create a Tomcat project called \"Tomcat App\"",
+          "Create a Blue/Green Deployment project called \"BlueGreen App\""
         ]
       },
       "What is an Octopus project?",
