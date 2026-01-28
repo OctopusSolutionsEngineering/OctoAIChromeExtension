@@ -97,10 +97,24 @@ async function getSuggestedPrompts() {
 
     function convertStringToPrompt(promptString) {
         if (isObject(promptString)) {
-            return {
-                name: promptString.name,
-                prompts: promptString.prompts.map(prompt => convertStringToPrompt(prompt))
-            };
+            // This is a nested menu
+            if (promptString.name && promptString.prompts) {
+                return {
+                    name: promptString.name,
+                    prompts: promptString.prompts.map(prompt => convertStringToPrompt(prompt))
+                };
+            }
+
+            // This is a short prompt that creates a longer prompt
+            if (promptString.prompt || promptString.fullPrompt) {
+                return {
+                    prompt: promptString.prompt,
+                    fullPrompt: promptString.fullPrompt
+                };
+            }
+
+            // This is an unexpected object, which will be ignored
+            return null;
         }
 
         return {
@@ -111,7 +125,8 @@ async function getSuggestedPrompts() {
     return response.response
         .filter(prompt => prompt.name === pageName)
         .map(prompt => prompt.prompts)
-        .flatMap(prompts => prompts.map(prompt => convertStringToPrompt(prompt)));
+        .flatMap(prompts => prompts.map(prompt => convertStringToPrompt(prompt)))
+        .filter(prompt => prompt != null);
 }
 
 async function processPrompts(prompts) {
@@ -145,7 +160,8 @@ async function processPrompts(prompts) {
 
         return {
             "prompt": replaceMarker(prompt.prompt, template, replacement),
-            "systemPrompt": replaceMarker(prompt.systemPrompt, template, replacement)
+            "systemPrompt": replaceMarker(prompt.systemPrompt, template, replacement),
+            "fullPrompt": replaceMarker(prompt.fullPrompt, template, replacement),
         }
     }
 

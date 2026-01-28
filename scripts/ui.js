@@ -195,7 +195,10 @@ function displayExamples(prompts, parentPrompts, theme) {
     function createExampleButton(prompt, theme) {
         const button = createButton(prompt.prompt, theme);
 
+
         if (prompt.systemPrompt) {
+            // System prompts are those defined in a library variable set
+
             button.textContent = "TEAM: " + prompt.prompt;
 
             // Add click event
@@ -203,7 +206,21 @@ function displayExamples(prompts, parentPrompts, theme) {
                 submitPrompt(prompt.systemPrompt, prompt.prompt);
             });
 
+        }
+        else if (prompt.fullPrompt) {
+            // Prompts can have a shorthand description in the menu and a full prompt to insert
+
+            // Add click event
+            button.addEventListener('click', () => {
+                const input = document.getElementById('octoai-input');
+                if (input) {
+                    input.value = prompt.fullPrompt;
+                    input.focus();
+                }
+            });
         } else {
+            // Regular prompts display the sample prompt they execute
+
             // Add click event
             button.addEventListener('click', () => {
                 const input = document.getElementById('octoai-input');
