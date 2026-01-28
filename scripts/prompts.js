@@ -97,10 +97,24 @@ async function getSuggestedPrompts() {
 
     function convertStringToPrompt(promptString) {
         if (isObject(promptString)) {
-            return {
-                name: promptString.name,
-                prompts: promptString.prompts.map(prompt => convertStringToPrompt(prompt))
-            };
+            // This is a nested menu
+            if (promptString.name && promptString.prompts) {
+                return {
+                    name: promptString.name,
+                    prompts: promptString.prompts.map(prompt => convertStringToPrompt(prompt))
+                };
+            }
+
+            // This is a short prompt with a hidden system prompt
+            if (promptString.prompt || promptString.systemPrompt) {
+                return {
+                    prompt: promptString.prompt,
+                    systemPrompt: promptString.systemPrompt
+                };
+            }
+
+            // This is an unexpected object, which will be ignored
+            return null;
         }
 
         return {
@@ -111,7 +125,8 @@ async function getSuggestedPrompts() {
     return response.response
         .filter(prompt => prompt.name === pageName)
         .map(prompt => prompt.prompts)
-        .flatMap(prompts => prompts.map(prompt => convertStringToPrompt(prompt)));
+        .flatMap(prompts => prompts.map(prompt => convertStringToPrompt(prompt)))
+        .filter(prompt => prompt != null);
 }
 
 async function processPrompts(prompts) {
