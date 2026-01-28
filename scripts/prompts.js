@@ -106,10 +106,10 @@ async function getSuggestedPrompts() {
             }
 
             // This is a short prompt with a hidden system prompt
-            if (promptString.prompt || promptString.systemPrompt) {
+            if (promptString.prompt || promptString.fullPrompt) {
                 return {
                     prompt: promptString.prompt,
-                    systemPrompt: promptString.systemPrompt
+                    fullPrompt: promptString.fullPrompt
                 };
             }
 
