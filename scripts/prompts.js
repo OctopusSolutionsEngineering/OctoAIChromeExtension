@@ -105,7 +105,7 @@ async function getSuggestedPrompts() {
                 };
             }
 
-            // This is a short prompt with a hidden system prompt
+            // This is a short prompt that creates a longer prompt
             if (promptString.prompt || promptString.fullPrompt) {
                 return {
                     prompt: promptString.prompt,
