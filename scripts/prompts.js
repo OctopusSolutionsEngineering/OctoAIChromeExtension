@@ -160,7 +160,8 @@ async function processPrompts(prompts) {
 
         return {
             "prompt": replaceMarker(prompt.prompt, template, replacement),
-            "systemPrompt": replaceMarker(prompt.systemPrompt, template, replacement)
+            "systemPrompt": replaceMarker(prompt.systemPrompt, template, replacement),
+            "fullPrompt": replaceMarker(prompt.fullPrompt, template, replacement),
         }
     }
 
