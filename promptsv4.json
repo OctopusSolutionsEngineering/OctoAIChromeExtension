@@ -38,7 +38,7 @@
           "Create a Tomcat project called \"Tomcat App\"",
           "Create a Blue/Green Deployment project called \"BlueGreen App\""
         ]
-      },,
+      },
       "What is an Octopus project?",
       "Find deployments that were queued to help identify performance constraints.",
       "Check space for duplicate project variables to help improve maintainability.",
