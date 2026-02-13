@@ -21,7 +21,7 @@
         "prompts": [
           {
             "dashboardName": "Hello World!",
-            "dashboardFile": "helloworld.html"
+            "dashboardFile": "helloworld/helloworld.html"
           }
         ]
       },
