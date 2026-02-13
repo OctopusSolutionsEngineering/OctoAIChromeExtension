@@ -32,6 +32,10 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                             })
                             .then(() => chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
+                                files: ['scripts/dashboard.js']
+                            }))
+                            .then(() => chrome.scripting.executeScript({
+                                target: {tabId: tab.id},
                                 files: ['scripts/ui.js']
                             }))
                             .then(() => chrome.scripting.executeScript({ 
@@ -82,11 +86,20 @@ chrome.runtime.onMessage.addListener(
                 .catch(error => {
                     sendResponse({error: error, prompt: request.prompt})
                 });
+        } else if (request.action === 'dashboard') {
+            showDashboard(request)
         }
 
         return true;
     }
 );
+
+function showDashboard(request) {
+    chrome.tabs.create({
+        url: chrome.runtime.getURL("dashboards/" + request.dashboardFile)
+    });
+
+}
 
 function addFeedback(request) {
     const headers= {

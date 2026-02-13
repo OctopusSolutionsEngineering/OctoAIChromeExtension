@@ -218,6 +218,11 @@ function displayExamples(prompts, parentPrompts, theme) {
                     input.focus();
                 }
             });
+        } else if (prompt.dashboardName) {
+            // Dashboard prompts are those that link to a dashboard in the extension
+            button.addEventListener('click', () => {
+                displayDashboard(prompt.dashboardFile);
+            });
         } else {
             // Regular prompts display the sample prompt they execute
 

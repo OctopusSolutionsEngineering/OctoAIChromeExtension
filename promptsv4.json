@@ -17,6 +17,15 @@
     "name":"Dashboard",
     "prompts" : [
       {
+        "name": "Community Dashboards...",
+        "prompts": [
+          {
+            "dashboardName": "Hello World!",
+            "dashboardFile": "helloworld.html"
+          }
+        ]
+      },
+      {
         "name": "Create a new project...",
         "prompts": [
           "Create a Kubernetes project called \"K8s App\".",
@@ -29,7 +38,7 @@
           "Create a Tomcat project called \"Tomcat App\"",
           "Create a Blue/Green Deployment project called \"BlueGreen App\""
         ]
-      },
+      },,
       "What is an Octopus project?",
       "Find deployments that were queued to help identify performance constraints.",
       "Check space for duplicate project variables to help improve maintainability.",
