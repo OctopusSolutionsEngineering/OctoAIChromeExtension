@@ -1,8 +1,11 @@
 async function displayDashboard(dashboard) {
+    const serverUrl = window.location.origin;
+
     createOctopusApiKey()
         .then(creds => chrome.runtime.sendMessage({
             action: "dashboard",
-            dashboard: dashboard,
-            accessToken: creds.accessToken
+            dashboardFile: dashboard,
+            accessToken: creds.accessToken,
+            serverUrl: serverUrl
         }))
 }

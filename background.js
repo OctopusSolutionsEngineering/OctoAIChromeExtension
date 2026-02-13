@@ -96,10 +96,16 @@ chrome.runtime.onMessage.addListener(
 );
 
 function showDashboard(request) {
-    chrome.tabs.create({
-        url: chrome.runtime.getURL("dashboards/" + request.dashboardFile)
-    });
+    const dashboardConfig = {
+        accessToken: request.accessToken,
+        serverUrl: request.serverUrl
+    };
 
+    chrome.storage.local.set({"dashboardConfig": dashboardConfig}, () => {
+        chrome.tabs.create({
+            url: chrome.runtime.getURL("dashboards/" + request.dashboardFile)
+        });
+    });
 }
 
 function addFeedback(request) {

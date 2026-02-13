@@ -193,7 +193,8 @@ function displayExamples(prompts, parentPrompts, theme) {
 
     // Function to create a button
     function createExampleButton(prompt, theme) {
-        const button = createButton(prompt.prompt, theme);
+        const buttonName = prompt.prompt || prompt.dashboardName
+        const button = createButton(buttonName, theme);
 
 
         if (prompt.systemPrompt) {
