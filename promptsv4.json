@@ -20,8 +20,8 @@
         "name": "Community dashboards...",
         "prompts": [
           {
-            "dashboardName": "Hello World!",
-            "dashboardFile": "helloworld/helloworld.html"
+            "dashboardName": "Value Dashboard",
+            "dashboardFile": "value/index.html"
           }
         ]
       },
