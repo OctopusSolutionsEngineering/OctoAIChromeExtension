@@ -486,6 +486,8 @@ const DashboardData = (() => {
     getSummary: () => getSummary({}),
     getSpaces: () => _spaces,
     getSpaceData: (id) => _spaceData[id],
+    getAllSpaceData: () => _spaceData,
+    getCrossSpaceTasks: () => _crossSpaceTasks,
     getServerInfo: () => _serverInfo,
     getLastFetch: () => _lastFetch,
     getLicenseUsage: () => _licenseUsage,
@@ -896,11 +898,28 @@ const DashboardUI = (() => {
     return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
   }
 
+  // ---- Render overview from existing summary (no fetch) ----
+
+  function renderOverview(summary) {
+    if (!summary) return;
+    renderKPIs(summary.kpi);
+    renderSpaceBreakdown(summary.spaceBreakdown);
+    renderRecentDeployments(summary.recentDeployments);
+    renderEnvHealth(summary.envHealth);
+    renderSuccessFailureChart(summary);
+    renderWeeklyTrend(summary.weeklyTrend);
+    renderLicenseInfo(summary.licenseInfo);
+  }
+
   // ---- Public ----
 
   return {
     loadDashboard,
+    renderOverview,
     setTrendRange,
+    // Expose helpers for views
+    esc,
+    timeAgo,
   };
 
 })();

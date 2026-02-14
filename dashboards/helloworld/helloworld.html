@@ -24,37 +24,37 @@
 
         <nav class="sidebar-nav">
             <div class="nav-section-title">Dashboard</div>
-            <a href="#" class="nav-item active">
+            <a href="#" class="nav-item active" data-view="overview">
                 <i class="fa-solid fa-gauge-high"></i>
                 <span class="nav-label">Overview</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="#trends" class="nav-item" data-view="trends">
                 <i class="fa-solid fa-chart-line"></i>
                 <span class="nav-label">Deployment Trends</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="#velocity" class="nav-item" data-view="velocity">
                 <i class="fa-solid fa-rocket"></i>
                 <span class="nav-label">Release Velocity</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="#reliability" class="nav-item" data-view="reliability">
                 <i class="fa-solid fa-shield-halved"></i>
                 <span class="nav-label">Reliability</span>
             </a>
 
             <div class="nav-section-title">Insights</div>
-            <a href="#" class="nav-item">
+            <a href="#spaces" class="nav-item" data-view="spaces">
                 <i class="fa-solid fa-cubes"></i>
                 <span class="nav-label">Spaces</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="#projects" class="nav-item" data-view="projects">
                 <i class="fa-solid fa-diagram-project"></i>
                 <span class="nav-label">Projects</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="#environments" class="nav-item" data-view="environments">
                 <i class="fa-solid fa-server"></i>
                 <span class="nav-label">Environments</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="#teams" class="nav-item" data-view="teams">
                 <i class="fa-solid fa-users"></i>
                 <span class="nav-label">Teams</span>
             </a>
@@ -83,8 +83,8 @@
          ================================================================ -->
     <header class="header">
         <div class="header-title">
-            <i class="fa-solid fa-gauge-high text-tertiary"></i>
-            Platform Dashboard
+            <i class="fa-solid fa-gauge-high text-tertiary" id="header-icon"></i>
+            <span id="header-text">Platform Dashboard</span>
         </div>
         <div class="header-actions">
             <span class="text-secondary" style="font: var(--textBodyRegularSmall);">
@@ -118,360 +118,9 @@
          MAIN CONTENT
          ================================================================ -->
     <main class="main">
-
-        <!-- Page Header -->
-        <div class="page-header">
-            <h1 class="page-title">Overview</h1>
-            <p class="page-subtitle">
-                Cross-space deployment insights &mdash; demonstrating the impact and ROI of Octopus Deploy across your organisation.
-            </p>
-            <div id="status-message" class="connection-test-result result-info mt-sm" style="display:none;"></div>
-            <div id="debug-log" class="mt-sm" style="background:var(--colorBackgroundSecondaryDefault);border:1px solid var(--colorBorderDefault);border-radius:var(--radiusMedium);padding:var(--space-md);font:var(--textCodeRegularSmall);color:var(--colorTextSecondary);max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none;"></div>
+        <div id="main-content">
+            <!-- Populated by Router — Overview is the default view -->
         </div>
-
-        <!-- Value Impact Section (shown when onboarding is complete) -->
-        <div id="value-impact-section" class="mb-lg" style="display:none;">
-            <div class="value-section-header">
-                <h2 class="value-section-title">
-                    <i class="fa-solid fa-chart-line"></i>
-                    Value Impact
-                </h2>
-                <button class="btn btn-secondary btn-sm" id="btn-edit-value-settings">
-                    <i class="fa-solid fa-pen"></i>
-                    Edit assumptions
-                </button>
-            </div>
-            <div class="value-grid" id="value-cards">
-                <!-- Populated by JS -->
-            </div>
-        </div>
-
-        <!-- Onboarding CTA banner (shown when NO onboarding answers yet) -->
-        <div id="onboarding-cta" class="card mb-lg" style="display:none;">
-            <div class="card-body" style="text-align:center;padding:var(--space-xl) var(--space-lg);">
-                <div style="font-size:2.5rem;margin-bottom:var(--space-sm);">
-                    <i class="fa-solid fa-wand-magic-sparkles" style="color:var(--colorPrimaryLighter);"></i>
-                </div>
-                <h3 style="font:var(--textHeadingSmall);color:var(--colorTextPrimary);margin:0 0 var(--space-xs);">Unlock your value dashboard</h3>
-                <p class="text-secondary" style="font:var(--textBodyRegularMedium);max-width:500px;margin:0 auto var(--space-md);line-height:1.5;">
-                    Answer a few quick questions about your deployment process before Octopus, and we'll calculate the real engineering time, cost savings, ROI, and risk reduction you're getting.
-                </p>
-                <button class="btn btn-loud" id="btn-start-onboarding">
-                    <i class="fa-solid fa-rocket"></i>
-                    Get started &mdash; takes 1 minute
-                </button>
-            </div>
-        </div>
-
-        <!-- KPI Section Header -->
-        <div class="section-header">
-            <h2 class="section-title">
-                <i class="fa-solid fa-gauge-high"></i>
-                Platform Metrics
-            </h2>
-        </div>
-
-        <!-- KPI Row 1 — Deployment Metrics -->
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Total Deployments</span>
-                    <div class="kpi-icon blue"><i class="fa-solid fa-rocket"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-deployments">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-database"></i>
-                    <span>all time, all spaces</span>
-                </span>
-            </div>
-
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Success Rate</span>
-                    <div class="kpi-icon green"><i class="fa-solid fa-circle-check"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-success-rate">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-chart-simple"></i>
-                    <span>across recent deploys</span>
-                </span>
-            </div>
-
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Deploy Frequency</span>
-                    <div class="kpi-icon amber"><i class="fa-solid fa-bolt"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-frequency">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-calendar-days"></i>
-                    <span id="kpi-frequency-label">last 30 days</span>
-                </span>
-            </div>
-
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Avg Duration</span>
-                    <div class="kpi-icon purple"><i class="fa-solid fa-stopwatch"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-avg-duration">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-clock"></i>
-                    <span>per deployment</span>
-                </span>
-            </div>
-
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Time Saved (est.)</span>
-                    <div class="kpi-icon green"><i class="fa-solid fa-hourglass-half"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-time-saved">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-hand-sparkles"></i>
-                    <span>vs manual process</span>
-                </span>
-            </div>
-        </div>
-
-        <!-- KPI Row 2 — Platform Metrics -->
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Active Spaces</span>
-                    <div class="kpi-icon blue"><i class="fa-solid fa-cubes"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-active-spaces">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-layer-group"></i>
-                    <span id="kpi-spaces-label">with projects</span>
-                </span>
-            </div>
-
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Active Projects</span>
-                    <div class="kpi-icon purple"><i class="fa-solid fa-diagram-project"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-projects">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-folder-open"></i>
-                    <span>across all spaces</span>
-                </span>
-            </div>
-
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Deployment Targets</span>
-                    <div class="kpi-icon amber"><i class="fa-solid fa-server"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-targets">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-heart-pulse"></i>
-                    <span id="kpi-targets-label">machines &amp; agents</span>
-                </span>
-            </div>
-
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Target Health</span>
-                    <div class="kpi-icon green"><i class="fa-solid fa-shield-halved"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-target-health">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-check-double"></i>
-                    <span>healthy targets</span>
-                </span>
-            </div>
-
-            <div class="kpi-card">
-                <div class="flex items-center justify-between">
-                    <span class="kpi-label">Total Releases</span>
-                    <div class="kpi-icon blue"><i class="fa-solid fa-tag"></i></div>
-                </div>
-                <span class="kpi-value" id="kpi-releases">--</span>
-                <span class="kpi-trend neutral">
-                    <i class="fa-solid fa-code-branch"></i>
-                    <span>across all projects</span>
-                </span>
-            </div>
-        </div>
-
-        <!-- Charts Section Header -->
-        <div class="section-header">
-            <h2 class="section-title">
-                <i class="fa-solid fa-chart-bar"></i>
-                Deployment Activity
-            </h2>
-        </div>
-
-        <!-- Charts Row -->
-        <div class="dashboard-grid mb-lg">
-            <div class="card col-span-8">
-                <div class="card-header">
-                    <h3 class="card-title">Deployment Trends</h3>
-                    <div class="flex gap-xs">
-                        <button class="btn btn-secondary btn-sm active-toggle" data-range="30d">30 days</button>
-                        <button class="btn btn-secondary btn-sm" data-range="90d">90 days</button>
-                        <button class="btn btn-secondary btn-sm" data-range="12m">12 months</button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="chart-container" id="chart-deployment-trends">
-                        <i class="fa-solid fa-chart-area" style="font-size: 2rem; margin-right: var(--space-sm);"></i>
-                        Loading deployment trends...
-                    </div>
-                </div>
-            </div>
-
-            <div class="card col-span-4">
-                <div class="card-header">
-                    <h3 class="card-title">Success vs Failure</h3>
-                </div>
-                <div class="card-body">
-                    <div class="chart-container" id="chart-success-failure">
-                        <i class="fa-solid fa-chart-pie" style="font-size: 2rem; margin-right: var(--space-sm);"></i>
-                        Loading...
-                    </div>
-                </div>
-                <div class="card-footer flex justify-between">
-                    <span><span class="status-dot success"></span> Successful</span>
-                    <span><span class="status-dot danger"></span> Failed</span>
-                    <span><span class="status-dot warning"></span> Cancelled</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Spaces Section Header -->
-        <div class="section-header">
-            <h2 class="section-title">
-                <i class="fa-solid fa-cubes"></i>
-                Space Breakdown
-            </h2>
-            <span class="badge info">All Spaces</span>
-        </div>
-
-        <!-- Spaces Breakdown -->
-        <div class="dashboard-grid mb-lg">
-            <div class="card col-span-12">
-                <div class="card-body" style="padding: 0;">
-                    <div class="table-wrapper">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Space</th>
-                                    <th>Projects</th>
-                                    <th>Envs</th>
-                                    <th>Deployments</th>
-                                    <th>Success Rate</th>
-                                    <th>Targets</th>
-                                    <th>Last Deploy</th>
-                                    <th>Health</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-spaces">
-                                <tr>
-                                    <td colspan="8" class="text-secondary" style="text-align:center;padding:var(--space-lg);">
-                                        <i class="fa-solid fa-spinner fa-spin" style="margin-right:var(--space-xs);"></i>
-                                        Loading space data...
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Recent Section Header -->
-        <div class="section-header">
-            <h2 class="section-title">
-                <i class="fa-solid fa-clock-rotate-left"></i>
-                Recent Activity
-            </h2>
-        </div>
-
-        <!-- Recent Deployments & Environment Health -->
-        <div class="dashboard-grid">
-            <div class="card col-span-8">
-                <div class="card-header">
-                    <h3 class="card-title">Recent Deployments</h3>
-                    <a href="#" class="text-secondary" style="font: var(--textBodyRegularSmall);">View all <i class="fa-solid fa-arrow-right"></i></a>
-                </div>
-                <div class="card-body" style="padding: 0;">
-                    <div class="table-wrapper">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Project</th>
-                                    <th>Release</th>
-                                    <th>Environment</th>
-                                    <th>Space</th>
-                                    <th>Status</th>
-                                    <th>Duration</th>
-                                    <th>When</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-recent-deploys">
-                                <tr>
-                                    <td class="text-secondary" colspan="7" style="text-align: center; padding: var(--space-lg);">
-                                        <i class="fa-solid fa-spinner fa-spin" style="margin-right: var(--space-xs);"></i>
-                                        Loading deployments...
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card col-span-4">
-                <div class="card-header">
-                    <h3 class="card-title">Environment Health</h3>
-                </div>
-                <div class="card-body">
-                    <div class="flex flex-col gap-md" id="env-health">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-sm">
-                                <span class="env-tag production">Production</span>
-                            </div>
-                            <span class="badge neutral">--</span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-sm">
-                                <span class="env-tag staging">Staging</span>
-                            </div>
-                            <span class="badge neutral">--</span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-sm">
-                                <span class="env-tag dev">Development</span>
-                            </div>
-                            <span class="badge neutral">--</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <span class="text-tertiary">
-                        <i class="fa-solid fa-info-circle"></i>
-                        Based on latest deployment status per environment
-                    </span>
-                </div>
-            </div>
-        </div>
-
-        <!-- License Info -->
-        <div class="card mt-lg" style="padding:var(--space-sm) var(--space-md);">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-sm">
-                    <i class="fa-solid fa-id-badge text-tertiary"></i>
-                    <span class="text-secondary" style="font:var(--textBodyRegularSmall);">License</span>
-                    <span id="license-info">--</span>
-                </div>
-                <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);" id="server-version"></span>
-            </div>
-        </div>
-
     </main>
 
 </div>
@@ -482,6 +131,8 @@
 <script src="api.js"></script>
 <script src="data.js"></script>
 <script src="onboarding.js"></script>
+<script src="views.js"></script>
+<script src="router.js"></script>
 <script src="dashboard.js"></script>
 
 </body>

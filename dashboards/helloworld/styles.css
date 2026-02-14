@@ -1583,3 +1583,194 @@ tbody tr:last-child td {
   color: var(--colorPrimaryLighter) !important;
   border-color: var(--colorPrimary) !important;
 }
+
+
+/* ==========================================================================
+   SPA View Components
+   ========================================================================== */
+
+/* ---- Space Card Grid (Spaces view) ---- */
+
+.space-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-md);
+}
+
+.space-card {
+  background: var(--colorBackgroundCard);
+  border: 1px solid var(--colorBorderDefault);
+  border-radius: var(--radiusMedium);
+  padding: var(--space-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.space-card:hover {
+  border-color: var(--colorPrimary);
+  box-shadow: 0 4px 16px rgba(26, 119, 202, 0.15);
+  transform: translateY(-1px);
+}
+
+.space-card.active {
+  border-color: var(--colorPrimaryLight);
+  box-shadow: 0 4px 20px rgba(26, 119, 202, 0.25);
+}
+
+.space-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.space-card-name {
+  font: var(--textBodyBoldMedium);
+  color: var(--colorTextPrimary);
+}
+
+.space-card-desc {
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextTertiary);
+  margin-top: 2px;
+}
+
+.space-card-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm) 0;
+  border-top: 1px solid var(--colorBorderDefault);
+  border-bottom: 1px solid var(--colorBorderDefault);
+}
+
+.space-card-stat {
+  text-align: center;
+}
+
+.space-card-stat-value {
+  display: block;
+  font: var(--textBodyBoldMedium);
+  color: var(--colorTextPrimary);
+}
+
+.space-card-stat-label {
+  display: block;
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextTertiary);
+}
+
+.space-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---- Space Detail Panel ---- */
+
+.space-detail-panel {
+  animation: fadeSlideIn 0.2s ease;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- Environment Detail Cards ---- */
+
+.env-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-md);
+}
+
+.env-detail-card {
+  background: var(--colorBackgroundCard);
+  border: 1px solid var(--colorBorderDefault);
+  border-radius: var(--radiusMedium);
+  padding: var(--space-md);
+}
+
+.env-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.env-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-xs);
+  padding: var(--space-sm) 0;
+  border-top: 1px solid var(--colorBorderDefault);
+  border-bottom: 1px solid var(--colorBorderDefault);
+}
+
+.env-detail-stat {
+  text-align: center;
+}
+
+.env-detail-stat-value {
+  display: block;
+  font: var(--textBodyBoldMedium);
+  color: var(--colorTextPrimary);
+}
+
+.env-detail-stat-label {
+  display: block;
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextTertiary);
+}
+
+.env-detail-footer {
+  margin-top: var(--space-sm);
+}
+
+/* ---- View Search Input (Projects view) ---- */
+
+.view-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  background: var(--colorBackgroundPrimaryDefault);
+  border: 1px solid var(--colorBorderDefault);
+  border-radius: var(--radiusMedium);
+  padding: var(--space-xs) var(--space-sm);
+  flex: 1;
+  max-width: 320px;
+}
+
+.view-search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--colorTextPrimary);
+  font: var(--textBodyRegularSmall);
+}
+
+.view-search-input::placeholder {
+  color: var(--colorTextTertiary);
+}
+
+/* ---- KPI icon - danger variant ---- */
+
+.kpi-icon.danger {
+  background: rgba(214, 61, 61, 0.12);
+  color: var(--colorDangerLight);
+}
+
+/* ---- Progress bar info variant ---- */
+
+.progress-fill.info {
+  background: var(--colorPrimary);
+}

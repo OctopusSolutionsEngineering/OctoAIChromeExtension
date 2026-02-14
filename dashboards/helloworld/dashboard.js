@@ -1,28 +1,34 @@
 // ================================================================
-// Debug logger (hidden by default, toggle with Ctrl+D)
+// Debug logger
 // ================================================================
-const debugEl = document.getElementById('debug-log');
+let _debugEl = null;
 function debug(msg, data) {
     const ts = new Date().toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
     let line = `[${ts}] ${msg}`;
     if (data !== undefined) {
         try { line += '\n  → ' + JSON.stringify(data, null, 2); } catch(e) { line += '\n  → [unserializable]'; }
     }
-    debugEl.textContent += line + '\n';
-    debugEl.scrollTop = debugEl.scrollHeight;
+    // debugEl may move between views; always re-query
+    _debugEl = document.getElementById('debug-log');
+    if (_debugEl) {
+        _debugEl.textContent += line + '\n';
+        _debugEl.scrollTop = _debugEl.scrollHeight;
+    }
     console.log('[ValueDashboard]', msg, data);
 }
 window._debug = debug;
 
+// Debug log toggle (Ctrl+D) — registered once, works when overview is active
 document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === 'd') {
-        debugEl.style.display = debugEl.style.display === 'none' ? '' : 'none';
+        const dl = document.getElementById('debug-log');
+        if (dl) { dl.style.display = dl.style.display === 'none' ? '' : 'none'; }
         e.preventDefault();
     }
 });
 
 // ================================================================
-// Connection status indicator (sidebar footer)
+// Connection status indicator (sidebar footer — always present)
 // ================================================================
 const statusDot   = document.querySelector('.sidebar-footer .status-dot');
 const statusLabel = document.querySelector('.sidebar-footer .text-secondary');
@@ -36,7 +42,7 @@ function updateConnectionStatus() {
 }
 
 // ================================================================
-// Value Impact Rendering
+// Value Impact Rendering (called by router when Overview is active)
 // ================================================================
 let _lastSummary = null;
 
@@ -47,6 +53,9 @@ function renderValueImpact(summary) {
 
     const ctaEl = document.getElementById('onboarding-cta');
     const impactEl = document.getElementById('value-impact-section');
+
+    // Elements only exist on the Overview view
+    if (!ctaEl || !impactEl) return;
 
     if (!value || !value.hasData) {
         ctaEl.style.display = '';
@@ -160,7 +169,6 @@ function renderValueImpact(summary) {
 
     // --- ROI cards (require contract investment answer) ---
     if (value.hasROI) {
-        // Card: Platform ROI
         const roiLabel = value.roiMultiplier >= 1
             ? `For every <strong>$1</strong> invested, you've recovered <strong>$${value.roiMultiplier.toFixed(1)}0</strong> in engineering value.`
             : `ROI building — ${fmt$(value.totalCostSaved)} recovered against a ${fmt$(value.annualInvestment)}/yr investment so far.`;
@@ -178,7 +186,6 @@ function renderValueImpact(summary) {
             </div>
         </div>`;
 
-        // Card: Cost Per Deployment
         const breakEvenLine = value.breakEvenDeploy
             ? value.deploysIntoSavings > 0
                 ? `Platform paid for itself at deployment <strong>#${value.breakEvenDeploy}</strong> — you're <strong>${value.deploysIntoSavings} deployments</strong> into net savings.`
@@ -203,37 +210,47 @@ function renderValueImpact(summary) {
 }
 
 // ================================================================
-// Onboarding triggers
+// Onboarding triggers (sidebar links are always present)
 // ================================================================
 function openOnboarding() {
     Onboarding.open((answers) => {
         debug('Onboarding complete', answers ? Object.keys(answers) : 'skipped');
-        if (_lastSummary) renderValueImpact(_lastSummary);
+        if (_lastSummary && Router.getCurrentView() === 'overview') {
+            renderValueImpact(_lastSummary);
+        }
     });
 }
 
-document.getElementById('btn-start-onboarding').addEventListener('click', openOnboarding);
 document.getElementById('nav-onboarding').addEventListener('click', (e) => { e.preventDefault(); openOnboarding(); });
 document.getElementById('nav-reset-onboarding').addEventListener('click', (e) => {
     e.preventDefault();
     Onboarding.clear();
     debug('Onboarding answers cleared');
-    if (_lastSummary) renderValueImpact(_lastSummary);
+    if (_lastSummary && Router.getCurrentView() === 'overview') {
+        renderValueImpact(_lastSummary);
+    }
 });
-document.getElementById('btn-edit-value-settings').addEventListener('click', openOnboarding);
 
 // ================================================================
 // Override DashboardUI.loadDashboard to also render value impact
+// and refresh the current view after data loads
 // ================================================================
 const _originalLoadDashboard = DashboardUI.loadDashboard;
 DashboardUI.loadDashboard = async function() {
     await _originalLoadDashboard.call(DashboardUI);
     const summary = DashboardData.getSummary();
-    if (summary) renderValueImpact(summary);
+    _lastSummary = summary;
+
+    // After data loads, refresh the current view
+    if (Router.getCurrentView() === 'overview') {
+        if (summary) renderValueImpact(summary);
+    } else {
+        Router.refresh();
+    }
 };
 
 // ================================================================
-// Bootstrap — init from extension config, then load dashboard
+// Bootstrap — init API, load data, then hand off to Router
 // ================================================================
 (async function bootstrap() {
     try {
@@ -242,22 +259,32 @@ DashboardUI.loadDashboard = async function() {
         debug('Connected', { serverUrl: OctopusApi.getInstanceUrl() });
         updateConnectionStatus();
 
-        // Load dashboard
+        // Initialise router (renders the initial view)
+        Router.init();
+
+        // Load dashboard data
         DashboardUI.loadDashboard().then(() => {
-            if (!Onboarding.hasAnswers()) {
+            // Re-render current view now that data is loaded
+            Router.refresh();
+            if (!Onboarding.hasAnswers() && Router.getCurrentView() === 'overview') {
                 setTimeout(openOnboarding, 1500);
             }
         });
     } catch (err) {
         debug('Init failed', err.message);
-        document.getElementById('status-message').textContent = 'Failed to connect: ' + err.message;
-        document.getElementById('status-message').style.display = '';
+        // Still init router to show the shell
+        Router.init();
+        const statusEl = document.getElementById('status-message');
+        if (statusEl) {
+            statusEl.textContent = 'Failed to connect: ' + err.message;
+            statusEl.style.display = '';
+        }
         updateConnectionStatus();
     }
 })();
 
 // ================================================================
-// General UI
+// General UI — always-present elements
 // ================================================================
 function updateRefreshTime() {
     const now = new Date();
@@ -271,33 +298,22 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
     DashboardUI.loadDashboard();
 });
 
-document.querySelectorAll('[data-range]').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-range]').forEach(b => b.classList.remove('active-toggle'));
-        btn.classList.add('active-toggle');
-        DashboardUI.setTrendRange(btn.dataset.range);
-    });
-});
-
 // ================================================================
-// Export
+// Export (always-present in header)
 // ================================================================
 const exportBtn = document.getElementById('btn-export');
 const exportDropdown = document.getElementById('export-dropdown');
 
-// Toggle dropdown
 exportBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     exportDropdown.classList.toggle('open');
 });
 
-// Close dropdown when clicking outside
 document.addEventListener('click', () => {
     exportDropdown.classList.remove('open');
 });
 exportDropdown.addEventListener('click', (e) => e.stopPropagation());
 
-// Handle format selection
 document.querySelectorAll('.export-option').forEach(btn => {
     btn.addEventListener('click', () => {
         const format = btn.dataset.format;
@@ -370,7 +386,6 @@ function formatCSV(data) {
     };
     const row = (...vals) => lines.push(vals.map(esc).join(','));
 
-    // Metadata
     lines.push('# Export Metadata');
     row('Field', 'Value');
     row('Exported At', data.metadata.exportedAt);
@@ -378,7 +393,6 @@ function formatCSV(data) {
     row('Server Version', data.metadata.serverVersion);
     lines.push('');
 
-    // KPIs
     lines.push('# Dashboard KPIs');
     row('Metric', 'Value');
     row('Total Deployments', data.kpi.totalDeployments);
@@ -393,7 +407,6 @@ function formatCSV(data) {
     row('Time Saved (est. hrs)', data.kpi.timeSavedHours);
     lines.push('');
 
-    // Value Impact
     if (data.valueImpact) {
         const v = data.valueImpact;
         lines.push('# Value Impact');
@@ -419,7 +432,6 @@ function formatCSV(data) {
         lines.push('');
     }
 
-    // Space Breakdown
     lines.push('# Space Breakdown');
     row('Space', 'Projects', 'Environments', 'Deployments', 'Success Rate', 'Success', 'Failed', 'Targets', 'Healthy Targets', 'Last Deployment', 'Releases');
     for (const s of data.spaceBreakdown) {
@@ -427,7 +439,6 @@ function formatCSV(data) {
     }
     lines.push('');
 
-    // Recent Deployments
     lines.push('# Recent Deployments');
     row('Project', 'Release', 'Environment', 'Space', 'Status', 'Duration', 'When');
     for (const d of data.recentDeployments) {
@@ -435,7 +446,6 @@ function formatCSV(data) {
     }
     lines.push('');
 
-    // Environment Health
     lines.push('# Environment Health');
     row('Environment', 'Success', 'Failed', 'Total', 'Success Rate', 'Spaces');
     for (const e of data.envHealth) {
@@ -443,7 +453,6 @@ function formatCSV(data) {
     }
     lines.push('');
 
-    // Weekly Trend
     lines.push('# Weekly Deployment Trend');
     row('Year', 'Week', 'Total', 'Success', 'Failed');
     for (const w of (data.weeklyTrend || [])) {
