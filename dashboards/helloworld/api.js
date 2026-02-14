@@ -15,9 +15,13 @@ const OctopusApi = (() => {
   let _ready = false;
   let _readyPromise = null;
 
+  // ---- Timeouts (ms) ----
+  const INIT_TIMEOUT   = 10000;  // 10s to load config from extension storage
+  const REQUEST_TIMEOUT = 15000; // 15s per API request
+
   /**
    * Initialise from the Chrome extension's stored dashboard config.
-   * Returns a promise that resolves when config is loaded.
+   * Returns a promise that resolves when config is loaded, or rejects after timeout.
    */
   function init() {
     if (_readyPromise) return _readyPromise;
@@ -28,7 +32,20 @@ const OctopusApi = (() => {
         return;
       }
 
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error('Timed out loading extension config (' + (INIT_TIMEOUT / 1000) + 's). Make sure the Octopus Deploy extension is configured.'));
+        }
+      }, INIT_TIMEOUT);
+
       getDashboardConfig(config => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+
         if (!config || !config.serverUrl || !config.accessToken) {
           reject(new Error('Dashboard config missing serverUrl or accessToken.'));
           return;
@@ -67,13 +84,23 @@ const OctopusApi = (() => {
       options.body = JSON.stringify(options.body);
     }
 
+    const timeout = options.timeout || REQUEST_TIMEOUT;
+    delete options.timeout;
+
     log(`→ ${options.method || 'GET'} ${endpoint}`);
+
+    // Set up abort controller for timeout
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
       const response = await fetch(url, {
         ...options,
         headers,
+        signal: controller.signal,
       });
+
+      clearTimeout(timer);
 
       log(`← ${response.status} ${response.statusText} — ${endpoint}`);
 
@@ -90,7 +117,13 @@ const OctopusApi = (() => {
       return json;
 
     } catch (err) {
+      clearTimeout(timer);
       if (err instanceof ApiError) throw err;
+      if (err.name === 'AbortError') {
+        const msg = `Request timed out after ${timeout / 1000}s — ${endpoint}`;
+        log(`TIMEOUT: ${msg}`);
+        throw new Error(msg);
+      }
       log(`FETCH FAILED: ${err.message}`);
       throw err;
     }
