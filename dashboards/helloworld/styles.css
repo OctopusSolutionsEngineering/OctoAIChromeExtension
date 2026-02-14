@@ -1774,3 +1774,228 @@ tbody tr:last-child td {
 .progress-fill.info {
   background: var(--colorPrimary);
 }
+
+
+/* ==========================================================================
+   Compliance / SOC2 Dashboard
+   ========================================================================== */
+
+/* ---- Loading state ---- */
+
+.compliance-loading {
+  text-align: center;
+  padding: var(--space-xl) var(--space-lg);
+}
+
+.compliance-loading-spinner {
+  font-size: 3rem;
+  color: var(--colorPrimaryLight);
+  margin-bottom: var(--space-md);
+}
+
+.compliance-loading h3 {
+  font: var(--textHeadingSmall);
+  color: var(--colorTextPrimary);
+  margin: 0 0 var(--space-xs);
+}
+
+/* ---- Overall status banner ---- */
+
+.compliance-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radiusMedium);
+  margin-bottom: var(--space-lg);
+  border: 1px solid;
+}
+
+.compliance-banner-pass {
+  background: rgba(0, 135, 77, 0.08);
+  border-color: rgba(0, 135, 77, 0.3);
+}
+
+.compliance-banner-attention {
+  background: rgba(224, 168, 0, 0.08);
+  border-color: rgba(224, 168, 0, 0.3);
+}
+
+.compliance-banner-fail {
+  background: rgba(214, 61, 61, 0.08);
+  border-color: rgba(214, 61, 61, 0.3);
+}
+
+.compliance-banner-icon {
+  font-size: 2rem;
+}
+
+.compliance-banner-pass .compliance-banner-icon { color: var(--colorSuccess); }
+.compliance-banner-attention .compliance-banner-icon { color: var(--colorWarningAccent); }
+.compliance-banner-fail .compliance-banner-icon { color: var(--colorDanger); }
+
+.compliance-banner-title {
+  font: var(--textHeadingSmall);
+  color: var(--colorTextPrimary);
+}
+
+.compliance-banner-detail {
+  font: var(--textBodyRegularSmall);
+  color: var(--colorTextSecondary);
+  margin-top: 2px;
+}
+
+.compliance-banner-stats {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-xs);
+}
+
+/* ---- 4-panel grid ---- */
+
+.compliance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-md);
+}
+
+@media (max-width: 900px) {
+  .compliance-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Panel ---- */
+
+.compliance-panel {
+  background: var(--colorBackgroundCard);
+  border: 1px solid var(--colorBorderDefault);
+  border-radius: var(--radiusMedium);
+  padding: var(--space-md);
+  border-top: 3px solid;
+}
+
+.compliance-panel-pass { border-top-color: var(--colorSuccess); }
+.compliance-panel-attention { border-top-color: var(--colorWarningAccent); }
+.compliance-panel-fail { border-top-color: var(--colorDanger); }
+
+.compliance-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.compliance-panel-title {
+  font: var(--textBodyBoldMedium);
+  color: var(--colorTextPrimary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.compliance-panel-title i {
+  color: var(--colorTextTertiary);
+}
+
+.compliance-panel-narrative {
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextTertiary);
+  font-style: italic;
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--colorBorderDefault);
+}
+
+/* ---- Status badges ---- */
+
+.compliance-status-badge {
+  font: var(--textBodyBoldXSmall);
+  padding: 2px 8px;
+  border-radius: var(--radiusSmall);
+  letter-spacing: 0.5px;
+}
+
+.compliance-status-pass {
+  background: rgba(0, 135, 77, 0.15);
+  color: var(--colorSuccessLight);
+}
+
+.compliance-status-attention {
+  background: rgba(224, 168, 0, 0.15);
+  color: var(--colorWarningAccent);
+}
+
+.compliance-status-fail {
+  background: rgba(214, 61, 61, 0.15);
+  color: var(--colorDangerLight);
+}
+
+/* ---- Control cards ---- */
+
+.compliance-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.compliance-control {
+  background: var(--colorBackgroundPrimaryDefault);
+  border: 1px solid var(--colorBorderDefault);
+  border-radius: var(--radiusSmall);
+  padding: var(--space-sm) var(--space-md);
+  border-left: 3px solid;
+}
+
+.compliance-control-pass { border-left-color: var(--colorSuccess); }
+.compliance-control-attention { border-left-color: var(--colorWarningAccent); }
+.compliance-control-fail { border-left-color: var(--colorDanger); }
+
+.compliance-control-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: 4px;
+}
+
+.compliance-control-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: var(--textBodyBoldXSmall);
+  letter-spacing: 0.5px;
+}
+
+.compliance-control-pass .compliance-control-status { color: var(--colorSuccessLight); }
+.compliance-control-attention .compliance-control-status { color: var(--colorWarningAccent); }
+.compliance-control-fail .compliance-control-status { color: var(--colorDangerLight); }
+
+.compliance-control-name {
+  font: var(--textBodyBoldSmall);
+  color: var(--colorTextPrimary);
+}
+
+.compliance-control-metric {
+  font: var(--textBodyRegularSmall);
+  color: var(--colorTextSecondary);
+  margin-bottom: var(--space-xs);
+}
+
+.compliance-control-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.compliance-control-detail {
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextTertiary);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.compliance-control-detail i {
+  font-size: 0.5rem;
+  opacity: 0.5;
+}
