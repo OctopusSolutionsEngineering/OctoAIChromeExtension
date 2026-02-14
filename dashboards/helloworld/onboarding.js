@@ -120,6 +120,16 @@ const Onboarding = (() => {
       ],
       insight: 'Converts into lead-time improvement and business responsiveness.',
     },
+    {
+      id: 'contractInvestment',
+      number: 8,
+      title: 'Platform Investment',
+      question: 'What is your annual Octopus Deploy contract value (USD)? This stays local and is never sent anywhere.',
+      icon: 'fa-solid fa-file-invoice-dollar',
+      type: 'currency',
+      placeholder: 'e.g. 50000',
+      insight: 'Unlocks ROI multiplier, cost-per-deployment, and break-even metrics for executive reporting.',
+    },
   ];
 
   // ---- State ----
@@ -229,55 +239,122 @@ const Onboarding = (() => {
     // Question body
     const selectedValue = _answers[q.id] || null;
 
-    body.innerHTML = `
-      <div class="onboarding-question" data-step="${_currentStep}">
-        <div class="onboarding-icon"><i class="${q.icon}"></i></div>
-        <div class="onboarding-step-label">Question ${q.number} of ${QUESTIONS.length}</div>
-        <h2 class="onboarding-title">${q.title}</h2>
-        <p class="onboarding-text">${q.question}</p>
-        <div class="onboarding-options">
-          ${q.options.map(opt => `
-            <button class="onboarding-option ${selectedValue === opt.value ? 'selected' : ''}" data-value="${opt.value}">
-              <span class="option-radio ${selectedValue === opt.value ? 'checked' : ''}"></span>
-              <span class="option-label">${opt.label}</span>
-            </button>
-          `).join('')}
-        </div>
-        <div class="onboarding-insight">
-          <i class="fa-solid fa-lightbulb"></i>
-          ${q.insight}
-        </div>
-      </div>
-    `;
+    if (q.type === 'currency') {
+      // ---------- Currency text input step ----------
+      const displayVal = selectedValue ? Number(selectedValue).toLocaleString('en-US') : '';
 
-    // Option click handlers
-    body.querySelectorAll('.onboarding-option').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const value = btn.dataset.value;
-        _answers[q.id] = value;
-        // Update visual state
-        body.querySelectorAll('.onboarding-option').forEach(b => b.classList.remove('selected'));
-        body.querySelectorAll('.option-radio').forEach(r => r.classList.remove('checked'));
-        btn.classList.add('selected');
-        btn.querySelector('.option-radio').classList.add('checked');
-        // Auto-advance after a short delay
-        setTimeout(() => {
+      body.innerHTML = `
+        <div class="onboarding-question" data-step="${_currentStep}">
+          <div class="onboarding-icon"><i class="${q.icon}"></i></div>
+          <div class="onboarding-step-label">Question ${q.number} of ${QUESTIONS.length}</div>
+          <h2 class="onboarding-title">${q.title}</h2>
+          <p class="onboarding-text">${q.question}</p>
+          <div class="onboarding-currency-input">
+            <span class="currency-prefix">$</span>
+            <input type="text" id="onb-currency" class="currency-field" inputmode="numeric"
+                   placeholder="${q.placeholder || '0'}" value="${displayVal}" autocomplete="off" />
+            <span class="currency-suffix">USD / year</span>
+          </div>
+          <div class="onboarding-insight">
+            <i class="fa-solid fa-lightbulb"></i>
+            ${q.insight}
+          </div>
+        </div>
+      `;
+
+      // Wire up live formatting
+      const input = body.querySelector('#onb-currency');
+      input.focus();
+
+      input.addEventListener('input', () => {
+        // Strip everything non-numeric, parse, re-format with commas
+        const raw = input.value.replace(/[^0-9]/g, '');
+        const num = parseInt(raw, 10);
+        if (!isNaN(num) && num > 0) {
+          // Store cursor position relative to end so we can restore after formatting
+          const distFromEnd = input.value.length - input.selectionStart;
+          input.value = num.toLocaleString('en-US');
+          const newPos = Math.max(0, input.value.length - distFromEnd);
+          input.setSelectionRange(newPos, newPos);
+          _answers[q.id] = String(num);
+        } else {
+          input.value = '';
+          delete _answers[q.id];
+        }
+        // Toggle Next button visibility
+        _updateCurrencyFooter(footer);
+      });
+
+      // Allow Enter to advance
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && _answers[q.id]) {
           _currentStep++;
           _renderStep();
-        }, 300);
+        }
       });
-    });
 
-    // Footer
-    footer.innerHTML = `
-      <div class="onboarding-footer-left">
-        ${_currentStep > 0 ? `<button class="btn btn-secondary btn-sm onb-back"><i class="fa-solid fa-arrow-left"></i> Back</button>` : ''}
-      </div>
-      <div class="onboarding-footer-right">
-        <button class="btn btn-secondary btn-sm onb-skip">Skip for now</button>
-        ${selectedValue ? `<button class="btn btn-loud btn-sm onb-next">Next <i class="fa-solid fa-arrow-right"></i></button>` : ''}
-      </div>
-    `;
+      footer.innerHTML = `
+        <div class="onboarding-footer-left">
+          ${_currentStep > 0 ? `<button class="btn btn-secondary btn-sm onb-back"><i class="fa-solid fa-arrow-left"></i> Back</button>` : ''}
+        </div>
+        <div class="onboarding-footer-right">
+          <button class="btn btn-secondary btn-sm onb-skip">Skip for now</button>
+          ${selectedValue ? `<button class="btn btn-loud btn-sm onb-next">Next <i class="fa-solid fa-arrow-right"></i></button>` : ''}
+        </div>
+      `;
+
+    } else {
+      // ---------- Standard multiple-choice step ----------
+      body.innerHTML = `
+        <div class="onboarding-question" data-step="${_currentStep}">
+          <div class="onboarding-icon"><i class="${q.icon}"></i></div>
+          <div class="onboarding-step-label">Question ${q.number} of ${QUESTIONS.length}</div>
+          <h2 class="onboarding-title">${q.title}</h2>
+          <p class="onboarding-text">${q.question}</p>
+          <div class="onboarding-options">
+            ${q.options.map(opt => `
+              <button class="onboarding-option ${selectedValue === opt.value ? 'selected' : ''}" data-value="${opt.value}">
+                <span class="option-radio ${selectedValue === opt.value ? 'checked' : ''}"></span>
+                <span class="option-label">${opt.label}</span>
+              </button>
+            `).join('')}
+          </div>
+          <div class="onboarding-insight">
+            <i class="fa-solid fa-lightbulb"></i>
+            ${q.insight}
+          </div>
+        </div>
+      `;
+
+      // Option click handlers
+      body.querySelectorAll('.onboarding-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const value = btn.dataset.value;
+          _answers[q.id] = value;
+          // Update visual state
+          body.querySelectorAll('.onboarding-option').forEach(b => b.classList.remove('selected'));
+          body.querySelectorAll('.option-radio').forEach(r => r.classList.remove('checked'));
+          btn.classList.add('selected');
+          btn.querySelector('.option-radio').classList.add('checked');
+          // Auto-advance after a short delay
+          setTimeout(() => {
+            _currentStep++;
+            _renderStep();
+          }, 300);
+        });
+      });
+
+      // Footer
+      footer.innerHTML = `
+        <div class="onboarding-footer-left">
+          ${_currentStep > 0 ? `<button class="btn btn-secondary btn-sm onb-back"><i class="fa-solid fa-arrow-left"></i> Back</button>` : ''}
+        </div>
+        <div class="onboarding-footer-right">
+          <button class="btn btn-secondary btn-sm onb-skip">Skip for now</button>
+          ${selectedValue ? `<button class="btn btn-loud btn-sm onb-next">Next <i class="fa-solid fa-arrow-right"></i></button>` : ''}
+        </div>
+      `;
+    }
 
     // Footer handlers
     const backBtn = footer.querySelector('.onb-back');
@@ -287,6 +364,22 @@ const Onboarding = (() => {
     if (backBtn) backBtn.addEventListener('click', () => { _currentStep--; _renderStep(); });
     if (skipBtn) skipBtn.addEventListener('click', _handleSkip);
     if (nextBtn) nextBtn.addEventListener('click', () => { _currentStep++; _renderStep(); });
+  }
+
+  function _updateCurrencyFooter(footer) {
+    const right = footer.querySelector('.onboarding-footer-right');
+    if (!right) return;
+    const hasVal = !!_answers[QUESTIONS[_currentStep]?.id];
+    const existingNext = right.querySelector('.onb-next');
+    if (hasVal && !existingNext) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-loud btn-sm onb-next';
+      btn.innerHTML = 'Next <i class="fa-solid fa-arrow-right"></i>';
+      btn.addEventListener('click', () => { _currentStep++; _renderStep(); });
+      right.appendChild(btn);
+    } else if (!hasVal && existingNext) {
+      existingNext.remove();
+    }
   }
 
   function _renderComplete() {
@@ -325,6 +418,10 @@ const Onboarding = (() => {
             <i class="fa-solid fa-heart"></i>
             <span>Quality of life improvements</span>
           </div>
+          ${_answers.contractInvestment ? `<div class="value-preview-item">
+            <i class="fa-solid fa-chart-line"></i>
+            <span>Platform ROI & cost-per-deployment</span>
+          </div>` : ''}
         </div>
       </div>
     `;
@@ -461,6 +558,52 @@ const Onboarding = (() => {
 
     // 7. Aggregate "headline" value
     value.totalCostSaved = (value.engineeringCostSaved || 0) + (value.incidentCostAvoided || 0);
+
+    // 8. Platform ROI (requires contract investment answer + at least cost savings)
+    const contractRaw = parseInt(answers.contractInvestment, 10);
+    if (contractRaw > 0 && totalDeploys > 0) {
+      const annualCost = contractRaw;
+
+      // Use license expiry to estimate contract period covered; fall back to 12 months
+      const licenseInfo = metrics.licenseInfo || {};
+      let contractMonths = 12;
+      if (licenseInfo.daysToExpiry && licenseInfo.daysToExpiry < 365) {
+        // Assume 1-year contract: months elapsed = 12 - remaining months
+        contractMonths = Math.max(1, 12 - Math.round(licenseInfo.daysToExpiry / 30));
+      }
+
+      // Pro-rate the contract cost to the period with data
+      const proRatedCost = annualCost * (contractMonths / 12);
+
+      // Total value delivered = engineering savings + incident savings
+      const totalValueDelivered = value.totalCostSaved || 0;
+
+      // ROI multiplier
+      const roiMultiplier = proRatedCost > 0 ? totalValueDelivered / proRatedCost : 0;
+      value.roiMultiplier = Math.round(roiMultiplier * 10) / 10;
+
+      // Cost per deployment
+      value.costPerDeploy = proRatedCost > 0 ? Math.round(proRatedCost / totalDeploys) : 0;
+
+      // Manual cost per deploy (for comparison)
+      if (effort && people) {
+        const manualCostPerDeploy = ((effort.minutes || 0) / 60) * (people.headcount || 1) * HOURLY_RATE;
+        value.manualCostPerDeploy = Math.round(manualCostPerDeploy);
+
+        // Break-even point: at which deployment does platform cost < manual cost saved
+        const savedPerDeploy = manualCostPerDeploy - 2/60 * HOURLY_RATE; // minus ~2 min automated cost
+        value.breakEvenDeploy = savedPerDeploy > 0 ? Math.ceil(proRatedCost / savedPerDeploy) : null;
+        value.deploysIntoSavings = value.breakEvenDeploy ? Math.max(0, totalDeploys - value.breakEvenDeploy) : 0;
+
+        // What the manual alternative would have cost
+        value.manualEquivalentCost = Math.round(totalDeploys * manualCostPerDeploy);
+      }
+
+      value.annualInvestment = annualCost;
+      value.contractMonths = contractMonths;
+      value.hasROI = true;
+    }
+
     value.hasData = Object.keys(value).length > 3; // Has at least some real calcs
 
     return value;

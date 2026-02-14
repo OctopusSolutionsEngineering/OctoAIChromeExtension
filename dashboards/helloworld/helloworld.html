@@ -95,10 +95,22 @@
                 <i class="fa-solid fa-rotate"></i>
                 Refresh
             </button>
-            <button class="btn btn-loud btn-sm">
-                <i class="fa-solid fa-file-export"></i>
-                Export
-            </button>
+            <div class="export-wrapper">
+                <button class="btn btn-loud btn-sm" id="btn-export">
+                    <i class="fa-solid fa-file-export"></i>
+                    Export
+                </button>
+                <div class="export-dropdown" id="export-dropdown">
+                    <button class="export-option" data-format="json">
+                        <i class="fa-solid fa-code"></i>
+                        JSON
+                    </button>
+                    <button class="export-option" data-format="csv">
+                        <i class="fa-solid fa-table"></i>
+                        CSV
+                    </button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -115,6 +127,48 @@
             </p>
             <div id="status-message" class="connection-test-result result-info mt-sm" style="display:none;"></div>
             <div id="debug-log" class="mt-sm" style="background:var(--colorBackgroundSecondaryDefault);border:1px solid var(--colorBorderDefault);border-radius:var(--radiusMedium);padding:var(--space-md);font:var(--textCodeRegularSmall);color:var(--colorTextSecondary);max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none;"></div>
+        </div>
+
+        <!-- Value Impact Section (shown when onboarding is complete) -->
+        <div id="value-impact-section" class="mb-lg" style="display:none;">
+            <div class="value-section-header">
+                <h2 class="value-section-title">
+                    <i class="fa-solid fa-chart-line"></i>
+                    Value Impact
+                </h2>
+                <button class="btn btn-secondary btn-sm" id="btn-edit-value-settings">
+                    <i class="fa-solid fa-pen"></i>
+                    Edit assumptions
+                </button>
+            </div>
+            <div class="value-grid" id="value-cards">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- Onboarding CTA banner (shown when NO onboarding answers yet) -->
+        <div id="onboarding-cta" class="card mb-lg" style="display:none;">
+            <div class="card-body" style="text-align:center;padding:var(--space-xl) var(--space-lg);">
+                <div style="font-size:2.5rem;margin-bottom:var(--space-sm);">
+                    <i class="fa-solid fa-wand-magic-sparkles" style="color:var(--colorPrimaryLighter);"></i>
+                </div>
+                <h3 style="font:var(--textHeadingSmall);color:var(--colorTextPrimary);margin:0 0 var(--space-xs);">Unlock your value dashboard</h3>
+                <p class="text-secondary" style="font:var(--textBodyRegularMedium);max-width:500px;margin:0 auto var(--space-md);line-height:1.5;">
+                    Answer a few quick questions about your deployment process before Octopus, and we'll calculate the real engineering time, cost savings, ROI, and risk reduction you're getting.
+                </p>
+                <button class="btn btn-loud" id="btn-start-onboarding">
+                    <i class="fa-solid fa-rocket"></i>
+                    Get started &mdash; takes 1 minute
+                </button>
+            </div>
+        </div>
+
+        <!-- KPI Section Header -->
+        <div class="section-header">
+            <h2 class="section-title">
+                <i class="fa-solid fa-gauge-high"></i>
+                Platform Metrics
+            </h2>
         </div>
 
         <!-- KPI Row 1 — Deployment Metrics -->
@@ -243,38 +297,12 @@
             </div>
         </div>
 
-        <!-- Value Impact Section (shown when onboarding is complete) -->
-        <div id="value-impact-section" style="display:none;">
-            <div class="value-section-header">
-                <h2 class="value-section-title">
-                    <i class="fa-solid fa-chart-line"></i>
-                    Value Impact
-                </h2>
-                <button class="btn btn-secondary btn-sm" id="btn-edit-value-settings">
-                    <i class="fa-solid fa-pen"></i>
-                    Edit assumptions
-                </button>
-            </div>
-            <div class="value-grid" id="value-cards">
-                <!-- Populated by JS -->
-            </div>
-        </div>
-
-        <!-- Onboarding CTA banner (shown when NO onboarding answers yet) -->
-        <div id="onboarding-cta" class="card mb-lg" style="display:none;">
-            <div class="card-body" style="text-align:center;padding:var(--space-xl) var(--space-lg);">
-                <div style="font-size:2.5rem;margin-bottom:var(--space-sm);">
-                    <i class="fa-solid fa-wand-magic-sparkles" style="color:var(--colorPrimaryLighter);"></i>
-                </div>
-                <h3 style="font:var(--textHeadingSmall);color:var(--colorTextPrimary);margin:0 0 var(--space-xs);">Unlock your value dashboard</h3>
-                <p class="text-secondary" style="font:var(--textBodyRegularMedium);max-width:500px;margin:0 auto var(--space-md);line-height:1.5;">
-                    Answer 7 quick questions about your deployment process before Octopus, and we'll calculate the real engineering time, cost savings, and risk reduction you're getting.
-                </p>
-                <button class="btn btn-loud" id="btn-start-onboarding">
-                    <i class="fa-solid fa-rocket"></i>
-                    Get started &mdash; takes 1 minute
-                </button>
-            </div>
+        <!-- Charts Section Header -->
+        <div class="section-header">
+            <h2 class="section-title">
+                <i class="fa-solid fa-chart-bar"></i>
+                Deployment Activity
+            </h2>
         </div>
 
         <!-- Charts Row -->
@@ -314,16 +342,18 @@
             </div>
         </div>
 
+        <!-- Spaces Section Header -->
+        <div class="section-header">
+            <h2 class="section-title">
+                <i class="fa-solid fa-cubes"></i>
+                Space Breakdown
+            </h2>
+            <span class="badge info">All Spaces</span>
+        </div>
+
         <!-- Spaces Breakdown -->
         <div class="dashboard-grid mb-lg">
             <div class="card col-span-12">
-                <div class="card-header">
-                    <h3 class="card-title">
-                        <i class="fa-solid fa-cubes text-tertiary" style="margin-right: var(--space-xs);"></i>
-                        Space Breakdown
-                    </h3>
-                    <span class="badge info">All Spaces</span>
-                </div>
                 <div class="card-body" style="padding: 0;">
                     <div class="table-wrapper">
                         <table>
@@ -351,6 +381,14 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Recent Section Header -->
+        <div class="section-header">
+            <h2 class="section-title">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                Recent Activity
+            </h2>
         </div>
 
         <!-- Recent Deployments & Environment Health -->

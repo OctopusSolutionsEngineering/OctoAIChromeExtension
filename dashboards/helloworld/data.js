@@ -421,12 +421,19 @@ const DashboardData = (() => {
       else if (state === 'failed') weekMap[key].failed++;
     }
 
-    return Object.values(weekMap)
+    const sorted = Object.values(weekMap)
       .sort((a, b) => {
         if (a.year !== b.year) return a.year - b.year;
         return a.week - b.week;
       })
-      .slice(-12); // Last 12 weeks
+      .slice(-52); // Keep up to a year of weekly data
+
+    // Mark year boundaries so the chart can show them
+    for (let i = 0; i < sorted.length; i++) {
+      sorted[i].showYear = (i === 0) || (sorted[i].year !== sorted[i - 1].year);
+    }
+
+    return sorted;
   }
 
   /**
@@ -611,24 +618,25 @@ const DashboardUI = (() => {
           ${targetHealthPill(s.healthyTargets, s.unhealthyTargets, s.warningTargets, s.targetCount)}
         </td>
         <td class="text-secondary">${s.lastDeployment ? timeAgo(s.lastDeployment) : '--'}</td>
-        <td>${healthBadge(s.successRate)}</td>
+        <td>${healthBadge(s.successRate, s.deploymentCount > 0)}</td>
       </tr>
     `).join('');
   }
 
   function targetHealthPill(healthy, unhealthy, warning, total) {
     if (total === 0) return '<span class="text-tertiary">--</span>';
-    let html = `<span class="text-success">${healthy}</span>`;
-    if (warning > 0) html += ` <span class="text-warning">${warning}</span>`;
-    if (unhealthy > 0) html += ` <span class="text-danger">${unhealthy}</span>`;
-    html += ` <span class="text-tertiary">/ ${total}</span>`;
-    return html;
+    const parts = [];
+    if (healthy > 0) parts.push(`<span class="text-success">${healthy} <span style="opacity:.6">✓</span></span>`);
+    if (warning > 0) parts.push(`<span class="text-warning">${warning} <span style="opacity:.6">⚠</span></span>`);
+    if (unhealthy > 0) parts.push(`<span class="text-danger">${unhealthy} <span style="opacity:.6">✗</span></span>`);
+    if (parts.length === 0) parts.push(`<span class="text-tertiary">0</span>`);
+    return parts.join(' <span class="text-tertiary" style="opacity:.4;">·</span> ') + ` <span class="text-tertiary">/ ${total}</span>`;
   }
 
-  function healthBadge(rate) {
+  function healthBadge(rate, hasDeployments) {
     if (rate >= 95) return '<span class="badge success">Healthy</span>';
     if (rate >= 80) return '<span class="badge warning">Attention</span>';
-    if (rate > 0 && rate < 80) return '<span class="badge danger">At Risk</span>';
+    if (rate < 80 && (rate > 0 || hasDeployments)) return '<span class="badge danger">At Risk</span>';
     return '<span class="badge neutral">No data</span>';
   }
 
@@ -693,7 +701,7 @@ const DashboardUI = (() => {
           </div>
           <div class="flex items-center gap-xs">
             <span class="text-secondary" style="font:var(--textBodyRegularSmall);">${env.success}/${env.total}</span>
-            ${healthBadge(env.successRate)}
+            ${healthBadge(env.successRate, env.total > 0)}
           </div>
         </div>`;
     }).join('');
@@ -744,11 +752,73 @@ const DashboardUI = (() => {
       </div>`;
   }
 
-  function renderWeeklyTrend(weeklyTrend) {
+  // ---- Trend chart state ----
+  let _fullWeeklyTrend = [];
+  let _currentRange = '30d';
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  /**
+   * Aggregate weekly buckets into monthly buckets for the 12-month view.
+   */
+  function _aggregateMonthly(weeklyData) {
+    // Build a month map from the weekly data using approximate month from (year, week)
+    const monthMap = {}; // "YYYY-MM" → { year, month, success, failed, total }
+
+    for (const w of weeklyData) {
+      // Approximate the date of the Monday of this ISO week
+      const jan4 = new Date(Date.UTC(w.year, 0, 4));
+      const dayOfWeek = jan4.getUTCDay() || 7;
+      const monday = new Date(jan4);
+      monday.setUTCDate(jan4.getUTCDate() - dayOfWeek + 1 + (w.week - 1) * 7);
+      const m = monday.getUTCMonth();     // 0-based
+      const y = monday.getUTCFullYear();
+      const key = `${y}-${String(m).padStart(2, '0')}`;
+
+      if (!monthMap[key]) monthMap[key] = { year: y, month: m, success: 0, failed: 0, total: 0 };
+      monthMap[key].success += w.success;
+      monthMap[key].failed += w.failed;
+      monthMap[key].total += w.total;
+    }
+
+    return Object.values(monthMap)
+      .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+      .slice(-12);
+  }
+
+  function renderWeeklyTrend(weeklyTrend, range) {
+    if (weeklyTrend) _fullWeeklyTrend = weeklyTrend;
+    if (range) _currentRange = range;
+
     const el = document.getElementById('chart-deployment-trends');
     if (!el) return;
 
-    if (!weeklyTrend || weeklyTrend.length === 0) {
+    // Decide what to show based on range
+    let bars;      // array of { total, success, failed, label, tooltip }
+    if (_currentRange === '12m') {
+      const monthly = _aggregateMonthly(_fullWeeklyTrend);
+      bars = monthly.map(m => ({
+        total: m.total,
+        success: m.success,
+        failed: m.failed,
+        label: MONTH_NAMES[m.month] + (m.month === 0 ? '<br>' + m.year : ''),
+        tooltip: `${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed)`,
+      }));
+    } else {
+      const weeksToShow = _currentRange === '90d' ? 13 : 5;
+      const sliced = _fullWeeklyTrend.slice(-weeksToShow);
+      bars = sliced.map((w, i) => {
+        const showYear = (i === 0) || (sliced[i - 1] && sliced[i - 1].year !== w.year);
+        return {
+          total: w.total,
+          success: w.success,
+          failed: w.failed,
+          label: `W${w.week}${showYear ? '<br>' + w.year : ''}`,
+          tooltip: `Week ${w.week}, ${w.year}: ${w.total} deployments (${w.success} success, ${w.failed} failed)`,
+        };
+      });
+    }
+
+    if (!bars || bars.length === 0) {
       el.innerHTML = `<div class="text-tertiary" style="text-align:center;padding:var(--space-lg);">
         <i class="fa-solid fa-chart-area" style="font-size:2rem;display:block;margin-bottom:var(--space-sm);"></i>
         No deployment trend data available yet.<br>
@@ -757,29 +827,31 @@ const DashboardUI = (() => {
       return;
     }
 
-    // Simple bar chart using CSS
-    const maxTotal = Math.max(...weeklyTrend.map(w => w.total), 1);
+    const maxTotal = Math.max(...bars.map(b => b.total), 1);
 
     el.innerHTML = `
       <div style="width:100%;overflow-x:auto;">
-        <div style="display:flex;align-items:flex-end;gap:4px;height:200px;padding:0 var(--space-xs);">
-          ${weeklyTrend.map(w => {
-            const h = Math.max(4, (w.total / maxTotal) * 180);
-            const successH = w.total > 0 ? (w.success / w.total * h) : 0;
+        <div style="display:flex;align-items:flex-end;gap:6px;height:200px;padding:0 var(--space-xs);">
+          ${bars.map(b => {
+            const h = Math.max(4, (b.total / maxTotal) * 180);
+            const successH = b.total > 0 ? (b.success / b.total * h) : 0;
             const failH = h - successH;
             return `
-              <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:20px;cursor:default;" 
-                   title="Week ${w.week}, ${w.year}: ${w.total} deployments (${w.success} success, ${w.failed} failed)">
-                <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-bottom:4px;">${w.total}</div>
-                <div style="width:100%;max-width:32px;display:flex;flex-direction:column;">
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:28px;cursor:default;" title="${b.tooltip}">
+                <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-bottom:4px;">${b.total}</div>
+                <div style="width:100%;max-width:40px;display:flex;flex-direction:column;">
                   ${failH > 0 ? `<div style="height:${failH}px;background:var(--colorDanger);border-radius:3px 3px 0 0;"></div>` : ''}
                   ${successH > 0 ? `<div style="height:${successH}px;background:var(--colorSuccess);border-radius:${failH > 0 ? '0 0 3px 3px' : '3px'};"></div>` : ''}
                 </div>
-                <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:4px;white-space:nowrap;">W${w.week}</div>
+                <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:4px;white-space:nowrap;text-align:center;">${b.label}</div>
               </div>`;
           }).join('')}
         </div>
       </div>`;
+  }
+
+  function setTrendRange(range) {
+    renderWeeklyTrend(null, range);
   }
 
   // ---- License Info ----
@@ -828,6 +900,7 @@ const DashboardUI = (() => {
 
   return {
     loadDashboard,
+    setTrendRange,
   };
 
 })();
