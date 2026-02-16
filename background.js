@@ -100,6 +100,11 @@ chrome.runtime.onMessage.addListener(
 );
 
 function showDashboard(request) {
+    if (!validateFilename(request.dashboardFile)) {
+        console.error("Invalid dashboard filename: " + request.dashboardFile);
+        return;
+    }
+
     chrome.storage.local.get("dashboardConfig", config => {
         // Get the correctly shaped dashboardConfig, ensuring we don't overwrite existing serverUrls
         const dashboardConfig = config && config.dashboardConfig || {};
@@ -119,6 +124,11 @@ function showDashboard(request) {
             });
         });
     });
+}
+
+function validateFilename(filename) {
+    // Must be in subdirectory and called index.html
+    return filename.match(/^[a-z0-9]+\/index.html$/);
 }
 
 function addFeedback(request) {
