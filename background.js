@@ -70,10 +70,13 @@ chrome.runtime.onMessage.addListener(
 
         if (request.action === 'prompt') {
             callOctoAIAPI(request, sendResponse, 0)
+            sendResponse({ok: true});
         } else if (request.action === 'confirmation') {
             callOctoAIAPIConfirmation(request, sendResponse, 0)
+            sendResponse({ok: true});
         } else if (request.action === 'feedback') {
             addFeedback(request)
+            sendResponse({ok: true});
         } else if (request.action === 'getPrompts') {
             //fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/promptsv4.json')
             fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/refs/heads/mattc/dashboards/promptsv4.json')
@@ -88,7 +91,8 @@ chrome.runtime.onMessage.addListener(
                     sendResponse({error: error, prompt: request.prompt})
                 });
         } else if (request.action === 'showDashboard') {
-            showDashboard(request)
+            showDashboard(request);
+            sendResponse({ok: true});
         }
 
         return true;
