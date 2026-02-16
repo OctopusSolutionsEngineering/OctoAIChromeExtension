@@ -18,6 +18,8 @@ You must check that custom dashboards correctly handle failed authentication wit
 
 You must ensure that any inputs are validated and sanitized to prevent security vulnerabilities such as cross-site scripting (XSS) or injection attacks.
 
+You must highlight any use of the Chrome extensions API in the custom dashboards, as this can introduce security risks if not used carefully.
+
 ## Sample Prompts
 
 The files named `promptsv#.json` (where `#` is a number) contain sample prompts displayed by the AI Assistant. These
