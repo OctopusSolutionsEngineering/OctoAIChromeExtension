@@ -87,7 +87,7 @@ chrome.runtime.onMessage.addListener(
                 .catch(error => {
                     sendResponse({error: error, prompt: request.prompt})
                 });
-        } else if (request.action === 'dashboard') {
+        } else if (request.action === 'showDashboard') {
             showDashboard(request)
         }
 
@@ -96,14 +96,23 @@ chrome.runtime.onMessage.addListener(
 );
 
 function showDashboard(request) {
-    const dashboardConfig = {
-        accessToken: request.accessToken,
-        serverUrl: request.serverUrl
-    };
+    chrome.storage.local.get("dashboardConfig", config => {
+        // Get the correctly shaped dashboardConfig, ensuring we don't overwrite existing serverUrls
+        const dashboardConfig = config && config.dashboardConfig || {};
+        dashboardConfig.serverUrls = dashboardConfig.serverUrls || [];
 
-    chrome.storage.local.set({"dashboardConfig": dashboardConfig}, () => {
-        chrome.tabs.create({
-            url: chrome.runtime.getURL("dashboards/" + request.dashboardFile)
+        // Get a unique list of server URLs, including the new one from the request
+        const serverUrls = [...dashboardConfig.serverUrls, request.serverUrl];
+        dashboardConfig.serverUrls = [...new Set(serverUrls)];
+
+        // Note the server that was used to launch the dashboard, so we can use it as the default in the dashboard UI
+        dashboardConfig.lastServerUrl = request.serverUrl;
+
+        // Save the updated dashboardConfig back to storage, then open the dashboard in a new tab
+        chrome.storage.local.set({"dashboardConfig": dashboardConfig}, () => {
+            chrome.tabs.create({
+                url: chrome.runtime.getURL("dashboards/" + request.dashboardFile)
+            });
         });
     });
 }

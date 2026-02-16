@@ -1,17 +1,16 @@
 /* ==========================================================================
    Octopus Deploy API Client — Chrome Extension Mode
    
-   Uses the bearer token + serverUrl provided by the parent Chrome extension
+   Uses the lastServerUrl provided by the parent Chrome extension
    via getDashboardConfig() (from ../api.js).
    
-   All API calls use:  Authorization: Bearer <accessToken>
+   All API calls include credentials (cookies) for authentication.
    ========================================================================== */
 
 const OctopusApi = (() => {
 
   // Populated by init() from chrome.storage.local
   let _serverUrl = '';
-  let _accessToken = '';
   let _ready = false;
   let _readyPromise = null;
 
@@ -46,12 +45,11 @@ const OctopusApi = (() => {
         settled = true;
         clearTimeout(timer);
 
-        if (!config || !config.serverUrl || !config.accessToken) {
-          reject(new Error('Dashboard config missing serverUrl or accessToken.'));
+        if (!config || !config.lastServerUrl) {
+          reject(new Error('Dashboard config missing lastServerUrl.'));
           return;
         }
-        _serverUrl = config.serverUrl.replace(/\/+$/, '');
-        _accessToken = config.accessToken;
+        _serverUrl = config.lastServerUrl.replace(/\/+$/, '');
         _ready = true;
         resolve();
       });
@@ -61,8 +59,7 @@ const OctopusApi = (() => {
   }
 
   function getInstanceUrl() { return _serverUrl; }
-  function getAccessToken() { return _accessToken; }
-  function isConfigured()   { return _ready && !!_serverUrl && !!_accessToken; }
+  function isConfigured()   { return _ready && !!_serverUrl; }
 
   // ---- Fetch wrapper ----
 
@@ -75,7 +72,6 @@ const OctopusApi = (() => {
 
     const headers = {
       'Accept': 'application/json',
-      'Authorization': 'Bearer ' + _accessToken,
       ...(options.headers || {}),
     };
 
@@ -97,6 +93,7 @@ const OctopusApi = (() => {
       const response = await fetch(url, {
         ...options,
         headers,
+        credentials: 'include',
         signal: controller.signal,
       });
 
@@ -165,7 +162,6 @@ const OctopusApi = (() => {
   return {
     init,
     getInstanceUrl,
-    getAccessToken,
     isConfigured,
     request,
     get,
