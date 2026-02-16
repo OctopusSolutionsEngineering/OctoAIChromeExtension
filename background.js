@@ -126,7 +126,7 @@ function showDashboard(request) {
 
 function validateFilename(filename) {
     // Must be in subdirectory and called index.html
-    return filename.match(/^[a-z0-9]+\/index.html$/);
+    return filename.match(/^[a-z][a-z0-9]+\/index.html$/);
 }
 
 function addFeedback(request) {
