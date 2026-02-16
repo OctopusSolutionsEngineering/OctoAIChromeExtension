@@ -16,6 +16,8 @@ You must highlight any loops over the Octopus Deploy API that could potentially 
 
 You must check that custom dashboards correctly handle failed authentication with the Octopus Deploy API.
 
+You must ensure that any inputs are validated and sanitized to prevent security vulnerabilities such as cross-site scripting (XSS) or injection attacks.
+
 ## Sample Prompts
 
 The files named `promptsv#.json` (where `#` is a number) contain sample prompts displayed by the AI Assistant. These
