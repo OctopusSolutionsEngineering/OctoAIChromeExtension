@@ -70,10 +70,8 @@ chrome.runtime.onMessage.addListener(
 
         if (request.action === 'prompt') {
             callOctoAIAPI(request, sendResponse, 0)
-            sendResponse({ok: true});
         } else if (request.action === 'confirmation') {
             callOctoAIAPIConfirmation(request, sendResponse, 0)
-            sendResponse({ok: true});
         } else if (request.action === 'feedback') {
             addFeedback(request)
             sendResponse({ok: true});
