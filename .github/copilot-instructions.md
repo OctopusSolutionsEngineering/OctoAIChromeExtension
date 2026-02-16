@@ -20,7 +20,7 @@ You must ensure that any inputs are validated and sanitized to prevent security 
 
 You must highlight any use of the Chrome extensions API in the custom dashboards, as this can introduce security risks if not used carefully.
 
-You must highlight examples where dashboards attempt to load files from any parent directories, as this can introduce security risks if not handled carefully.
+You must highlight examples where dashboards attempt to load files from any parent directories (except the `api.js` file in the `dashboards` folder), as this can introduce security risks if not handled carefully.
 
 ## Sample Prompts
 
