@@ -594,7 +594,7 @@ const DashboardUI = (() => {
       <tr>
         <td>
           <div class="flex items-center gap-sm">
-            <div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div>
+            <div class="space-avatar sm">${esc(s.name.charAt(0).toUpperCase())}</div>
             <div>
               <div>${esc(s.name)}</div>
               ${s.description ? `<div class="text-tertiary" style="font:var(--textBodyRegularXSmall);">${esc(s.description)}</div>` : ''}
