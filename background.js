@@ -32,6 +32,10 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                             })
                             .then(() => chrome.scripting.executeScript({ 
                                 target: {tabId: tab.id},
+                                files: ['scripts/dashboard.js']
+                            }))
+                            .then(() => chrome.scripting.executeScript({
+                                target: {tabId: tab.id},
                                 files: ['scripts/ui.js']
                             }))
                             .then(() => chrome.scripting.executeScript({ 
@@ -70,6 +74,7 @@ chrome.runtime.onMessage.addListener(
             callOctoAIAPIConfirmation(request, sendResponse, 0)
         } else if (request.action === 'feedback') {
             addFeedback(request)
+            sendResponse({ok: true});
         } else if (request.action === 'getPrompts') {
             fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/promptsv4.json')
                 .then(response => {
@@ -82,11 +87,46 @@ chrome.runtime.onMessage.addListener(
                 .catch(error => {
                     sendResponse({error: error, prompt: request.prompt})
                 });
+        } else if (request.action === 'showDashboard') {
+            showDashboard(request);
+            sendResponse({ok: true});
         }
 
         return true;
     }
 );
+
+function showDashboard(request) {
+    if (!validateFilename(request.dashboardFile)) {
+        console.error("Invalid dashboard filename: " + request.dashboardFile);
+        return;
+    }
+
+    chrome.storage.local.get("dashboardConfig", config => {
+        // Get the correctly shaped dashboardConfig, ensuring we don't overwrite existing serverUrls
+        const dashboardConfig = config && config.dashboardConfig || {};
+        dashboardConfig.serverUrls = dashboardConfig.serverUrls || [];
+
+        // Get a unique list of server URLs, including the new one from the request
+        const serverUrls = [...dashboardConfig.serverUrls, request.serverUrl];
+        dashboardConfig.serverUrls = [...new Set(serverUrls)];
+
+        // Note the server that was used to launch the dashboard, so we can use it as the default in the dashboard UI
+        dashboardConfig.lastServerUrl = request.serverUrl;
+
+        // Save the updated dashboardConfig back to storage, then open the dashboard in a new tab
+        chrome.storage.local.set({"dashboardConfig": dashboardConfig}, () => {
+            chrome.tabs.create({
+                url: chrome.runtime.getURL("dashboards/" + request.dashboardFile)
+            });
+        });
+    });
+}
+
+function validateFilename(filename) {
+    // Must be in subdirectory and called index.html
+    return filename.match(/^[a-z][a-z0-9]+\/index.html$/);
+}
 
 function addFeedback(request) {
     const headers= {

@@ -113,6 +113,14 @@ async function getSuggestedPrompts() {
                 };
             }
 
+            // This is a dashboard
+            if (promptString.dashboardName && promptString.dashboardFile) {
+                return {
+                    dashboardName: promptString.dashboardName,
+                    dashboardFile: promptString.dashboardFile
+                };
+            }
+
             // This is an unexpected object, which will be ignored
             return null;
         }
@@ -162,6 +170,8 @@ async function processPrompts(prompts) {
             "prompt": replaceMarker(prompt.prompt, template, replacement),
             "systemPrompt": replaceMarker(prompt.systemPrompt, template, replacement),
             "fullPrompt": replaceMarker(prompt.fullPrompt, template, replacement),
+            "dashboardFile": prompt.dashboardFile,
+            "dashboardName": prompt.dashboardName
         }
     }
 

@@ -186,7 +186,8 @@ function displayExamples(prompts, parentPrompts, theme) {
 
     // Function to create a button
     function createExampleButton(prompt, theme) {
-        const button = createButton(prompt.prompt, theme);
+        const buttonName = prompt.prompt || prompt.dashboardName
+        const button = createButton(buttonName, theme);
 
 
         if (prompt.systemPrompt) {
@@ -210,6 +211,11 @@ function displayExamples(prompts, parentPrompts, theme) {
                     input.value = prompt.fullPrompt;
                     input.focus();
                 }
+            });
+        } else if (prompt.dashboardName) {
+            // Dashboard prompts are those that link to a dashboard in the extension
+            button.addEventListener('click', () => {
+                displayDashboard(prompt.dashboardFile);
             });
         } else {
             // Regular prompts display the sample prompt they execute
