@@ -67,18 +67,22 @@ const DashboardData = (() => {
 
     // Build usage lookup: spaceName → { ProjectsCount, TenantsCount, MachinesCount }
     const usageByName = {};
-    if (_licenseUsage?.SpacesUsage) {
+    let activeSpaces;
+
+    if (_licenseUsage?.SpacesUsage && _licenseUsage.SpacesUsage.length > 0) {
       for (const su of _licenseUsage.SpacesUsage) {
         usageByName[su.SpaceName] = su;
       }
+
+      // Filter to only spaces that have at least 1 project (skip empty T1–T30 etc.)
+      activeSpaces = _spaces.filter(s => {
+        const usage = usageByName[s.Name];
+        return usage && (usage.ProjectsCount > 0 || usage.MachinesCount > 0);
+      });
+    } else {
+      // License usage information is unavailable; fall back to treating all spaces as active.
+      activeSpaces = _spaces;
     }
-
-    // Filter to only spaces that have at least 1 project (skip empty T1–T30 etc.)
-    const activeSpaces = _spaces.filter(s => {
-      const usage = usageByName[s.Name];
-      return usage && (usage.ProjectsCount > 0 || usage.MachinesCount > 0);
-    });
-
     log(`Active spaces (with projects/targets): ${activeSpaces.length}`, activeSpaces.map(s => s.Name));
 
     // Phase 2: Per-space detail (parallel fetch for each active space)
