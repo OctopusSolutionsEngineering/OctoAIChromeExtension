@@ -666,7 +666,7 @@ const DashboardUI = (() => {
           <td>${esc(d._envName || d.EnvironmentId || '--')}</td>
           <td>
             <div class="flex items-center gap-xs">
-              <div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${(d._spaceName || '?').charAt(0)}</div>
+              <div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${esc((d._spaceName || '?').charAt(0))}</div>
               <span class="text-secondary">${esc(d._spaceName || '--')}</span>
             </div>
           </td>
