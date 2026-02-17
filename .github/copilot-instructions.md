@@ -22,6 +22,8 @@ You must highlight any use of the Chrome extensions API in the custom dashboards
 
 You must highlight examples where dashboards attempt to load files from any parent directories (except the `api.js` file in the `dashboards` folder), as this can introduce security risks if not handled carefully.
 
+You must highlight any use of private functions in the custom dashboards, as these are not permitted.
+
 ## Sample Prompts
 
 The files named `promptsv#.json` (where `#` is a number) contain sample prompts displayed by the AI Assistant. These
