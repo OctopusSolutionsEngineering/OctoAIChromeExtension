@@ -104,7 +104,19 @@ const OctopusApi = (() => {
       if (!response.ok) {
         const text = await response.text().catch(() => '');
         log(`ERROR body: ${text.slice(0, 200)}`);
-        throw new ApiError(response.status, response.statusText, text, url);
+
+        let statusTextForError = response.statusText;
+        let bodyForError = text;
+
+        if (response.status === 401 || response.status === 403) {
+          const authMessage = `Authentication with Octopus Deploy failed (HTTP ${response.status}). ` +
+            'Your session may have expired. Please sign in again to Octopus Deploy in the main browser tab, then reload this dashboard.';
+
+          statusTextForError = 'Authentication error';
+          bodyForError = authMessage + (text ? '\n\nServer response:\n' + text : '');
+        }
+
+        throw new ApiError(response.status, statusTextForError, bodyForError, url);
       }
 
       if (response.status === 204) return null;
