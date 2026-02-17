@@ -1271,7 +1271,7 @@ const Views = (() => {
           The Octopus Deploy Teams API requires specific permissions to access team membership and project ownership data.
           Below is a space-level activity breakdown as a proxy for team activity.
         </p>
-        <a href="https://octopus.com/docs/octopus-rest-api" target="_blank" class="btn btn-secondary btn-sm">
+        <a href="https://octopus.com/docs/octopus-rest-api" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
           <i class="fa-solid fa-external-link-alt"></i>
           Octopus REST API Docs
         </a>

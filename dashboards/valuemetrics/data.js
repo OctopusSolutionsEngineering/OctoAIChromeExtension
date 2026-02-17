@@ -67,18 +67,22 @@ const DashboardData = (() => {
 
     // Build usage lookup: spaceName → { ProjectsCount, TenantsCount, MachinesCount }
     const usageByName = {};
-    if (_licenseUsage?.SpacesUsage) {
+    let activeSpaces;
+
+    if (_licenseUsage?.SpacesUsage && _licenseUsage.SpacesUsage.length > 0) {
       for (const su of _licenseUsage.SpacesUsage) {
         usageByName[su.SpaceName] = su;
       }
+
+      // Filter to only spaces that have at least 1 project (skip empty T1–T30 etc.)
+      activeSpaces = _spaces.filter(s => {
+        const usage = usageByName[s.Name];
+        return usage && (usage.ProjectsCount > 0 || usage.MachinesCount > 0);
+      });
+    } else {
+      // License usage information is unavailable; fall back to treating all spaces as active.
+      activeSpaces = _spaces;
     }
-
-    // Filter to only spaces that have at least 1 project (skip empty T1–T30 etc.)
-    const activeSpaces = _spaces.filter(s => {
-      const usage = usageByName[s.Name];
-      return usage && (usage.ProjectsCount > 0 || usage.MachinesCount > 0);
-    });
-
     log(`Active spaces (with projects/targets): ${activeSpaces.length}`, activeSpaces.map(s => s.Name));
 
     // Phase 2: Per-space detail (parallel fetch for each active space)
@@ -93,13 +97,38 @@ const DashboardData = (() => {
     });
     await Promise.all(spacePromises);
 
-    // Phase 3: Cross-space deployment tasks (single call — gives timing data)
+    // Phase 3: Cross-space deployment tasks (may require multiple calls for many spaces)
     report('Loading deployment task history...');
-    const activeSpaceIds = activeSpaces.map(s => s.Id).join(',');
-    const tasksResponse = await safeGet(`/api/tasks?spaces=${activeSpaceIds}&name=Deploy&states=Success,Failed&take=200`);
-    _crossSpaceTasks = tasksResponse?.Items || [];
-    log(`Cross-space deploy tasks: ${_crossSpaceTasks.length} (total: ${tasksResponse?.TotalResults || 0})`);
+    const activeSpaceIds = activeSpaces.map(s => s.Id);
 
+    // Avoid building an excessively long query string by chunking space IDs
+    const SPACE_ID_CHUNK_SIZE = 25;
+    const taskRequests = [];
+    for (let i = 0; i < activeSpaceIds.length; i += SPACE_ID_CHUNK_SIZE) {
+      const chunkIds = activeSpaceIds.slice(i, i + SPACE_ID_CHUNK_SIZE).join(',');
+      taskRequests.push(
+        safeGet(`/api/tasks?spaces=${encodeURIComponent(chunkIds)}&name=Deploy&states=Success,Failed&take=200`)
+      );
+    }
+
+    const taskResponses = await Promise.all(taskRequests);
+    _crossSpaceTasks = [];
+    let totalResults = 0;
+    for (const resp of taskResponses) {
+      if (resp?.Items && Array.isArray(resp.Items)) {
+        _crossSpaceTasks.push(...resp.Items);
+      }
+      if (typeof resp?.TotalResults === 'number') {
+        totalResults += resp.TotalResults;
+      }
+    }
+
+    // If TotalResults was not provided, fall back to the number of aggregated items
+    if (!totalResults) {
+      totalResults = _crossSpaceTasks.length;
+    }
+
+    log(`Cross-space deploy tasks: ${_crossSpaceTasks.length} (total: ${totalResults})`);
     _lastFetch = new Date();
     const summary = getSummary(usageByName);
     log('Dashboard summary', {
@@ -594,7 +623,7 @@ const DashboardUI = (() => {
       <tr>
         <td>
           <div class="flex items-center gap-sm">
-            <div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div>
+            <div class="space-avatar sm">${esc(s.name.charAt(0).toUpperCase())}</div>
             <div>
               <div>${esc(s.name)}</div>
               ${s.description ? `<div class="text-tertiary" style="font:var(--textBodyRegularXSmall);">${esc(s.description)}</div>` : ''}
@@ -666,7 +695,7 @@ const DashboardUI = (() => {
           <td>${esc(d._envName || d.EnvironmentId || '--')}</td>
           <td>
             <div class="flex items-center gap-xs">
-              <div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${(d._spaceName || '?').charAt(0)}</div>
+              <div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${esc((d._spaceName || '?').charAt(0))}</div>
               <span class="text-secondary">${esc(d._spaceName || '--')}</span>
             </div>
           </td>
