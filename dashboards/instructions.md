@@ -11,3 +11,22 @@ To create a custom dashboard, follow these steps:
    * `lastServerUrl`, which is the URL of the instance that the user last opened a dashboard for.
 6. Requests to the Octopus API must include credentials, which will pass the cookies associated with the current session.
 7. See the [Copilot Instructions](../.github/copilot-instructions.md) for the best practices for writing the code for your dashboard.
+
+This is an example of the JSON entry to include in the `promptsv#.json` file to reference a custom dashboard:
+
+```json
+{
+    "name":"Dashboard",
+    "prompts" : [
+      {
+        "name": "Community dashboards...",
+        "prompts": [
+          {
+            "dashboardName": "Value Metrics",
+            "dashboardFile": "valuemetrics/index.html"
+          }
+        ]
+      }
+   ]
+}
+```
