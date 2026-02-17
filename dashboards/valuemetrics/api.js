@@ -26,7 +26,7 @@ const OctopusApi = (() => {
     if (_readyPromise) return _readyPromise;
 
     _readyPromise = new Promise((resolve, reject) => {
-      if (typeof getDashboardConfig !== 'function') {
+      if (typeof dashboardGetConfig !== 'function') {
         reject(new Error('getDashboardConfig not found — is ../api.js loaded?'));
         return;
       }
@@ -40,7 +40,7 @@ const OctopusApi = (() => {
         }
       }, INIT_TIMEOUT);
 
-      getDashboardConfig(config => {
+      dashboardGetConfig(config => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
