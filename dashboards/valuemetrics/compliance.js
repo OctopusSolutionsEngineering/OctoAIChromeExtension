@@ -37,8 +37,23 @@ const ComplianceData = (() => {
   }
 
   async function safeGet(endpoint) {
-    try { return await OctopusApi.get(endpoint); }
-    catch (e) { return null; }
+    try {
+      return await OctopusApi.get(endpoint);
+    } catch (e) {
+      // Distinguish auth/permission failures from other transient errors.
+      const status = e && (e.status || e.statusCode || (e.response && e.response.status));
+      if (status === 401 || status === 403) {
+        // Propagate auth/forbidden errors so the UI can surface an explicit
+        // "insufficient permissions/data unavailable" state instead of
+        // computing metrics over empty/null data.
+        throw e;
+      }
+      const log = window._debug || console.log;
+      log('Compliance safeGet: non-fatal error fetching ' + endpoint, e);
+      // For non-auth errors, fall back to "no data" to avoid breaking the
+      // entire dashboard, matching existing behavior as closely as possible.
+      return null;
+    }
   }
 
   // ---- Main fetch ----
