@@ -170,7 +170,7 @@ function renderValueImpact(summary) {
     // --- ROI cards (require contract investment answer) ---
     if (value.hasROI) {
         const roiLabel = value.roiMultiplier >= 1
-            ? `For every <strong>$1</strong> invested, you've recovered <strong>$${value.roiMultiplier.toFixed(1)}0</strong> in engineering value.`
+            ? `For every <strong>$1</strong> invested, you've recovered <strong>$${value.roiMultiplier.toFixed(2)}</strong> in engineering value.`
             : `ROI building — ${fmt$(value.totalCostSaved)} recovered against a ${fmt$(value.annualInvestment)}/yr investment so far.`;
         const manualLine = value.manualEquivalentCost
             ? ` The manual alternative would have cost <strong>${fmt$(value.manualEquivalentCost)}</strong>.`
