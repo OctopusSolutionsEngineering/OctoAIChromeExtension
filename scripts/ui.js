@@ -184,13 +184,6 @@ function displayExamples(prompts, parentPrompts, theme) {
 
     examplesContainer.innerHTML = '';
 
-    // Create and append the header
-    const examplesHeader = document.createElement('h2');
-    examplesHeader.textContent = 'Examples';
-    examplesHeader.style.marginBottom = '20px';
-    examplesHeader.style.color = theme.text;
-    examplesContainer.appendChild(examplesHeader);
-
     // Function to create a button
     function createExampleButton(prompt, theme) {
         const buttonName = prompt.prompt || prompt.dashboardName
