@@ -36,8 +36,12 @@ function dashboardSendPrompt(prompt, serverUrl) {
         });
 }
 
-function _dashboardGetOctopusCsrfTokenFromCookie(serverUrl) {
-    return chrome.cookies.getAll({domain: serverUrl})
+/**
+ * Gets the Octopus CSRF token from the browser cookies for the given server URL.
+ * @private
+ */
+function _dashboardGetOctopusCsrfTokenFromCookie(domain) {
+    return chrome.cookies.getAll({domain: domain})
         .then(cookies => cookies
             .filter(cookie => cookie.name.startsWith('Octopus-Csrf-Token'))
             .map(cookie => cookie.value)
