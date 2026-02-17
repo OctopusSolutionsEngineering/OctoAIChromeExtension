@@ -93,13 +93,38 @@ const DashboardData = (() => {
     });
     await Promise.all(spacePromises);
 
-    // Phase 3: Cross-space deployment tasks (single call — gives timing data)
+    // Phase 3: Cross-space deployment tasks (may require multiple calls for many spaces)
     report('Loading deployment task history...');
-    const activeSpaceIds = activeSpaces.map(s => s.Id).join(',');
-    const tasksResponse = await safeGet(`/api/tasks?spaces=${activeSpaceIds}&name=Deploy&states=Success,Failed&take=200`);
-    _crossSpaceTasks = tasksResponse?.Items || [];
-    log(`Cross-space deploy tasks: ${_crossSpaceTasks.length} (total: ${tasksResponse?.TotalResults || 0})`);
+    const activeSpaceIds = activeSpaces.map(s => s.Id);
 
+    // Avoid building an excessively long query string by chunking space IDs
+    const SPACE_ID_CHUNK_SIZE = 25;
+    const taskRequests = [];
+    for (let i = 0; i < activeSpaceIds.length; i += SPACE_ID_CHUNK_SIZE) {
+      const chunkIds = activeSpaceIds.slice(i, i + SPACE_ID_CHUNK_SIZE).join(',');
+      taskRequests.push(
+        safeGet(`/api/tasks?spaces=${encodeURIComponent(chunkIds)}&name=Deploy&states=Success,Failed&take=200`)
+      );
+    }
+
+    const taskResponses = await Promise.all(taskRequests);
+    _crossSpaceTasks = [];
+    let totalResults = 0;
+    for (const resp of taskResponses) {
+      if (resp?.Items && Array.isArray(resp.Items)) {
+        _crossSpaceTasks.push(...resp.Items);
+      }
+      if (typeof resp?.TotalResults === 'number') {
+        totalResults += resp.TotalResults;
+      }
+    }
+
+    // If TotalResults was not provided, fall back to the number of aggregated items
+    if (!totalResults) {
+      totalResults = _crossSpaceTasks.length;
+    }
+
+    log(`Cross-space deploy tasks: ${_crossSpaceTasks.length} (total: ${totalResults})`);
     _lastFetch = new Date();
     const summary = getSummary(usageByName);
     log('Dashboard summary', {
