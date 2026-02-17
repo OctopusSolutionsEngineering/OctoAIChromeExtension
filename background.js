@@ -114,6 +114,9 @@ function showDashboard(request) {
         // Note the server that was used to launch the dashboard, so we can use it as the default in the dashboard UI
         dashboardConfig.lastServerUrl = request.serverUrl;
 
+        // This is the context from which the dashboard was launched
+        dashboardConfig.context = request.context;
+
         // Save the updated dashboardConfig back to storage, then open the dashboard in a new tab
         chrome.storage.local.set({"dashboardConfig": dashboardConfig}, () => {
             chrome.tabs.create({
