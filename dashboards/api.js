@@ -43,7 +43,7 @@ function dashboardSendPrompt(prompt, serverUrl) {
         .catch(error => {
             console.log("Error sending prompt to dashboard: ", error);
             return {
-                response: "An error occurred while processing your request. Please try again.",
+                response: "An error occurred while processing your request. Please sign in to Octopus and try again.",
                 state: "Error"
             }
         });
