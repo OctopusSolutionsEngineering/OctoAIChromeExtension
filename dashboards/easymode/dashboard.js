@@ -135,20 +135,28 @@ document.addEventListener('DOMContentLoaded', function() {
         card.addEventListener('click', function() {
             const tenant = this.getAttribute('data-tenant');
 
-            // Remove selected class from all tenant cards
-            tenantCards.forEach(c => c.classList.remove('selected'));
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedTenant = null;
+                localStorage.removeItem('selectedTenant');
+            } else {
+                // Remove selected class from all tenant cards (only one can be selected)
+                tenantCards.forEach(c => c.classList.remove('selected'));
 
-            // Add selected class to clicked card
-            this.classList.add('selected');
+                // Add selected class to clicked card
+                this.classList.add('selected');
 
-            // Update selected tenant
-            selectedTenant = tenant;
+                // Update selected tenant
+                selectedTenant = tenant;
+
+                // Save selection to localStorage
+                localStorage.setItem('selectedTenant', tenant);
+            }
 
             // Update textarea
             updatePromptTextarea();
-
-            // Save selection to localStorage
-            localStorage.setItem('selectedTenant', tenant);
         });
     });
 
@@ -478,8 +486,89 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedFreezes = localStorage.getItem('selectedFreezes');
     const savedCommunityTemplates = localStorage.getItem('selectedCommunityTemplates');
 
-    // ...existing code...
+    // Restore platform selection or default to kubernetes
+    if (savedPlatform) {
+        const platformCard = document.querySelector(`[data-platform="${savedPlatform}"]`);
+        if (platformCard) {
+            platformCard.click();
+        }
+    } else {
+        // Default to kubernetes
+        const kubernetesCard = document.querySelector('[data-platform="kubernetes"]');
+        if (kubernetesCard) {
+            kubernetesCard.click();
+        }
+    }
 
+    // Restore tenant selection
+    if (savedTenant) {
+        const tenantCard = document.querySelector(`[data-tenant="${savedTenant}"]`);
+        if (tenantCard) {
+            tenantCard.click();
+        }
+    }
+
+    // Restore steps selection
+    if (savedSteps) {
+        try {
+            const steps = JSON.parse(savedSteps);
+            steps.forEach(step => {
+                const stepCard = document.querySelector(`[data-step="${step}"]`);
+                if (stepCard) {
+                    stepCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved steps:', e);
+        }
+    }
+
+    // Restore runbooks selection
+    if (savedRunbooks) {
+        try {
+            const runbooks = JSON.parse(savedRunbooks);
+            runbooks.forEach(runbook => {
+                const runbookCard = document.querySelector(`[data-runbook="${runbook}"]`);
+                if (runbookCard) {
+                    runbookCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved runbooks:', e);
+        }
+    }
+
+    // Restore channels selection
+    if (savedChannels) {
+        try {
+            const channels = JSON.parse(savedChannels);
+            channels.forEach(channel => {
+                const channelCard = document.querySelector(`[data-channel="${channel}"]`);
+                if (channelCard) {
+                    channelCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved channels:', e);
+        }
+    }
+
+    // Restore release notes selection
+    if (savedReleaseNotes) {
+        try {
+            const releaseNotes = JSON.parse(savedReleaseNotes);
+            releaseNotes.forEach(releaseNote => {
+                const releaseNoteCard = document.querySelector(`[data-releasenote="${releaseNote}"]`);
+                if (releaseNoteCard) {
+                    releaseNoteCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved release notes:', e);
+        }
+    }
+
+    // Restore triggers selection
     if (savedTriggers) {
         try {
             const triggers = JSON.parse(savedTriggers);
