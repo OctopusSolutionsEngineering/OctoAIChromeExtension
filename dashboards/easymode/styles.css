@@ -100,8 +100,8 @@ body {
 
 /* Tenant Icon */
 .tenant-icon {
-    width: 64px;
-    height: 64px;
+    width: 32px;
+    height: 32px;
     margin-bottom: 12px;
     display: flex;
     align-items: center;
@@ -133,7 +133,7 @@ body {
 
 /* Tenant Name */
 .tenant-name {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     color: #2d3e50;
     word-wrap: break-word;
@@ -224,7 +224,7 @@ body {
 
 /* Step Name */
 .step-name {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     color: #2d3e50;
     word-wrap: break-word;
@@ -311,7 +311,7 @@ body {
 
 /* Runbook Name */
 .runbook-name {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     color: #2d3e50;
     word-wrap: break-word;
@@ -394,7 +394,7 @@ body {
 
 /* Channel Name */
 .channel-name {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     color: #2d3e50;
     word-wrap: break-word;
@@ -473,7 +473,7 @@ body {
 
 /* Release Note Name */
 .releasenote-name {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     color: #2d3e50;
     word-wrap: break-word;
@@ -552,7 +552,7 @@ body {
 
 /* Trigger Name */
 .trigger-name {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     color: #2d3e50;
     word-wrap: break-word;
@@ -639,7 +639,7 @@ body {
 
 /* Freeze Name */
 .freeze-name {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     color: #2d3e50;
     word-wrap: break-word;
@@ -658,6 +658,89 @@ body {
 }
 
 .freeze-card.selected .freeze-name {
+    color: #0d80d8;
+    font-weight: 600;
+}
+
+/* Community Templates Grid */
+.communitytemplates-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-top: 24px;
+}
+
+/* Community Template Card */
+.communitytemplate-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    background-color: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.communitytemplate-card:hover {
+    border-color: #0d80d8;
+    box-shadow: 0 4px 12px rgba(13, 128, 216, 0.15);
+    transform: translateY(-2px);
+}
+
+.communitytemplate-card:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(13, 128, 216, 0.2);
+}
+
+/* Community Template Icon */
+.communitytemplate-icon {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0d80d8;
+}
+
+.communitytemplate-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Individual community template icon colors */
+.calculatereleasemode-icon {
+    color: #6f42c1;
+}
+
+.slack-icon {
+    color: #e01e5a;
+}
+
+/* Community Template Name */
+.communitytemplate-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: #2d3e50;
+    word-wrap: break-word;
+    max-width: 100%;
+}
+
+/* Selected state for community templates */
+.communitytemplate-card.selected {
+    border-color: #0d80d8;
+    background-color: #f0f8ff;
+    box-shadow: 0 2px 8px rgba(13, 128, 216, 0.2);
+}
+
+.communitytemplate-card.selected .communitytemplate-icon {
+    color: #0d80d8;
+}
+
+.communitytemplate-card.selected .communitytemplate-name {
     color: #0d80d8;
     font-weight: 600;
 }
@@ -697,8 +780,8 @@ body {
 
 /* Platform Icon */
 .platform-icon {
-    width: 64px;
-    height: 64px;
+    width: 32px;
+    height: 32px;
     margin-bottom: 12px;
     display: flex;
     align-items: center;
@@ -742,7 +825,7 @@ body {
 
 /* Platform Name */
 .platform-name {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     color: #2d3e50;
     word-wrap: break-word;
@@ -811,7 +894,7 @@ body {
     min-height: 150px;
     padding: 12px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-    font-size: 14px;
+    font-size: 12px;
     line-height: 1.6;
     color: #2d3e50;
     border: 1px solid #d1d5da;

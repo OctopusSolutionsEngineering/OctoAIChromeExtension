@@ -78,6 +78,12 @@ const freezeInstructions = {
     christmas: `* Add a deployment freeze called "Christmas Freeze" from ${freezeDates.christmas.start} to ${freezeDates.christmas.end}.`
 };
 
+// Community step template instructions configuration
+const communityTemplateInstructions = {
+    calculatereleasemode: '* Add the community step template with the website "https://library.octopus.com/step-templates/d166457a-1421-4731-b143-dd6766fb95d5" as the first step with the name "Calculate Deployment Mode".',
+    slack: '* Add the community step template with the website "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" as the final step with the name "Send Slack Message". Configure the step to run on a worker. Remove any email steps if they are present.'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
@@ -88,6 +94,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const releaseNoteCards = document.querySelectorAll('.releasenote-card');
     const triggerCards = document.querySelectorAll('.trigger-card');
     const freezeCards = document.querySelectorAll('.freeze-card');
+    const communityTemplateCards = document.querySelectorAll('.communitytemplate-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
@@ -99,6 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedReleaseNotes = [];
     let selectedTriggers = [];
     let selectedFreezes = [];
+    let selectedCommunityTemplates = [];
 
     // Handle platform card selection
     platformCards.forEach(card => {
@@ -288,6 +296,30 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle community template card selection (multiple selection allowed)
+    communityTemplateCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const template = this.getAttribute('data-communitytemplate');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedCommunityTemplates = selectedCommunityTemplates.filter(t => t !== template);
+            } else {
+                // Select
+                this.classList.add('selected');
+                selectedCommunityTemplates.push(template);
+            }
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('selectedCommunityTemplates', JSON.stringify(selectedCommunityTemplates));
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -384,6 +416,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // Add community template instructions if selected
+        if (selectedCommunityTemplates.length > 0) {
+            selectedCommunityTemplates.forEach(template => {
+                if (communityTemplateInstructions[template]) {
+                    if (prompt) {
+                        prompt += '\n' + communityTemplateInstructions[template];
+                    } else {
+                        prompt = communityTemplateInstructions[template];
+                    }
+                }
+            });
+        }
+
         promptTextarea.value = prompt;
     }
 
@@ -431,6 +476,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedReleaseNotes = localStorage.getItem('selectedReleaseNotes');
     const savedTriggers = localStorage.getItem('selectedTriggers');
     const savedFreezes = localStorage.getItem('selectedFreezes');
+    const savedCommunityTemplates = localStorage.getItem('selectedCommunityTemplates');
 
     // ...existing code...
 
@@ -458,6 +504,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         } catch (e) {
             console.error('Error parsing saved freezes:', e);
+        }
+    }
+    if (savedCommunityTemplates) {
+        try {
+            const templates = JSON.parse(savedCommunityTemplates);
+            templates.forEach(template => {
+                const savedCard = document.querySelector(`[data-communitytemplate="${template}"]`);
+                if (savedCard) {
+                    savedCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved community templates:', e);
         }
     }
 });
