@@ -36,5 +36,5 @@ This is an example of the JSON entry to include in the `promptsv#.json` file to 
 Open the Chrome extension service worker from the Extensions page in Chrome. Click the "Inspect views service worker" link to open the developer tools for the extension. In the console, paste the following code to open the dashboard:
 
 ```javascript
-showDashboard({dashboardFile: "dashboarddir/index.html", lastServerUrl: "https://yourinstance.octopus.app/"})
+showDashboard({dashboardFile: "dashboarddir/index.html", serverUrl: "https://yourinstance.octopus.app/"})
 ```
