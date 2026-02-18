@@ -53,7 +53,6 @@ function dashboardSendPrompt(prompt, serverUrl) {
 
     /**
      * Gets the Octopus CSRF token from the browser cookies for the given server URL.
-     * @private
      */
     function _dashboardGetOctopusCsrfTokenFromCookie(domain) {
         return chrome.cookies.getAll({domain: domain})
@@ -65,7 +64,6 @@ function dashboardSendPrompt(prompt, serverUrl) {
 
     /**
      * Convert the SSE response from the dashboard into a format that can be displayed in the UI.
-     * @private
      */
     function _dashboardConvertFromSseResponse(sseResponse) {
         if (sseResponse.error) {
@@ -87,7 +85,6 @@ function dashboardSendPrompt(prompt, serverUrl) {
 
     /**
      * Check if the SSE response is an action response that requires confirmation.
-     * @private
      */
     function _dashboardIsActionSseResponse(sseResponse) {
         return !!sseResponse
@@ -101,7 +98,6 @@ function dashboardSendPrompt(prompt, serverUrl) {
 
     /**
      * Extract the confirmation message and id from the SSE response.
-     * @private
      */
     function _dashboardConfirmationResponse(sseResponse) {
         return sseResponse
@@ -122,7 +118,6 @@ function dashboardSendPrompt(prompt, serverUrl) {
 
     /**
      * Convert a successful SSE response from the dashboard into a format that can be displayed in the UI.
-     * @private
      */
     function _dashboardConvertFromSuccessSseResponse(sseResponse) {
         const responses = sseResponse
