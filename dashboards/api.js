@@ -11,6 +11,12 @@ function dashboardSendPrompt(prompt, serverUrl) {
     }
 
     return _dashboardGetOctopusCsrfTokenFromCookie(new URL(serverUrl).hostname)
+        .then(csrfToken => {
+            if (!csrfToken) {
+                throw new Error("No Octopus-Csrf-Token cookie found for server URL: " + serverUrl);
+            }
+            return csrfToken;
+        })
         .then(csrfToken => fetch(new URL('/api/users/access-token', serverUrl) , {
             headers: {
                 'Content-Type': 'application/json',
@@ -60,6 +66,12 @@ function dashboardSendPrompt(prompt, serverUrl) {
                 .filter(cookie => cookie.name.startsWith('Octopus-Csrf-Token'))
                 .map(cookie => cookie.value)
                 .pop())
+            .then(token => {
+                if (!token) {
+                    return Promise.reject(new Error("No Octopus CSRF token cookie found. Please sign in to Octopus and try again."));
+                }
+                return token;
+            })
     }
 
     /**

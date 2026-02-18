@@ -86,7 +86,7 @@ To be compliant with this requirement, the deployment process must include one o
 * Smoke tests
 * Load tests
 
-This requirements also contributes:
+This requirement also contributes:
 
 * [REL08-BP02: Integrate functional testing as part of your deployment](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_tracking_change_management_functional_testing.html)
 * [REL08-BP04: Deploy using immutable infrastructure](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_tracking_change_management_immutable_infrastructure.html)
@@ -333,25 +333,15 @@ const customInstructions = "You must prefix the report with a heading that inclu
 
 dashboardGetConfig(config => {
     const reportEl = document.getElementById('report');
-    const loadingIndicator = document.getElementById('loading-indicator');
-
-    // Show loading indicator
-    if (loadingIndicator) {
-        loadingIndicator.style.display = 'flex';
-    }
 
     if (!config || !config.lastServerUrl || !config.context) {
-        if (loadingIndicator) {
-            loadingIndicator.style.display = 'none';
-        }
-
-        reportEl.innerHTML = `
+        reportEl.innerHTML = DOMPurify.sanitize(`
             <div class="error-message">
                 <h3>⚠️ Configuration Error</h3>
                 <p>Missing required configuration for the dashboard.</p>
                 <p>Try reopening this dashboard from the Octopus AI Assistant.</p>
             </div>
-        `;
+        `);
         return;
     }
 
@@ -369,18 +359,13 @@ dashboardGetConfig(config => {
             reportEl.innerHTML = cleanHtml;
         })
         .catch(error => {
-            // Hide loading indicator
-            if (loadingIndicator) {
-                loadingIndicator.style.display = 'none';
-            }
-
             // Show error message
-            reportEl.innerHTML = `
+            reportEl.innerHTML = DOMPurify.sanitize(`
                 <div class="error-message">
                     <h3>⚠️ Error Loading Report</h3>
                     <p>Failed to generate the AWS Well-Architected compliance report.</p>
-                    <p><strong>Error:</strong> ${DOMPurify.sanitize(error.message || error)}</p>
+                    <p><strong>Error:</strong> ${error.message || error}</p>
                 </div>
-            `;
+            `);
         });
 })
