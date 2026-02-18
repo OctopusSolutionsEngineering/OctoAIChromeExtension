@@ -44,7 +44,7 @@ function dashboardSendPrompt(prompt, serverUrl) {
 
     function _isValidUrl(url) {
         try {
-            new URL(serverUrl);
+            new URL(url);
             return true;
         } catch (e) {
             return false;
