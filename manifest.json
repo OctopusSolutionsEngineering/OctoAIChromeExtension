@@ -19,7 +19,8 @@
     "activeTab",
     "scripting",
     "tabs",
-    "storage"
+    "storage",
+    "cookies"
   ],
   "background": {
     "service_worker": "background.js"
