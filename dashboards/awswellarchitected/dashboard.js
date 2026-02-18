@@ -359,6 +359,7 @@ dashboardGetConfig(config => {
                 <div class="error-message">
                     <h3>⚠️ Error Loading Report</h3>
                     <p>Failed to generate the AWS Well-Architected compliance report.</p>
+                    <p>Try reopening the report from the AI Assistant.</p>
                     <p><strong>Error:</strong> ${error.message || error}</p>
                 </div>
             `);
