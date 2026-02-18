@@ -9,6 +9,7 @@ To create a custom dashboard, follow these steps:
 5. The configuration returned by the `dashboardGetConfig()` function includes:
    * `serverUrls`, which is an array of the Octopus instances that the user has opened dashboards for.
    * `lastServerUrl`, which is the URL of the instance that the user last opened a dashboard for.
+   * `context`, a map containing details about the page from which the dashboard was opened. See the `getUIContext()` function in [scripts/dashboard.js](../scripts/dashboard.js) for more details about the context object.
 6. Requests to the Octopus API must include credentials, which will pass the cookies associated with the current session.
 7. See the [Copilot Instructions](../.github/copilot-instructions.md) for the best practices for writing the code for your dashboard.
 
