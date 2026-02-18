@@ -20,7 +20,13 @@ You must ensure that any inputs are validated and sanitized to prevent security 
 
 You must highlight any use of the Chrome extensions API in the custom dashboards, as this can introduce security risks if not used carefully.
 
+You must highlight any attempt to read cookies in the custom dashboards, as this can introduce security risks if not handled carefully.
+
+You must highlight any attempt to generate API keys or access tokens in the custom dashboards, as this can introduce security risks if not handled carefully.
+
 You must highlight examples where dashboards attempt to load files from any parent directories (except the `api.js` file in the `dashboards` folder), as this can introduce security risks if not handled carefully.
+
+You must highlight any use of private functions in the custom dashboards, as these are not permitted.
 
 ## Sample Prompts
 
@@ -30,7 +36,7 @@ prompts must be checked for spelling and grammar errors. The files must also be 
 ## General Guidelines
 
 - Check code for security vulnerabilities, especially in the custom dashboards.
-- Flag any use of `innerHTML`, as this is a security risk if the content is not properly sanitized.
+- Flag any use of `innerHTML` without first purifying the result with `DOMPurify.sanitize()` or some other HTML escaping function, as this is a security risk if the content is not properly sanitized.
 - Flag any use of `eval()`, as this is a security risk.
 - Flag any use of iframes, as they can introduce security risks if not used carefully.
 - Flag any changes to the permissions in the `manifest.json` file, as this can introduce security risks.
