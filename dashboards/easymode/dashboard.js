@@ -38,6 +38,11 @@ const channelInstructions = {
     featurebranch: '* Create a channel called "Feature Branch" using a lifecycle called "Feature Branch" that includes only the "Feature Branch" environment.'
 };
 
+// Release note instructions configuration
+const releaseNoteInstructions = {
+    buildinformation: '* Add the following release notes to the project:\n```\nHere are the notes for the packages\n#{each package in Octopus.Release.Package}\n- #{package.PackageId} #{package.Version}\n#{each workItem in package.WorkItems}\n  - [#{workItem.Id}](#{workItem.LinkUrl}) - #{workItem.Description}\n#{/each}\n#{each commit in package.Commits}\n  - [#{commit.CommitId}](#{commit.LinkUrl}) - #{commit.Comment}\n#{/each}\n#{/each}\n```'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
@@ -45,6 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const stepCards = document.querySelectorAll('.step-card');
     const runbookCards = document.querySelectorAll('.runbook-card');
     const channelCards = document.querySelectorAll('.channel-card');
+    const releaseNoteCards = document.querySelectorAll('.releasenote-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
@@ -53,6 +59,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedSteps = [];
     let selectedRunbooks = [];
     let selectedChannels = [];
+    let selectedReleaseNotes = [];
 
     // Handle platform card selection
     platformCards.forEach(card => {
@@ -170,6 +177,30 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle release note card selection (multiple selection allowed)
+    releaseNoteCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const releaseNote = this.getAttribute('data-releasenote');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedReleaseNotes = selectedReleaseNotes.filter(r => r !== releaseNote);
+            } else {
+                // Select
+                this.classList.add('selected');
+                selectedReleaseNotes.push(releaseNote);
+            }
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('selectedReleaseNotes', JSON.stringify(selectedReleaseNotes));
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -227,6 +258,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // Add release note instructions if selected
+        if (selectedReleaseNotes.length > 0) {
+            selectedReleaseNotes.forEach(releaseNote => {
+                if (releaseNoteInstructions[releaseNote]) {
+                    if (prompt) {
+                        prompt += '\n' + releaseNoteInstructions[releaseNote];
+                    } else {
+                        prompt = releaseNoteInstructions[releaseNote];
+                    }
+                }
+            });
+        }
+
         promptTextarea.value = prompt;
     }
 
@@ -271,6 +315,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedSteps = localStorage.getItem('selectedSteps');
     const savedRunbooks = localStorage.getItem('selectedRunbooks');
     const savedChannels = localStorage.getItem('selectedChannels');
+    const savedReleaseNotes = localStorage.getItem('selectedReleaseNotes');
 
     if (savedPlatform) {
         const savedCard = document.querySelector(`[data-platform="${savedPlatform}"]`);
@@ -321,6 +366,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         } catch (e) {
             console.error('Error parsing saved channels:', e);
+        }
+    }
+    if (savedReleaseNotes) {
+        try {
+            const releaseNotes = JSON.parse(savedReleaseNotes);
+            releaseNotes.forEach(releaseNote => {
+                const savedCard = document.querySelector(`[data-releasenote="${releaseNote}"]`);
+                if (savedCard) {
+                    savedCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved release notes:', e);
         }
     }
 });

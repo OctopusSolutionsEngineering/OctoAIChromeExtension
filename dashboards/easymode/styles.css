@@ -417,6 +417,85 @@ body {
     font-weight: 600;
 }
 
+/* Release Notes Grid */
+.releasenotes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 10px;
+    margin-top: 24px;
+}
+
+/* Release Note Card */
+.releasenote-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    background-color: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.releasenote-card:hover {
+    border-color: #0d80d8;
+    box-shadow: 0 4px 12px rgba(13, 128, 216, 0.15);
+    transform: translateY(-2px);
+}
+
+.releasenote-card:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(13, 128, 216, 0.2);
+}
+
+/* Release Note Icon */
+.releasenote-icon {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0d80d8;
+}
+
+.releasenote-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Individual release note icon colors */
+.buildinformation-icon {
+    color: #17a2b8;
+}
+
+/* Release Note Name */
+.releasenote-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: #2d3e50;
+    word-wrap: break-word;
+    max-width: 100%;
+}
+
+/* Selected state for release notes */
+.releasenote-card.selected {
+    border-color: #0d80d8;
+    background-color: #f0f8ff;
+    box-shadow: 0 2px 8px rgba(13, 128, 216, 0.2);
+}
+
+.releasenote-card.selected .releasenote-icon {
+    color: #0d80d8;
+}
+
+.releasenote-card.selected .releasenote-name {
+    color: #0d80d8;
+    font-weight: 600;
+}
+
 /* Platform Grid */
 .platform-grid {
     display: grid;
