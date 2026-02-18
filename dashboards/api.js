@@ -35,6 +35,7 @@ function dashboardSendPrompt(prompt, serverUrl) {
         }))
         .then(result => _dashboardConvertFromSseResponse(result))
         .catch(error => {
+            console.log("Error sending prompt to dashboard: ", error);
             return {
                 response: "An error occurred while processing your request. Please try again.",
                 state: "Error"
