@@ -108,11 +108,11 @@ function showDashboard(request) {
         dashboardConfig.serverUrls = dashboardConfig.serverUrls || [];
 
         // Get a unique list of server URLs, including the new one from the request
-        const serverUrls = [...dashboardConfig.serverUrls, request.serverUrl];
-        dashboardConfig.serverUrls = [...new Set(serverUrls)];
+        const serverUrls = [...dashboardConfig.serverUrls, request.lastServerUrl];
+        dashboardConfig.serverUrls = [...new Set(serverUrls)].filter(url => url); // Remove any falsy values
 
         // Note the server that was used to launch the dashboard, so we can use it as the default in the dashboard UI
-        dashboardConfig.lastServerUrl = request.serverUrl;
+        dashboardConfig.lastServerUrl = request.lastServerUrl;
 
         // This is the context from which the dashboard was launched
         dashboardConfig.context = request.context;

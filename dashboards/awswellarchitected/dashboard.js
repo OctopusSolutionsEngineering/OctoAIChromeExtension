@@ -324,7 +324,48 @@ This is an example of a project that does not meet any of the requirements of th
 
 🔴 Not Compliant`
 
+/*
+    The prompt variable is a shared prompt that is also included in the promptsv#.json file.
+    It is expected to be updated by copying and pasting a shared prompt in multiple places.
+    These instructions are unique to this dashboard, and are appended to the shared prompt.
+ */
+const customInstructions = "You must prefix the report with a heading that includes the project name and space name, like this: 'Compliance Report for Project \"Project Name\" in Space \"Space Name\"'."
+
 dashboardGetConfig(config => {
-    dashboardSendPrompt(prompt + "\n\n" + config.context, config.serverUrl)
-        .then(result => document.body.innerHTML = DOMPurify.sanitize(marked.parse(result.response)))
+    const reportEl = document.getElementById('report');
+    const loadingIndicator = document.getElementById('loading-indicator');
+
+    // Show loading indicator
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'flex';
+    }
+
+    dashboardSendPrompt(prompt + "\n\n" + config.context + "\n\n" + customInstructions, config.serverUrl)
+        .then(result => {
+            // Hide loading indicator
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+            }
+
+            // Parse and sanitize the markdown response
+            const htmlContent = marked.parse(result.response);
+            const cleanHtml = DOMPurify.sanitize(htmlContent);
+
+            reportEl.innerHTML = cleanHtml;
+        })
+        .catch(error => {
+            // Hide loading indicator
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+            }
+
+            // Show error message
+            reportEl.innerHTML = `
+                <div class="error-message">
+                    <h3>⚠️ Error Loading Report</h3>
+                    <p>Failed to generate the AWS Well-Architected compliance report.</p>
+                    <p><strong>Error:</strong> ${error.message || error}</p>
+                </div>
+            `;
+        });
 })
