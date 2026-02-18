@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', function() {
             dashboardSendPrompt(enhancedPrompt, config.lastServerUrl)
                 .then(function(result) {
                     // Step 4: Display the response text
-                    displayResponse(result);
+                    displayResponse(result, config.lastServerUrl);
                 })
                 .catch(function(error) {
                     showError('An error occurred: ' + error.message);
@@ -114,7 +114,7 @@ function showError(message) {
 }
 
 // Helper function to display the response with Approve/Reject buttons
-function displayResponse(result) {
+function displayResponse(result, serverUrl) {
     const mainContent = document.querySelector('.main-content');
     if (!mainContent) return;
 
@@ -149,14 +149,31 @@ function displayResponse(result) {
 
     mainContent.innerHTML = responseHtml;
 
-    // Add event listeners for Approve and Reject buttons (they do nothing as requested)
+    // Add event listeners for Approve and Reject buttons
     const approveBtn = document.getElementById('approveBtn');
     const rejectBtn = document.getElementById('rejectBtn');
 
     if (approveBtn) {
         approveBtn.addEventListener('click', function() {
             console.log('Approve button clicked');
-            // Button does nothing as per requirements
+
+            // Check if we have a confirmation ID
+            if (result.id && serverUrl) {
+                // Show loading state
+                clearPageAndShowLoading();
+
+                // Call dashboardApprovePrompt with the id and server URL
+                dashboardApprovePrompt(result.id, serverUrl)
+                    .then(function(approvalResult) {
+                        displayApprovalResponse(approvalResult);
+                    })
+                    .catch(function(error) {
+                        showError('An error occurred while approving: ' + error.message);
+                    });
+            } else {
+                // No ID means this wasn't a confirmation response, just log
+                console.log('No confirmation ID found, approval not required');
+            }
         });
     }
 
@@ -164,6 +181,52 @@ function displayResponse(result) {
         rejectBtn.addEventListener('click', function() {
             console.log('Reject button clicked');
             // Reload the page to display the main page again
+            location.reload();
+        });
+    }
+}
+
+// Helper function to display the approval response with OK button
+function displayApprovalResponse(result) {
+    const mainContent = document.querySelector('.main-content');
+    if (!mainContent) return;
+
+    let responseHtml = '';
+
+    if (result.state === 'Error') {
+        responseHtml = `
+            <div class="response-container error">
+                <h2>Error</h2>
+                <div class="response-text">${DOMPurify.sanitize(result.response)}</div>
+                <div class="response-actions">
+                    <button class="reload-button" onclick="location.reload()">Reload Dashboard</button>
+                </div>
+            </div>
+        `;
+    } else {
+        // Convert markdown to HTML using marked library if needed
+        const htmlContent = marked.parse(result.response);
+        const sanitizedHtml = DOMPurify.sanitize(htmlContent);
+
+        responseHtml = `
+            <div class="response-container">
+                <h2>Approval Response</h2>
+                <div class="response-text">${sanitizedHtml}</div>
+                <div class="response-actions">
+                    <button class="ok-button" id="okBtn">OK</button>
+                </div>
+            </div>
+        `;
+    }
+
+    mainContent.innerHTML = responseHtml;
+
+    // Add event listener for OK button
+    const okBtn = document.getElementById('okBtn');
+    if (okBtn) {
+        okBtn.addEventListener('click', function() {
+            console.log('OK button clicked');
+            // Reload the page to return to the main page
             location.reload();
         });
     }

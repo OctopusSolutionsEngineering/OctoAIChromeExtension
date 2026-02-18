@@ -48,20 +48,15 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             })
             .then(response => response.json())
             .then(json => json.AccessToken)
-            .then(function (token) {
+            .then(token =>
                 chrome.runtime.sendMessage({
                     action: "confirmation",
                     id: id,
                     accessToken: token,
                     serverUrl: serverUrl
                 })
-            })
-            .then(response => {
-                return {
-                    response: response.response,
-                    state: "Success"
-                };
-            })
+            )
+            .then(result => _dashboardConvertFromSseResponse(result))
             .catch(error => {
                 console.log("Error sending prompt to dashboard: ", error);
                 return {
@@ -69,7 +64,6 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                     state: "Error"
                 }
             });
-
     }
 
     function dashboardSendPrompt(prompt, serverUrl) {
@@ -117,14 +111,14 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                     state: "Error"
                 }
             });
+    }
 
-        function _isValidUrl(url) {
-            try {
-                new URL(url);
-                return true;
-            } catch (e) {
-                return false;
-            }
+    function _isValidUrl(url) {
+        try {
+            new URL(url);
+            return true;
+        } catch (e) {
+            return false;
         }
     }
 
