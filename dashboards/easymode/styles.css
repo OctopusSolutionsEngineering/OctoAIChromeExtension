@@ -68,7 +68,7 @@ body {
 /* Tenants Grid */
 .tenants-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 20px;
     margin-top: 24px;
 }
@@ -159,7 +159,7 @@ body {
 /* Steps Grid */
 .steps-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 10px;
     margin-top: 24px;
 }
@@ -250,7 +250,7 @@ body {
 /* Runbooks Grid */
 .runbooks-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 10px;
     margin-top: 24px;
 }
@@ -337,7 +337,7 @@ body {
 /* Channels Grid */
 .channels-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 10px;
     margin-top: 24px;
 }
@@ -420,7 +420,7 @@ body {
 /* Release Notes Grid */
 .releasenotes-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 10px;
     margin-top: 24px;
 }
@@ -496,10 +496,89 @@ body {
     font-weight: 600;
 }
 
+/* Triggers Grid */
+.triggers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-top: 24px;
+}
+
+/* Trigger Card */
+.trigger-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    background-color: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.trigger-card:hover {
+    border-color: #0d80d8;
+    box-shadow: 0 4px 12px rgba(13, 128, 216, 0.15);
+    transform: translateY(-2px);
+}
+
+.trigger-card:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(13, 128, 216, 0.2);
+}
+
+/* Trigger Icon */
+.trigger-icon {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0d80d8;
+}
+
+.trigger-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Individual trigger icon colors */
+.createrelease-icon {
+    color: #28a745;
+}
+
+/* Trigger Name */
+.trigger-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: #2d3e50;
+    word-wrap: break-word;
+    max-width: 100%;
+}
+
+/* Selected state for triggers */
+.trigger-card.selected {
+    border-color: #0d80d8;
+    background-color: #f0f8ff;
+    box-shadow: 0 2px 8px rgba(13, 128, 216, 0.2);
+}
+
+.trigger-card.selected .trigger-icon {
+    color: #0d80d8;
+}
+
+.trigger-card.selected .trigger-name {
+    color: #0d80d8;
+    font-weight: 600;
+}
+
 /* Platform Grid */
 .platform-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 20px;
     margin-top: 24px;
 }

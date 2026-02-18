@@ -43,6 +43,11 @@ const releaseNoteInstructions = {
     buildinformation: '* Add the following release notes to the project:\n```\nHere are the notes for the packages\n#{each package in Octopus.Release.Package}\n- #{package.PackageId} #{package.Version}\n#{each workItem in package.WorkItems}\n  - [#{workItem.Id}](#{workItem.LinkUrl}) - #{workItem.Description}\n#{/each}\n#{each commit in package.Commits}\n  - [#{commit.CommitId}](#{commit.LinkUrl}) - #{commit.Comment}\n#{/each}\n#{/each}\n```'
 };
 
+// Trigger instructions configuration
+const triggerInstructions = {
+    createrelease: '* Add a trigger to create a release when a new package is pushed to the feed.'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
@@ -51,6 +56,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const runbookCards = document.querySelectorAll('.runbook-card');
     const channelCards = document.querySelectorAll('.channel-card');
     const releaseNoteCards = document.querySelectorAll('.releasenote-card');
+    const triggerCards = document.querySelectorAll('.trigger-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
@@ -60,6 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedRunbooks = [];
     let selectedChannels = [];
     let selectedReleaseNotes = [];
+    let selectedTriggers = [];
 
     // Handle platform card selection
     platformCards.forEach(card => {
@@ -201,6 +208,30 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle trigger card selection (multiple selection allowed)
+    triggerCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const trigger = this.getAttribute('data-trigger');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedTriggers = selectedTriggers.filter(t => t !== trigger);
+            } else {
+                // Select
+                this.classList.add('selected');
+                selectedTriggers.push(trigger);
+            }
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('selectedTriggers', JSON.stringify(selectedTriggers));
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -271,6 +302,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // Add trigger instructions if selected
+        if (selectedTriggers.length > 0) {
+            selectedTriggers.forEach(trigger => {
+                if (triggerInstructions[trigger]) {
+                    if (prompt) {
+                        prompt += '\n' + triggerInstructions[trigger];
+                    } else {
+                        prompt = triggerInstructions[trigger];
+                    }
+                }
+            });
+        }
+
         promptTextarea.value = prompt;
     }
 
@@ -316,6 +360,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedRunbooks = localStorage.getItem('selectedRunbooks');
     const savedChannels = localStorage.getItem('selectedChannels');
     const savedReleaseNotes = localStorage.getItem('selectedReleaseNotes');
+    const savedTriggers = localStorage.getItem('selectedTriggers');
 
     if (savedPlatform) {
         const savedCard = document.querySelector(`[data-platform="${savedPlatform}"]`);
@@ -379,6 +424,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         } catch (e) {
             console.error('Error parsing saved release notes:', e);
+        }
+    }
+    if (savedTriggers) {
+        try {
+            const triggers = JSON.parse(savedTriggers);
+            triggers.forEach(trigger => {
+                const savedCard = document.querySelector(`[data-trigger="${trigger}"]`);
+                if (savedCard) {
+                    savedCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved triggers:', e);
         }
     }
 });
