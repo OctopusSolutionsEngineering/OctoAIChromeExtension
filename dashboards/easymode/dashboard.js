@@ -1,7 +1,7 @@
 // Platform prompts configuration
 const platformPrompts = {
     kubernetes: 'Create a Kubernetes project called "My K8s WebApp", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n* Create a token account called "Mock Token".\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".',
-    argocd: 'CCreate an Argo CD project called "My Argo CD WebApp"',
+    argocd: 'Create an Argo CD project called "My Argo CD WebApp"',
     azurewebapp: 'Create an Azure Web App project called "My Azure WebApp"',
     azurefunctions: 'Create an Azure Functions project called "My Azure Function App"',
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
@@ -9,20 +9,30 @@ const platformPrompts = {
     bluegreen: 'Create a Blue/Green deployment project called "My Blue Green App"'
 };
 
+// Tenant instructions configuration
+const tenantInstructions = {
+    regional: '* Add 5 tenants based on geographical regions, link the tenants to the project, and require tenants to deploy the project.',
+    physical: '* Add 5 tenants based on fictional brick and mortar store names, link the tenants to the project, and require tenants to deploy the project.',
+    businessunit: '* Add 5 tenants based on fictional business unit names, link the tenants to the project, and require tenants to deploy the project.',
+    company: '* Add 5 tenants based on fictional company names, link the tenants to the project, and require tenants to deploy the project.'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
+    const tenantCards = document.querySelectorAll('.tenant-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
     let selectedPlatform = null;
+    let selectedTenant = null;
 
     // Handle platform card selection
     platformCards.forEach(card => {
         card.addEventListener('click', function() {
             const platform = this.getAttribute('data-platform');
 
-            // Remove selected class from all cards
+            // Remove selected class from all platform cards
             platformCards.forEach(c => c.classList.remove('selected'));
 
             // Add selected class to clicked card
@@ -31,15 +41,56 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update selected platform
             selectedPlatform = platform;
 
-            // Update textarea with the platform's prompt
-            if (platformPrompts[platform]) {
-                promptTextarea.value = platformPrompts[platform];
-            }
+            // Update textarea
+            updatePromptTextarea();
 
             // Save selection to localStorage
             localStorage.setItem('selectedPlatform', platform);
         });
     });
+
+    // Handle tenant card selection
+    tenantCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const tenant = this.getAttribute('data-tenant');
+
+            // Remove selected class from all tenant cards
+            tenantCards.forEach(c => c.classList.remove('selected'));
+
+            // Add selected class to clicked card
+            this.classList.add('selected');
+
+            // Update selected tenant
+            selectedTenant = tenant;
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('selectedTenant', tenant);
+        });
+    });
+
+    // Function to update the prompt textarea based on selections
+    function updatePromptTextarea() {
+        let prompt = '';
+
+        // Add platform prompt if selected
+        if (selectedPlatform && platformPrompts[selectedPlatform]) {
+            prompt = platformPrompts[selectedPlatform];
+        }
+
+        // Add tenant instruction if selected
+        if (selectedTenant && tenantInstructions[selectedTenant]) {
+            if (prompt) {
+                prompt += '\n' + tenantInstructions[selectedTenant];
+            } else {
+                prompt = tenantInstructions[selectedTenant];
+            }
+        }
+
+        promptTextarea.value = prompt;
+    }
 
     // Handle execute button
     executeButton.addEventListener('click', function() {
@@ -61,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Append space name to the prompt
-            const spaceName = config.context.space || 'Unknown';
+            const spaceName = config.space || 'Unknown';
             const enhancedPrompt = promptText + '\n\nThe current space is ' + spaceName;
 
             // Step 3: Call dashboardSendPrompt with the enhanced prompt and lastServerUrl
@@ -78,8 +129,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load saved selection from localStorage
     const savedPlatform = localStorage.getItem('selectedPlatform');
+    const savedTenant = localStorage.getItem('selectedTenant');
     if (savedPlatform) {
         const savedCard = document.querySelector(`[data-platform="${savedPlatform}"]`);
+        if (savedCard) {
+            savedCard.click();
+        }
+    }
+    if (savedTenant) {
+        const savedCard = document.querySelector(`[data-tenant="${savedTenant}"]`);
         if (savedCard) {
             savedCard.click();
         }
