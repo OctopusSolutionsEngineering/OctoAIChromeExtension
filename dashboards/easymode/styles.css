@@ -56,6 +56,13 @@ body {
 /* Sections spacing */
 .platform-section,
 .tenants-section,
+.steps-section,
+.runbooks-section,
+.channels-section,
+.releasenotes-section,
+.triggers-section,
+.freezes-section,
+.communitytemplates-section,
 .prompt-section,
 .execute-section {
     margin-bottom: 32px;
