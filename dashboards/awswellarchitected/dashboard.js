@@ -345,7 +345,7 @@ dashboardGetConfig(config => {
         return;
     }
 
-    dashboardSendPrompt(prompt + "\n\n" + config.context + "\n\n" + customInstructions, config.lastServerUrl)
+    dashboardSendPrompt(prompt + "\n\n" + "Current project is " + config.context["project"] + "\nCurrent space is" + config.context["space"] + "\n\n" + customInstructions, config.lastServerUrl)
         .then(result => {
             // Parse and sanitize the markdown response
             const htmlContent = marked.parse(result.response);

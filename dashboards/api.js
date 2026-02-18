@@ -3,7 +3,7 @@
  * {
  *   serverUrls: [string], // The list of server URLs that have been used to launch the dashboard, which can be used to populate a dropdown in the UI
  *   lastServerUrl: string, // The server URL that was used to launch the most recent dashboard, which can be used as the default selection in the UI
- *   context: string // The context from which the dashboard was launched to be appended to any prompts sent to the AI Assistant LLM
+ *   context: object // Details about the page from which the dashboard was launched, which can be used to provide context to the AI Assistant LLM when processing prompts
  * }
  */
 function dashboardGetConfig(callback) {

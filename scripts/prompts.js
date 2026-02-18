@@ -154,7 +154,7 @@ async function processPrompts(prompts) {
     const gitCredential = await getGitCredential();
     const feedName = await getFeed();
     const lifecycle = await getLifecycle();
-    const deploymentVersion = await getDeploymentName();
+    const deploymentVersion = await getDeploymentId();
     const releaseVersion = await getReleaseVersion();
     const runbookRun = await getRunbookRun();
 
@@ -223,7 +223,7 @@ async function enrichPrompt(prompt) {
     const currentContext = [
         {type: "Space", name: await getSpaceName()},
         {type: "Project", name: await getProjectName()},
-        {type: "Deployment ID", name: await getDeploymentName()},
+        {type: "Deployment ID", name: await getDeploymentId()},
         {type: "Runbook Run", name: await getRunbookRun()},
         {type: "Release Version", name: await getReleaseVersion()},
         {type: "Step", name: await getStepName()},

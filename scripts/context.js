@@ -69,7 +69,7 @@ async function getProjectName() {
     return null;
 }
 
-async function getDeploymentName() {
+async function getDeploymentId() {
     const match = window.location.href.match(/https?:\/\/.*?\/app#\/(Spaces-\d+?)\/projects\/([^\/]+)\/deployments\/releases\/([^\/]+)\/deployments\/([^?]*)\\??.*/);
     if (match) {
         return match[4]
@@ -190,7 +190,7 @@ async function getEnvironment() {
     }
 
     // We can also extract an environment from a deployment
-    const deploymentId = await getDeploymentName()
+    const deploymentId = await getDeploymentId()
     const spaceId = await getSpaceId()
 
     if (deploymentId) {
