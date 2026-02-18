@@ -1,7 +1,19 @@
+/**
+ * This is the entrypoint for the dashboard. It returns the details of the dashboard configuration as an object with the following shape:
+ * {
+ *   serverUrls: [string], // The list of server URLs that have been used to launch the dashboard, which can be used to populate a dropdown in the UI
+ *   lastServerUrl: string, // The server URL that was used to launch the most recent dashboard, which can be used as the default selection in the UI
+ *   context: string // The context from which the dashboard was launched to be appended to any prompts sent to the AI Assistant LLM
+ * }
+ */
 function dashboardGetConfig(callback) {
     chrome.storage.local.get("dashboardConfig", config => callback(config.dashboardConfig));
 }
 
+/**
+ * Executes the prompt against the AI Assistant LLM and returns an object containing the response and the state of the response (success, error, confirmation).
+ * The serverUrl is used to get the access token for the API call and to send the prompt to the correct dashboard instance.
+ */
 function dashboardSendPrompt(prompt, serverUrl) {
     if (!_isValidUrl(serverUrl)) {
         return Promise.resolve({
