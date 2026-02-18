@@ -217,6 +217,9 @@ function replaceMarker(prompt, marker, replacement) {
  * @returns The prompt with the names of the currently viewed resources
  */
 async function enrichPrompt(prompt) {
+    if (prompt == null) {
+        prompt = "";
+    }
     const currentContext = [
         {type: "Space", name: await getSpaceName()},
         {type: "Project", name: await getProjectName()},
