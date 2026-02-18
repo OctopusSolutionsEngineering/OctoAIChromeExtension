@@ -329,7 +329,7 @@ This is an example of a project that does not meet any of the requirements of th
     It is expected to be updated by copying and pasting a shared prompt in multiple places.
     These instructions are unique to this dashboard, and are appended to the shared prompt.
  */
-const customInstructions = "You must prefix the report with a heading that includes the project name and space name, like this: 'Compliance Report for Project \"Project Name\" in Space \"Space Name\"'."
+const customInstructions = "You must prefix the report with a heading that includes the project name and space name, like this: 'AWS Well-Architected Report for Project \"Project Name\" in Space \"Space Name\"'."
 
 dashboardGetConfig(config => {
     const reportEl = document.getElementById('report');
