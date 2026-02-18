@@ -89,6 +89,12 @@ body {
     margin-bottom: 12px;
 }
 
+.disabled-card {
+    background-color: gray !important;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 /* Sections spacing */
 .platform-section,
 .tenants-section,

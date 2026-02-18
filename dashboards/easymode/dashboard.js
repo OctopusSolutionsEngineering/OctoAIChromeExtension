@@ -155,6 +155,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.setItem('selectedTenant', tenant);
             }
 
+            // All other rows are disabled until a tenant is selected, so enable/disable them based on whether a tenant is selected
+            if (selectedTenant) {
+                selectedSteps = [];
+                selectedRunbooks = [];
+                selectedChannels = [];
+                selectedReleaseNotes = [];
+                selectedTriggers = [];
+                selectedFreezes = [];
+                selectedCommunityTemplates = [];
+            }
+
+            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                cards.forEach(card => {
+                    if (selectedTenant) {
+                        card.classList.add("disabled-card")
+                        card.classList.remove('selected')
+                    } else {
+                        card.classList.remove("disabled-card")
+                    }
+                });
+            });
+
             // Update textarea
             updatePromptTextarea();
         });
