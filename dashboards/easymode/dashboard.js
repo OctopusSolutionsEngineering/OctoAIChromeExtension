@@ -17,15 +17,34 @@ const tenantInstructions = {
     company: '* Add 5 tenants based on fictional company names, link the tenants to the project, and require tenants to deploy the project.'
 };
 
+// Placeholder step instructions configuration
+const stepInstructions = {
+    smoketests: '* Add a script step at the end of the deployment process to run smoke tests with a script that echoes "Running Smoke Test...".',
+    openfirewall: '* Add a step at the end of the deployment process to open the firewall with a script that echoes "Opening Firewall Ports...".',
+    publishreleasenotes: '* Add a step at the end of the deployment process to publish release notes with a script that echoes "Publishing Notes...".',
+    manualintervention: '* Add a manual intervention step at the start of the deployment process, scoped to the "Production" environment.'
+};
+
+// Runbook instructions configuration
+const runbookInstructions = {
+    database: '* Add a runbook to simulate a database backup scoped to the "Production" environment.',
+    service: '* Add a runbook to simulate the restart of the service scoped to the environments from the project\'s lifecycles.',
+    logs: '* Add a runbook to simulate the retrieval of logs scoped to the environments from the project\'s lifecycles.'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
     const tenantCards = document.querySelectorAll('.tenant-card');
+    const stepCards = document.querySelectorAll('.step-card');
+    const runbookCards = document.querySelectorAll('.runbook-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
     let selectedPlatform = null;
     let selectedTenant = null;
+    let selectedSteps = [];
+    let selectedRunbooks = [];
 
     // Handle platform card selection
     platformCards.forEach(card => {
@@ -71,6 +90,54 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle step card selection (multiple selection allowed)
+    stepCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const step = this.getAttribute('data-step');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedSteps = selectedSteps.filter(s => s !== step);
+            } else {
+                // Select
+                this.classList.add('selected');
+                selectedSteps.push(step);
+            }
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('selectedSteps', JSON.stringify(selectedSteps));
+        });
+    });
+
+    // Handle runbook card selection (multiple selection allowed)
+    runbookCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const runbook = this.getAttribute('data-runbook');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedRunbooks = selectedRunbooks.filter(r => r !== runbook);
+            } else {
+                // Select
+                this.classList.add('selected');
+                selectedRunbooks.push(runbook);
+            }
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('selectedRunbooks', JSON.stringify(selectedRunbooks));
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -87,6 +154,32 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 prompt = tenantInstructions[selectedTenant];
             }
+        }
+
+        // Add step instructions if selected
+        if (selectedSteps.length > 0) {
+            selectedSteps.forEach(step => {
+                if (stepInstructions[step]) {
+                    if (prompt) {
+                        prompt += '\n' + stepInstructions[step];
+                    } else {
+                        prompt = stepInstructions[step];
+                    }
+                }
+            });
+        }
+
+        // Add runbook instructions if selected
+        if (selectedRunbooks.length > 0) {
+            selectedRunbooks.forEach(runbook => {
+                if (runbookInstructions[runbook]) {
+                    if (prompt) {
+                        prompt += '\n' + runbookInstructions[runbook];
+                    } else {
+                        prompt = runbookInstructions[runbook];
+                    }
+                }
+            });
         }
 
         promptTextarea.value = prompt;
@@ -112,7 +205,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Append space name to the prompt
-            const spaceName = config.space || 'Unknown';
+            const spaceName = config.context.space || 'Unknown';
             const enhancedPrompt = promptText + '\n\nThe current space is ' + spaceName;
 
             // Step 3: Call dashboardSendPrompt with the enhanced prompt and lastServerUrl
@@ -130,6 +223,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load saved selection from localStorage
     const savedPlatform = localStorage.getItem('selectedPlatform');
     const savedTenant = localStorage.getItem('selectedTenant');
+    const savedSteps = localStorage.getItem('selectedSteps');
+    const savedRunbooks = localStorage.getItem('selectedRunbooks');
+
     if (savedPlatform) {
         const savedCard = document.querySelector(`[data-platform="${savedPlatform}"]`);
         if (savedCard) {
@@ -140,6 +236,32 @@ document.addEventListener('DOMContentLoaded', function() {
         const savedCard = document.querySelector(`[data-tenant="${savedTenant}"]`);
         if (savedCard) {
             savedCard.click();
+        }
+    }
+    if (savedSteps) {
+        try {
+            const steps = JSON.parse(savedSteps);
+            steps.forEach(step => {
+                const savedCard = document.querySelector(`[data-step="${step}"]`);
+                if (savedCard) {
+                    savedCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved steps:', e);
+        }
+    }
+    if (savedRunbooks) {
+        try {
+            const runbooks = JSON.parse(savedRunbooks);
+            runbooks.forEach(runbook => {
+                const savedCard = document.querySelector(`[data-runbook="${runbook}"]`);
+                if (savedCard) {
+                    savedCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved runbooks:', e);
         }
     }
 });
