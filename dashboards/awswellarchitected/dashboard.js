@@ -441,7 +441,11 @@ async function populateProjects(serverUrl, spaceId, defaultProject) {
         }
 
         // Enable generate button if project is selected
-        document.getElementById('generate-report-btn').disabled = !projectSelect.value;
+        const generateBtn = document.getElementById('generate-report-btn');
+        const copyLinkBtn = document.getElementById('copy-link-btn');
+
+        generateBtn.disabled = !projectSelect.value;
+        copyLinkBtn.disabled = !projectSelect.value;
 
     } catch (error) {
         projectSelect.innerHTML = '<option value="">Error loading projects</option>';
@@ -451,6 +455,52 @@ async function populateProjects(serverUrl, spaceId, defaultProject) {
 
 // Track if report generation is in progress
 let isGenerating = false;
+
+// Copy link to clipboard
+async function copyLinkToClipboard() {
+    const spaceSelect = document.getElementById('space-select');
+    const projectSelect = document.getElementById('project-select');
+    const copyBtn = document.getElementById('copy-link-btn');
+
+    const selectedSpace = spaceSelect.options[spaceSelect.selectedIndex];
+    const selectedProject = projectSelect.options[projectSelect.selectedIndex];
+
+    if (!selectedSpace || !selectedProject) {
+        return;
+    }
+
+    const spaceName = selectedSpace.dataset.name;
+    const projectName = selectedProject.dataset.name;
+
+    // Build URL with query params
+    const url = new URL(window.location.href);
+    url.searchParams.set('space', spaceName);
+    url.searchParams.set('project', projectName);
+
+    try {
+        await navigator.clipboard.writeText(url.toString());
+
+        // Show "Copied" state
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = 'Copied';
+        copyBtn.disabled = true;
+
+        // Revert after 3 seconds
+        setTimeout(() => {
+            copyBtn.textContent = originalText;
+            copyBtn.disabled = false;
+        }, 1500);
+    } catch (error) {
+        console.error('Failed to copy link:', error);
+        // Show error briefly
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = 'Copy Failed';
+
+        setTimeout(() => {
+            copyBtn.textContent = originalText;
+        }, 1500);
+    }
+}
 
 // Generate the report
 async function generateReport(serverUrl) {
@@ -480,9 +530,11 @@ async function generateReport(serverUrl) {
     const spaceName = selectedSpace.dataset.name;
     const projectName = selectedProject.dataset.name;
 
-    // Show loading state and disable button
+    // Show loading state and disable controls
     isGenerating = true;
     generateBtn.disabled = true;
+    spaceSelect.disabled = true;
+    projectSelect.disabled = true;
     reportEl.innerHTML = DOMPurify.sanitize(`
         <div class="loading-state">
             <div class="spinner"></div>
@@ -514,6 +566,9 @@ async function generateReport(serverUrl) {
         `);
     } finally {
         isGenerating = false;
+        // Re-enable controls
+        spaceSelect.disabled = false;
+        projectSelect.disabled = false;
         // Only re-enable button if a project is selected
         generateBtn.disabled = !projectSelect.value;
     }
@@ -525,6 +580,7 @@ dashboardGetConfig(async config => {
     const spaceSelect = document.getElementById('space-select');
     const projectSelect = document.getElementById('project-select');
     const generateBtn = document.getElementById('generate-report-btn');
+    const copyLinkBtn = document.getElementById('copy-link-btn');
 
     if (!config || !config.lastServerUrl) {
         reportEl.innerHTML = DOMPurify.sanitize(`
@@ -560,10 +616,15 @@ dashboardGetConfig(async config => {
 
         projectSelect.addEventListener('change', () => {
             generateBtn.disabled = !projectSelect.value || isGenerating;
+            copyLinkBtn.disabled = !projectSelect.value;
         });
 
         generateBtn.addEventListener('click', async () => {
             await generateReport(serverUrl);
+        });
+
+        copyLinkBtn.addEventListener('click', async () => {
+            await copyLinkToClipboard();
         });
 
         // Auto-generate if both space and project are selected
