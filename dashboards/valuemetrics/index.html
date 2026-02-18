@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Value Dashboard - Octopus Deploy</title>
+    <link rel="icon" href="assets/OctopusDeploy_Logos_OctoIcon/OctopusDeploy_Icon_CMYK(Print).png">
+    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" />
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-layout">
+
+    <!-- ================================================================
+         SIDEBAR
+         ================================================================ -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <img src="assets/OctopusDeploy_Logos_OctoIcon/Octopus Deploy_Logo_DarkMode_Digital_2024.svg" alt="Octopus Deploy" class="sidebar-header-wordmark" height="100">
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section-title">Dashboard</div>
+            <a href="#" class="nav-item active" data-view="overview">
+                <i class="fa-solid fa-gauge-high"></i>
+                <span class="nav-label">Overview</span>
+            </a>
+            <a href="#trends" class="nav-item" data-view="trends">
+                <i class="fa-solid fa-chart-line"></i>
+                <span class="nav-label">Deployment Trends</span>
+            </a>
+            <a href="#velocity" class="nav-item" data-view="velocity">
+                <i class="fa-solid fa-rocket"></i>
+                <span class="nav-label">Release Velocity</span>
+            </a>
+            <a href="#reliability" class="nav-item" data-view="reliability">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span class="nav-label">Reliability</span>
+            </a>
+
+            <div class="nav-section-title">Insights</div>
+            <a href="#spaces" class="nav-item" data-view="spaces">
+                <i class="fa-solid fa-cubes"></i>
+                <span class="nav-label">Spaces</span>
+            </a>
+            <a href="#projects" class="nav-item" data-view="projects">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span class="nav-label">Projects</span>
+            </a>
+            <a href="#environments" class="nav-item" data-view="environments">
+                <i class="fa-solid fa-server"></i>
+                <span class="nav-label">Environments</span>
+            </a>
+            <a href="#teams" class="nav-item" data-view="teams">
+                <i class="fa-solid fa-users"></i>
+                <span class="nav-label">Teams</span>
+            </a>
+
+            <div class="nav-section-title">Settings</div>
+            <a href="#" class="nav-item" id="nav-onboarding">
+                <i class="fa-solid fa-sliders"></i>
+                <span class="nav-label">Value Settings</span>
+            </a>
+            <a href="#" class="nav-item" id="nav-reset-onboarding">
+                <i class="fa-solid fa-rotate-left"></i>
+                <span class="nav-label">Reset Answers</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="flex items-center gap-xs">
+                <span class="status-dot success"></span>
+                <span class="text-secondary" style="font: var(--textBodyRegularSmall);">Connected</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ================================================================
+         HEADER
+         ================================================================ -->
+    <header class="header">
+        <div class="header-title">
+            <i class="fa-solid fa-gauge-high text-tertiary" id="header-icon"></i>
+            <span id="header-text">Platform Dashboard</span>
+        </div>
+        <div class="header-actions">
+            <span class="text-secondary" style="font: var(--textBodyRegularSmall);">
+                <i class="fa-regular fa-clock"></i>
+                Last refreshed: <span id="last-refresh">--</span>
+            </span>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh">
+                <i class="fa-solid fa-rotate"></i>
+                Refresh
+            </button>
+            <div class="export-wrapper">
+                <button class="btn btn-loud btn-sm" id="btn-export">
+                    <i class="fa-solid fa-file-export"></i>
+                    Export
+                </button>
+                <div class="export-dropdown" id="export-dropdown">
+                    <button class="export-option" data-format="json">
+                        <i class="fa-solid fa-code"></i>
+                        JSON
+                    </button>
+                    <button class="export-option" data-format="csv">
+                        <i class="fa-solid fa-table"></i>
+                        CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ================================================================
+         MAIN CONTENT
+         ================================================================ -->
+    <main class="main">
+        <div id="main-content">
+            <!-- Populated by Router — Overview is the default view -->
+        </div>
+    </main>
+
+</div>
+
+<!-- Load shared extension helper (provides getDashboardConfig) -->
+<script src="../api.js"></script>
+<!-- Our dashboard scripts -->
+<script src="api.js"></script>
+<script src="data.js"></script>
+<script src="onboarding.js"></script>
+<script src="views.js"></script>
+<script src="router.js"></script>
+<script src="dashboard.js"></script>
+
+</body>
+</html>

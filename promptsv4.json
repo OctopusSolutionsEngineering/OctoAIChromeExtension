@@ -17,6 +17,19 @@
     "name":"Dashboard",
     "prompts" : [
       {
+        "name": "Community dashboards...",
+        "prompts": [
+          {
+            "dashboardName": "Value Metrics",
+            "dashboardFile": "valuemetrics/index.html"
+          },
+          {
+            "dashboardName": "Compliance",
+            "dashboardFile": "compliance/index.html"
+          }
+        ]
+      },
+      {
         "name": "Create a new project...",
         "prompts": [
           "Create a Kubernetes project called \"K8s App\".",
