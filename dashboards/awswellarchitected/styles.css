@@ -71,6 +71,88 @@ body {
     padding: var(--spacing-lg);
 }
 
+/* Controls Section */
+.controls-section {
+    background-color: var(--color-bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    flex: 1;
+    min-width: 200px;
+}
+
+.control-group label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+}
+
+.control-group select {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: 14px;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+.control-group select:hover:not(:disabled) {
+    background-color: var(--color-bg-hover);
+    border-color: var(--color-border-light);
+}
+
+.control-group select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.control-group select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.control-group button {
+    background-color: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.control-group button:hover:not(:disabled) {
+    background-color: var(--color-accent-blue);
+    transform: translateY(-1px);
+}
+
+.control-group button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.control-group button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+
 /* Header */
 .header {
     background-color: var(--color-bg-secondary);
@@ -402,6 +484,34 @@ body {
     padding: var(--spacing-md);
     color: var(--color-danger);
     margin: var(--spacing-md) 0;
+}
+
+.error-message h3 {
+    margin-top: 0;
+    color: var(--color-danger);
+}
+
+.error-message p {
+    color: var(--color-danger);
+}
+
+/* Info Message */
+.info-message {
+    background-color: rgba(38, 132, 255, 0.1);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    color: var(--color-primary);
+    margin: var(--spacing-md) 0;
+}
+
+.info-message h3 {
+    margin-top: 0;
+    color: var(--color-primary);
+}
+
+.info-message p {
+    color: var(--color-text-secondary);
 }
 
 /* Loading State */

@@ -13,6 +13,24 @@
     </div>
 
     <div class="container">
+        <div class="controls-section">
+            <div class="control-group">
+                <label for="space-select">Space:</label>
+                <select id="space-select" disabled>
+                    <option value="">Loading spaces...</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="project-select">Project:</label>
+                <select id="project-select" disabled>
+                    <option value="">Select a space first...</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <button id="generate-report-btn" disabled>Generate Report</button>
+            </div>
+        </div>
+
         <div id="report">
             <div class="loading-state">
                 <div class="spinner"></div>

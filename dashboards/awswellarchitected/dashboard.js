@@ -329,12 +329,204 @@ This is an example of a project that does not meet any of the requirements of th
     It is expected to be updated by copying and pasting a shared prompt in multiple places.
     These instructions are unique to this dashboard, and are appended to the shared prompt.
  */
+/*
+    The prompt variable is a shared prompt that is also included in the promptsv#.json file.
+    It is expected to be updated by copying and pasting a shared prompt in multiple places.
+    These instructions are unique to this dashboard, and are appended to the shared prompt.
+ */
 const customInstructions = "You must prefix the report with a heading that includes the project name and space name, like this: 'AWS Well-Architected Report for Project \"Project Name\" in Space \"Space Name\"'."
 
-dashboardGetConfig(config => {
-    const reportEl = document.getElementById('report');
+// Get URL parameters
+function getUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        space: params.get('space'),
+        project: params.get('project')
+    };
+}
 
-    if (!config || !config.lastServerUrl || !config.context) {
+// Make API call to Octopus Server
+async function fetchFromOctopus(serverUrl, endpoint) {
+    try {
+        const response = await fetch(new URL(endpoint, serverUrl), {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            throw new Error('Authentication failed. Please sign in to Octopus Deploy.');
+        }
+
+        if (!response.ok) {
+            throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching from Octopus:', error);
+        throw error;
+    }
+}
+
+// Populate spaces dropdown
+async function populateSpaces(serverUrl, defaultSpace) {
+    const spaceSelect = document.getElementById('space-select');
+
+    try {
+        const spaces = await fetchFromOctopus(serverUrl, '/api/spaces/all');
+
+        spaceSelect.innerHTML = '';
+        spaceSelect.disabled = false;
+
+        spaces.forEach(space => {
+            const option = document.createElement('option');
+            option.value = space.Id;
+            option.textContent = space.Name;
+            option.dataset.name = space.Name;
+            spaceSelect.appendChild(option);
+        });
+
+        // Set default value
+        if (defaultSpace) {
+            const matchingOption = Array.from(spaceSelect.options).find(
+                opt => opt.dataset.name === defaultSpace || opt.value === defaultSpace
+            );
+            if (matchingOption) {
+                spaceSelect.value = matchingOption.value;
+            }
+        }
+
+        return spaceSelect.value;
+    } catch (error) {
+        spaceSelect.innerHTML = '<option value="">Error loading spaces</option>';
+        throw error;
+    }
+}
+
+// Populate projects dropdown for a given space
+async function populateProjects(serverUrl, spaceId, defaultProject) {
+    const projectSelect = document.getElementById('project-select');
+
+    if (!spaceId) {
+        projectSelect.innerHTML = '<option value="">Select a space first...</option>';
+        projectSelect.disabled = true;
+        return;
+    }
+
+    try {
+        const projects = await fetchFromOctopus(serverUrl, `/api/${spaceId}/projects/all`);
+
+        projectSelect.innerHTML = '';
+        projectSelect.disabled = false;
+
+        projects.forEach(project => {
+            const option = document.createElement('option');
+            option.value = project.Id;
+            option.textContent = project.Name;
+            option.dataset.name = project.Name;
+            projectSelect.appendChild(option);
+        });
+
+        // Set default value
+        if (defaultProject) {
+            const matchingOption = Array.from(projectSelect.options).find(
+                opt => opt.dataset.name === defaultProject || opt.value === defaultProject
+            );
+            if (matchingOption) {
+                projectSelect.value = matchingOption.value;
+            }
+        }
+
+        // Enable generate button if project is selected
+        document.getElementById('generate-report-btn').disabled = !projectSelect.value;
+
+    } catch (error) {
+        projectSelect.innerHTML = '<option value="">Error loading projects</option>';
+        throw error;
+    }
+}
+
+// Track if report generation is in progress
+let isGenerating = false;
+
+// Generate the report
+async function generateReport(serverUrl) {
+    // Prevent multiple simultaneous generations
+    if (isGenerating) {
+        return;
+    }
+
+    const reportEl = document.getElementById('report');
+    const spaceSelect = document.getElementById('space-select');
+    const projectSelect = document.getElementById('project-select');
+    const generateBtn = document.getElementById('generate-report-btn');
+
+    const selectedSpace = spaceSelect.options[spaceSelect.selectedIndex];
+    const selectedProject = projectSelect.options[projectSelect.selectedIndex];
+
+    if (!selectedSpace || !selectedProject) {
+        reportEl.innerHTML = DOMPurify.sanitize(`
+            <div class="error-message">
+                <h3>⚠️ Selection Required</h3>
+                <p>Please select both a space and a project to generate the report.</p>
+            </div>
+        `);
+        return;
+    }
+
+    const spaceName = selectedSpace.dataset.name;
+    const projectName = selectedProject.dataset.name;
+
+    // Show loading state and disable button
+    isGenerating = true;
+    generateBtn.disabled = true;
+    reportEl.innerHTML = DOMPurify.sanitize(`
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Generating AWS Well-Architected compliance report for project "${projectName}" in space "${spaceName}"...</p>
+        </div>
+    `);
+
+    try {
+        const fullPrompt = prompt + "\n\n" +
+            "Current project is " + projectName + "\n" +
+            "Current space is " + spaceName + "\n\n" +
+            customInstructions;
+
+        const result = await dashboardSendPrompt(fullPrompt, serverUrl);
+
+        // Parse and sanitize the markdown response
+        const htmlContent = marked.parse(result.response);
+
+        reportEl.innerHTML = DOMPurify.sanitize(htmlContent);
+    } catch (error) {
+        // Show error message
+        reportEl.innerHTML = DOMPurify.sanitize(`
+            <div class="error-message">
+                <h3>⚠️ Error Loading Report</h3>
+                <p>Failed to generate the AWS Well-Architected compliance report.</p>
+                <p>Try reopening the report from the AI Assistant.</p>
+                <p><strong>Error:</strong> ${error.message || error}</p>
+            </div>
+        `);
+    } finally {
+        isGenerating = false;
+        // Only re-enable button if a project is selected
+        generateBtn.disabled = !projectSelect.value;
+    }
+}
+
+// Initialize the dashboard
+dashboardGetConfig(async config => {
+    const reportEl = document.getElementById('report');
+    const spaceSelect = document.getElementById('space-select');
+    const projectSelect = document.getElementById('project-select');
+    const generateBtn = document.getElementById('generate-report-btn');
+
+    if (!config || !config.lastServerUrl) {
         reportEl.innerHTML = DOMPurify.sanitize(`
             <div class="error-message">
                 <h3>⚠️ Configuration Error</h3>
@@ -345,23 +537,55 @@ dashboardGetConfig(config => {
         return;
     }
 
-    dashboardSendPrompt(prompt + "\n\n" + "Current project is " + config.context["project"] + "\nCurrent space is" + config.context["space"] + "\n\n" + customInstructions, config.lastServerUrl)
-        .then(result => {
-            // Parse and sanitize the markdown response
-            const htmlContent = marked.parse(result.response);
-            const cleanHtml = DOMPurify.sanitize(htmlContent);
+    const serverUrl = config.lastServerUrl;
+    const urlParams = getUrlParams();
 
-            reportEl.innerHTML = cleanHtml;
-        })
-        .catch(error => {
-            // Show error message
+    // URL params take precedence over config context
+    const defaultSpace = urlParams.space || config.context?.space;
+    const defaultProject = urlParams.project || config.context?.project;
+
+    try {
+        // Populate spaces
+        const selectedSpaceId = await populateSpaces(serverUrl, defaultSpace);
+
+        // Populate projects for the selected space
+        if (selectedSpaceId) {
+            await populateProjects(serverUrl, selectedSpaceId, defaultProject);
+        }
+
+        // Set up event listeners
+        spaceSelect.addEventListener('change', async () => {
+            await populateProjects(serverUrl, spaceSelect.value, null);
+        });
+
+        projectSelect.addEventListener('change', () => {
+            generateBtn.disabled = !projectSelect.value || isGenerating;
+        });
+
+        generateBtn.addEventListener('click', async () => {
+            await generateReport(serverUrl);
+        });
+
+        // Auto-generate if both space and project are selected
+        if (spaceSelect.value && projectSelect.value) {
+            await generateReport(serverUrl);
+        } else {
             reportEl.innerHTML = DOMPurify.sanitize(`
-                <div class="error-message">
-                    <h3>⚠️ Error Loading Report</h3>
-                    <p>Failed to generate the AWS Well-Architected compliance report.</p>
-                    <p>Try reopening the report from the AI Assistant.</p>
-                    <p><strong>Error:</strong> ${error.message || error}</p>
+                <div class="info-message">
+                    <h3>ℹ️ Ready to Generate Report</h3>
+                    <p>Select a space and project from the dropdowns above, then click "Generate Report".</p>
                 </div>
             `);
-        });
-})
+        }
+
+    } catch (error) {
+        reportEl.innerHTML = DOMPurify.sanitize(`
+            <div class="error-message">
+                <h3>⚠️ Initialization Error</h3>
+                <p>Failed to initialize the dashboard.</p>
+                <p><strong>Error:</strong> ${error.message || error}</p>
+            </div>
+        `);
+    }
+});
+
