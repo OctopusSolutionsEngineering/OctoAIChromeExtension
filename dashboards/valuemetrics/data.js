@@ -218,7 +218,7 @@ const DashboardData = (() => {
     try {
       return await OctopusApi.get(endpoint);
     } catch (err) {
-      if (err.status === 404 || err.status === 403) return null;
+      if (err.status === 401 || err.status === 403 || err.status === 404) return null;
       // Also swallow deprecation errors (the weekly report endpoint)
       if (err.message && err.message.includes('deprecated')) return null;
       throw err;
@@ -650,10 +650,10 @@ const DashboardUI = (() => {
       <tr>
         <td>
           <div class="flex items-center gap-sm">
-            <div class="space-avatar sm">${esc(s.name.charAt(0).toUpperCase())}</div>
+            <div class="space-avatar sm">${DOMPurify.sanitize(s.name.charAt(0).toUpperCase())}</div>
             <div>
-              <div>${esc(s.name)}</div>
-              ${s.description ? `<div class="text-tertiary" style="font:var(--textBodyRegularXSmall);">${esc(s.description)}</div>` : ''}
+              <div>${DOMPurify.sanitize(s.name)}</div>
+              ${s.description ? `<div class="text-tertiary" style="font:var(--textBodyRegularXSmall);">${DOMPurify.sanitize(s.description)}</div>` : ''}
             </div>
           </div>
         </td>
@@ -717,13 +717,13 @@ const DashboardUI = (() => {
 
       return `
         <tr>
-          <td>${esc(d._projectName || d.ProjectId || '--')}</td>
-          <td><span class="monospace">${esc(d.ReleaseVersion || '--')}</span></td>
-          <td>${esc(d._envName || d.EnvironmentId || '--')}</td>
+          <td>${DOMPurify.sanitize(d._projectName || d.ProjectId || '--')}</td>
+          <td><span class="monospace">${DOMPurify.sanitize(d.ReleaseVersion || '--')}</span></td>
+          <td>${DOMPurify.sanitize(d._envName || d.EnvironmentId || '--')}</td>
           <td>
             <div class="flex items-center gap-xs">
-              <div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${esc((d._spaceName || '?').charAt(0))}</div>
-              <span class="text-secondary">${esc(d._spaceName || '--')}</span>
+              <div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${DOMPurify.sanitize((d._spaceName || '?').charAt(0))}</div>
+              <span class="text-secondary">${DOMPurify.sanitize(d._spaceName || '--')}</span>
             </div>
           </td>
           <td><span class="badge ${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span></td>
@@ -754,7 +754,7 @@ const DashboardUI = (() => {
       return `
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-sm">
-            <span class="env-tag ${tagClass}">${esc(env.name)}</span>
+            <span class="env-tag ${tagClass}">${DOMPurify.sanitize(env.name)}</span>
             <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">${env.spaces.length > 1 ? env.spaces.length + ' spaces' : env.spaces[0] || ''}</span>
           </div>
           <div class="flex items-center gap-xs">
@@ -939,11 +939,6 @@ const DashboardUI = (() => {
     if (el) el.textContent = text;
   }
 
-  function esc(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-  }
 
   function timeAgo(dateStr) {
     const date = new Date(dateStr);
@@ -977,7 +972,6 @@ const DashboardUI = (() => {
     renderOverview,
     setTrendRange,
     // Expose helpers for views
-    esc,
     timeAgo,
   };
 

@@ -742,7 +742,7 @@ const ComplianceView = (() => {
           <div class="card-body" style="text-align:center;padding:var(--space-xl);">
             <i class="fa-solid fa-triangle-exclamation text-danger" style="font-size:2rem;margin-bottom:var(--space-md);display:block;"></i>
             <h3 style="font:var(--textHeadingSmall);color:var(--colorTextPrimary);">Failed to load compliance data</h3>
-            <p class="text-secondary" style="margin-top:var(--space-xs);">${esc(err.message)}</p>
+            <p class="text-secondary" style="margin-top:var(--space-xs);">${DOMPurify.sanitize(err.message)}</p>
             <p class="text-tertiary" style="font:var(--textBodyRegularXSmall);margin-top:var(--space-sm);">
               Some endpoints may require elevated permissions. Check your API token has access to events, teams, and interruptions.
             </p>
@@ -843,13 +843,13 @@ const ComplianceView = (() => {
                       const cls = st === 'success' ? 'success' : st === 'failed' ? 'danger' : 'neutral';
                       return `<tr>
                         <td class="text-secondary" style="white-space:nowrap;">${d.date ? new Date(d.date).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</td>
-                        <td>${esc(d.project)}</td>
-                        <td class="monospace">${esc(d.release)}</td>
-                        <td><span class="env-tag production">${esc(d.environment)}</span></td>
-                        <td class="text-secondary">${esc(d.space)}</td>
-                        <td class="text-secondary">${esc(d.deployedBy)}</td>
+                        <td>${DOMPurify.sanitize(d.project)}</td>
+                        <td class="monospace">${DOMPurify.sanitize(d.release)}</td>
+                        <td><span class="env-tag production">${DOMPurify.sanitize(d.environment)}</span></td>
+                        <td class="text-secondary">${DOMPurify.sanitize(d.space)}</td>
+                        <td class="text-secondary">${DOMPurify.sanitize(d.deployedBy)}</td>
                         <td>${d.hasApproval
-                          ? `<span class="text-success">${esc(d.approvedBy)}</span>`
+                          ? `<span class="text-success">${DOMPurify.sanitize(d.approvedBy)}</span>`
                           : '<span class="text-danger">No approval</span>'}</td>
                         <td><span class="badge ${cls}">${st.charAt(0).toUpperCase() + st.slice(1)}</span></td>
                       </tr>`;
@@ -941,11 +941,6 @@ const ComplianceView = (() => {
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
   }
 
-  function esc(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-  }
 
   return { render, wire };
 

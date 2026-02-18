@@ -9,11 +9,6 @@ const Views = (() => {
 
   // ---- Shared helpers ----
 
-  function esc(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-  }
 
   function timeAgo(dateStr) {
     const date = new Date(dateStr);
@@ -470,7 +465,7 @@ const Views = (() => {
             </tr></thead>
             <tbody>
               ${summary.spaceBreakdown.map(s => `<tr>
-                <td><div class="flex items-center gap-sm"><div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div> ${esc(s.name)}</div></td>
+                <td><div class="flex items-center gap-sm"><div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div> ${DOMPurify.sanitize(s.name)}</div></td>
                 <td class="monospace">${s.deploymentCount}</td>
                 <td class="text-success monospace">${s.successCount}</td>
                 <td class="text-danger monospace">${s.failedCount}</td>
@@ -601,7 +596,7 @@ const Views = (() => {
         const pct = Math.round(s.deploymentCount / max * 100);
         return `<div>
           <div class="flex items-center justify-between" style="margin-bottom:2px;">
-            <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary);">${esc(s.name)}</span>
+            <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary);">${DOMPurify.sanitize(s.name)}</span>
             <span class="monospace" style="font:var(--textBodyBoldXSmall);color:var(--colorTextPrimary);">${s.deploymentCount}</span>
           </div>
           <div class="progress-bar" style="width:100%;"><div class="progress-fill info" style="width:${pct}%;"></div></div>
@@ -725,7 +720,7 @@ const Views = (() => {
                 const spaceData = DashboardData.getSpaceData(s.id);
                 const weeklyTotals = (summary.weeklyTrend || []).slice(-8).map(w => w.total);
                 return `<tr>
-                  <td><div class="flex items-center gap-sm"><div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div> ${esc(s.name)}</div></td>
+                  <td><div class="flex items-center gap-sm"><div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div> ${DOMPurify.sanitize(s.name)}</div></td>
                   <td class="monospace">${s.deploymentCount}</td>
                   <td class="monospace">${s.releaseCount}</td>
                   <td class="monospace">${dpr}</td>
@@ -822,7 +817,7 @@ const Views = (() => {
           ${spaceRates.length ? spaceRates.map(s => `
             <div style="margin-bottom:var(--space-sm);">
               <div class="flex items-center justify-between" style="margin-bottom:2px;">
-                <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary);">${esc(s.name)}</span>
+                <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary);">${DOMPurify.sanitize(s.name)}</span>
                 <span style="font:var(--textBodyBoldSmall);color:${s.successRate >= 90 ? 'var(--colorSuccess)' : s.successRate >= 70 ? 'var(--colorWarningAccent)' : 'var(--colorDanger)'};">${s.successRate}%</span>
               </div>
               <div class="progress-bar" style="width:100%;"><div class="progress-fill ${s.successRate >= 90 ? 'success' : s.successRate >= 70 ? 'warning' : 'danger'}" style="width:${s.successRate}%;"></div></div>
@@ -841,10 +836,10 @@ const Views = (() => {
             <thead><tr><th>Project</th><th>Release</th><th>Environment</th><th>Space</th><th>Duration</th><th>When</th></tr></thead>
             <tbody>
               ${failedDeploys.length > 0 ? failedDeploys.map(d => `<tr>
-                <td>${esc(d._projectName || d.ProjectId || '--')}</td>
-                <td class="monospace">${esc(d.ReleaseVersion || '--')}</td>
-                <td>${esc(d._envName || d.EnvironmentId || '--')}</td>
-                <td><div class="flex items-center gap-xs"><div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${(d._spaceName || '?').charAt(0)}</div> <span class="text-secondary">${esc(d._spaceName || '--')}</span></div></td>
+                <td>${DOMPurify.sanitize(d._projectName || d.ProjectId || '--')}</td>
+                <td class="monospace">${DOMPurify.sanitize(d.ReleaseVersion || '--')}</td>
+                <td>${DOMPurify.sanitize(d._envName || d.EnvironmentId || '--')}</td>
+                <td><div class="flex items-center gap-xs"><div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${(d._spaceName || '?').charAt(0)}</div> <span class="text-secondary">${DOMPurify.sanitize(d._spaceName || '--')}</span></div></td>
                 <td class="text-secondary monospace">${d.Duration || '--'}</td>
                 <td class="text-secondary">${d.Created ? timeAgo(d.Created) : '--'}</td>
               </tr>`).join('') : '<tr><td colspan="6" class="text-secondary" style="text-align:center;padding:var(--space-lg);"><i class="fa-solid fa-check-circle text-success" style="margin-right:var(--space-xs);"></i> No failed deployments — nice!</td></tr>'}
@@ -906,8 +901,8 @@ const Views = (() => {
           <div class="space-card-header">
             <div class="space-avatar">${s.name.charAt(0).toUpperCase()}</div>
             <div>
-              <div class="space-card-name">${esc(s.name)}</div>
-              ${s.description ? `<div class="space-card-desc">${esc(s.description)}</div>` : ''}
+              <div class="space-card-name">${DOMPurify.sanitize(s.name)}</div>
+              ${s.description ? `<div class="space-card-desc">${DOMPurify.sanitize(s.description)}</div>` : ''}
             </div>
           </div>
           <div class="space-card-stats">
@@ -972,18 +967,18 @@ const Views = (() => {
         panel.innerHTML = `
           <div class="card mt-lg">
             <div class="card-header">
-              <h3 class="card-title"><div class="space-avatar sm" style="display:inline-flex;vertical-align:middle;margin-right:var(--space-xs);">${spaceInfo.name.charAt(0).toUpperCase()}</div> ${esc(spaceInfo.name)} — Detail</h3>
+              <h3 class="card-title"><div class="space-avatar sm" style="display:inline-flex;vertical-align:middle;margin-right:var(--space-xs);">${spaceInfo.name.charAt(0).toUpperCase()}</div> ${DOMPurify.sanitize(spaceInfo.name)} — Detail</h3>
               <button class="btn btn-secondary btn-sm" id="close-space-detail"><i class="fa-solid fa-times"></i></button>
             </div>
             <div class="card-body">
               <div class="dashboard-grid">
                 <div class="col-span-6">
                   <h4 style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary);margin-bottom:var(--space-sm);">Projects (${projects.length})</h4>
-                  ${projects.length ? `<div class="flex flex-col gap-xs">${projects.map(p => `<div class="flex items-center gap-xs"><i class="fa-solid fa-diagram-project text-tertiary" style="font-size:0.7rem;"></i> <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary);">${esc(p.Name || p.Id)}</span></div>`).join('')}</div>` : '<span class="text-tertiary">No projects</span>'}
+                  ${projects.length ? `<div class="flex flex-col gap-xs">${projects.map(p => `<div class="flex items-center gap-xs"><i class="fa-solid fa-diagram-project text-tertiary" style="font-size:0.7rem;"></i> <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary);">${DOMPurify.sanitize(p.Name || p.Id)}</span></div>`).join('')}</div>` : '<span class="text-tertiary">No projects</span>'}
                 </div>
                 <div class="col-span-6">
                   <h4 style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary);margin-bottom:var(--space-sm);">Environments (${envs.length})</h4>
-                  ${envs.length ? `<div class="flex flex-wrap gap-xs">${envs.map(e => `<span class="env-tag ${guessEnvClass(e.Name || '')}">${esc(e.Name || e.Id)}</span>`).join('')}</div>` : '<span class="text-tertiary">No environments</span>'}
+                  ${envs.length ? `<div class="flex flex-wrap gap-xs">${envs.map(e => `<span class="env-tag ${guessEnvClass(e.Name || '')}">${DOMPurify.sanitize(e.Name || e.Id)}</span>`).join('')}</div>` : '<span class="text-tertiary">No environments</span>'}
                 </div>
               </div>
               ${recent.length ? `
@@ -996,8 +991,8 @@ const Views = (() => {
                       const state = (d.State || '').toLowerCase();
                       const cls = state === 'success' ? 'success' : state === 'failed' ? 'danger' : 'neutral';
                       return `<tr>
-                        <td>${esc(d._projectName || d.ProjectId || '--')}</td>
-                        <td>${esc(d._envName || d.EnvironmentId || '--')}</td>
+                        <td>${DOMPurify.sanitize(d._projectName || d.ProjectId || '--')}</td>
+                        <td>${DOMPurify.sanitize(d._envName || d.EnvironmentId || '--')}</td>
                         <td><span class="badge ${cls}">${state.charAt(0).toUpperCase() + state.slice(1)}</span></td>
                         <td class="text-secondary">${d.Created ? timeAgo(d.Created) : '--'}</td>
                       </tr>`;
@@ -1113,9 +1108,9 @@ const Views = (() => {
     if (projects.length === 0) {
       return '<tr><td colspan="5" class="text-secondary" style="text-align:center;padding:var(--space-lg);">No projects found</td></tr>';
     }
-    return projects.map(p => `<tr data-project-name="${esc(p.name.toLowerCase())}">
-      <td><div class="flex items-center gap-sm"><i class="fa-solid fa-diagram-project text-tertiary" style="font-size:0.8rem;"></i> ${esc(p.name)}</div></td>
-      <td><span class="text-secondary">${esc(p.space)}</span></td>
+    return projects.map(p => `<tr data-project-name="${DOMPurify.sanitize(p.name.toLowerCase())}">
+      <td><div class="flex items-center gap-sm"><i class="fa-solid fa-diagram-project text-tertiary" style="font-size:0.8rem;"></i> ${DOMPurify.sanitize(p.name)}</div></td>
+      <td><span class="text-secondary">${DOMPurify.sanitize(p.space)}</span></td>
       <td class="monospace">${p.deployments}</td>
       <td>${p.successRate !== null ? `<div class="flex items-center gap-xs"><div class="progress-bar" style="width:60px;"><div class="progress-fill ${p.successRate >= 90 ? 'success' : p.successRate >= 70 ? 'warning' : 'danger'}" style="width:${p.successRate}%;"></div></div><span class="text-secondary">${p.successRate}%</span></div>` : '<span class="text-tertiary">--</span>'}</td>
       <td class="text-secondary">${p.lastDeploy ? timeAgo(p.lastDeploy) : '--'}</td>
@@ -1182,7 +1177,7 @@ const Views = (() => {
           ${envs.map(e => `
             <div class="env-detail-card">
               <div class="env-detail-header">
-                <span class="env-tag ${tagClass}">${esc(e.name)}</span>
+                <span class="env-tag ${tagClass}">${DOMPurify.sanitize(e.name)}</span>
                 ${healthBadge(e.successRate, e.total > 0)}
               </div>
               <div class="env-detail-stats">
@@ -1262,7 +1257,7 @@ const Views = (() => {
             <thead><tr><th>Environment</th><th>Type</th><th>Spaces</th><th>Deployments</th><th>Success Rate</th><th>Health</th></tr></thead>
             <tbody>
               ${envHealth.map(e => `<tr>
-                <td><span class="env-tag ${guessEnvClass(e.name)}">${esc(e.name)}</span></td>
+                <td><span class="env-tag ${guessEnvClass(e.name)}">${DOMPurify.sanitize(e.name)}</span></td>
                 <td class="text-secondary">${guessEnvClass(e.name).charAt(0).toUpperCase() + guessEnvClass(e.name).slice(1)}</td>
                 <td class="text-secondary">${e.spaces.join(', ')}</td>
                 <td class="monospace">${e.total}</td>
@@ -1326,7 +1321,7 @@ const Views = (() => {
               ${spaces.map(s => {
                 const share = totalDeploys > 0 ? Math.round(s.deploymentCount / totalDeploys * 100) : 0;
                 return `<tr>
-                  <td><div class="flex items-center gap-sm"><div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div> ${esc(s.name)}</div></td>
+                  <td><div class="flex items-center gap-sm"><div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div> ${DOMPurify.sanitize(s.name)}</div></td>
                   <td class="monospace">${s.projectCount}</td>
                   <td class="monospace">${s.deploymentCount}</td>
                   <td><div class="flex items-center gap-xs"><div class="progress-bar" style="width:60px;"><div class="progress-fill ${s.successRate >= 90 ? 'success' : s.successRate >= 70 ? 'warning' : 'danger'}" style="width:${s.successRate}%;"></div></div><span class="text-secondary">${s.successRate}%</span></div></td>
