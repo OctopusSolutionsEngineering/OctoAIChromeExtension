@@ -1,4 +1,4 @@
-A Chrome extension used to prototype Octopus AI integrations.
+A Chrome extension used to integrate AI features into Octopus.
 
 # How to use
 
@@ -28,6 +28,10 @@ git clone https://github.com/OctopusSolutionsEngineering/OctoAIChromeExtension.g
 
 # How to contribute new sample prompts
 
-1. Add new sample prompts to the `prompts.json` file
+1. Add new sample prompts to the `promptsv#.json` file
 2. Push the changes to the repository
 3. The extension loads the new prompts automatically
+
+# How to contribute new dashboards
+
+See the [community dashboards documentation](dashboards/instructions.md).
