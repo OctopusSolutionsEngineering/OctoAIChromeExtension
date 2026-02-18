@@ -1,6 +1,6 @@
 const prompt = `## Introduction
 
-This document describes the best practices and principals for achieving operational excellence in an organization based on the
+This document describes the best practices and principles for achieving operational excellence in an organization based on the
 AWS Well-Architected Framework.
 
 Each section contains a checklist of best practices to follow. Some sections include a Rationale for why the provided Octopus implementation supports the best practice.
@@ -267,7 +267,7 @@ You will be penalized for reporting this project as partially compliant if it on
 
 ## Selection Criteria
 
-Top meet the selection criteria for this best practice, the project must deploy cloud resources.
+To meet the selection criteria for this best practice, the project must deploy cloud resources.
 
 ## Rationale
 
@@ -292,7 +292,7 @@ You will be penalized for using the 🟢 ("Compliant") status for best practices
 
 You will be penalized for using the 🟡 ("Partially Compliant") status for best practices that the project is not compliant with.
 
-You must use the 🔴 (meaning "Non-Compliant") status for best practices that the project is not compliant with. For example, if the report for a best practice includes a phrase like "Therefore, the project does not meet the requirements for <requirment>.", the status must be 🔴.
+You must use the 🔴 (meaning "Non-Compliant") status for best practices that the project is not compliant with. For example, if the report for a best practice includes a phrase like "Therefore, the project does not meet the requirements for <requirement>.", the status must be 🔴.
 
 Provide a brief explanation for each assessment.
 
