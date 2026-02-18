@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Octopus Easy Mode</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="../api.js"></script>
+    <script src="dashboard.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="title">Octopus Easy Mode</h1>
+        </header>
+
+        <main class="main-content">
+            <section class="platform-section">
+                <h2 class="section-header">Platform</h2>
+                <div class="platform-grid">
+                    <div class="platform-card" data-platform="kubernetes">
+                        <div class="platform-icon kubernetes-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M30 5 L50 17.5 L50 42.5 L30 55 L10 42.5 L10 17.5 Z" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <circle cx="30" cy="30" r="8" fill="currentColor"/>
+                                <line x1="30" y1="15" x2="30" y2="22" stroke="currentColor" stroke-width="2"/>
+                                <line x1="30" y1="38" x2="30" y2="45" stroke="currentColor" stroke-width="2"/>
+                                <line x1="15" y1="30" x2="22" y2="30" stroke="currentColor" stroke-width="2"/>
+                                <line x1="38" y1="30" x2="45" y2="30" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <span class="platform-name">Kubernetes</span>
+                    </div>
+
+                    <div class="platform-card" data-platform="argocd">
+                        <div class="platform-icon argocd-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="20" cy="30" r="6" fill="currentColor"/>
+                                <circle cx="30" cy="15" r="6" fill="currentColor"/>
+                                <circle cx="40" cy="30" r="6" fill="currentColor"/>
+                                <circle cx="30" cy="45" r="6" fill="currentColor"/>
+                                <line x1="20" y1="30" x2="30" y2="15" stroke="currentColor" stroke-width="2"/>
+                                <line x1="30" y1="15" x2="40" y2="30" stroke="currentColor" stroke-width="2"/>
+                                <line x1="40" y1="30" x2="30" y2="45" stroke="currentColor" stroke-width="2"/>
+                                <line x1="30" y1="45" x2="20" y2="30" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <span class="platform-name">Argo CD</span>
+                    </div>
+
+                    <div class="platform-card" data-platform="azurewebapp">
+                        <div class="platform-icon azure-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15 20 L30 10 L45 20 L45 40 L30 50 L15 40 Z" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <rect x="22" y="22" width="16" height="16" fill="currentColor" opacity="0.6"/>
+                                <rect x="26" y="26" width="8" height="8" fill="currentColor"/>
+                            </svg>
+                        </div>
+                        <span class="platform-name">Azure Web App</span>
+                    </div>
+
+                    <div class="platform-card" data-platform="azurefunctions">
+                        <div class="platform-icon functions-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M20 40 L25 20 L30 40 L35 15 L40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="25" cy="20" r="3" fill="currentColor"/>
+                                <circle cx="35" cy="15" r="3" fill="currentColor"/>
+                            </svg>
+                        </div>
+                        <span class="platform-name">Azure Functions</span>
+                    </div>
+
+                    <div class="platform-card" data-platform="awslambda">
+                        <div class="platform-icon aws-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15 45 L30 15 L35 25 L50 25 L30 50 L25 38 Z" fill="currentColor"/>
+                                <path d="M30 15 L35 25 L50 25" fill="none" stroke="#fff" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <span class="platform-name">AWS Lambda</span>
+                    </div>
+
+                    <div class="platform-card" data-platform="scriptstep">
+                        <div class="platform-icon script-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="10" y="15" width="40" height="30" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <line x1="10" y1="22" x2="50" y2="22" stroke="currentColor" stroke-width="2"/>
+                                <text x="16" y="35" font-family="monospace" font-size="14" fill="currentColor">&gt;_</text>
+                            </svg>
+                        </div>
+                        <span class="platform-name">Script Step</span>
+                    </div>
+
+                    <div class="platform-card" data-platform="bluegreen">
+                        <div class="platform-icon bluegreen-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M15 30 L25 20 L35 30 L25 40 Z" fill="#2196F3"/>
+                                <path d="M35 30 L45 20 L55 30 L45 40 Z" fill="#4CAF50"/>
+                                <path d="M20 30 L40 30" stroke="currentColor" stroke-width="2" marker-end="url(#arrowhead)"/>
+                                <defs>
+                                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                                        <polygon points="0 0, 10 3, 0 6" fill="currentColor"/>
+                                    </marker>
+                                </defs>
+                            </svg>
+                        </div>
+                        <span class="platform-name">Blue/Green</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="prompt-section">
+                <h2 class="section-header">
+                    <label for="promptText">Prompt</label>
+                </h2>
+                <textarea class="prompt-textarea" id="promptText" placeholder="Enter your deployment prompt here..."></textarea>
+            </section>
+
+            <section class="execute-section">
+                <h2 class="section-header">Execute</h2>
+                <button class="execute-button" id="executeButton">Execute</button>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
