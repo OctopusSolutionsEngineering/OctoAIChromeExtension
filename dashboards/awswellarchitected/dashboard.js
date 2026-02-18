@@ -340,7 +340,7 @@ dashboardGetConfig(config => {
         loadingIndicator.style.display = 'flex';
     }
 
-    dashboardSendPrompt(prompt + "\n\n" + config.context + "\n\n" + customInstructions, config.serverUrl)
+    dashboardSendPrompt(prompt + "\n\n" + config.context + "\n\n" + customInstructions, config.lastServerUrl)
         .then(result => {
             // Hide loading indicator
             if (loadingIndicator) {

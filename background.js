@@ -112,7 +112,7 @@ function showDashboard(request) {
         dashboardConfig.serverUrls = [...new Set(serverUrls)].filter(url => url); // Remove any falsy values
 
         // Note the server that was used to launch the dashboard, so we can use it as the default in the dashboard UI
-        dashboardConfig.lastServerUrl = request.lastServerUrl;
+        dashboardConfig.lastServerUrl = request.serverUrl;
 
         // This is the context from which the dashboard was launched
         dashboardConfig.context = request.context;
