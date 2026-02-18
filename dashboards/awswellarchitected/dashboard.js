@@ -1,6 +1,6 @@
 const prompt = `## Introduction
 
-This document describes the best practices and principals for achieving opeRationale excellence in an organization based on the
+This document describes the best practices and principals for achieving operational excellence in an organization based on the
 AWS Well-Architected Framework.
 
 Each section contains a checklist of best practices to follow. Some sections include a Rationale for why the provided Octopus implementation supports the best practice.
@@ -12,7 +12,7 @@ You must ignore the "is_version_controlled" settings when evaluating whether a p
 You must only consider the instructions like "Project '#{Octopus.Project.Name}' is configured to use Config-as-Code" or "Project '#{Octopus.Project.Name}' is not configured to use Config-as-Code."
 
 If you see the instruction "Project '#{Octopus.Project.Name}' is not configured to use Config-as-Code", this is definitive evidence that the project does not use Config-as-Code.
-# [OPS05-BP01 Use version control](https://docs.aws.amazon.com/wellarchitected/latest/opeRationale-excellence-pillar/ops_dev_integ_version_control.html)
+# [OPS05-BP01 Use version control](https://docs.aws.amazon.com/wellarchitected/latest/operational-excellence-pillar/ops_dev_integ_version_control.html)
 
 Risk Level: High
 
@@ -32,7 +32,7 @@ Config-as-Code allows the deployment process to be persisted in version control.
 
 Configuring steps that use scripts and templates to source their code from Git ensures they meet the requirement of using version control.
 
-# [OPS05-BP03 Use configuration management systems](https://docs.aws.amazon.com/wellarchitected/latest/opeRationale-excellence-pillar/ops_dev_integ_conf_mgmt_sys.html)
+# [OPS05-BP03 Use configuration management systems](https://docs.aws.amazon.com/wellarchitected/latest/operational-excellence-pillar/ops_dev_integ_conf_mgmt_sys.html)
 
 Risk Level: Medium
 
@@ -55,7 +55,7 @@ Audit logs track changes to configuration values.
 
 Using variables to define repeatable values reduces the risk of errors when updating multiple steps.
 
-# [OPS02-BP01 Resources have identified owners](https://docs.aws.amazon.com/wellarchitected/latest/opeRationale-excellence-pillar/ops_ops_model_def_resource_owners.html)
+# [OPS02-BP01 Resources have identified owners](https://docs.aws.amazon.com/wellarchitected/latest/operational-excellence-pillar/ops_ops_model_def_resource_owners.html)
 
 Risk Level: High
 
@@ -63,7 +63,7 @@ To be compliant with this requirement, all projects must indicate who owns them.
 
 To be non-compliant, the project does not indicate who owns them.
 
-# [OPS03-BP05 Experimentation is encouraged](https://docs.aws.amazon.com/wellarchitected/latest/opeRationale-excellence-pillar/ops_org_culture_team_enc_experiment.html)
+# [OPS03-BP05 Experimentation is encouraged](https://docs.aws.amazon.com/wellarchitected/latest/operational-excellence-pillar/ops_org_culture_team_enc_experiment.html)
 
 Risk Level: Medium
 
@@ -75,7 +75,7 @@ To be non-compliant, the project does not use Config-as-Code.
 
 Config-as-Code allows the deployment process to be modified in a Git branch, tested, and reviewed before being merged into the main branch. This allows teams to experiment with changes without impacting production workloads.
 
-# [OPS05-BP02 Test and validate changes](https://docs.aws.amazon.com/wellarchitected/latest/opeRationale-excellence-pillar/ops_dev_integ_test_val_chg.html)
+# [OPS05-BP02 Test and validate changes](https://docs.aws.amazon.com/wellarchitected/latest/operational-excellence-pillar/ops_dev_integ_test_val_chg.html)
 
 Risk Level: High
 
@@ -98,7 +98,7 @@ This requirements also contributes:
 This requirement also contributes to:
 
 * [OPS06-BP04 Automate testing and rollback](https://docs.aws.amazon.com/wellarchitected/latest/framework/ops_mit_deploy_risks_auto_testing_and_rollback.html)
-* [OPS07-BP05 Make informed decisions to deploy systems and changes](https://docs.aws.amazon.com/wellarchitected/latest/opeRationale-excellence-pillar/ops_ready_to_support_informed_deploy_decisions.html)
+* [OPS07-BP05 Make informed decisions to deploy systems and changes](https://docs.aws.amazon.com/wellarchitected/latest/operational-excellence-pillar/ops_ready_to_support_informed_deploy_decisions.html)
 * [SEC11-BP06: Deploy software programmatically](https://docs.aws.amazon.com/wellarchitected/latest/framework/sec_appsec_deploy_software_programmatically.html)
 * [REL08-BP02: Integrate functional testing as part of your deployment](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_tracking_change_management_functional_testing.html)
 * [REL08-BP04: Deploy using immutable infrastructure](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_tracking_change_management_immutable_infrastructure.html)
