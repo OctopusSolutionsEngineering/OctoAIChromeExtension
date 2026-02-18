@@ -347,11 +347,6 @@ dashboardGetConfig(config => {
 
     dashboardSendPrompt(prompt + "\n\n" + config.context + "\n\n" + customInstructions, config.lastServerUrl)
         .then(result => {
-            // Hide loading indicator
-            if (loadingIndicator) {
-                loadingIndicator.style.display = 'none';
-            }
-
             // Parse and sanitize the markdown response
             const htmlContent = marked.parse(result.response);
             const cleanHtml = DOMPurify.sanitize(htmlContent);
