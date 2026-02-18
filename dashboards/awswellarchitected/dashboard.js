@@ -340,6 +340,21 @@ dashboardGetConfig(config => {
         loadingIndicator.style.display = 'flex';
     }
 
+    if (!config || !config.lastServerUrl || !config.context) {
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+        }
+
+        reportEl.innerHTML = `
+            <div class="error-message">
+                <h3>⚠️ Configuration Error</h3>
+                <p>Missing required configuration for the dashboard.</p>
+                <p>Try reopening this dashboard from the Octopus AI Assistant.</p>
+            </div>
+        `;
+        return;
+    }
+
     dashboardSendPrompt(prompt + "\n\n" + config.context + "\n\n" + customInstructions, config.lastServerUrl)
         .then(result => {
             // Hide loading indicator
@@ -364,7 +379,7 @@ dashboardGetConfig(config => {
                 <div class="error-message">
                     <h3>⚠️ Error Loading Report</h3>
                     <p>Failed to generate the AWS Well-Architected compliance report.</p>
-                    <p><strong>Error:</strong> ${error.message || error}</p>
+                    <p><strong>Error:</strong> ${DOMPurify.sanitize(error.message || error)}</p>
                 </div>
             `;
         });

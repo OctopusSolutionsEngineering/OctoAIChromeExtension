@@ -9,4 +9,5 @@ async function displayDashboard(dashboard) {
                 context: context
             })
         )
+        .catch(error => alert("Error showing dashboard: " + error));
 }

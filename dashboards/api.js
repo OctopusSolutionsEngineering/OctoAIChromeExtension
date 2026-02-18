@@ -3,8 +3,15 @@ function dashboardGetConfig(callback) {
 }
 
 function dashboardSendPrompt(prompt, serverUrl) {
+    if (!_isValidUrl(serverUrl)) {
+        return Promise.resolve({
+            response: "The server URL is not valid. Please check the URL and try again.",
+            state: "Error"
+        })
+    }
+
     return _dashboardGetOctopusCsrfTokenFromCookie(new URL(serverUrl).hostname)
-        .then(csrfToken => fetch(serverUrl + `/api/users/access-token`, {
+        .then(csrfToken => fetch(new URL('/api/users/access-token', serverUrl) , {
             headers: {
                 'Content-Type': 'application/json',
                 'X-Octopus-Csrf-Token': csrfToken
@@ -33,6 +40,15 @@ function dashboardSendPrompt(prompt, serverUrl) {
                 state: "Error"
             }
         });
+
+    function _isValidUrl(url) {
+        try {
+            new URL(serverUrl);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
 
     /**
      * Gets the Octopus CSRF token from the browser cookies for the given server URL.
