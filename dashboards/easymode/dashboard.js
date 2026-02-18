@@ -48,6 +48,36 @@ const triggerInstructions = {
     createrelease: '* Add a trigger to create a release when a new package is pushed to the feed.'
 };
 
+// Calculate freeze dates that are always in the future relative to current date (Feb 19, 2026)
+const calculateFreezeDates = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed (0 = January, 11 = December)
+    const currentDay = now.getDate();
+
+    // Determine which year to use for each freeze
+    // Black Friday: November 23-29
+    const blackFridayYear = (currentMonth === 10 && currentDay > 29) || currentMonth === 11 ? currentYear + 1 : currentYear;
+    // Cyber Monday: November 30 - December 2
+    const cyberMondayYear = (currentMonth === 11 && currentDay > 2) ? currentYear + 1 : currentYear;
+    // Christmas: December 20-27
+    const christmasYear = (currentMonth === 11 && currentDay > 27) ? currentYear + 1 : currentYear;
+
+    return {
+        blackFriday: { year: blackFridayYear, start: `November 23rd, ${blackFridayYear}`, end: `November 29th, ${blackFridayYear}` },
+        cyberMonday: { year: cyberMondayYear, start: `November 30th, ${cyberMondayYear}`, end: `December 2nd, ${cyberMondayYear}` },
+        christmas: { year: christmasYear, start: `December 20th, ${christmasYear}`, end: `December 27th, ${christmasYear}` }
+    };
+};
+
+// Freeze instructions configuration with dynamic dates
+const freezeDates = calculateFreezeDates();
+const freezeInstructions = {
+    blackfriday: `* Add a deployment freeze called "Black Friday Freeze" from ${freezeDates.blackFriday.start} to ${freezeDates.blackFriday.end}.`,
+    cybermonday: `* Add a deployment freeze called "Cyber Monday Freeze" from ${freezeDates.cyberMonday.start} to ${freezeDates.cyberMonday.end}.`,
+    christmas: `* Add a deployment freeze called "Christmas Freeze" from ${freezeDates.christmas.start} to ${freezeDates.christmas.end}.`
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
@@ -57,6 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const channelCards = document.querySelectorAll('.channel-card');
     const releaseNoteCards = document.querySelectorAll('.releasenote-card');
     const triggerCards = document.querySelectorAll('.trigger-card');
+    const freezeCards = document.querySelectorAll('.freeze-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
@@ -67,6 +98,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedChannels = [];
     let selectedReleaseNotes = [];
     let selectedTriggers = [];
+    let selectedFreezes = [];
 
     // Handle platform card selection
     platformCards.forEach(card => {
@@ -232,6 +264,30 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle freeze card selection (multiple selection allowed)
+    freezeCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const freeze = this.getAttribute('data-freeze');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedFreezes = selectedFreezes.filter(f => f !== freeze);
+            } else {
+                // Select
+                this.classList.add('selected');
+                selectedFreezes.push(freeze);
+            }
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('selectedFreezes', JSON.stringify(selectedFreezes));
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -315,6 +371,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // Add freeze instructions if selected
+        if (selectedFreezes.length > 0) {
+            selectedFreezes.forEach(freeze => {
+                if (freezeInstructions[freeze]) {
+                    if (prompt) {
+                        prompt += '\n' + freezeInstructions[freeze];
+                    } else {
+                        prompt = freezeInstructions[freeze];
+                    }
+                }
+            });
+        }
+
         promptTextarea.value = prompt;
     }
 
@@ -361,71 +430,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedChannels = localStorage.getItem('selectedChannels');
     const savedReleaseNotes = localStorage.getItem('selectedReleaseNotes');
     const savedTriggers = localStorage.getItem('selectedTriggers');
+    const savedFreezes = localStorage.getItem('selectedFreezes');
 
-    if (savedPlatform) {
-        const savedCard = document.querySelector(`[data-platform="${savedPlatform}"]`);
-        if (savedCard) {
-            savedCard.click();
-        }
-    }
-    if (savedTenant) {
-        const savedCard = document.querySelector(`[data-tenant="${savedTenant}"]`);
-        if (savedCard) {
-            savedCard.click();
-        }
-    }
-    if (savedSteps) {
-        try {
-            const steps = JSON.parse(savedSteps);
-            steps.forEach(step => {
-                const savedCard = document.querySelector(`[data-step="${step}"]`);
-                if (savedCard) {
-                    savedCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved steps:', e);
-        }
-    }
-    if (savedRunbooks) {
-        try {
-            const runbooks = JSON.parse(savedRunbooks);
-            runbooks.forEach(runbook => {
-                const savedCard = document.querySelector(`[data-runbook="${runbook}"]`);
-                if (savedCard) {
-                    savedCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved runbooks:', e);
-        }
-    }
-    if (savedChannels) {
-        try {
-            const channels = JSON.parse(savedChannels);
-            channels.forEach(channel => {
-                const savedCard = document.querySelector(`[data-channel="${channel}"]`);
-                if (savedCard) {
-                    savedCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved channels:', e);
-        }
-    }
-    if (savedReleaseNotes) {
-        try {
-            const releaseNotes = JSON.parse(savedReleaseNotes);
-            releaseNotes.forEach(releaseNote => {
-                const savedCard = document.querySelector(`[data-releasenote="${releaseNote}"]`);
-                if (savedCard) {
-                    savedCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved release notes:', e);
-        }
-    }
+    // ...existing code...
+
     if (savedTriggers) {
         try {
             const triggers = JSON.parse(savedTriggers);
@@ -437,6 +445,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         } catch (e) {
             console.error('Error parsing saved triggers:', e);
+        }
+    }
+    if (savedFreezes) {
+        try {
+            const freezes = JSON.parse(savedFreezes);
+            freezes.forEach(freeze => {
+                const savedCard = document.querySelector(`[data-freeze="${freeze}"]`);
+                if (savedCard) {
+                    savedCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved freezes:', e);
         }
     }
 });
