@@ -22,6 +22,10 @@
           {
             "dashboardName": "Value Metrics",
             "dashboardFile": "valuemetrics/index.html"
+          },
+          {
+            "dashboardName": "Compliance",
+            "dashboardFile": "compliance/index.html"
           }
         ]
       },
