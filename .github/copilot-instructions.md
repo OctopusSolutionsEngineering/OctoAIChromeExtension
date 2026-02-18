@@ -32,7 +32,7 @@ prompts must be checked for spelling and grammar errors. The files must also be 
 ## General Guidelines
 
 - Check code for security vulnerabilities, especially in the custom dashboards.
-- Flag any use of `innerHTML` without first purifying the result with `DOMPurify.sanitize()`, as this is a security risk if the content is not properly sanitized.
+- Flag any use of `innerHTML` without first purifying the result with `DOMPurify.sanitize()` or some other HTML escaping function, as this is a security risk if the content is not properly sanitized.
 - Flag any use of `eval()`, as this is a security risk.
 - Flag any use of iframes, as they can introduce security risks if not used carefully.
 - Flag any changes to the permissions in the `manifest.json` file, as this can introduce security risks.
