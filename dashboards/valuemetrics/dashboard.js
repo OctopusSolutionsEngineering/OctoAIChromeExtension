@@ -241,9 +241,6 @@ DashboardUI.loadDashboard = async function() {
     const summary = DashboardData.getSummary();
     _lastSummary = summary;
 
-    // Reset compliance cache so it re-fetches on next visit
-    if (typeof ComplianceData !== 'undefined') ComplianceData.reset();
-
     // After data loads, refresh the current view
     if (Router.getCurrentView() === 'overview') {
         if (summary) renderValueImpact(summary);

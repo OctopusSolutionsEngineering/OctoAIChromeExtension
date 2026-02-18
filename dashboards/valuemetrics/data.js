@@ -129,6 +129,26 @@ const DashboardData = (() => {
     }
 
     log(`Cross-space deploy tasks: ${_crossSpaceTasks.length} (total: ${totalResults})`);
+
+    // Enrich per-space deployments with state from dashboard items + cross-space tasks
+    const taskStateMap = {};
+    for (const task of _crossSpaceTasks) taskStateMap[task.Id] = task;
+    for (const sd of Object.values(_spaceData)) {
+      const dashMap = {};
+      if (sd.dashboard?.Items) {
+        for (const item of sd.dashboard.Items) dashMap[item.DeploymentId] = item;
+      }
+      for (const dep of sd.deployments) {
+        if (!dep.State || dep.State === 'Unknown') {
+          const dashItem = dashMap[dep.Id];
+          const task = dep.TaskId ? taskStateMap[dep.TaskId] : null;
+          dep.State = dashItem?.State || task?.State || dep.State || 'Unknown';
+          if (!dep.CompletedTime) dep.CompletedTime = dashItem?.CompletedTime || task?.CompletedTime;
+          if (!dep.Duration) dep.Duration = dashItem?.Duration;
+        }
+      }
+    }
+
     _lastFetch = new Date();
     const summary = getSummary(usageByName);
     log('Dashboard summary', {
@@ -331,7 +351,7 @@ const DashboardData = (() => {
       return db - da;
     });
 
-    // Enrich recent deployments with state from dashboard data
+    // Enrich recent deployments with state from dashboard data + cross-space tasks
     const dashboardStateMap = {};
     for (const [spaceId, data] of Object.entries(_spaceData)) {
       if (data.dashboard?.Items) {
@@ -341,14 +361,21 @@ const DashboardData = (() => {
       }
     }
 
+    // Map task states back to deployments via TaskId
+    const taskStateMap = {};
+    for (const task of _crossSpaceTasks) {
+      taskStateMap[task.Id] = task;
+    }
+
     const enrichedDeployments = allDeployments.map(dep => {
       const dashItem = dashboardStateMap[dep.Id];
+      const task = dep.TaskId ? taskStateMap[dep.TaskId] : null;
       return {
         ...dep,
-        State: dashItem?.State || dep.State || 'Unknown',
+        State: dashItem?.State || task?.State || dep.State || 'Unknown',
         Duration: dashItem?.Duration || dep.Duration || '--',
         ReleaseVersion: dashItem?.ReleaseVersion || dep.ReleaseVersion || dep.ReleaseId,
-        CompletedTime: dashItem?.CompletedTime || dep.CompletedTime,
+        CompletedTime: dashItem?.CompletedTime || task?.CompletedTime || dep.CompletedTime,
       };
     });
 
@@ -740,8 +767,8 @@ const DashboardUI = (() => {
 
   function guessEnvClass(name) {
     const n = name.toLowerCase();
-    if (n.includes('prod')) return 'production';
-    if (n.includes('stag') || n.includes('uat') || n.includes('pre-prod')) return 'staging';
+    if (n.includes('prod') && !n.includes('pre-prod') && !n.includes('preprod') && !n.includes('non-prod') && !n.includes('nonprod')) return 'production';
+    if (n.includes('stag') || n.includes('uat') || n.includes('pre-prod') || n.includes('preprod') || n.includes('test')) return 'staging';
     return 'dev';
   }
 
@@ -832,7 +859,7 @@ const DashboardUI = (() => {
         success: m.success,
         failed: m.failed,
         label: MONTH_NAMES[m.month] + (m.month === 0 ? '<br>' + m.year : ''),
-        tooltip: `${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed)`,
+        tooltip: `${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed, ${m.total - m.success - m.failed} other)`,
       }));
     } else {
       const weeksToShow = _currentRange === '90d' ? 13 : 5;
@@ -844,7 +871,7 @@ const DashboardUI = (() => {
           success: w.success,
           failed: w.failed,
           label: `W${w.week}${showYear ? '<br>' + w.year : ''}`,
-          tooltip: `Week ${w.week}, ${w.year}: ${w.total} deployments (${w.success} success, ${w.failed} failed)`,
+          tooltip: `Week ${w.week}, ${w.year}: ${w.total} deployments (${w.success} success, ${w.failed} failed, ${w.total - w.success - w.failed} other)`,
         };
       });
     }
@@ -866,15 +893,18 @@ const DashboardUI = (() => {
           ${bars.map(b => {
             const h = Math.max(4, (b.total / maxTotal) * 180);
             const successH = b.total > 0 ? (b.success / b.total * h) : 0;
-            const failH = h - successH;
+            const failH = b.total > 0 ? (b.failed / b.total * h) : 0;
+            const otherH = h - successH - failH;
+            const topSegment = failH > 0 ? 'fail' : (otherH > 0 ? 'other' : 'success');
             return `
               <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:28px;cursor:default;" title="${b.tooltip}">
                 <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-bottom:4px;">${b.total}</div>
                 <div style="width:100%;max-width:40px;display:flex;flex-direction:column;">
-                  ${failH > 0 ? `<div style="height:${failH}px;background:var(--colorDanger);border-radius:3px 3px 0 0;"></div>` : ''}
-                  ${successH > 0 ? `<div style="height:${successH}px;background:var(--colorSuccess);border-radius:${failH > 0 ? '0 0 3px 3px' : '3px'};"></div>` : ''}
+                  ${failH > 0 ? `<div style="height:${failH}px;background:var(--colorDanger);border-radius:${topSegment === 'fail' ? '3px 3px' : '0 0'} 0 0;"></div>` : ''}
+                  ${otherH > 0 ? `<div style="height:${otherH}px;background:var(--colorBackgroundTertiary);border-radius:${topSegment === 'other' ? '3px 3px' : '0 0'} ${successH > 0 ? '0 0' : '3px 3px'};"></div>` : ''}
+                  ${successH > 0 ? `<div style="height:${successH}px;background:var(--colorSuccess);border-radius:0 0 3px 3px;"></div>` : ''}
                 </div>
-                <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:4px;white-space:nowrap;text-align:center;">${b.label}</div>
+                <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:4px;white-space:nowrap;text-align:center;height:2.5em;line-height:1.25em;">${b.label}</div>
               </div>`;
           }).join('')}
         </div>

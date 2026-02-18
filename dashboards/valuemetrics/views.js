@@ -35,8 +35,8 @@ const Views = (() => {
 
   function guessEnvClass(name) {
     const n = name.toLowerCase();
-    if (n.includes('prod')) return 'production';
-    if (n.includes('stag') || n.includes('uat') || n.includes('pre-prod')) return 'staging';
+    if (n.includes('prod') && !n.includes('pre-prod') && !n.includes('preprod') && !n.includes('non-prod') && !n.includes('nonprod')) return 'production';
+    if (n.includes('stag') || n.includes('uat') || n.includes('pre-prod') || n.includes('preprod') || n.includes('test')) return 'staging';
     return 'dev';
   }
 
@@ -209,10 +209,17 @@ const Views = (() => {
       <div class="card col-span-8">
         <div class="card-header">
           <h3 class="card-title">Deployment Trends</h3>
-          <div class="flex gap-xs">
-            <button class="btn btn-secondary btn-sm active-toggle" data-range="30d">30 days</button>
-            <button class="btn btn-secondary btn-sm" data-range="90d">90 days</button>
-            <button class="btn btn-secondary btn-sm" data-range="12m">12 months</button>
+          <div class="flex items-center gap-md">
+            <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
+              <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorSuccess);vertical-align:middle;margin-right:3px;"></span>Success</span>
+              <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorDanger);vertical-align:middle;margin-right:3px;"></span>Failed</span>
+              <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorBackgroundTertiary);vertical-align:middle;margin-right:3px;"></span>Other</span>
+            </div>
+            <div class="flex gap-xs">
+              <button class="btn btn-secondary btn-sm active-toggle" data-range="30d">30 days</button>
+              <button class="btn btn-secondary btn-sm" data-range="90d">90 days</button>
+              <button class="btn btn-secondary btn-sm" data-range="12m">12 months</button>
+            </div>
           </div>
         </div>
         <div class="card-body">
@@ -225,17 +232,17 @@ const Views = (() => {
       <div class="card col-span-4">
         <div class="card-header">
           <h3 class="card-title">Success vs Failure</h3>
+          <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
+            <span><span class="status-dot success"></span> Success</span>
+            <span><span class="status-dot danger"></span> Failed</span>
+            <span><span class="status-dot warning"></span> Cancelled</span>
+          </div>
         </div>
         <div class="card-body">
           <div class="chart-container" id="chart-success-failure">
             <i class="fa-solid fa-chart-pie" style="font-size:2rem;margin-right:var(--space-sm);"></i>
             Loading...
           </div>
-        </div>
-        <div class="card-footer flex justify-between">
-          <span><span class="status-dot success"></span> Successful</span>
-          <span><span class="status-dot danger"></span> Failed</span>
-          <span><span class="status-dot warning"></span> Cancelled</span>
         </div>
       </div>
     </div>
@@ -413,10 +420,17 @@ const Views = (() => {
     <div class="card mb-lg">
       <div class="card-header">
         <h3 class="card-title">Deployments Over Time</h3>
-        <div class="flex gap-xs">
-          <button class="btn btn-secondary btn-sm active-toggle" data-trends-range="30d">30 days</button>
-          <button class="btn btn-secondary btn-sm" data-trends-range="90d">90 days</button>
-          <button class="btn btn-secondary btn-sm" data-trends-range="12m">12 months</button>
+        <div class="flex items-center gap-md">
+          <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
+            <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorSuccess);vertical-align:middle;margin-right:3px;"></span>Success</span>
+            <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorDanger);vertical-align:middle;margin-right:3px;"></span>Failed</span>
+            <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorBackgroundTertiary);vertical-align:middle;margin-right:3px;"></span>Other</span>
+          </div>
+          <div class="flex gap-xs">
+            <button class="btn btn-secondary btn-sm active-toggle" data-trends-range="30d">30 days</button>
+            <button class="btn btn-secondary btn-sm" data-trends-range="90d">90 days</button>
+            <button class="btn btn-secondary btn-sm" data-trends-range="12m">12 months</button>
+          </div>
         </div>
       </div>
       <div class="card-body">
@@ -427,7 +441,14 @@ const Views = (() => {
     <!-- Success/Failure breakdown + space comparison -->
     <div class="dashboard-grid mb-lg">
       <div class="card col-span-6">
-        <div class="card-header"><h3 class="card-title">Success vs Failure</h3></div>
+        <div class="card-header">
+          <h3 class="card-title">Success vs Failure</h3>
+          <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
+            <span><span class="status-dot success"></span> Success</span>
+            <span><span class="status-dot danger"></span> Failed</span>
+            <span><span class="status-dot warning"></span> Cancelled</span>
+          </div>
+        </div>
         <div class="card-body">${_renderDonutChart(summary)}</div>
       </div>
       <div class="card col-span-6">
@@ -502,7 +523,7 @@ const Views = (() => {
       bars = monthly.map(m => ({
         total: m.total, success: m.success, failed: m.failed,
         label: MONTH_NAMES[m.month] + (m.month === 0 ? '<br>' + m.year : ''),
-        tooltip: `${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments`,
+        tooltip: `${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed, ${m.total - m.success - m.failed} other)`,
       }));
     } else {
       const weeks = range === '90d' ? 13 : 5;
@@ -512,7 +533,7 @@ const Views = (() => {
         return {
           total: w.total, success: w.success, failed: w.failed,
           label: `W${w.week}${showYear ? '<br>' + w.year : ''}`,
-          tooltip: `Week ${w.week}, ${w.year}: ${w.total} deployments`,
+          tooltip: `Week ${w.week}, ${w.year}: ${w.total} deployments (${w.success} success, ${w.failed} failed, ${w.total - w.success - w.failed} other)`,
         };
       });
     }
@@ -522,18 +543,23 @@ const Views = (() => {
     const maxTotal = Math.max(...bars.map(b => b.total), 1);
     const barWidth = range === '12m' ? 32 : range === '90d' ? 24 : 40;
     const gap = range === '12m' ? 8 : range === '90d' ? 6 : 12;
+    const maxBarH = 180;
     return `<div style="width:100%;overflow-x:auto;">
       <div style="display:flex;align-items:flex-end;gap:${gap}px;height:200px;padding:var(--space-sm) 0;">
         ${bars.map(b => {
-          const pct = Math.max(b.total / maxTotal * 100, 2);
-          const sPct = b.total > 0 ? (b.success / b.total * 100) : 0;
+          const h = Math.max(4, (b.total / maxTotal) * maxBarH);
+          const successH = b.total > 0 ? (b.success / b.total * h) : 0;
+          const failH = b.total > 0 ? (b.failed / b.total * h) : 0;
+          const otherH = h - successH - failH;
+          const topSegment = failH > 0 ? 'fail' : (otherH > 0 ? 'other' : 'success');
           return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:${barWidth}px;max-width:60px;" title="${b.tooltip}">
             <div style="font:var(--textBodyBoldXSmall);color:var(--colorTextSecondary);margin-bottom:4px;">${b.total}</div>
-            <div style="width:100%;height:${pct}%;border-radius:4px 4px 0 0;overflow:hidden;display:flex;flex-direction:column;min-height:4px;">
-              <div style="flex:${sPct};background:var(--colorSuccess);"></div>
-              <div style="flex:${100 - sPct};background:var(--colorDanger);"></div>
+            <div style="width:100%;display:flex;flex-direction:column;">
+              ${failH > 0 ? `<div style="height:${failH}px;background:var(--colorDanger);border-radius:${topSegment === 'fail' ? '3px 3px' : '0 0'} 0 0;"></div>` : ''}
+              ${otherH > 0 ? `<div style="height:${otherH}px;background:var(--colorBackgroundTertiary);border-radius:${topSegment === 'other' ? '3px 3px' : '0 0'} ${successH > 0 ? '0 0' : '3px 3px'};"></div>` : ''}
+              ${successH > 0 ? `<div style="height:${successH}px;background:var(--colorSuccess);border-radius:0 0 3px 3px;"></div>` : ''}
             </div>
-            <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:4px;text-align:center;">${b.label}</div>
+            <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:4px;text-align:center;height:2.5em;line-height:1.25em;">${b.label}</div>
           </div>`;
         }).join('')}
       </div>
@@ -672,6 +698,14 @@ const Views = (() => {
     <!-- Velocity trend -->
     <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-chart-area"></i> Velocity Over Time</h2></div>
     <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title"></h3>
+        <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorSuccess);vertical-align:middle;margin-right:3px;"></span>Success</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorDanger);vertical-align:middle;margin-right:3px;"></span>Failed</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorBackgroundTertiary);vertical-align:middle;margin-right:3px;"></span>Other</span>
+        </div>
+      </div>
       <div class="card-body">
         <div class="chart-container">${_renderTrendChart(summary.weeklyTrend || [], '12m')}</div>
       </div>

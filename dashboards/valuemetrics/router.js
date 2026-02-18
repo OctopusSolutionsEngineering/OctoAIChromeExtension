@@ -16,7 +16,6 @@ const Router = (() => {
     projects:     { title: 'Projects',            icon: 'fa-solid fa-diagram-project' },
     environments: { title: 'Environments',        icon: 'fa-solid fa-server' },
     teams:        { title: 'Teams',               icon: 'fa-solid fa-users' },
-    compliance:   { title: 'SOC2 Compliance',     icon: 'fa-solid fa-clipboard-check' },
   };
 
   let _current = 'overview';
@@ -54,10 +53,6 @@ const Router = (() => {
         if (typeof renderValueImpact === 'function') renderValueImpact(summary);
       }
       Views.wireOverviewEvents();
-    } else if (viewName === 'compliance') {
-      // Compliance has its own async data loading — render shell then fetch
-      main.innerHTML = ComplianceView.render(summary);
-      ComplianceView.wire(summary);
     } else {
       if (!summary) {
         main.innerHTML = `<div style="text-align:center;padding:var(--space-xl);color:var(--colorTextTertiary);">

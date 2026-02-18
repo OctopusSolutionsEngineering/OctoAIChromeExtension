@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOC2 Compliance - Octopus Deploy</title>
+    <link rel="icon" href="../valuemetrics/assets/OctopusDeploy_Logos_OctoIcon/OctopusDeploy_Icon_CMYK(Print).png">
+    <link rel="stylesheet" href="../valuemetrics/vendor/fontawesome/css/all.min.css" />
+    <link rel="stylesheet" href="../valuemetrics/styles.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-layout">
+
+    <!-- ================================================================
+         SIDEBAR
+         ================================================================ -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <img src="../valuemetrics/assets/OctopusDeploy_Logos_OctoIcon/Octopus Deploy_Logo_DarkMode_Digital_2024.svg" alt="Octopus Deploy" class="sidebar-header-wordmark" height="100">
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section-title">Compliance</div>
+            <a href="#" class="nav-item active">
+                <i class="fa-solid fa-clipboard-check"></i>
+                <span class="nav-label">SOC2 Controls</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="flex items-center gap-xs header-status">
+                <span class="status-dot neutral"></span>
+                <span class="text-secondary" style="font: var(--textBodyRegularSmall);">Connecting…</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ================================================================
+         HEADER
+         ================================================================ -->
+    <header class="header">
+        <div class="header-title">
+            <i class="fa-solid fa-clipboard-check text-tertiary" id="header-icon"></i>
+            <span id="header-text">SOC2 Compliance</span>
+        </div>
+        <div class="header-actions">
+            <span class="text-secondary" style="font: var(--textBodyRegularSmall);">
+                <i class="fa-regular fa-clock"></i>
+                Last refreshed: <span id="last-refresh">--</span>
+            </span>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh">
+                <i class="fa-solid fa-rotate"></i>
+                Refresh
+            </button>
+        </div>
+    </header>
+
+    <!-- ================================================================
+         MAIN CONTENT
+         ================================================================ -->
+    <main class="main">
+        <div id="status-message" style="display:none;text-align:center;padding:var(--space-lg);color:var(--colorTextSecondary);font:var(--textBodyRegularMedium);"></div>
+        <div id="main-content">
+            <div style="text-align:center;padding:var(--space-xl);color:var(--colorTextTertiary);">
+                <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem;display:block;margin-bottom:var(--space-md);"></i>
+                Connecting to Octopus Deploy&hellip;
+            </div>
+        </div>
+    </main>
+
+</div>
+
+<!-- Load shared extension helper (provides getDashboardConfig) -->
+<script src="../api.js"></script>
+<!-- Octopus API client -->
+<script src="../valuemetrics/api.js"></script>
+<!-- Minimal data layer (DashboardData shim for compliance) -->
+<script src="data.js"></script>
+<!-- Compliance logic (reused from valuemetrics) -->
+<script src="../valuemetrics/compliance.js"></script>
+<!-- Bootstrap -->
+<script src="app.js"></script>
+
+</body>
+</html>
