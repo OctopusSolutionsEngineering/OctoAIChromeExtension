@@ -232,6 +232,35 @@
                 </div>
             </section>
 
+            <section class="channels-section">
+                <h2 class="section-header">Channels</h2>
+                <div class="channels-grid">
+                    <div class="channel-card" data-channel="hotfix">
+                        <div class="channel-icon hotfix-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M30 10 L35 20 L45 22 L37 30 L39 40 L30 35 L21 40 L23 30 L15 22 L25 20 Z" fill="currentColor"/>
+                                <circle cx="30" cy="30" r="3" fill="#fff"/>
+                                <path d="M28 5 L32 5 M25 8 L35 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <span class="channel-name">Hot Fix</span>
+                    </div>
+
+                    <div class="channel-card" data-channel="featurebranch">
+                        <div class="channel-icon featurebranch-icon">
+                            <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="15" cy="15" r="5" fill="currentColor"/>
+                                <circle cx="15" cy="45" r="5" fill="currentColor"/>
+                                <circle cx="45" cy="30" r="5" fill="currentColor"/>
+                                <line x1="15" y1="20" x2="15" y2="40" stroke="currentColor" stroke-width="3"/>
+                                <path d="M15 25 Q30 25 40 30" fill="none" stroke="currentColor" stroke-width="3"/>
+                            </svg>
+                        </div>
+                        <span class="channel-name">Feature Branch</span>
+                    </div>
+                </div>
+            </section>
+
             <section class="prompt-section">
                 <h2 class="section-header">
                     <label for="promptText">Prompt</label>
@@ -240,7 +269,6 @@
             </section>
 
             <section class="execute-section">
-                <h2 class="section-header">Execute</h2>
                 <button class="execute-button" id="executeButton">Execute</button>
             </section>
         </main>

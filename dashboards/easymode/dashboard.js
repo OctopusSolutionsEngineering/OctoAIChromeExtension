@@ -32,12 +32,19 @@ const runbookInstructions = {
     logs: '* Add a runbook to simulate the retrieval of logs scoped to the environments from the project\'s lifecycles.'
 };
 
+// Channel instructions configuration
+const channelInstructions = {
+    hotfix: '* Create a channel called "Hot Fix" using a lifecycle called "Hot Fix" that includes only the "Production" environment.',
+    featurebranch: '* Create a channel called "Feature Branch" using a lifecycle called "Feature Branch" that includes only the "Feature Branch" environment.'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
     const tenantCards = document.querySelectorAll('.tenant-card');
     const stepCards = document.querySelectorAll('.step-card');
     const runbookCards = document.querySelectorAll('.runbook-card');
+    const channelCards = document.querySelectorAll('.channel-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
@@ -45,6 +52,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedTenant = null;
     let selectedSteps = [];
     let selectedRunbooks = [];
+    let selectedChannels = [];
 
     // Handle platform card selection
     platformCards.forEach(card => {
@@ -138,6 +146,30 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle channel card selection (multiple selection allowed)
+    channelCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const channel = this.getAttribute('data-channel');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedChannels = selectedChannels.filter(c => c !== channel);
+            } else {
+                // Select
+                this.classList.add('selected');
+                selectedChannels.push(channel);
+            }
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('selectedChannels', JSON.stringify(selectedChannels));
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -177,6 +209,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         prompt += '\n' + runbookInstructions[runbook];
                     } else {
                         prompt = runbookInstructions[runbook];
+                    }
+                }
+            });
+        }
+
+        // Add channel instructions if selected
+        if (selectedChannels.length > 0) {
+            selectedChannels.forEach(channel => {
+                if (channelInstructions[channel]) {
+                    if (prompt) {
+                        prompt += '\n' + channelInstructions[channel];
+                    } else {
+                        prompt = channelInstructions[channel];
                     }
                 }
             });
@@ -225,6 +270,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedTenant = localStorage.getItem('selectedTenant');
     const savedSteps = localStorage.getItem('selectedSteps');
     const savedRunbooks = localStorage.getItem('selectedRunbooks');
+    const savedChannels = localStorage.getItem('selectedChannels');
 
     if (savedPlatform) {
         const savedCard = document.querySelector(`[data-platform="${savedPlatform}"]`);
@@ -262,6 +308,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         } catch (e) {
             console.error('Error parsing saved runbooks:', e);
+        }
+    }
+    if (savedChannels) {
+        try {
+            const channels = JSON.parse(savedChannels);
+            channels.forEach(channel => {
+                const savedCard = document.querySelector(`[data-channel="${channel}"]`);
+                if (savedCard) {
+                    savedCard.click();
+                }
+            });
+        } catch (e) {
+            console.error('Error parsing saved channels:', e);
         }
     }
 });
