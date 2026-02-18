@@ -65,7 +65,7 @@ const Onboarding = (() => {
       id: 'releaseCadence',
       number: 4,
       title: 'Release Cadence',
-      question: 'What best described your release cadence before automated deployments?',
+      question: 'What best describes your release cadence before automated deployments?',
       icon: 'fa-solid fa-calendar-days',
       options: [
         { value: 'ondemand',  label: 'On demand',                   deploysPerMonth: 20  },
