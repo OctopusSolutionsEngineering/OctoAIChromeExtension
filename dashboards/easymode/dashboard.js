@@ -5,7 +5,7 @@ const platformPrompts = {
     azurewebapp: 'Create an Azure Web App project called "My Azure WebApp"',
     azurefunctions: 'Create an Azure Functions project called "My Azure Function App"',
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
-    scriptstep: 'Create a script project called "My Script App"',
+    scriptstep: 'Create a Script project called "My Script App"',
     bluegreen: 'Create a Blue/Green deployment project called "My Blue Green App"'
 };
 
@@ -108,6 +108,104 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedFreezes = [];
     let selectedCommunityTemplates = [];
 
+    // Helper function to count total selected items (excluding platform)
+    function getTotalSelectedItems() {
+        let count = 0;
+        if (selectedTenant) count++;
+        count += selectedSteps.length;
+        count += selectedRunbooks.length;
+        count += selectedChannels.length;
+        count += selectedReleaseNotes.length;
+        count += selectedTriggers.length;
+        count += selectedFreezes.length;
+        count += selectedCommunityTemplates.length;
+        return count;
+    }
+
+    // Helper function to check if selection is allowed
+    function canSelectItem() {
+        const limitedPlatforms = ['kubernetes', 'argocd', 'azurewebapp', 'azurefunctions', 'awslambda'];
+        if (limitedPlatforms.includes(selectedPlatform)) {
+            return getTotalSelectedItems() < 1;
+        }
+        return true; // No limit for other platforms
+    }
+
+    // Helper function to update disabled state for all cards
+    function updateCardDisabledStates() {
+        const warningElement = document.getElementById('kubernetesWarning');
+        const textarea = document.getElementById('promptText');
+        const limitedPlatforms = ['kubernetes', 'argocd', 'azurewebapp', 'azurefunctions', 'awslambda'];
+
+        // If a tenant is selected, disable all items below the tenant row
+        if (selectedTenant) {
+            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                cards.forEach(card => {
+                    card.classList.add('disabled-card');
+                });
+            });
+
+            // Hide the platform limitation warning when tenant is selected
+            if (warningElement) {
+                warningElement.style.display = 'none';
+            }
+
+            // Add warning-displayed class to reduce textarea height (tenant warning is shown)
+            if (textarea) {
+                textarea.classList.add('warning-displayed');
+            }
+
+            return; // Exit early since tenant is selected
+        }
+
+        if (limitedPlatforms.includes(selectedPlatform) && getTotalSelectedItems() >= 1) {
+            // Disable all unselected cards
+            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                cards.forEach(card => {
+                    if (!card.classList.contains('selected')) {
+                        card.classList.add('disabled-card');
+                    }
+                });
+            });
+            // Also disable tenant cards if not selected
+            tenantCards.forEach(card => {
+                if (!card.classList.contains('selected')) {
+                    card.classList.add('disabled-card');
+                }
+            });
+
+            // Show warning message
+            if (warningElement) {
+                warningElement.style.display = 'block';
+            }
+
+            // Add warning-displayed class to reduce textarea height
+            if (textarea) {
+                textarea.classList.add('warning-displayed');
+            }
+        } else {
+            // Remove disabled state when under limit or not a limited platform
+            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                cards.forEach(card => {
+                    card.classList.remove('disabled-card');
+                });
+            });
+            tenantCards.forEach(card => {
+                card.classList.remove('disabled-card');
+            });
+
+            // Hide warning message
+            if (warningElement) {
+                warningElement.style.display = 'none';
+            }
+
+            // Remove warning-displayed class to restore normal textarea height
+            if (textarea) {
+                textarea.classList.remove('warning-displayed');
+            }
+        }
+    }
+
     // Handle platform card selection
     platformCards.forEach(card => {
         card.addEventListener('click', function() {
@@ -122,6 +220,43 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update selected platform
             selectedPlatform = platform;
 
+            // If a limited platform is selected and we have more than 1 item selected, clear all selections
+            const limitedPlatforms = ['kubernetes', 'argocd', 'azurewebapp', 'azurefunctions', 'awslambda'];
+            if (limitedPlatforms.includes(selectedPlatform) && getTotalSelectedItems() > 1) {
+                // Clear all selections
+                selectedTenant = null;
+                selectedSteps = [];
+                selectedRunbooks = [];
+                selectedChannels = [];
+                selectedReleaseNotes = [];
+                selectedTriggers = [];
+                selectedFreezes = [];
+                selectedCommunityTemplates = [];
+
+                // Remove selected class from all cards
+                tenantCards.forEach(c => c.classList.remove('selected'));
+                stepCards.forEach(c => c.classList.remove('selected'));
+                runbookCards.forEach(c => c.classList.remove('selected'));
+                channelCards.forEach(c => c.classList.remove('selected'));
+                releaseNoteCards.forEach(c => c.classList.remove('selected'));
+                triggerCards.forEach(c => c.classList.remove('selected'));
+                freezeCards.forEach(c => c.classList.remove('selected'));
+                communityTemplateCards.forEach(c => c.classList.remove('selected'));
+
+                // Clear localStorage
+                localStorage.removeItem('selectedTenant');
+                localStorage.removeItem('selectedSteps');
+                localStorage.removeItem('selectedRunbooks');
+                localStorage.removeItem('selectedChannels');
+                localStorage.removeItem('selectedReleaseNotes');
+                localStorage.removeItem('selectedTriggers');
+                localStorage.removeItem('selectedFreezes');
+                localStorage.removeItem('selectedCommunityTemplates');
+            }
+
+            // Update disabled states for limited platforms
+            updateCardDisabledStates();
+
             // Update textarea
             updatePromptTextarea();
 
@@ -133,7 +268,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle tenant card selection
     tenantCards.forEach(card => {
         card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
             const tenant = this.getAttribute('data-tenant');
+            const tenantsMessage = document.getElementById('tenants-message');
 
             // Toggle selected state
             if (this.classList.contains('selected')) {
@@ -141,7 +282,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('selected');
                 selectedTenant = null;
                 localStorage.removeItem('selectedTenant');
+
+                // Hide warning message
+                if (tenantsMessage) {
+                    tenantsMessage.style.display = 'none';
+                    tenantsMessage.textContent = '';
+                }
+
+                // Re-enable all cards below tenants row
+                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                    cards.forEach(card => {
+                        card.classList.remove('disabled-card');
+                    });
+                });
             } else {
+                // Check if we can select a new item (for limited platforms)
+                if (!canSelectItem()) {
+                    return; // Don't allow selection if limit is reached
+                }
+
                 // Remove selected class from all tenant cards (only one can be selected)
                 tenantCards.forEach(c => c.classList.remove('selected'));
 
@@ -153,10 +312,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Save selection to localStorage
                 localStorage.setItem('selectedTenant', tenant);
-            }
 
-            // All other rows are disabled until a tenant is selected, so enable/disable them based on whether a tenant is selected
-            if (selectedTenant) {
+                // Show warning message
+                if (tenantsMessage) {
+                    tenantsMessage.textContent = '⚠️ Tenant selected: You cannot select additional options below when a tenant is selected. Deselect the tenant to enable other options.';
+                    tenantsMessage.style.display = 'block';
+                }
+
+                // Clear all selections below tenants row
                 selectedSteps = [];
                 selectedRunbooks = [];
                 selectedChannels = [];
@@ -164,22 +327,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedTriggers = [];
                 selectedFreezes = [];
                 selectedCommunityTemplates = [];
-                document.getElementById("tenants-message").innerText = "Prompt complexity limit reached. Unselect tenant to enable more options.";
-                document.getElementById("tenants-message").style.display = "block";
-            } else {
-                document.getElementById("tenants-message").style.display = "none";
+
+                // Clear localStorage for items below tenants row
+                localStorage.removeItem('selectedSteps');
+                localStorage.removeItem('selectedRunbooks');
+                localStorage.removeItem('selectedChannels');
+                localStorage.removeItem('selectedReleaseNotes');
+                localStorage.removeItem('selectedTriggers');
+                localStorage.removeItem('selectedFreezes');
+                localStorage.removeItem('selectedCommunityTemplates');
+
+                // Remove selected class from all cards below tenants row
+                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                    cards.forEach(card => {
+                        card.classList.remove('selected');
+                        card.classList.add('disabled-card');
+                    });
+                });
             }
 
-            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
-                cards.forEach(card => {
-                    if (selectedTenant) {
-                        card.classList.add("disabled-card")
-                        card.classList.remove('selected')
-                    } else {
-                        card.classList.remove("disabled-card")
-                    }
-                });
-            });
+            // Update disabled states for limited platforms
+            updateCardDisabledStates();
 
             // Update textarea
             updatePromptTextarea();
@@ -189,6 +357,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle step card selection (multiple selection allowed)
     stepCards.forEach(card => {
         card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
             const step = this.getAttribute('data-step');
 
             // Toggle selected state
@@ -197,10 +370,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('selected');
                 selectedSteps = selectedSteps.filter(s => s !== step);
             } else {
+                // Check if we can select a new item (for kubernetes limit)
+                if (!canSelectItem()) {
+                    return; // Don't allow selection if limit is reached
+                }
+
                 // Select
                 this.classList.add('selected');
                 selectedSteps.push(step);
             }
+
+            // Update disabled states for kubernetes platform
+            updateCardDisabledStates();
 
             // Update textarea
             updatePromptTextarea();
@@ -213,6 +394,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle runbook card selection (multiple selection allowed)
     runbookCards.forEach(card => {
         card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
             const runbook = this.getAttribute('data-runbook');
 
             // Toggle selected state
@@ -221,10 +407,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('selected');
                 selectedRunbooks = selectedRunbooks.filter(r => r !== runbook);
             } else {
+                // Check if we can select a new item (for kubernetes limit)
+                if (!canSelectItem()) {
+                    return; // Don't allow selection if limit is reached
+                }
+
                 // Select
                 this.classList.add('selected');
                 selectedRunbooks.push(runbook);
             }
+
+            // Update disabled states for kubernetes platform
+            updateCardDisabledStates();
 
             // Update textarea
             updatePromptTextarea();
@@ -237,6 +431,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle channel card selection (multiple selection allowed)
     channelCards.forEach(card => {
         card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
             const channel = this.getAttribute('data-channel');
 
             // Toggle selected state
@@ -245,10 +444,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('selected');
                 selectedChannels = selectedChannels.filter(c => c !== channel);
             } else {
+                // Check if we can select a new item (for kubernetes limit)
+                if (!canSelectItem()) {
+                    return; // Don't allow selection if limit is reached
+                }
+
                 // Select
                 this.classList.add('selected');
                 selectedChannels.push(channel);
             }
+
+            // Update disabled states for kubernetes platform
+            updateCardDisabledStates();
 
             // Update textarea
             updatePromptTextarea();
@@ -261,6 +468,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle release note card selection (multiple selection allowed)
     releaseNoteCards.forEach(card => {
         card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
             const releaseNote = this.getAttribute('data-releasenote');
 
             // Toggle selected state
@@ -269,10 +481,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('selected');
                 selectedReleaseNotes = selectedReleaseNotes.filter(r => r !== releaseNote);
             } else {
+                // Check if we can select a new item (for kubernetes limit)
+                if (!canSelectItem()) {
+                    return; // Don't allow selection if limit is reached
+                }
+
                 // Select
                 this.classList.add('selected');
                 selectedReleaseNotes.push(releaseNote);
             }
+
+            // Update disabled states for kubernetes platform
+            updateCardDisabledStates();
 
             // Update textarea
             updatePromptTextarea();
@@ -285,6 +505,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle trigger card selection (multiple selection allowed)
     triggerCards.forEach(card => {
         card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
             const trigger = this.getAttribute('data-trigger');
 
             // Toggle selected state
@@ -293,10 +518,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('selected');
                 selectedTriggers = selectedTriggers.filter(t => t !== trigger);
             } else {
+                // Check if we can select a new item (for kubernetes limit)
+                if (!canSelectItem()) {
+                    return; // Don't allow selection if limit is reached
+                }
+
                 // Select
                 this.classList.add('selected');
                 selectedTriggers.push(trigger);
             }
+
+            // Update disabled states for kubernetes platform
+            updateCardDisabledStates();
 
             // Update textarea
             updatePromptTextarea();
@@ -309,6 +542,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle freeze card selection (multiple selection allowed)
     freezeCards.forEach(card => {
         card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
             const freeze = this.getAttribute('data-freeze');
 
             // Toggle selected state
@@ -317,10 +555,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('selected');
                 selectedFreezes = selectedFreezes.filter(f => f !== freeze);
             } else {
+                // Check if we can select a new item (for kubernetes limit)
+                if (!canSelectItem()) {
+                    return; // Don't allow selection if limit is reached
+                }
+
                 // Select
                 this.classList.add('selected');
                 selectedFreezes.push(freeze);
             }
+
+            // Update disabled states for kubernetes platform
+            updateCardDisabledStates();
 
             // Update textarea
             updatePromptTextarea();
@@ -333,6 +579,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle community template card selection (multiple selection allowed)
     communityTemplateCards.forEach(card => {
         card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
             const template = this.getAttribute('data-communitytemplate');
 
             // Toggle selected state
@@ -341,10 +592,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 this.classList.remove('selected');
                 selectedCommunityTemplates = selectedCommunityTemplates.filter(t => t !== template);
             } else {
+                // Check if we can select a new item (for kubernetes limit)
+                if (!canSelectItem()) {
+                    return; // Don't allow selection if limit is reached
+                }
+
                 // Select
                 this.classList.add('selected');
                 selectedCommunityTemplates.push(template);
             }
+
+            // Update disabled states for kubernetes platform
+            updateCardDisabledStates();
 
             // Update textarea
             updatePromptTextarea();

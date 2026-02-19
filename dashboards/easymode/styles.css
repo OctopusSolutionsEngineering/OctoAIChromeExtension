@@ -117,6 +117,19 @@ body {
     padding-top: 24px;
 }
 
+/* Kubernetes Warning */
+.kubernetes-warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    color: #856404;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.5;
+}
+
 .execute-section {
     margin-top: 16px;
     margin-bottom: 0;
@@ -961,6 +974,11 @@ body {
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Reduce textarea height when warning is displayed (approximately 2 rows reduction) */
+.prompt-textarea.warning-displayed {
+    min-height: 100px;
+}
+
 .prompt-textarea:focus {
     outline: none;
     border-color: #0d80d8;
@@ -1221,5 +1239,15 @@ body {
 }
 
 .warning {
-    color: red;
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    margin-top: 12px;
+    color: #856404;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.5;
+    display: none;
 }
