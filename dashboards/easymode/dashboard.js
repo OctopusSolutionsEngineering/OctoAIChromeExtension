@@ -1083,15 +1083,9 @@ function displayResponse(result, serverUrl) {
             </div>
         `;
     } else if (!result.id) {
-       responseHtml = `
-            <div class="response-container">
-                <h2>Error</h2>
-                <div class="response-text">${sanitizedHtml}</div>
-                <div class="response-actions">
-                    <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
-                </div>
-            </div>
-        `;
+        // There is no approval required, so display the response
+       displayApprovalResponse(result);
+       return;
     } else {
         responseHtml = `
             <div class="response-container">
