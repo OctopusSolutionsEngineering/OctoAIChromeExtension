@@ -19,14 +19,7 @@ function dashboardGetConfig(callback) {
 
 const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
 
-    function dashboardApprovePrompt(id, serverUrl) {
-        if (!_isValidUrl(serverUrl)) {
-            return Promise.resolve({
-                response: "The server URL is not valid. Please check the URL and try again.",
-                state: "Error"
-            })
-        }
-
+    function getAccessToken(serverUrl) {
         return _dashboardGetOctopusCsrfTokenFromCookie(new URL(serverUrl).hostname)
             .then(csrfToken => {
                 if (!csrfToken) {
@@ -49,7 +42,18 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                 return response;
             })
             .then(response => response.json())
-            .then(json => json.AccessToken)
+            .then(json => json.AccessToken);
+    }
+
+    function dashboardApprovePrompt(id, serverUrl) {
+        if (!_isValidUrl(serverUrl)) {
+            return Promise.resolve({
+                response: "The server URL is not valid. Please check the URL and try again.",
+                state: "Error"
+            })
+        }
+
+        return getAccessToken(serverUrl)
             .then(token =>
                 chrome.runtime.sendMessage({
                     action: "confirmation",
@@ -76,29 +80,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             })
         }
 
-        return _dashboardGetOctopusCsrfTokenFromCookie(new URL(serverUrl).hostname)
-            .then(csrfToken => {
-                if (!csrfToken) {
-                    throw new Error("No Octopus-Csrf-Token cookie found for server URL: " + serverUrl);
-                }
-                return csrfToken;
-            })
-            .then(csrfToken => fetch(new URL('/api/users/access-token', serverUrl), {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Octopus-Csrf-Token': csrfToken
-                },
-                method: 'POST',
-                credentials: 'include'
-            }))
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
-                }
-                return response;
-            })
-            .then(response => response.json())
-            .then(json => json.AccessToken)
+        return getAccessToken(serverUrl)
             .then(accessToken => chrome.runtime.sendMessage({
                 action: "prompt",
                 prompt: prompt,
