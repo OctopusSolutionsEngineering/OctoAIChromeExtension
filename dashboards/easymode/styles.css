@@ -971,7 +971,7 @@ body {
 
 /* Reduce textarea height when warning is displayed (approximately 2 rows reduction) */
 .prompt-textarea.warning-displayed {
-    min-height: 100px;
+    min-height: 30px;
 }
 
 .prompt-textarea:focus {
