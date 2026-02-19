@@ -18,7 +18,7 @@ You must check that custom dashboards correctly handle failed authentication wit
 
 You must ensure that any inputs are validated and sanitized to prevent security vulnerabilities such as cross-site scripting (XSS) or injection attacks.
 
-You must highlight any use of the Chrome extensions API in the custom dashboards, as this can introduce security risks if not used carefully.
+Dashboards must not use the Chrome extensions API.
 
 You must highlight any attempt to read cookies in the custom dashboards, as this can introduce security risks if not handled carefully.
 
