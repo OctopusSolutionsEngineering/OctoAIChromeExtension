@@ -1220,3 +1220,6 @@ body {
     transform: translateY(0);
 }
 
+.warning {
+    color: red;
+}

@@ -164,6 +164,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedTriggers = [];
                 selectedFreezes = [];
                 selectedCommunityTemplates = [];
+                document.getElementById("tenants-message").innerText = "Prompt complexity limit reached. Unselect tenant to enable more options.";
+                document.getElementById("tenants-message").style.display = "block";
+            } else {
+                document.getElementById("tenants-message").style.display = "none";
             }
 
             [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
