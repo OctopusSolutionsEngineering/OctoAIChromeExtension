@@ -46,7 +46,7 @@ const triggerInstructions = {
     createrelease: '* Add a trigger to create a release when a new package is pushed to the feed.'
 };
 
-// Calculate freeze dates that are always in the future relative to current date (Feb 19, 2026)
+// Calculate freeze dates that are always in the future relative to current date
 const calculateFreezeDates = () => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -55,11 +55,11 @@ const calculateFreezeDates = () => {
 
     // Determine which year to use for each freeze
     // Black Friday: November 23-29
-    const blackFridayYear = (currentMonth === 10 && currentDay > 29) || currentMonth === 11 ? currentYear + 1 : currentYear;
+    const blackFridayYear = (currentMonth === 10 && currentDay >= 23) || currentMonth === 11 ? currentYear + 1 : currentYear;
     // Cyber Monday: November 30 - December 2
-    const cyberMondayYear = (currentMonth === 11 && currentDay > 2) ? currentYear + 1 : currentYear;
+    const cyberMondayYear = (currentMonth === 10 && currentDay >= 30) || currentMonth === 11 ? currentYear + 1 : currentYear;
     // Christmas: December 20-27
-    const christmasYear = (currentMonth === 11 && currentDay > 27) ? currentYear + 1 : currentYear;
+    const christmasYear = (currentMonth === 11 && currentDay >= 20) ? currentYear + 1 : currentYear;
 
     return {
         blackFriday: { year: blackFridayYear, start: `November 23rd, ${blackFridayYear}`, end: `November 29th, ${blackFridayYear}` },
