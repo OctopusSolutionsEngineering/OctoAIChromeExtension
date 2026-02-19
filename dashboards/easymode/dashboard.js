@@ -676,7 +676,17 @@ function displayResponse(result, serverUrl) {
                 <h2>Error</h2>
                 <div class="response-text">${DOMPurify.sanitize(result.response)}</div>
                 <div class="response-actions">
-                    <button class="reload-button" onclick="location.reload()">Reload Dashboard</button>
+                    <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
+                </div>
+            </div>
+        `;
+    } else if (!result.id) {
+       responseHtml = `
+            <div class="response-container">
+                <h2>Error</h2>
+                <div class="response-text">${DOMPurify.sanitize(result.response)}</div>
+                <div class="response-actions">
+                    <button id="reloadBtn" class="reload-button">Ok</button>
                 </div>
             </div>
         `;
@@ -702,6 +712,7 @@ function displayResponse(result, serverUrl) {
     // Add event listeners for Approve and Reject buttons
     const approveBtn = document.getElementById('approveBtn');
     const rejectBtn = document.getElementById('rejectBtn');
+    const reloadBtn = document.getElementById('reloadBtn');
 
     if (approveBtn) {
         approveBtn.addEventListener('click', function() {
@@ -730,6 +741,14 @@ function displayResponse(result, serverUrl) {
     if (rejectBtn) {
         rejectBtn.addEventListener('click', function() {
             console.log('Reject button clicked');
+            // Reload the page to display the main page again
+            location.reload();
+        });
+    }
+
+    if (reloadBtn) {
+        reloadBtn.addEventListener('click', function() {
+            console.log('Reload button clicked');
             // Reload the page to display the main page again
             location.reload();
         });
