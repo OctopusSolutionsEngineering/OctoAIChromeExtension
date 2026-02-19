@@ -132,8 +132,47 @@ document.addEventListener('DOMContentLoaded', function() {
     // Helper function to update disabled state for all cards
     function updateCardDisabledStates() {
         const warningElement = document.getElementById('kubernetesWarning');
+        const awsLambdaWarning = document.getElementById('awslambda-message');
+        const tenantsMessage = document.getElementById('tenants-message');
         const textarea = document.getElementById('promptText');
         const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
+
+        // If AWS Lambda is selected, disable all items below the platform row
+        if (selectedPlatform === 'awslambda') {
+            // Disable all items below platform
+            [tenantCards, stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                cards.forEach(card => {
+                    card.classList.add('disabled-card');
+                });
+            });
+
+            // Show AWS Lambda warning
+            if (awsLambdaWarning) {
+                awsLambdaWarning.style.display = 'block';
+            }
+
+            // Hide the platform limitation warning
+            if (warningElement) {
+                warningElement.style.display = 'none';
+            }
+
+            // Hide tenant warning
+            if (tenantsMessage) {
+                tenantsMessage.style.display = 'none';
+            }
+
+            // Add warning-displayed class to reduce textarea height
+            if (textarea) {
+                textarea.classList.add('warning-displayed');
+            }
+
+            return; // Exit early since AWS Lambda is selected
+        } else {
+            // Hide AWS Lambda warning when not selected
+            if (awsLambdaWarning) {
+                awsLambdaWarning.style.display = 'none';
+            }
+        }
 
         // If a tenant is selected, disable all items below the tenant row
         if (selectedTenant) {
@@ -246,6 +285,39 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Update selected platform
             selectedPlatform = platform;
+
+            // If AWS Lambda is selected, clear all selections (it doesn't allow any additional selections)
+            if (selectedPlatform === 'awslambda') {
+                // Clear all selections
+                selectedTenant = null;
+                selectedSteps = [];
+                selectedRunbooks = [];
+                selectedChannels = [];
+                selectedReleaseNotes = [];
+                selectedTriggers = [];
+                selectedFreezes = [];
+                selectedCommunityTemplates = [];
+
+                // Remove selected class from all cards
+                tenantCards.forEach(c => c.classList.remove('selected'));
+                stepCards.forEach(c => c.classList.remove('selected'));
+                runbookCards.forEach(c => c.classList.remove('selected'));
+                channelCards.forEach(c => c.classList.remove('selected'));
+                releaseNoteCards.forEach(c => c.classList.remove('selected'));
+                triggerCards.forEach(c => c.classList.remove('selected'));
+                freezeCards.forEach(c => c.classList.remove('selected'));
+                communityTemplateCards.forEach(c => c.classList.remove('selected'));
+
+                // Clear localStorage
+                localStorage.removeItem('selectedTenant');
+                localStorage.removeItem('selectedSteps');
+                localStorage.removeItem('selectedRunbooks');
+                localStorage.removeItem('selectedChannels');
+                localStorage.removeItem('selectedReleaseNotes');
+                localStorage.removeItem('selectedTriggers');
+                localStorage.removeItem('selectedFreezes');
+                localStorage.removeItem('selectedCommunityTemplates');
+            }
 
             // If a limited platform is selected and we have more than 1 item selected, clear all selections
             const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
