@@ -43,7 +43,7 @@ const releaseNoteInstructions = {
 
 // Trigger instructions configuration
 const triggerInstructions = {
-    createrelease: '* Add a trigger to create a release when a new package is pushed to the feed.'
+    createrelease: '* Add a channel called "Application" using the lifecycle from the project.\n* Add a trigger to create a release when a new package is pushed to the feed linked to the "Application" channel.'
 };
 
 // Calculate freeze dates that are always in the future relative to current date
