@@ -204,6 +204,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 textarea.classList.remove('warning-displayed');
             }
         }
+
+        // Update trigger card states based on platform selection
+        updateTriggerCardStates();
+    }
+
+    // Helper function to disable/enable specific trigger cards based on platform
+    function updateTriggerCardStates() {
+        const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen'];
+
+        triggerCards.forEach(card => {
+            const trigger = card.getAttribute('data-trigger');
+
+            // Disable "createrelease" trigger for scriptstep and bluegreen platforms
+            if (trigger === 'createrelease' && platformsDisablingCreateRelease.includes(selectedPlatform)) {
+                card.classList.add('disabled-card');
+
+                // If it was selected, deselect it
+                if (card.classList.contains('selected')) {
+                    card.classList.remove('selected');
+                    selectedTriggers = selectedTriggers.filter(t => t !== trigger);
+                    localStorage.setItem('selectedTriggers', JSON.stringify(selectedTriggers));
+                }
+            } else if (trigger === 'createrelease' && !platformsDisablingCreateRelease.includes(selectedPlatform)) {
+                // Re-enable if platform changes away from scriptstep/bluegreen (unless other conditions apply)
+                if (!selectedTenant) {
+                    card.classList.remove('disabled-card');
+                }
+            }
+        });
     }
 
     // Handle platform card selection
