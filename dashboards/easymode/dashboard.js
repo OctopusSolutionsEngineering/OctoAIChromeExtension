@@ -400,8 +400,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 });
             } else {
+                // Check if we're switching tenants or selecting a new one
+                const isSwitchingTenants = selectedTenant !== null && selectedTenant !== tenant;
+
                 // Check if we can select a new item (for limited platforms)
-                if (!canSelectItem()) {
+                // Allow switching between tenants even on limited platforms
+                if (!canSelectItem() && !isSwitchingTenants) {
                     return; // Don't allow selection if limit is reached
                 }
 
