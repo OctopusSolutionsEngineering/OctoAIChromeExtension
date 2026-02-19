@@ -2,7 +2,6 @@
 const platformPrompts = {
     kubernetes: 'Create a Kubernetes project called "My K8s WebApp", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n* Create a token account called "Mock Token".\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".',
     argocd: 'Create an Argo CD project called "My Argo CD WebApp"',
-    azurewebapp: 'Create an Azure Web App project called "My Azure WebApp"',
     azurefunctions: 'Create an Azure Functions project called "My Azure Function App"',
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
     scriptstep: 'Create a Script project called "My Script App"',
@@ -124,7 +123,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Helper function to check if selection is allowed
     function canSelectItem() {
-        const limitedPlatforms = ['kubernetes', 'argocd', 'azurewebapp', 'azurefunctions', 'awslambda'];
+        const limitedPlatforms = ['kubernetes', 'argocd', 'azurefunctions', 'awslambda'];
         if (limitedPlatforms.includes(selectedPlatform)) {
             return getTotalSelectedItems() < 1;
         }
@@ -135,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateCardDisabledStates() {
         const warningElement = document.getElementById('kubernetesWarning');
         const textarea = document.getElementById('promptText');
-        const limitedPlatforms = ['kubernetes', 'argocd', 'azurewebapp', 'azurefunctions', 'awslambda'];
+        const limitedPlatforms = ['kubernetes', 'argocd', 'azurefunctions', 'awslambda'];
 
         // If a tenant is selected, disable all items below the tenant row
         if (selectedTenant) {
@@ -250,7 +249,7 @@ document.addEventListener('DOMContentLoaded', function() {
             selectedPlatform = platform;
 
             // If a limited platform is selected and we have more than 1 item selected, clear all selections
-            const limitedPlatforms = ['kubernetes', 'argocd', 'azurewebapp', 'azurefunctions', 'awslambda'];
+            const limitedPlatforms = ['kubernetes', 'argocd', 'azurefunctions', 'awslambda'];
             if (limitedPlatforms.includes(selectedPlatform) && getTotalSelectedItems() > 1) {
                 // Clear all selections
                 selectedTenant = null;
