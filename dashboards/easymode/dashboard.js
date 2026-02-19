@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Show warning message
                 if (tenantsMessage) {
-                    tenantsMessage.textContent = '⚠️ Tenant selected: You cannot select additional options below when a tenant is selected. Deselect the tenant to enable other options.';
+                    tenantsMessage.textContent = 'You cannot select additional options when a tenant is selected. Deselect the tenant to enable other options.';
                     tenantsMessage.style.display = 'block';
                 }
 
