@@ -19,32 +19,6 @@ function dashboardGetConfig(callback) {
 
 const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
 
-    function getAccessToken(serverUrl) {
-        return _dashboardGetOctopusCsrfTokenFromCookie(new URL(serverUrl).hostname)
-            .then(csrfToken => {
-                if (!csrfToken) {
-                    throw new Error("No Octopus-Csrf-Token cookie found for server URL: " + serverUrl);
-                }
-                return csrfToken;
-            })
-            .then(csrfToken => fetch(new URL('/api/users/access-token', serverUrl), {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Octopus-Csrf-Token': csrfToken
-                },
-                method: 'POST',
-                credentials: 'include'
-            }))
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
-                }
-                return response;
-            })
-            .then(response => response.json())
-            .then(json => json.AccessToken);
-    }
-
     function dashboardApprovePrompt(id, serverUrl) {
         if (!_isValidUrl(serverUrl)) {
             return Promise.resolve({
@@ -53,7 +27,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             })
         }
 
-        return getAccessToken(serverUrl)
+        return _getAccessToken(serverUrl)
             .then(token =>
                 chrome.runtime.sendMessage({
                     action: "confirmation",
@@ -80,7 +54,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             })
         }
 
-        return getAccessToken(serverUrl)
+        return _getAccessToken(serverUrl)
             .then(accessToken => chrome.runtime.sendMessage({
                 action: "prompt",
                 prompt: prompt,
@@ -95,6 +69,32 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                     state: "Error"
                 }
             });
+    }
+
+    function _getAccessToken(serverUrl) {
+        return _dashboardGetOctopusCsrfTokenFromCookie(new URL(serverUrl).hostname)
+            .then(csrfToken => {
+                if (!csrfToken) {
+                    throw new Error("No Octopus-Csrf-Token cookie found for server URL: " + serverUrl);
+                }
+                return csrfToken;
+            })
+            .then(csrfToken => fetch(new URL('/api/users/access-token', serverUrl), {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Octopus-Csrf-Token': csrfToken
+                },
+                method: 'POST',
+                credentials: 'include'
+            }))
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+                }
+                return response;
+            })
+            .then(response => response.json())
+            .then(json => json.AccessToken);
     }
 
     function _isValidUrl(url) {
