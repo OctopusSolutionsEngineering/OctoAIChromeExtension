@@ -160,6 +160,11 @@ function addFeedback(request) {
 }
 
 function callOctoAIAPIConfirmation(request, sendResponse, count) {
+    if (!request.id) {
+        sendResponse({error: "No confirmation ID provided"});
+        return;
+    }
+
     buildHeaders(request)
         .then(headers =>
             fetch('https://aiagent.octopus.com/api/form_handler?confirmation_id=' + encodeURIComponent(request.id) + '&confirmation_state=accepted', {
