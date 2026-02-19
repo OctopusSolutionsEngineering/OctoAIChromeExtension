@@ -261,7 +261,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (card.classList.contains('selected')) {
                     card.classList.remove('selected');
                     selectedTriggers = selectedTriggers.filter(t => t !== trigger);
-                    localStorage.setItem('selectedTriggers', JSON.stringify(selectedTriggers));
+                    localStorage.setItem('easymode.selectedTriggers', JSON.stringify(selectedTriggers));
                 }
             } else if (trigger === 'createrelease' && !platformsDisablingCreateRelease.includes(selectedPlatform)) {
                 // Re-enable if platform changes away from scriptstep/bluegreen (unless other conditions apply)
@@ -309,14 +309,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 communityTemplateCards.forEach(c => c.classList.remove('selected'));
 
                 // Clear localStorage
-                localStorage.removeItem('selectedTenant');
-                localStorage.removeItem('selectedSteps');
-                localStorage.removeItem('selectedRunbooks');
-                localStorage.removeItem('selectedChannels');
-                localStorage.removeItem('selectedReleaseNotes');
-                localStorage.removeItem('selectedTriggers');
-                localStorage.removeItem('selectedFreezes');
-                localStorage.removeItem('selectedCommunityTemplates');
+                localStorage.removeItem('easymode.selectedTenant');
+                localStorage.removeItem('easymode.selectedSteps');
+                localStorage.removeItem('easymode.selectedRunbooks');
+                localStorage.removeItem('easymode.selectedChannels');
+                localStorage.removeItem('easymode.selectedReleaseNotes');
+                localStorage.removeItem('easymode.selectedTriggers');
+                localStorage.removeItem('easymode.selectedFreezes');
+                localStorage.removeItem('easymode.selectedCommunityTemplates');
             }
 
             // If a limited platform is selected and we have more than 1 item selected, clear all selections
@@ -343,14 +343,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 communityTemplateCards.forEach(c => c.classList.remove('selected'));
 
                 // Clear localStorage
-                localStorage.removeItem('selectedTenant');
-                localStorage.removeItem('selectedSteps');
-                localStorage.removeItem('selectedRunbooks');
-                localStorage.removeItem('selectedChannels');
-                localStorage.removeItem('selectedReleaseNotes');
-                localStorage.removeItem('selectedTriggers');
-                localStorage.removeItem('selectedFreezes');
-                localStorage.removeItem('selectedCommunityTemplates');
+                localStorage.removeItem('easymode.selectedTenant');
+                localStorage.removeItem('easymode.selectedSteps');
+                localStorage.removeItem('easymode.selectedRunbooks');
+                localStorage.removeItem('easymode.selectedChannels');
+                localStorage.removeItem('easymode.selectedReleaseNotes');
+                localStorage.removeItem('easymode.selectedTriggers');
+                localStorage.removeItem('easymode.selectedFreezes');
+                localStorage.removeItem('easymode.selectedCommunityTemplates');
             }
 
             // Update disabled states for limited platforms
@@ -360,7 +360,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePromptTextarea();
 
             // Save selection to localStorage
-            localStorage.setItem('selectedPlatform', platform);
+            localStorage.setItem('easymode.selectedPlatform', platform);
         });
     });
 
@@ -380,7 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Deselect
                 this.classList.remove('selected');
                 selectedTenant = null;
-                localStorage.removeItem('selectedTenant');
+                localStorage.removeItem('easymode.selectedTenant');
 
                 // Hide warning message
                 if (tenantsMessage) {
@@ -410,7 +410,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedTenant = tenant;
 
                 // Save selection to localStorage
-                localStorage.setItem('selectedTenant', tenant);
+                localStorage.setItem('easymode.selectedTenant', tenant);
 
                 // Show warning message
                 if (tenantsMessage) {
@@ -428,13 +428,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedCommunityTemplates = [];
 
                 // Clear localStorage for items below tenants row
-                localStorage.removeItem('selectedSteps');
-                localStorage.removeItem('selectedRunbooks');
-                localStorage.removeItem('selectedChannels');
-                localStorage.removeItem('selectedReleaseNotes');
-                localStorage.removeItem('selectedTriggers');
-                localStorage.removeItem('selectedFreezes');
-                localStorage.removeItem('selectedCommunityTemplates');
+                localStorage.removeItem('easymode.selectedSteps');
+                localStorage.removeItem('easymode.selectedRunbooks');
+                localStorage.removeItem('easymode.selectedChannels');
+                localStorage.removeItem('easymode.selectedReleaseNotes');
+                localStorage.removeItem('easymode.selectedTriggers');
+                localStorage.removeItem('easymode.selectedFreezes');
+                localStorage.removeItem('easymode.selectedCommunityTemplates');
 
                 // Remove selected class from all cards below tenants row
                 [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
@@ -486,7 +486,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePromptTextarea();
 
             // Save selection to localStorage
-            localStorage.setItem('selectedSteps', JSON.stringify(selectedSteps));
+            localStorage.setItem('easymode.selectedSteps', JSON.stringify(selectedSteps));
         });
     });
 
@@ -523,7 +523,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePromptTextarea();
 
             // Save selection to localStorage
-            localStorage.setItem('selectedRunbooks', JSON.stringify(selectedRunbooks));
+            localStorage.setItem('easymode.selectedRunbooks', JSON.stringify(selectedRunbooks));
         });
     });
 
@@ -560,7 +560,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePromptTextarea();
 
             // Save selection to localStorage
-            localStorage.setItem('selectedChannels', JSON.stringify(selectedChannels));
+            localStorage.setItem('easymode.selectedChannels', JSON.stringify(selectedChannels));
         });
     });
 
@@ -597,7 +597,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePromptTextarea();
 
             // Save selection to localStorage
-            localStorage.setItem('selectedReleaseNotes', JSON.stringify(selectedReleaseNotes));
+            localStorage.setItem('easymode.selectedReleaseNotes', JSON.stringify(selectedReleaseNotes));
         });
     });
 
@@ -634,7 +634,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePromptTextarea();
 
             // Save selection to localStorage
-            localStorage.setItem('selectedTriggers', JSON.stringify(selectedTriggers));
+            localStorage.setItem('easymode.selectedTriggers', JSON.stringify(selectedTriggers));
         });
     });
 
@@ -671,7 +671,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePromptTextarea();
 
             // Save selection to localStorage
-            localStorage.setItem('selectedFreezes', JSON.stringify(selectedFreezes));
+            localStorage.setItem('easymode.selectedFreezes', JSON.stringify(selectedFreezes));
         });
     });
 
@@ -708,7 +708,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePromptTextarea();
 
             // Save selection to localStorage
-            localStorage.setItem('selectedCommunityTemplates', JSON.stringify(selectedCommunityTemplates));
+            localStorage.setItem('easymode.selectedCommunityTemplates', JSON.stringify(selectedCommunityTemplates));
         });
     });
 
@@ -860,15 +860,15 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Load saved selection from localStorage
-    const savedPlatform = localStorage.getItem('selectedPlatform');
-    const savedTenant = localStorage.getItem('selectedTenant');
-    const savedSteps = localStorage.getItem('selectedSteps');
-    const savedRunbooks = localStorage.getItem('selectedRunbooks');
-    const savedChannels = localStorage.getItem('selectedChannels');
-    const savedReleaseNotes = localStorage.getItem('selectedReleaseNotes');
-    const savedTriggers = localStorage.getItem('selectedTriggers');
-    const savedFreezes = localStorage.getItem('selectedFreezes');
-    const savedCommunityTemplates = localStorage.getItem('selectedCommunityTemplates');
+    const savedPlatform = localStorage.getItem('easymode.selectedPlatform');
+    const savedTenant = localStorage.getItem('easymode.selectedTenant');
+    const savedSteps = localStorage.getItem('easymode.selectedSteps');
+    const savedRunbooks = localStorage.getItem('easymode.selectedRunbooks');
+    const savedChannels = localStorage.getItem('easymode.selectedChannels');
+    const savedReleaseNotes = localStorage.getItem('easymode.selectedReleaseNotes');
+    const savedTriggers = localStorage.getItem('easymode.selectedTriggers');
+    const savedFreezes = localStorage.getItem('easymode.selectedFreezes');
+    const savedCommunityTemplates = localStorage.getItem('easymode.selectedCommunityTemplates');
 
     // Restore platform selection or default to kubernetes
     if (savedPlatform) {
