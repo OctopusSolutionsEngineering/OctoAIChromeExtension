@@ -1063,6 +1063,12 @@ function showError(message) {
 
 // Helper function to display the response with Approve/Reject buttons
 function displayResponse(result, serverUrl) {
+    if (!result.id) {
+        // There is no approval required, so display the response
+        displayApprovalResponse(result);
+        return;
+    }
+
     const mainContent = document.querySelector('.main-content');
     if (!mainContent) return;
 
@@ -1082,10 +1088,6 @@ function displayResponse(result, serverUrl) {
                 </div>
             </div>
         `;
-    } else if (!result.id) {
-        // There is no approval required, so display the response
-       displayApprovalResponse(result);
-       return;
     } else {
         responseHtml = `
             <div class="response-container">
