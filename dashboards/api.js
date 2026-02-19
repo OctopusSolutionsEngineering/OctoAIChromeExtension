@@ -11,8 +11,10 @@ function dashboardGetConfig(callback) {
 }
 
 /**
- * Executes the prompt against the AI Assistant LLM and returns an object containing the response and the state of the response (success, error, confirmation).
- * The serverUrl is used to get the access token for the API call and to send the prompt to the correct dashboard instance.
+ * Provides operations for interacting with the AI Assistant LLM from the dashboard:
+ * - `dashboardSendPrompt` executes a prompt and returns an object containing the response and the state of the response (success, error, confirmation).
+ * - `dashboardApprovePrompt` approves a pending confirmation and returns an object containing the updated response and its state.
+ * In both cases, the `serverUrl` is used to obtain an access token for the API call and to route the request to the correct dashboard instance.
  */
 
 const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
