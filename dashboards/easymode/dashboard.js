@@ -889,112 +889,138 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Restore tenant selection
+    // Define platform-based selection rules
+    const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
+    const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen'];
+    const isAwsLambda = savedPlatform === 'awslambda';
+    const isLimitedPlatform = limitedPlatforms.includes(savedPlatform);
+
+    // Helper function to validate and click on a card if it's allowed
+    function tryRestoreSelection(card) {
+        if (!card) return false;
+        
+        // Don't click if card is disabled
+        if (card.classList.contains('disabled-card')) {
+            return false;
+        }
+        
+        card.click();
+        return card.classList.contains('selected');
+    }
+
+    // Helper function to normalize array selections
+    // Returns the number of items successfully restored
+    function normalizeArraySelections(savedData, cardSelector, storageKey, currentTotal) {
+        if (!savedData) return 0;
+        
+        try {
+            const items = JSON.parse(savedData);
+            const validItems = [];
+            
+            // For AWS Lambda, clear all selections as nothing is allowed
+            if (isAwsLambda) {
+                localStorage.removeItem(storageKey);
+                return 0;
+            }
+            
+            // For limited platforms, only allow 1 item total across all categories
+            const maxTotal = isLimitedPlatform ? 1 : Infinity;
+            
+            for (const item of items) {
+                // Stop if we've reached the global selection limit
+                if (currentTotal + validItems.length >= maxTotal) {
+                    break;
+                }
+                
+                const card = document.querySelector(cardSelector.replace('ITEM', item));
+                if (tryRestoreSelection(card)) {
+                    validItems.push(item);
+                }
+            }
+            
+            // Write back the normalized (valid) selections
+            if (validItems.length > 0) {
+                localStorage.setItem(storageKey, JSON.stringify(validItems));
+            } else {
+                localStorage.removeItem(storageKey);
+            }
+            
+            return validItems.length;
+        } catch (e) {
+            console.error(`Error parsing ${storageKey}:`, e);
+            localStorage.removeItem(storageKey);
+            return 0;
+        }
+    }
+
+    // Restore tenant selection (if allowed)
     if (savedTenant) {
-        const tenantCard = document.querySelector(`[data-tenant="${savedTenant}"]`);
-        if (tenantCard) {
-            tenantCard.click();
+        // AWS Lambda doesn't allow tenant selection
+        if (isAwsLambda) {
+            localStorage.removeItem('easymode.selectedTenant');
+        } else {
+            const tenantCard = document.querySelector(`[data-tenant="${savedTenant}"]`);
+            if (!tryRestoreSelection(tenantCard)) {
+                localStorage.removeItem('easymode.selectedTenant');
+            }
         }
     }
 
-    // Restore steps selection
-    if (savedSteps) {
-        try {
-            const steps = JSON.parse(savedSteps);
-            steps.forEach(step => {
-                const stepCard = document.querySelector(`[data-step="${step}"]`);
-                if (stepCard) {
-                    stepCard.click();
+    // If tenant is selected, clear all other selections as they're not allowed
+    if (selectedTenant) {
+        localStorage.removeItem('easymode.selectedSteps');
+        localStorage.removeItem('easymode.selectedRunbooks');
+        localStorage.removeItem('easymode.selectedChannels');
+        localStorage.removeItem('easymode.selectedReleaseNotes');
+        localStorage.removeItem('easymode.selectedTriggers');
+        localStorage.removeItem('easymode.selectedFreezes');
+        localStorage.removeItem('easymode.selectedCommunityTemplates');
+    } else {
+        // Restore other selections (with normalization)
+        // Track total selections to respect global limits for limited platforms
+        let totalRestored = 0;
+        
+        totalRestored += normalizeArraySelections(savedSteps, '[data-step="ITEM"]', 'easymode.selectedSteps', totalRestored);
+        totalRestored += normalizeArraySelections(savedRunbooks, '[data-runbook="ITEM"]', 'easymode.selectedRunbooks', totalRestored);
+        totalRestored += normalizeArraySelections(savedChannels, '[data-channel="ITEM"]', 'easymode.selectedChannels', totalRestored);
+        totalRestored += normalizeArraySelections(savedReleaseNotes, '[data-releasenote="ITEM"]', 'easymode.selectedReleaseNotes', totalRestored);
+        totalRestored += normalizeArraySelections(savedFreezes, '[data-freeze="ITEM"]', 'easymode.selectedFreezes', totalRestored);
+        totalRestored += normalizeArraySelections(savedCommunityTemplates, '[data-communitytemplate="ITEM"]', 'easymode.selectedCommunityTemplates', totalRestored);
+        
+        // Special handling for triggers (some may be disabled based on platform)
+        if (savedTriggers) {
+            try {
+                const triggers = JSON.parse(savedTriggers);
+                const validTriggers = [];
+                const maxTotal = isLimitedPlatform ? 1 : Infinity;
+                
+                for (const trigger of triggers) {
+                    // Stop if we've reached the global selection limit
+                    if (totalRestored + validTriggers.length >= maxTotal) {
+                        break;
+                    }
+                    
+                    // Skip createrelease trigger if platform disables it
+                    if (trigger === 'createrelease' && platformsDisablingCreateRelease.includes(savedPlatform)) {
+                        continue;
+                    }
+                    
+                    const card = document.querySelector(`[data-trigger="${trigger}"]`);
+                    if (tryRestoreSelection(card)) {
+                        validTriggers.push(trigger);
+                    }
                 }
-            });
-        } catch (e) {
-            console.error('Error parsing saved steps:', e);
-        }
-    }
-
-    // Restore runbooks selection
-    if (savedRunbooks) {
-        try {
-            const runbooks = JSON.parse(savedRunbooks);
-            runbooks.forEach(runbook => {
-                const runbookCard = document.querySelector(`[data-runbook="${runbook}"]`);
-                if (runbookCard) {
-                    runbookCard.click();
+                
+                // Write back the normalized triggers
+                if (validTriggers.length > 0) {
+                    localStorage.setItem('easymode.selectedTriggers', JSON.stringify(validTriggers));
+                } else {
+                    localStorage.removeItem('easymode.selectedTriggers');
                 }
-            });
-        } catch (e) {
-            console.error('Error parsing saved runbooks:', e);
-        }
-    }
-
-    // Restore channels selection
-    if (savedChannels) {
-        try {
-            const channels = JSON.parse(savedChannels);
-            channels.forEach(channel => {
-                const channelCard = document.querySelector(`[data-channel="${channel}"]`);
-                if (channelCard) {
-                    channelCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved channels:', e);
-        }
-    }
-
-    // Restore release notes selection
-    if (savedReleaseNotes) {
-        try {
-            const releaseNotes = JSON.parse(savedReleaseNotes);
-            releaseNotes.forEach(releaseNote => {
-                const releaseNoteCard = document.querySelector(`[data-releasenote="${releaseNote}"]`);
-                if (releaseNoteCard) {
-                    releaseNoteCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved release notes:', e);
-        }
-    }
-
-    // Restore triggers selection
-    if (savedTriggers) {
-        try {
-            const triggers = JSON.parse(savedTriggers);
-            triggers.forEach(trigger => {
-                const savedCard = document.querySelector(`[data-trigger="${trigger}"]`);
-                if (savedCard) {
-                    savedCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved triggers:', e);
-        }
-    }
-    if (savedFreezes) {
-        try {
-            const freezes = JSON.parse(savedFreezes);
-            freezes.forEach(freeze => {
-                const savedCard = document.querySelector(`[data-freeze="${freeze}"]`);
-                if (savedCard) {
-                    savedCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved freezes:', e);
-        }
-    }
-    if (savedCommunityTemplates) {
-        try {
-            const templates = JSON.parse(savedCommunityTemplates);
-            templates.forEach(template => {
-                const savedCard = document.querySelector(`[data-communitytemplate="${template}"]`);
-                if (savedCard) {
-                    savedCard.click();
-                }
-            });
-        } catch (e) {
-            console.error('Error parsing saved community templates:', e);
+            } catch (e) {
+                console.error('Error parsing saved triggers:', e);
+                localStorage.removeItem('easymode.selectedTriggers');
+            }
         }
     }
 });
