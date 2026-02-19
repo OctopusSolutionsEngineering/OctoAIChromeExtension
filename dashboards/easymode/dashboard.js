@@ -1068,11 +1068,15 @@ function displayResponse(result, serverUrl) {
 
     let responseHtml = '';
 
+    // Convert markdown to HTML using marked library
+    const htmlContent = marked.parse(result.response);
+    const sanitizedHtml = DOMPurify.sanitize(htmlContent);
+
     if (result.state === 'Error') {
         responseHtml = `
             <div class="response-container error">
                 <h2>Error</h2>
-                <div class="response-text">${DOMPurify.sanitize(result.response)}</div>
+                <div class="response-text">${sanitizedHtml}</div>
                 <div class="response-actions">
                     <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
                 </div>
@@ -1082,17 +1086,13 @@ function displayResponse(result, serverUrl) {
        responseHtml = `
             <div class="response-container">
                 <h2>Error</h2>
-                <div class="response-text">${DOMPurify.sanitize(result.response)}</div>
+                <div class="response-text">${sanitizedHtml}</div>
                 <div class="response-actions">
                     <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
                 </div>
             </div>
         `;
     } else {
-        // Convert markdown to HTML using marked library
-        const htmlContent = marked.parse(result.response);
-        const sanitizedHtml = DOMPurify.sanitize(htmlContent);
-
         responseHtml = `
             <div class="response-container">
                 <h2>Response</h2>
