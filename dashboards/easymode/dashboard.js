@@ -79,7 +79,7 @@ const freezeInstructions = {
 // Community step template instructions configuration
 const communityTemplateInstructions = {
     calculatereleasemode: '* Add the community step template with the website "https://library.octopus.com/step-templates/d166457a-1421-4731-b143-dd6766fb95d5" as the first step with the name "Calculate Deployment Mode".',
-    slack: '* Add the community step template with the website "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" as the final step with the name "Send Slack Message". Configure the step to run on a worker. Remove any email steps if they are present.'
+    slack: '* Add the community step template with the website "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" as the final step with the name "Send Slack Message". Configure the step to run on a worker. Set the "Octopus.Action.RunOnServer" property to true for the step. Remove any email steps if they are present.'
 };
 
 // Initialize the dashboard
