@@ -28,6 +28,10 @@ You must highlight examples where dashboards attempt to load files from any pare
 
 You must highlight any use of private functions in the custom dashboards, as these are not permitted.
 
+The dashboard must include a `metadata.json` file with the author's email address. You should check that the email address is valid and does not contain any typos.
+
+The dashboard must be in a file called `index.html`.
+
 ## Sample Prompts
 
 The files named `promptsv#.json` (where `#` is a number) contain sample prompts displayed by the AI Assistant. These
