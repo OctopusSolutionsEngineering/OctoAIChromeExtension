@@ -20,6 +20,10 @@
         "name": "Community dashboards...",
         "prompts": [
           {
+            "dashboardName": "Octopus Easy Mode",
+            "dashboardFile": "easymode/index.html"
+          },
+          {
             "dashboardName": "Value Metrics",
             "dashboardFile": "valuemetrics/index.html"
           },
