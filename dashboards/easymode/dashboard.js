@@ -249,6 +249,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Helper function to disable/enable specific trigger cards based on platform
     function updateTriggerCardStates() {
         const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen'];
+        const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
 
         triggerCards.forEach(card => {
             const trigger = card.getAttribute('data-trigger');
@@ -264,8 +265,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     localStorage.setItem('easymode.selectedTriggers', JSON.stringify(selectedTriggers));
                 }
             } else if (trigger === 'createrelease' && !platformsDisablingCreateRelease.includes(selectedPlatform)) {
-                // Re-enable if platform changes away from scriptstep/bluegreen (unless other conditions apply)
-                if (!selectedTenant) {
+                // Only re-enable if no other disabling conditions apply
+                const shouldBeDisabled = selectedPlatform === 'awslambda' || // AWS Lambda disables all items
+                    selectedTenant || // Tenant selected disables all items below
+                    (limitedPlatforms.includes(selectedPlatform) && getTotalSelectedItems() >= 1 && !card.classList.contains('selected')); // Limited platform with item limit reached
+
+                if (!shouldBeDisabled) {
                     card.classList.remove('disabled-card');
                 }
             }
