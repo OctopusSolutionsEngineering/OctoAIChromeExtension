@@ -943,9 +943,18 @@ function showError(message) {
             <div class="error-container">
                 <h2>Error</h2>
                 <p class="error-message">${DOMPurify.sanitize(message)}</p>
-                <button class="reload-button" onclick="location.reload()">Reload Dashboard</button>
+                <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
             </div>
         `;
+
+        const reloadBtn = document.getElementById('reloadBtn');
+        if (reloadBtn) {
+            reloadBtn.addEventListener('click', function() {
+                console.log('Reload button clicked');
+                // Reload the page to display the main page again
+                location.reload();
+            });
+        }
     }
 }
 
@@ -1054,7 +1063,7 @@ function displayApprovalResponse(result) {
                 <h2>Error</h2>
                 <div class="response-text">${DOMPurify.sanitize(result.response)}</div>
                 <div class="response-actions">
-                    <button class="reload-button" onclick="location.reload()">Reload Dashboard</button>
+                    <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
                 </div>
             </div>
         `;
@@ -1078,10 +1087,20 @@ function displayApprovalResponse(result) {
 
     // Add event listener for OK button
     const okBtn = document.getElementById('okBtn');
+    const reloadBtn = document.getElementById('reloadBtn');
+
     if (okBtn) {
         okBtn.addEventListener('click', function() {
             console.log('OK button clicked');
             // Reload the page to return to the main page
+            location.reload();
+        });
+    }
+
+    if (reloadBtn) {
+        reloadBtn.addEventListener('click', function() {
+            console.log('Reload button clicked');
+            // Reload the page to display the main page again
             location.reload();
         });
     }
