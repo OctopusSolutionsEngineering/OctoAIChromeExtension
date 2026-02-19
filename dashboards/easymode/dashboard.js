@@ -1084,7 +1084,7 @@ function displayResponse(result, serverUrl) {
                 <h2>Error</h2>
                 <div class="response-text">${DOMPurify.sanitize(result.response)}</div>
                 <div class="response-actions">
-                    <button id="reloadBtn" class="reload-button">Ok</button>
+                    <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
                 </div>
             </div>
         `;
