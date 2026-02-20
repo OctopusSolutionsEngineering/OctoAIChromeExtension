@@ -5,7 +5,8 @@ const platformPrompts = {
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
     scriptstep: 'Create a Script project called "My Script App"',
     bluegreen: 'Create a Blue/Green deployment project called "My Blue Green App"',
-    terraform: 'Create a Terraform project called "My Terraform Infrastructure"'
+    terraform: 'Create a Terraform project called "My Terraform Infrastructure"',
+    tomcat: 'Create a Tomcat project called "My Tomcat WebApp"'
 };
 
 // Tenant instructions configuration
