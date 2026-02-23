@@ -5,6 +5,8 @@ const platformPrompts = {
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
     scriptstep: 'Create a Script project called "My Script App"',
     bluegreen: 'Create a Blue/Green deployment project called "My Blue Green App"',
+    azurefunction: 'Create an Azure Function project called "My Azure Function App"',
+    azurewebapp: 'Create an Azure Web App project called "My Azure Web App"',
     terraform: 'Create a Terraform project called "My Terraform Infrastructure"',
     tomcat: 'Create a Tomcat project called "My Tomcat WebApp"'
 };

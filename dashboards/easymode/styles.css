@@ -872,21 +872,22 @@ body {
     color: #0078d4;
 }
 
-.functions-icon {
-    color: #ffc107;
-}
-
 .aws-icon {
     color: #ff9900;
+}
+
+.azurefunction-icon {
+    color: #0072c6;
+}
+
+.azurewebapp-icon {
+    color: #0072c6;
 }
 
 .script-icon {
     color: #28a745;
 }
 
-.bluegreen-icon {
-    color: #6c757d;
-}
 
 /* Platform Name */
 .platform-name {
