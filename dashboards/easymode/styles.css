@@ -267,6 +267,7 @@ body {
 .script-icon { color: #28a745; }
 /* Shared Name Styles */
 .tenant-name,
+.tomcat-name,
 .step-name,
 .runbook-name,
 .channel-name,
@@ -296,6 +297,7 @@ body {
     box-shadow: 0 4px 12px rgba(13, 128, 216, 0.3);
 }
 .tenant-card.selected .tenant-icon,
+.tomcat.selected .tomcat-icon,
 .step-card.selected .step-icon,
 .runbook-card.selected .runbook-icon,
 .channel-card.selected .channel-icon,
@@ -307,6 +309,7 @@ body {
     color: #ffffff;
 }
 .tenant-card.selected .tenant-name,
+.tomcat-card.selected .tomcat-name,
 .step-card.selected .step-name,
 .runbook-card.selected .runbook-name,
 .channel-card.selected .channel-name,
