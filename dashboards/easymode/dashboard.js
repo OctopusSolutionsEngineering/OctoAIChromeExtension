@@ -699,6 +699,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // If any placeholder step is selected, append instruction to retain previous steps
+        if (selectedSteps.length > 0) {
+            if (prompt) {
+                prompt += '\n* Retain all previous steps in the project. New steps must be added to the deployment process.';
+            }
+        }
+
         promptTextarea.value = prompt;
     }
 
