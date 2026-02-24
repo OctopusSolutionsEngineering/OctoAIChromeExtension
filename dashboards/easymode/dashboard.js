@@ -905,7 +905,7 @@ function clearPageAndShowLoading() {
         mainContent.innerHTML = `
             <div class="loading-container">
                 <div class="loading-spinner"></div>
-                <p class="loading-text">Processing your request. This can take a few minutes...</p>
+                <p class="loading-text">Processing your request. This can take a few minutes, as the AI is generating many Octopus resources...</p>
             </div>
         `;
     }
