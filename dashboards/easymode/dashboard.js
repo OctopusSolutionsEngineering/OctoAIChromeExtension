@@ -129,6 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateCardDisabledStates() {
         const warningElement = document.getElementById('kubernetesWarning');
         const awsLambdaWarning = document.getElementById('awslambda-message');
+        const complexityWarning = document.getElementById('complexity-warning');
         const textarea = document.getElementById('promptText');
 
         // If a tenant is selected, disable all items below the tenant row
@@ -142,6 +143,11 @@ document.addEventListener('DOMContentLoaded', function() {
             // Hide the platform limitation warning when tenant is selected
             if (warningElement) {
                 warningElement.style.display = 'none';
+            }
+
+            // Hide complexity warning when tenant is selected
+            if (complexityWarning) {
+                complexityWarning.style.display = 'none';
             }
 
             // Add warning-displayed class to reduce textarea height (tenant warning is shown)
@@ -169,9 +175,22 @@ document.addEventListener('DOMContentLoaded', function() {
             awsLambdaWarning.style.display = 'none';
         }
 
-        // Remove warning-displayed class to restore normal textarea height
-        if (textarea) {
-            textarea.classList.remove('warning-displayed');
+        // Check total selections and show complexity warning if > 5
+        const totalItems = getTotalSelectedItems();
+        if (complexityWarning) {
+            if (totalItems > 5) {
+                complexityWarning.style.display = 'block';
+                // Add warning-displayed class to reduce textarea height
+                if (textarea) {
+                    textarea.classList.add('warning-displayed');
+                }
+            } else {
+                complexityWarning.style.display = 'none';
+                // Remove warning-displayed class to restore normal textarea height
+                if (textarea) {
+                    textarea.classList.remove('warning-displayed');
+                }
+            }
         }
 
         // Update trigger card states based on platform selection

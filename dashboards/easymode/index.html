@@ -415,6 +415,9 @@
                 <div id="awslambda-message" class="warning" style="display: none;">
                     No additional selections are allowed. Select another platform that offers more flexibility (such as Script Step) to configure additional options.
                 </div>
+                <div id="complexity-warning" class="warning" style="display: none;">
+                    ⚠️ Complex prompts with more than 5 options take significantly longer to process and may fail due to LLM reasoning limits. Consider simplifying your selection for better results.
+                </div>
                 <textarea class="prompt-textarea" id="promptText" placeholder="Enter your deployment prompt here..."></textarea>
                 <div class="prompt-hint">The prompt can be manually edited to support any custom requirements.</div>
                 <div class="execute-section">
