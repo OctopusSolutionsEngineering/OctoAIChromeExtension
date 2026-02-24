@@ -116,7 +116,7 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-top: 2px solid #e8ecef;
+    border-top: 0;
     padding-top: 24px;
 }
 /* Kubernetes Warning */
