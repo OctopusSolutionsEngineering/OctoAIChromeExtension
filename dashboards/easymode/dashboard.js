@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Helper function to disable/enable specific trigger cards based on platform
     function updateTriggerCardStates() {
-        const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen'];
+        const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen', 'terraform'];
         const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
 
         triggerCards.forEach(card => {
