@@ -129,7 +129,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateCardDisabledStates() {
         const warningElement = document.getElementById('kubernetesWarning');
         const awsLambdaWarning = document.getElementById('awslambda-message');
-        const tenantsMessage = document.getElementById('tenants-message');
         const textarea = document.getElementById('promptText');
 
         // If a tenant is selected, disable all items below the tenant row
@@ -279,7 +278,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const tenant = this.getAttribute('data-tenant');
-            const tenantsMessage = document.getElementById('tenants-message');
 
             // Toggle selected state
             if (this.classList.contains('selected')) {
@@ -288,12 +286,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedTenant = null;
                 localStorage.removeItem('easymode.selectedTenant');
 
-                // Hide warning message
-                if (tenantsMessage) {
-                    tenantsMessage.style.display = 'none';
-                    tenantsMessage.textContent = '';
-                }
-
                 // Re-enable all cards below tenants row
                 [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
                     cards.forEach(card => {
@@ -301,11 +293,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 });
             } else {
-                // Check if we're switching tenants or selecting a new one
-                const isSwitchingTenants = selectedTenant !== null && selectedTenant !== tenant;
-
-
-
                 // Remove selected class from all tenant cards (only one can be selected)
                 tenantCards.forEach(c => c.classList.remove('selected'));
 
@@ -318,11 +305,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Save selection to localStorage
                 localStorage.setItem('easymode.selectedTenant', tenant);
 
-                // Show warning message
-                if (tenantsMessage) {
-                    tenantsMessage.textContent = 'You cannot select additional options when a tenant is selected. Deselect the tenant to enable other options.';
-                    tenantsMessage.style.display = 'block';
-                }
 
                 // Clear all selections below tenants row
                 selectedSteps = [];

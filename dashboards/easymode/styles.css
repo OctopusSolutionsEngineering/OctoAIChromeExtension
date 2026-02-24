@@ -384,6 +384,14 @@ body {
 .prompt-textarea::placeholder {
     color: #8b949e;
 }
+/* Prompt Hint */
+.prompt-hint {
+    color: #9ca3af;
+    font-size: 11px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    font-style: italic;
+}
 /* Execute Section */
 .execute-button {
     padding: 12px 24px;
