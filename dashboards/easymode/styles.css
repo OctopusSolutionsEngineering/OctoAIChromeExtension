@@ -398,10 +398,10 @@ body {
     font-size: 14px;
     font-weight: 600;
     color: #2d3e50;
-    border: 3px double transparent;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
+    border: 3px double transparent;
     background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(31, 242, 255), rgb(13, 129, 216)) border-box rgb(27, 36, 45);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -480,8 +480,8 @@ body {
     color: #d73a49;
 }
 .response-text {
-    background-color: #f6f8fa;
-    border: 1px solid #e1e4e8;
+    border: 3px double transparent;
+    background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(31, 242, 255), rgb(13, 129, 216)) border-box rgb(27, 36, 45);
     border-radius: 6px;
     padding: 20px;
     margin-bottom: 24px;
