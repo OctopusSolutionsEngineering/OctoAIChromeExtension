@@ -237,7 +237,28 @@ function callOctoAIAPI(request, sendResponse, count) {
                 // What has likely happened here is the prompt is taking too long to complete
                 // The results of long-running prompts are often cached though, so retrying may yield a result
                 // We sleep a little bit before retrying to give the system a chance to complete the original request
-                setTimeout(() => callOctoAIAPI(request, sendResponse, count + 1), 240000)
+                const retryDelayMs = 120000; // 2 minutes
+                const countdownStartTime = Date.now();
+
+                console.log(`Waiting ${retryDelayMs / 1000} seconds before retrying...`);
+
+                // Log countdown every 10 seconds
+                const countdownInterval = setInterval(() => {
+                    const elapsedMs = Date.now() - countdownStartTime;
+                    const remainingSeconds = Math.floor((retryDelayMs - elapsedMs) / 1000);
+
+                    if (remainingSeconds > 0) {
+                        console.log(`Retrying in ${remainingSeconds} seconds...`);
+                    } else {
+                        clearInterval(countdownInterval);
+                    }
+                }, 10000);
+
+                setTimeout(() => {
+                    clearInterval(countdownInterval);
+                    console.log('Retrying API call now...');
+                    callOctoAIAPI(request, sendResponse, count + 1);
+                }, retryDelayMs);
             }
         });
 }
