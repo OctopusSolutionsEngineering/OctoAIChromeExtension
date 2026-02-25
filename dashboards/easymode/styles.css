@@ -433,10 +433,20 @@ body {
 .loading-spinner {
     width: 60px;
     height: 60px;
-    border: 4px solid #e8ecef;
-    border-top: 4px solid #0d80d8;
     border-radius: 50%;
+    background: conic-gradient(from 0deg, rgb(31, 242, 255), rgb(13, 129, 216), rgb(31, 242, 255));
     animation: spin 1s linear infinite;
+    position: relative;
+}
+.loading-spinner::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    background: #fff;
+    border-radius: 50%;
 }
 @keyframes spin {
     0% { transform: rotate(0deg); }
