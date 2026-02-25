@@ -195,6 +195,40 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Update trigger card states based on platform selection
         updateTriggerCardStates();
+
+        // Update step card states based on platform selection
+        updateStepCardStates();
+    }
+
+    // Helper function to disable/enable specific step cards based on platform
+    function updateStepCardStates() {
+        const platformsDisablingManualIntervention = ['awslambda', 'azurewebapp', 'azurefunction', 'kubernetes', 'argocd', 'tomcat'];
+
+        stepCards.forEach(card => {
+            const step = card.getAttribute('data-step');
+
+            // Disable "manualintervention" step for specified platforms
+            if (step === 'manualintervention' && platformsDisablingManualIntervention.includes(selectedPlatform)) {
+                card.classList.add('disabled-card');
+
+                // If it was selected, deselect it
+                if (card.classList.contains('selected')) {
+                    card.classList.remove('selected');
+                    selectedSteps = selectedSteps.filter(s => s !== step);
+                    localStorage.setItem('easymode.selectedSteps', JSON.stringify(selectedSteps));
+                }
+            } else if (step === 'manualintervention' && !platformsDisablingManualIntervention.includes(selectedPlatform)) {
+                // Only re-enable if no other disabling conditions apply
+                const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
+                const shouldBeDisabled = selectedPlatform === 'awslambda' || // AWS Lambda disables all items
+                    selectedTenant || // Tenant selected disables all items below
+                    (limitedPlatforms.includes(selectedPlatform) && getTotalSelectedItems() >= 1 && !card.classList.contains('selected')); // Limited platform with item limit reached
+
+                if (!shouldBeDisabled) {
+                    card.classList.remove('disabled-card');
+                }
+            }
+        });
     }
 
     // Helper function to disable/enable specific trigger cards based on platform
@@ -865,7 +899,44 @@ document.addEventListener('DOMContentLoaded', function() {
         // Track total selections to respect global limits for limited platforms
         let totalRestored = 0;
         
-        totalRestored += normalizeArraySelections(savedSteps, '[data-step="ITEM"]', 'easymode.selectedSteps', totalRestored);
+        // Special handling for steps (some may be disabled based on platform)
+        const platformsDisablingManualIntervention = ['awslambda', 'azurewebapp', 'azurefunction', 'kubernetes', 'argocd', 'tomcat'];
+        if (savedSteps) {
+            try {
+                const steps = JSON.parse(savedSteps);
+                const validSteps = [];
+                const maxTotal = isLimitedPlatform ? 1 : Infinity;
+
+                for (const step of steps) {
+                    // Stop if we've reached the global selection limit
+                    if (totalRestored + validSteps.length >= maxTotal) {
+                        break;
+                    }
+
+                    // Skip manualintervention step if platform disables it
+                    if (step === 'manualintervention' && platformsDisablingManualIntervention.includes(savedPlatform)) {
+                        continue;
+                    }
+
+                    const card = document.querySelector(`[data-step="${step}"]`);
+                    if (tryRestoreSelection(card)) {
+                        validSteps.push(step);
+                    }
+                }
+
+                // Write back the normalized steps
+                if (validSteps.length > 0) {
+                    localStorage.setItem('easymode.selectedSteps', JSON.stringify(validSteps));
+                    totalRestored += validSteps.length;
+                } else {
+                    localStorage.removeItem('easymode.selectedSteps');
+                }
+            } catch (e) {
+                console.error('Error parsing saved steps:', e);
+                localStorage.removeItem('easymode.selectedSteps');
+            }
+        }
+
         totalRestored += normalizeArraySelections(savedRunbooks, '[data-runbook="ITEM"]', 'easymode.selectedRunbooks', totalRestored);
         totalRestored += normalizeArraySelections(savedChannels, '[data-channel="ITEM"]', 'easymode.selectedChannels', totalRestored);
         totalRestored += normalizeArraySelections(savedReleaseNotes, '[data-releasenote="ITEM"]', 'easymode.selectedReleaseNotes', totalRestored);
