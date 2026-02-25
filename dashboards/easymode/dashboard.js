@@ -175,10 +175,10 @@ document.addEventListener('DOMContentLoaded', function() {
             awsLambdaWarning.style.display = 'none';
         }
 
-        // Check total selections and show complexity warning if > 5
+        // Check total selections and show complexity warning if > 3
         const totalItems = getTotalSelectedItems();
         if (complexityWarning) {
-            if (totalItems > 5) {
+            if (totalItems > 3) {
                 complexityWarning.style.display = 'block';
                 // Add warning-displayed class to reduce textarea height
                 if (textarea) {
