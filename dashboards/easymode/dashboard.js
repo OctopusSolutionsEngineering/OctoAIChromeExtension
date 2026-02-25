@@ -92,7 +92,7 @@ const projectGroupInstructions = {
 
 // Intentional error instructions configuration
 const intentionalErrorInstructions = {
-    scriptexitcode1: '* Add a script step as the first step that echos "exit 1" to simulate an error'
+    scriptexitcode1: '* Add a script step as the first step with the code "exit 1" to simulate an error'
 };
 
 // Initialize the dashboard
