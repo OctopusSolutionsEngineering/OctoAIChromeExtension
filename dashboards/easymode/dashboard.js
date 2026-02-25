@@ -915,7 +915,7 @@ function clearPageAndShowLoading(isComplexPrompt = false) {
     const mainContent = document.querySelector('.main-content');
     if (mainContent) {
         const loadingMessage = isComplexPrompt
-            ? 'Processing your complex request. This can take 8 minutes or more, as the AI is generating many Octopus resources...'
+            ? 'Processing your complex request. This can take 6 minutes or more, as the AI is generating many Octopus resources...'
             : 'Processing your request. This can take a few minutes, as the AI is generating many Octopus resources...';
 
         mainContent.innerHTML = `
