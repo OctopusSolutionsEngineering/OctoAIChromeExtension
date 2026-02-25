@@ -1000,6 +1000,7 @@ function clearPageAndShowLoading(isComplexPrompt = false) {
 
 // Helper function to show error message
 function showError(message) {
+    console.log(message);
     const mainContent = document.querySelector('.main-content');
     if (mainContent) {
         mainContent.innerHTML = `
