@@ -90,6 +90,11 @@ const projectGroupInstructions = {
     myprojectgroup: '* Add the project to a project group called "My Project Group"'
 };
 
+// Intentional error instructions configuration
+const intentionalErrorInstructions = {
+    scriptexitcode1: '* Add a script step as the first step that echos "exit 1" to simulate an error'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
@@ -102,6 +107,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const freezeCards = document.querySelectorAll('.freeze-card');
     const communityTemplateCards = document.querySelectorAll('.communitytemplate-card');
     const projectGroupCards = document.querySelectorAll('.projectgroup-card');
+    const intentionalErrorCards = document.querySelectorAll('.intentionalerror-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
@@ -115,6 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedFreezes = [];
     let selectedCommunityTemplates = [];
     let selectedProjectGroups = [];
+    let selectedIntentionalErrors = [];
 
     // Helper function to count total selected items (excluding platform)
     function getTotalSelectedItems() {
@@ -128,6 +135,7 @@ document.addEventListener('DOMContentLoaded', function() {
         count += selectedFreezes.length;
         count += selectedCommunityTemplates.length;
         count += selectedProjectGroups.length;
+        count += selectedIntentionalErrors.length;
         return count;
     }
 
@@ -142,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // If a tenant is selected, disable all items below the tenant row
         if (selectedTenant) {
-            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards].forEach(cards => {
+            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
                 cards.forEach(card => {
                     card.classList.add('disabled-card');
                 });
@@ -167,7 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Remove disabled state when under limit or not a limited platform
-        [tenantCards, stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards].forEach(cards => {
+        [tenantCards, stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
             cards.forEach(card => {
                 card.classList.remove('disabled-card');
             });
@@ -296,6 +304,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedFreezes = [];
                 selectedCommunityTemplates = [];
                 selectedProjectGroups = [];
+                selectedIntentionalErrors = [];
 
                 // Remove selected class from all cards
                 tenantCards.forEach(c => c.classList.remove('selected'));
@@ -307,6 +316,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 freezeCards.forEach(c => c.classList.remove('selected'));
                 communityTemplateCards.forEach(c => c.classList.remove('selected'));
                 projectGroupCards.forEach(c => c.classList.remove('selected'));
+                intentionalErrorCards.forEach(c => c.classList.remove('selected'));
 
                 // Clear localStorage
                 localStorage.removeItem('easymode.selectedTenant');
@@ -318,6 +328,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.removeItem('easymode.selectedFreezes');
                 localStorage.removeItem('easymode.selectedCommunityTemplates');
                 localStorage.removeItem('easymode.selectedProjectGroups');
+                localStorage.removeItem('easymode.selectedIntentionalErrors');
             }
 
 
@@ -351,7 +362,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.removeItem('easymode.selectedTenant');
 
                 // Re-enable all cards below tenants row
-                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards].forEach(cards => {
+                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
                     cards.forEach(card => {
                         card.classList.remove('disabled-card');
                     });
@@ -378,6 +389,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedFreezes = [];
                 selectedCommunityTemplates = [];
                 selectedProjectGroups = [];
+                selectedIntentionalErrors = [];
 
                 // Clear localStorage for items below tenants row
                 localStorage.removeItem('easymode.selectedSteps');
@@ -388,9 +400,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.removeItem('easymode.selectedFreezes');
                 localStorage.removeItem('easymode.selectedCommunityTemplates');
                 localStorage.removeItem('easymode.selectedProjectGroups');
+                localStorage.removeItem('easymode.selectedIntentionalErrors');
 
                 // Remove selected class from all cards below tenants row
-                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards].forEach(cards => {
+                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
                     cards.forEach(card => {
                         card.classList.remove('selected');
                         card.classList.add('disabled-card');
@@ -670,6 +683,39 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle intentional error card selection (multiple selection allowed)
+    intentionalErrorCards.forEach(card => {
+        card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
+            const intentionalerror = this.getAttribute('data-intentionalerror');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedIntentionalErrors = selectedIntentionalErrors.filter(ie => ie !== intentionalerror);
+            } else {
+
+                // Select
+                this.classList.add('selected');
+                selectedIntentionalErrors.push(intentionalerror);
+            }
+
+            // Update disabled states
+            updateCardDisabledStates();
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('easymode.selectedIntentionalErrors', JSON.stringify(selectedIntentionalErrors));
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -792,6 +838,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // Add intentional error instructions if selected
+        if (selectedIntentionalErrors.length > 0) {
+            selectedIntentionalErrors.forEach(intentionalerror => {
+                if (intentionalErrorInstructions[intentionalerror]) {
+                    if (prompt) {
+                        prompt += '\n' + intentionalErrorInstructions[intentionalerror];
+                    } else {
+                        prompt = intentionalErrorInstructions[intentionalerror];
+                    }
+                }
+            });
+        }
+
         // If any placeholder step is selected, append instruction to retain previous steps
         if (selectedSteps.length > 0) {
             if (prompt) {
@@ -852,6 +911,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedFreezes = localStorage.getItem('easymode.selectedFreezes');
     const savedCommunityTemplates = localStorage.getItem('easymode.selectedCommunityTemplates');
     const savedProjectGroups = localStorage.getItem('easymode.selectedProjectGroups');
+    const savedIntentionalErrors = localStorage.getItem('easymode.selectedIntentionalErrors');
 
     // Restore platform selection or default to kubernetes
     if (savedPlatform) {
@@ -954,6 +1014,7 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.removeItem('easymode.selectedFreezes');
         localStorage.removeItem('easymode.selectedCommunityTemplates');
         localStorage.removeItem('easymode.selectedProjectGroups');
+        localStorage.removeItem('easymode.selectedIntentionalErrors');
     } else {
         // Restore other selections (with normalization)
         // Track total selections to respect global limits for limited platforms
@@ -1003,6 +1064,7 @@ document.addEventListener('DOMContentLoaded', function() {
         totalRestored += normalizeArraySelections(savedFreezes, '[data-freeze="ITEM"]', 'easymode.selectedFreezes', totalRestored);
         totalRestored += normalizeArraySelections(savedCommunityTemplates, '[data-communitytemplate="ITEM"]', 'easymode.selectedCommunityTemplates', totalRestored);
         totalRestored += normalizeArraySelections(savedProjectGroups, '[data-projectgroup="ITEM"]', 'easymode.selectedProjectGroups', totalRestored);
+        totalRestored += normalizeArraySelections(savedIntentionalErrors, '[data-intentionalerror="ITEM"]', 'easymode.selectedIntentionalErrors', totalRestored);
 
         // Special handling for triggers (some may be disabled based on platform)
         if (savedTriggers) {
