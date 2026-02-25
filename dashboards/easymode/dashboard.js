@@ -85,6 +85,11 @@ const communityTemplateInstructions = {
     calculatereleasemode: '* Add the community step template with the website "https://library.octopus.com/step-templates/d166457a-1421-4731-b143-dd6766fb95d5" as the first step with the name "Calculate Deployment Mode".'
 };
 
+// Project group instructions configuration
+const projectGroupInstructions = {
+    myprojectgroup: '* Add the project to a project group called "My Project Group"'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
@@ -96,6 +101,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const triggerCards = document.querySelectorAll('.trigger-card');
     const freezeCards = document.querySelectorAll('.freeze-card');
     const communityTemplateCards = document.querySelectorAll('.communitytemplate-card');
+    const projectGroupCards = document.querySelectorAll('.projectgroup-card');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
@@ -108,6 +114,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedTriggers = [];
     let selectedFreezes = [];
     let selectedCommunityTemplates = [];
+    let selectedProjectGroups = [];
 
     // Helper function to count total selected items (excluding platform)
     function getTotalSelectedItems() {
@@ -120,6 +127,7 @@ document.addEventListener('DOMContentLoaded', function() {
         count += selectedTriggers.length;
         count += selectedFreezes.length;
         count += selectedCommunityTemplates.length;
+        count += selectedProjectGroups.length;
         return count;
     }
 
@@ -134,7 +142,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // If a tenant is selected, disable all items below the tenant row
         if (selectedTenant) {
-            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+            [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards].forEach(cards => {
                 cards.forEach(card => {
                     card.classList.add('disabled-card');
                 });
@@ -159,7 +167,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Remove disabled state when under limit or not a limited platform
-        [tenantCards, stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+        [tenantCards, stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards].forEach(cards => {
             cards.forEach(card => {
                 card.classList.remove('disabled-card');
             });
@@ -287,6 +295,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedTriggers = [];
                 selectedFreezes = [];
                 selectedCommunityTemplates = [];
+                selectedProjectGroups = [];
 
                 // Remove selected class from all cards
                 tenantCards.forEach(c => c.classList.remove('selected'));
@@ -297,6 +306,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 triggerCards.forEach(c => c.classList.remove('selected'));
                 freezeCards.forEach(c => c.classList.remove('selected'));
                 communityTemplateCards.forEach(c => c.classList.remove('selected'));
+                projectGroupCards.forEach(c => c.classList.remove('selected'));
 
                 // Clear localStorage
                 localStorage.removeItem('easymode.selectedTenant');
@@ -307,6 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.removeItem('easymode.selectedTriggers');
                 localStorage.removeItem('easymode.selectedFreezes');
                 localStorage.removeItem('easymode.selectedCommunityTemplates');
+                localStorage.removeItem('easymode.selectedProjectGroups');
             }
 
 
@@ -340,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.removeItem('easymode.selectedTenant');
 
                 // Re-enable all cards below tenants row
-                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards].forEach(cards => {
                     cards.forEach(card => {
                         card.classList.remove('disabled-card');
                     });
@@ -358,7 +369,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Save selection to localStorage
                 localStorage.setItem('easymode.selectedTenant', tenant);
 
-
                 // Clear all selections below tenants row
                 selectedSteps = [];
                 selectedRunbooks = [];
@@ -367,6 +377,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 selectedTriggers = [];
                 selectedFreezes = [];
                 selectedCommunityTemplates = [];
+                selectedProjectGroups = [];
 
                 // Clear localStorage for items below tenants row
                 localStorage.removeItem('easymode.selectedSteps');
@@ -376,9 +387,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.removeItem('easymode.selectedTriggers');
                 localStorage.removeItem('easymode.selectedFreezes');
                 localStorage.removeItem('easymode.selectedCommunityTemplates');
+                localStorage.removeItem('easymode.selectedProjectGroups');
 
                 // Remove selected class from all cards below tenants row
-                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards].forEach(cards => {
+                [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards].forEach(cards => {
                     cards.forEach(card => {
                         card.classList.remove('selected');
                         card.classList.add('disabled-card');
@@ -625,6 +637,39 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle project group card selection (multiple selection allowed)
+    projectGroupCards.forEach(card => {
+        card.addEventListener('click', function() {
+            // Don't allow clicks on disabled cards
+            if (this.classList.contains('disabled-card')) {
+                return;
+            }
+
+            const projectgroup = this.getAttribute('data-projectgroup');
+
+            // Toggle selected state
+            if (this.classList.contains('selected')) {
+                // Deselect
+                this.classList.remove('selected');
+                selectedProjectGroups = selectedProjectGroups.filter(pg => pg !== projectgroup);
+            } else {
+
+                // Select
+                this.classList.add('selected');
+                selectedProjectGroups.push(projectgroup);
+            }
+
+            // Update disabled states
+            updateCardDisabledStates();
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            localStorage.setItem('easymode.selectedProjectGroups', JSON.stringify(selectedProjectGroups));
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -734,6 +779,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // Add project group instructions if selected
+        if (selectedProjectGroups.length > 0) {
+            selectedProjectGroups.forEach(projectgroup => {
+                if (projectGroupInstructions[projectgroup]) {
+                    if (prompt) {
+                        prompt += '\n' + projectGroupInstructions[projectgroup];
+                    } else {
+                        prompt = projectGroupInstructions[projectgroup];
+                    }
+                }
+            });
+        }
+
         // If any placeholder step is selected, append instruction to retain previous steps
         if (selectedSteps.length > 0) {
             if (prompt) {
@@ -793,6 +851,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedTriggers = localStorage.getItem('easymode.selectedTriggers');
     const savedFreezes = localStorage.getItem('easymode.selectedFreezes');
     const savedCommunityTemplates = localStorage.getItem('easymode.selectedCommunityTemplates');
+    const savedProjectGroups = localStorage.getItem('easymode.selectedProjectGroups');
 
     // Restore platform selection or default to kubernetes
     if (savedPlatform) {
@@ -894,6 +953,7 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.removeItem('easymode.selectedTriggers');
         localStorage.removeItem('easymode.selectedFreezes');
         localStorage.removeItem('easymode.selectedCommunityTemplates');
+        localStorage.removeItem('easymode.selectedProjectGroups');
     } else {
         // Restore other selections (with normalization)
         // Track total selections to respect global limits for limited platforms
@@ -942,7 +1002,8 @@ document.addEventListener('DOMContentLoaded', function() {
         totalRestored += normalizeArraySelections(savedReleaseNotes, '[data-releasenote="ITEM"]', 'easymode.selectedReleaseNotes', totalRestored);
         totalRestored += normalizeArraySelections(savedFreezes, '[data-freeze="ITEM"]', 'easymode.selectedFreezes', totalRestored);
         totalRestored += normalizeArraySelections(savedCommunityTemplates, '[data-communitytemplate="ITEM"]', 'easymode.selectedCommunityTemplates', totalRestored);
-        
+        totalRestored += normalizeArraySelections(savedProjectGroups, '[data-projectgroup="ITEM"]', 'easymode.selectedProjectGroups', totalRestored);
+
         // Special handling for triggers (some may be disabled based on platform)
         if (savedTriggers) {
             try {
