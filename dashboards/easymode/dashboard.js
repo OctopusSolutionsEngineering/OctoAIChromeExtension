@@ -992,6 +992,12 @@ function displayResponse(result, serverUrl) {
 
     mainContent.innerHTML = responseHtml;
 
+    // Set a timeout to return to main page after 4 minutes (240000 ms)
+    const approvalTimeout = setTimeout(() => {
+        console.log('Approval screen timeout - returning to main page');
+        location.reload();
+    }, 240000);
+
     // Add event listeners for Approve and Reject buttons
     const approveBtn = document.getElementById('approveBtn');
     const rejectBtn = document.getElementById('rejectBtn');
@@ -1000,6 +1006,8 @@ function displayResponse(result, serverUrl) {
     if (approveBtn) {
         approveBtn.addEventListener('click', function() {
             console.log('Approve button clicked');
+            // Clear the timeout since user has taken action
+            clearTimeout(approvalTimeout);
 
             // Check if we have a confirmation ID
             if (result.id && serverUrl) {
@@ -1024,6 +1032,8 @@ function displayResponse(result, serverUrl) {
     if (rejectBtn) {
         rejectBtn.addEventListener('click', function() {
             console.log('Reject button clicked');
+            // Clear the timeout since user has taken action
+            clearTimeout(approvalTimeout);
             // Reload the page to display the main page again
             location.reload();
         });
@@ -1032,6 +1042,8 @@ function displayResponse(result, serverUrl) {
     if (reloadBtn) {
         reloadBtn.addEventListener('click', function() {
             console.log('Reload button clicked');
+            // Clear the timeout since user has taken action
+            clearTimeout(approvalTimeout);
             // Reload the page to display the main page again
             location.reload();
         });
