@@ -719,8 +719,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // Check if this is a complex prompt (more than 5 items selected)
+        const totalItems = getTotalSelectedItems();
+        const isComplexPrompt = totalItems > 5;
+
         // Step 1: Clear the page and show a loading widget
-        clearPageAndShowLoading();
+        clearPageAndShowLoading(isComplexPrompt);
 
         // Step 2: Call dashboardGetConfig from api.js
         dashboardGetConfig(function(config) {
@@ -907,13 +911,17 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Helper function to clear the page and show loading widget
-function clearPageAndShowLoading() {
+function clearPageAndShowLoading(isComplexPrompt = false) {
     const mainContent = document.querySelector('.main-content');
     if (mainContent) {
+        const loadingMessage = isComplexPrompt
+            ? 'Processing your complex request. This can take 6 minutes or more, as the AI is generating many Octopus resources...'
+            : 'Processing your request. This can take a few minutes, as the AI is generating many Octopus resources...';
+
         mainContent.innerHTML = `
             <div class="loading-container">
                 <div class="loading-spinner"></div>
-                <p class="loading-text">Processing your request. This can take a few minutes, as the AI is generating many Octopus resources...</p>
+                <p class="loading-text">${loadingMessage}</p>
             </div>
         `;
     }
