@@ -193,6 +193,15 @@ function callOctoAIAPIConfirmation(request, sendResponse, count) {
 }
 
 function callOctoAIAPI(request, sendResponse, count) {
+    const startTime = Date.now();
+    let progressInterval = null;
+
+    // Log progress every 10 seconds
+    progressInterval = setInterval(() => {
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+        console.log(`OctoAI API call in progress: ${elapsedSeconds} seconds elapsed`);
+    }, 10000);
+
     buildHeaders(request)
         .then(headers =>
             fetch('https://aiagent.octopus.com/api/form_handler', {
@@ -203,6 +212,10 @@ function callOctoAIAPI(request, sendResponse, count) {
             })
         )
         .then(response => {
+            clearInterval(progressInterval);
+            const totalSeconds = Math.floor((Date.now() - startTime) / 1000);
+            console.log(`OctoAI API call completed in ${totalSeconds} seconds`);
+
             if (!response.ok) {
                 throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
             }
@@ -212,6 +225,10 @@ function callOctoAIAPI(request, sendResponse, count) {
             sendResponse({response: text, prompt: request.prompt})
         })
         .catch(error => {
+            clearInterval(progressInterval);
+            const totalSeconds = Math.floor((Date.now() - startTime) / 1000);
+            console.log(`OctoAI API call failed after ${totalSeconds} seconds:`, error);
+
             // retry once
             if (count >= 1) {
                 sendResponse({error: error})
