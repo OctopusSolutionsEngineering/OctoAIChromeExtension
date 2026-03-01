@@ -920,6 +920,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function processPromptSections(sections, currentIndex) {
         if (currentIndex >= sections.length) {
             console.log('All prompt sections processed successfully');
+            location.reload();
             return;
         }
 
