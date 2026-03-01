@@ -1,6 +1,7 @@
 // Platform prompts configuration
 const platformPrompts = {
     kubernetes: 'Create a Kubernetes project called "My K8s WebApp", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n* Create a token account called "Mock Token".\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".',
+    kubernetesmicroservices: '* Create an Orchestration project called "Kubernetes Microservice Orchestration"',
     argocd: 'Create an Argo CD project called "My Argo CD WebApp"',
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
     scriptstep: 'Create a Script project called "My Script App"',
@@ -870,6 +871,21 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // Check if prompt contains "---" separator on its own line
+        const promptSections = promptText.split(/\n---\n/);
+
+        if (promptSections.length > 1) {
+            console.log(`Found ${promptSections.length} prompt sections separated by "---"`);
+            // Process sections sequentially
+            processPromptSections(promptSections, 0);
+        } else {
+            // Process single prompt as before
+            processSinglePrompt(promptText);
+        }
+    });
+
+    // Function to process a single prompt
+    function processSinglePrompt(promptText) {
         // Check if this is a complex prompt (more than 5 items selected)
         const totalItems = getTotalSelectedItems();
         const isComplexPrompt = totalItems > 5;
@@ -898,7 +914,215 @@ document.addEventListener('DOMContentLoaded', function() {
                     showError('An error occurred: ' + error.message);
                 });
         });
-    });
+    }
+
+    // Function to process multiple prompt sections sequentially
+    function processPromptSections(sections, currentIndex) {
+        if (currentIndex >= sections.length) {
+            console.log('All prompt sections processed successfully');
+            return;
+        }
+
+        const sectionText = sections[currentIndex].trim();
+        if (!sectionText) {
+            // Skip empty sections
+            console.log(`Skipping empty section ${currentIndex + 1}`);
+            processPromptSections(sections, currentIndex + 1);
+            return;
+        }
+
+        console.log(`Processing section ${currentIndex + 1} of ${sections.length}`);
+
+        // Check if this is a complex prompt (more than 5 items selected)
+        const totalItems = getTotalSelectedItems();
+        const isComplexPrompt = totalItems > 5;
+
+        // Clear the page and show loading widget with section info
+        const mainContent = document.querySelector('.main-content');
+        if (mainContent) {
+            const loadingMessage = isComplexPrompt
+                ? `Processing section ${currentIndex + 1} of ${sections.length}. This can take 8 minutes or more, as the AI is generating many Octopus resources...`
+                : `Processing section ${currentIndex + 1} of ${sections.length}. This can take a few minutes, as the AI is generating many Octopus resources...`;
+
+            mainContent.innerHTML = `
+                <div class="loading-container">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text">${loadingMessage}</p>
+                </div>
+            `;
+        }
+
+        // Call dashboardGetConfig from api.js
+        dashboardGetConfig(function(config) {
+            if (!config || !config.lastServerUrl) {
+                showError('No server configuration found. Please launch the dashboard from an Octopus Deploy instance.');
+                return;
+            }
+
+            // Append space name to the prompt
+            const spaceName = config.context.space || 'Unknown';
+            const enhancedPrompt = sectionText + '\n\nThe current space is ' + spaceName;
+
+            // Call dashboardSendPrompt with the enhanced prompt and lastServerUrl
+            dashboardSendPrompt(enhancedPrompt, config.lastServerUrl)
+                .then(function(result) {
+                    // Check if we need to auto-approve or handle manually
+                    handlePromptResult(result, config.lastServerUrl, function() {
+                        // After this section is complete, process the next one
+                        console.log(`Section ${currentIndex + 1} completed, moving to next section`);
+                        processPromptSections(sections, currentIndex + 1);
+                    });
+                })
+                .catch(function(error) {
+                    showError(`An error occurred processing section ${currentIndex + 1}: ` + error.message);
+                });
+        });
+    }
+
+    // Function to handle prompt result (approval or auto-approval)
+    function handlePromptResult(result, serverUrl, onComplete) {
+        if (!result.id) {
+            // No approval required, show result and continue
+            displayFinalResult(result, onComplete);
+            return;
+        }
+
+        // Check if Auto-Apply is enabled
+        const autoApply = localStorage.getItem('easymode.autoApply') || false;
+        if (autoApply) {
+            console.log('Auto-Apply is enabled, automatically approving section...');
+
+            // Automatically approve the prompt
+            dashboardApprovePrompt(result.id, serverUrl)
+                .then(function(approvalResult) {
+                    displayFinalResult(approvalResult, onComplete);
+                })
+                .catch(function(error) {
+                    showError('An error occurred while auto-approving: ' + error.message);
+                });
+        } else {
+            // Show approval screen, but handle continuation differently
+            displayResponseWithContinuation(result, serverUrl, onComplete);
+        }
+    }
+
+    // Function to display final result with optional continuation
+    function displayFinalResult(result, onComplete) {
+        const mainContent = document.querySelector('.main-content');
+        if (!mainContent) return;
+
+        let responseHtml = '';
+
+        // Convert markdown to HTML using marked library
+        const htmlContent = marked.parse(result.response);
+        const sanitizedHtml = DOMPurify.sanitize(htmlContent);
+
+        if (result.state === 'Error') {
+            responseHtml = `
+                <div class="response-container error">
+                    <h2>Error</h2>
+                    <div class="response-text">${sanitizedHtml}</div>
+                    <div class="response-actions">
+                        <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
+                    </div>
+                </div>
+            `;
+            mainContent.innerHTML = responseHtml;
+
+            const reloadBtn = document.getElementById('reloadBtn');
+            if (reloadBtn) {
+                reloadBtn.addEventListener('click', function() {
+                    location.reload();
+                });
+            }
+        } else {
+            responseHtml = `
+                <div class="response-container">
+                    <h2>Section Complete</h2>
+                    <div class="response-text">${sanitizedHtml}</div>
+                    <div class="response-actions">
+                        ${onComplete ? '<button id="continueBtn" class="approve-button">Continue to Next Section</button>' : '<button id="okBtn" class="approve-button">OK</button>'}
+                    </div>
+                </div>
+            `;
+            mainContent.innerHTML = responseHtml;
+
+            if (onComplete) {
+                const continueBtn = document.getElementById('continueBtn');
+                if (continueBtn) {
+                    continueBtn.addEventListener('click', function() {
+                        onComplete();
+                    });
+                }
+
+                // Auto-continue after 2 seconds if callback is provided
+                setTimeout(function() {
+                    console.log('Auto-continuing to next section after 2 seconds');
+                    onComplete();
+                }, 2000);
+            } else {
+                const okBtn = document.getElementById('okBtn');
+                if (okBtn) {
+                    okBtn.addEventListener('click', function() {
+                        location.reload();
+                    });
+                }
+            }
+        }
+    }
+
+    // Function to display response with continuation support
+    function displayResponseWithContinuation(result, serverUrl, onComplete) {
+        const mainContent = document.querySelector('.main-content');
+        if (!mainContent) return;
+
+        let responseHtml = '';
+
+        // Convert markdown to HTML using marked library
+        const htmlContent = marked.parse(result.response);
+        const sanitizedHtml = DOMPurify.sanitize(htmlContent);
+
+        responseHtml = `
+            <div class="response-container">
+                <h2>Response</h2>
+                <div class="response-text">${sanitizedHtml}</div>
+                <div class="response-actions">
+                    <button class="approve-button" id="approveBtn">Approve</button>
+                    <button class="reject-button" id="rejectBtn">Reject</button>
+                </div>
+            </div>
+        `;
+
+        mainContent.innerHTML = responseHtml;
+
+        const approveBtn = document.getElementById('approveBtn');
+        const rejectBtn = document.getElementById('rejectBtn');
+
+        if (approveBtn) {
+            approveBtn.addEventListener('click', function() {
+                console.log('Approve button clicked for section');
+
+                // Show loading state
+                clearPageAndShowLoading();
+
+                // Call dashboardApprovePrompt
+                dashboardApprovePrompt(result.id, serverUrl)
+                    .then(function(approvalResult) {
+                        displayFinalResult(approvalResult, onComplete);
+                    })
+                    .catch(function(error) {
+                        showError('An error occurred while approving: ' + error.message);
+                    });
+            });
+        }
+
+        if (rejectBtn) {
+            rejectBtn.addEventListener('click', function() {
+                console.log('Reject button clicked - stopping multi-section processing');
+                location.reload();
+            });
+        }
+    }
 
     // Load saved selection from localStorage
     const savedPlatform = localStorage.getItem('easymode.selectedPlatform');
