@@ -1,7 +1,7 @@
 // Platform prompts configuration
 const platformPrompts = {
     kubernetes: 'Create a Kubernetes project called "My K8s WebApp", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n* Create a token account called "Mock Token".\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".',
-    kubernetesmicroservices: '* Create an Orchestration project called "Kubernetes Microservice Orchestration"',
+    kubernetesmicroservices: 'Create a Kubernetes project called "K8s WebApp 1", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n* Create a token account called "Mock Token".\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".\n---\nCreate a Kubernetes project called "K8s WebApp 2", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n---\nCreate an Orchestration project called "Kubernetes Microservice Orchestration" managing the projects "K8s WebApp 1" and "K8s WebApp 2".',
     argocd: 'Create an Argo CD project called "My Argo CD WebApp"',
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
     scriptstep: 'Create a Script project called "My Script App"',
@@ -918,8 +918,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Function to process multiple prompt sections sequentially
     function processPromptSections(sections, currentIndex) {
+        console.log(`processPromptSections called with currentIndex=${currentIndex}, sections.length=${sections.length}`);
+
         if (currentIndex >= sections.length) {
             console.log('All prompt sections processed successfully');
+            // Check if Auto-Apply is enabled
+            const autoApplyEnabled = localStorage.getItem('easymode.autoApply') === 'true';
+            if (autoApplyEnabled) {
+                console.log('Auto-Apply enabled: reloading dashboard after all sections complete');
+            } else {
+                console.log('Auto-Apply disabled: reloading dashboard after all sections complete');
+            }
             location.reload();
             return;
         }
@@ -1067,14 +1076,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 const continueBtn = document.getElementById('continueBtn');
                 if (continueBtn) {
                     continueBtn.addEventListener('click', function() {
-                        onComplete();
+                        console.log('Continue button clicked - calling onComplete callback');
+                        if (typeof onComplete === 'function') {
+                            onComplete();
+                        } else {
+                            console.error('onComplete is not a function:', onComplete);
+                            location.reload();
+                        }
                     });
                 }
 
                 // Auto-continue after 2 seconds if callback is provided
                 setTimeout(function() {
                     console.log('Auto-continuing to next section after 2 seconds');
-                    onComplete();
+                    if (typeof onComplete === 'function') {
+                        onComplete();
+                    } else {
+                        console.error('onComplete is not a function in timeout:', onComplete);
+                        location.reload();
+                    }
                 }, 2000);
             } else {
                 const okBtn = document.getElementById('okBtn');
