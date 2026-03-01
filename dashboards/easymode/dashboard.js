@@ -988,8 +988,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Check if Auto-Apply is enabled
-        const autoApply = localStorage.getItem('easymode.autoApply') || false;
-        if (autoApply) {
+        const autoApplyEnabled = localStorage.getItem('easymode.autoApply') === 'true';
+        if (autoApplyEnabled) {
             console.log('Auto-Apply is enabled, automatically approving section...');
 
             // Automatically approve the prompt
@@ -1011,14 +1011,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const mainContent = document.querySelector('.main-content');
         if (!mainContent) return;
 
-        let responseHtml = '';
+        // Check if Auto-Apply is enabled
+        const autoApplyEnabled = localStorage.getItem('easymode.autoApply') === 'true';
 
         // Convert markdown to HTML using marked library
         const htmlContent = marked.parse(result.response);
         const sanitizedHtml = DOMPurify.sanitize(htmlContent);
 
         if (result.state === 'Error') {
-            responseHtml = `
+            // Always show error page
+            const responseHtml = `
                 <div class="response-container error">
                     <h2>Error</h2>
                     <div class="response-text">${sanitizedHtml}</div>
@@ -1035,7 +1037,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     location.reload();
                 });
             }
+        } else if (autoApplyEnabled) {
+            // Auto-Apply is enabled - skip the Section Complete page
+            if (onComplete) {
+                // Multi-section: continue immediately to next section
+                console.log('Auto-Apply enabled: skipping Section Complete page, continuing to next section');
+                onComplete();
+            } else {
+                // Single prompt: reload the dashboard immediately
+                console.log('Auto-Apply enabled: skipping Section Complete page, reloading dashboard');
+                location.reload();
+            }
         } else {
+            // Auto-Apply is disabled - show the Section Complete page
+            let responseHtml = '';
             responseHtml = `
                 <div class="response-container">
                     <h2>Section Complete</h2>
@@ -1394,8 +1409,8 @@ function displayResponse(result, serverUrl) {
     }
 
     // Check if Auto-Apply is enabled
-    const autoApprove = localStorage.getItem('easymode.autoApply') || false;
-    if (autoApprove) {
+    const autoApplyEnabled = localStorage.getItem('easymode.autoApply') === 'true';
+    if (autoApplyEnabled) {
         console.log('Auto-Apply is enabled, automatically approving...');
 
         // Show loading state
@@ -1506,6 +1521,16 @@ function displayResponse(result, serverUrl) {
 
 // Helper function to display the approval response with OK button
 function displayApprovalResponse(result) {
+    // Check if Auto-Apply is enabled
+    const autoApplyEnabled = localStorage.getItem('easymode.autoApply') === 'true';
+
+    // If auto-apply is enabled and no error, skip showing the page and reload immediately
+    if (autoApplyEnabled && result.state !== 'Error') {
+        console.log('Auto-Apply enabled: skipping approval response page, reloading dashboard');
+        location.reload();
+        return;
+    }
+
     const mainContent = document.querySelector('.main-content');
     if (!mainContent) return;
 
