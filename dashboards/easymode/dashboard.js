@@ -5,7 +5,7 @@ const platformPrompts = {
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
     scriptstep: 'Create a Script project called "My Script App"',
     bluegreen: 'Create a Blue/Green deployment project called "My Blue Green App"',
-    azurefunction: 'Create an Azure Function project called "My Azure Function App", and then:\n* Set the value of the "Project.RandomSuffix" variable to a random 10 character alphanumeric string.',
+    azurefunction: 'Create an Azure Function project called "My Azure Function App"',
     azurewebapp: 'Create an Azure Web App project called "My Azure Web App"',
     terraform: 'Create a Terraform project called "My Terraform Infrastructure"',
     tomcat: 'Create a Tomcat project called "My Tomcat WebApp"'
@@ -1102,6 +1102,22 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
+
+    // Auto-Apply checkbox handling
+    const autoApplyCheckbox = document.getElementById('autoApplyCheckbox');
+    if (autoApplyCheckbox) {
+        // Load saved auto-apply state from localStorage
+        const savedAutoApply = localStorage.getItem('easymode.autoApply');
+        if (savedAutoApply === 'true') {
+            autoApplyCheckbox.checked = true;
+        }
+
+        // Save auto-apply state when checkbox changes
+        autoApplyCheckbox.addEventListener('change', function() {
+            localStorage.setItem('easymode.autoApply', this.checked);
+            console.log('Auto-Apply ' + (this.checked ? 'enabled' : 'disabled'));
+        });
+    }
 });
 
 // Helper function to clear the page and show loading widget
@@ -1150,6 +1166,25 @@ function displayResponse(result, serverUrl) {
     if (!result.id) {
         // There is no approval required, so display the response
         displayApprovalResponse(result);
+        return;
+    }
+
+    // Check if Auto-Apply is enabled
+    const autoApprove = localStorage.getItem('easymode.autoApply') || false;
+    if (autoApprove) {
+        console.log('Auto-Apply is enabled, automatically approving...');
+
+        // Show loading state
+        clearPageAndShowLoading();
+
+        // Automatically approve the prompt
+        dashboardApprovePrompt(result.id, serverUrl)
+            .then(function(approvalResult) {
+                displayApprovalResponse(approvalResult);
+            })
+            .catch(function(error) {
+                showError('An error occurred while auto-approving: ' + error.message);
+            });
         return;
     }
 
