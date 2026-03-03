@@ -79,7 +79,7 @@
       "Help me understand what an Octopus project is.",
       "What is the difference between a project and a runbook?",
       "Find unused variables to help improve the maintainability of the project.",
-      "Help me understand what the project steps do.",
+      "Generate a one paragraph summary of the project.",
       "Show me the packages used by the steps."
     ]
   },
@@ -129,6 +129,7 @@
   {
     "name":"Project.Step",
     "prompts" : [
+      "Generate a one paragraph summary of the step.",
       "Help me understand what the step does.",
       "Help me any potential errors in the script step. If the step is not a script step, you must say so.",
       "How do I write an Octopus highlight message in Powershell or Bash to make my task summaries more informative?"
