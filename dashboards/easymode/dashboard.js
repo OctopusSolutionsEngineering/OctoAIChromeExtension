@@ -2,7 +2,8 @@
 const platformPrompts = {
     kubernetes: 'Create a Kubernetes project called "My K8s WebApp", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n* Create a token account called "Mock Token".\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".',
     kubernetesmicroservices: 'Create a Kubernetes project called "K8s Microservice 1", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n* Create a token account called "Mock Token".\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".\n---\nCreate a Kubernetes project called "K8s Microservice 2", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n---\nCreate an Orchestration project called "Kubernetes Microservice Orchestration" managing the projects "K8s Microservice 1" and "K8s Microservice 2".',
-    argocd: 'Create an Argo CD Tag Update project called "My Argo CD WebApp" with the slug "argo-cd-octopub"\n\n---\n\nCreate a Git Connection called "Mock" with a random username and in the repository restrictions add the allowed repository "https://mockgit.octopus.com/*"',
+    argocd: 'Create an Argo CD Tag Update project called "My Argo CD Tag Update" with the slug "argo-cd-octopub"\n\n---\n\nCreate a Git Connection called "Mock" with a random username and in the repository restrictions add the allowed repository "https://mockgit.octopus.com/*"',
+    argocdmanifest: 'Create an Argo CD Manifest Update project called "My Argo CD Manifest Update" with the slug "argo-cd-octopub-manifest"\n\n---\n\nCreate a Git Connection called "Mock" with a random username and in the repository restrictions add the allowed repository "https://mockgit.octopus.com/*"',
     awslambda: 'Create an AWS Lambda project called "My AWS Lambda App"',
     scriptstep: 'Create a Script project called "My Script App"',
     bluegreen: 'Create a Blue/Green deployment project called "My Blue Green App"',
@@ -219,7 +220,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Helper function to disable/enable specific step cards based on platform
     function updateStepCardStates() {
-        const platformsDisablingManualIntervention = ['awslambda', 'azurewebapp', 'azurefunction', 'kubernetes', 'argocd', 'tomcat'];
+        const platformsDisablingManualIntervention = ['awslambda', 'azurewebapp', 'azurefunction', 'kubernetes', 'argocd', 'argocdmanifest', 'tomcat'];
 
         stepCards.forEach(card => {
             const step = card.getAttribute('data-step');
@@ -236,7 +237,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } else if (step === 'manualintervention' && !platformsDisablingManualIntervention.includes(selectedPlatform)) {
                 // Only re-enable if no other disabling conditions apply
-                const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
+                const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda', 'argocdmanifest'];
                 const shouldBeDisabled = selectedPlatform === 'awslambda' || // AWS Lambda disables all items
                     selectedTenant || // Tenant selected disables all items below
                     (limitedPlatforms.includes(selectedPlatform) && getTotalSelectedItems() >= 1 && !card.classList.contains('selected')); // Limited platform with item limit reached
@@ -250,8 +251,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Helper function to disable/enable specific trigger cards based on platform
     function updateTriggerCardStates() {
-        const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen', 'terraform'];
-        const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
+        const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen', 'terraform', 'argocdmanifest'];
+        const limitedPlatforms = ['kubernetes', 'argocd', 'argocdmanifest', 'awslambda'];
 
         triggerCards.forEach(card => {
             const trigger = card.getAttribute('data-trigger');
@@ -1188,7 +1189,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Define platform-based selection rules
-    const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda'];
+    const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda', 'argocdmanifest'];
     const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen'];
     const isAwsLambda = savedPlatform === 'awslambda';
     const isLimitedPlatform = limitedPlatforms.includes(savedPlatform);
@@ -1281,7 +1282,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let totalRestored = 0;
         
         // Special handling for steps (some may be disabled based on platform)
-        const platformsDisablingManualIntervention = ['awslambda', 'azurewebapp', 'azurefunction', 'kubernetes', 'argocd', 'tomcat'];
+        const platformsDisablingManualIntervention = ['awslambda', 'azurewebapp', 'azurefunction', 'kubernetes', 'argocd', 'argocdmanifest', 'tomcat'];
         if (savedSteps) {
             try {
                 const steps = JSON.parse(savedSteps);
