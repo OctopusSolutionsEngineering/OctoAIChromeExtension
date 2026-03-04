@@ -1,6 +1,6 @@
 // Platform prompts configuration
 const platformPrompts = {
-    kubernetes: '* Create a token account called "Mock Token".\\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".\'\n\n---\n\nCreate a Kubernetes project called "My K8s WebApp", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).',
+    kubernetes: '* Create a token account called "Mock Token".\\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".\n\n---\n\nCreate a Kubernetes project called "My K8s WebApp", and then:\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).',
     kubernetesmicroservices: 'Create a Kubernetes project called "K8s Microservice 1", and then:\n* Place the project in the "Orchestrator" project group.\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n\n---\n\n* Create a token account called "Mock Token".\n* Create a feed called "Docker Hub" pointing to "https://index.docker.io" using anonymous authentication.\n* Add a target called "Mock K8s", with the tag "Kubernetes", using the token account, pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu".\n\n---\n\nCreate a Kubernetes project called "K8s Microservice 2", and then:\n* Place the project in the "Orchestrator" project group.\n* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).\n\n---\n\nCreate an Orchestration project called "Kubernetes Microservice Orchestration" managing the projects "K8s Microservice 1" and "K8s Microservice 2".',
     argocd: 'Create an Argo CD Tag Update project called "My Argo CD Tag Update" with the slug "argo-cd-octopub"\n\n---\n\nCreate a Git Connection called "Mock" with a random username and in the repository restrictions add the allowed repository "https://mockgit.octopus.com/*"',
     argocdmanifest: 'Create an Argo CD Manifest Update project called "My Argo CD Manifest Update" with the slug "argo-cd-octopub-manifest"\n\n---\n\nCreate a Git Connection called "Mock" with a random username and in the repository restrictions add the allowed repository "https://mockgit.octopus.com/*"',
@@ -150,6 +150,33 @@ document.addEventListener('DOMContentLoaded', function() {
         const complexityWarning = document.getElementById('complexity-warning');
         const textarea = document.getElementById('promptText');
 
+        // If kubernetesmicroservices platform is selected, disable all items
+        if (selectedPlatform === 'kubernetesmicroservices') {
+            [tenantCards, stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
+                cards.forEach(card => {
+                    card.classList.add('disabled-card');
+                });
+            });
+
+            // Hide warnings
+            if (warningElement) {
+                warningElement.style.display = 'none';
+            }
+            if (awsLambdaWarning) {
+                awsLambdaWarning.style.display = 'none';
+            }
+            if (complexityWarning) {
+                complexityWarning.style.display = 'none';
+            }
+
+            // Remove warning-displayed class to restore normal textarea height
+            if (textarea) {
+                textarea.classList.remove('warning-displayed');
+            }
+
+            return; // Exit early since kubernetesmicroservices is selected
+        }
+
         // If a tenant is selected, disable all items below the tenant row
         if (selectedTenant) {
             [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
@@ -238,7 +265,8 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (step === 'manualintervention' && !platformsDisablingManualIntervention.includes(selectedPlatform)) {
                 // Only re-enable if no other disabling conditions apply
                 const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda', 'argocdmanifest'];
-                const shouldBeDisabled = selectedPlatform === 'awslambda' || // AWS Lambda disables all items
+                const shouldBeDisabled = selectedPlatform === 'awslambda' ||
+                    selectedPlatform === 'kubernetesmicroservices' || // Kubernetes Microservices disables all items
                     selectedTenant || // Tenant selected disables all items below
                     (limitedPlatforms.includes(selectedPlatform) && getTotalSelectedItems() >= 1 && !card.classList.contains('selected')); // Limited platform with item limit reached
 
@@ -269,7 +297,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } else if (trigger === 'createrelease' && !platformsDisablingCreateRelease.includes(selectedPlatform)) {
                 // Only re-enable if no other disabling conditions apply
-                const shouldBeDisabled = selectedPlatform === 'awslambda' || // AWS Lambda disables all items
+                const shouldBeDisabled = selectedPlatform === 'awslambda' ||
+                    selectedPlatform === 'kubernetesmicroservices' || // Kubernetes Microservices disables all items
                     selectedTenant || // Tenant selected disables all items below
                     (limitedPlatforms.includes(selectedPlatform) && getTotalSelectedItems() >= 1 && !card.classList.contains('selected')); // Limited platform with item limit reached
 
@@ -294,8 +323,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update selected platform
             selectedPlatform = platform;
 
-            // If AWS Lambda is selected, clear all selections (it doesn't allow any additional selections)
-            if (selectedPlatform === 'awslambda') {
+            // If AWS Lambda or Kubernetes Microservices is selected, clear all selections (they don't allow any additional selections)
+            if (selectedPlatform === 'awslambda' || selectedPlatform === 'kubernetesmicroservices') {
                 // Clear all selections
                 selectedTenant = null;
                 selectedSteps = [];
@@ -1192,6 +1221,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const limitedPlatforms = ['kubernetes', 'argocd', 'awslambda', 'argocdmanifest'];
     const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen'];
     const isAwsLambda = savedPlatform === 'awslambda';
+    const isKubernetesMicroservices = savedPlatform === 'kubernetesmicroservices';
     const isLimitedPlatform = limitedPlatforms.includes(savedPlatform);
 
     // Helper function to validate and click on a card if it's allowed
@@ -1216,8 +1246,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const items = JSON.parse(savedData);
             const validItems = [];
             
-            // For AWS Lambda, clear all selections as nothing is allowed
-            if (isAwsLambda) {
+            // For AWS Lambda or Kubernetes Microservices, clear all selections as nothing is allowed
+            if (isAwsLambda || isKubernetesMicroservices) {
                 localStorage.removeItem(storageKey);
                 return 0;
             }
@@ -1254,8 +1284,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Restore tenant selection (if allowed)
     if (savedTenant) {
-        // AWS Lambda doesn't allow tenant selection
-        if (isAwsLambda) {
+        // AWS Lambda and Kubernetes Microservices don't allow tenant selection
+        if (isAwsLambda || isKubernetesMicroservices) {
             localStorage.removeItem('easymode.selectedTenant');
         } else {
             const tenantCard = document.querySelector(`[data-tenant="${savedTenant}"]`);
