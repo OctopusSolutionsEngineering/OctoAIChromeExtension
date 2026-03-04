@@ -69,7 +69,7 @@ chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
 
         if (request.action === 'prompt') {
-            callOctoAIAPI(request, sendResponse, 0)
+            callOctoAIAPI(request, sendResponse)
         } else if (request.action === 'confirmation') {
             callOctoAIAPIConfirmation(request, sendResponse, 0)
         } else if (request.action === 'feedback') {
@@ -90,6 +90,10 @@ chrome.runtime.onMessage.addListener(
         } else if (request.action === 'showDashboard') {
             showDashboard(request);
             sendResponse({ok: true});
+        } else {
+            // Unknown action - send error response to prevent channel from closing
+            sendResponse({error: `Unknown action: ${request.action}`});
+            return false;
         }
 
         return true;
@@ -192,7 +196,7 @@ function callOctoAIAPIConfirmation(request, sendResponse, count) {
         });
 }
 
-function callOctoAIAPI(request, sendResponse, count) {
+function callOctoAIAPI(request, sendResponse) {
     const startTime = Date.now();
     let progressInterval = null;
 
@@ -229,37 +233,8 @@ function callOctoAIAPI(request, sendResponse, count) {
             const totalSeconds = Math.floor((Date.now() - startTime) / 1000);
             console.log(`OctoAI API call failed after ${totalSeconds} seconds:`, error);
 
-            // retry once
-            if (count >= 1) {
-                sendResponse({error: error})
-            } else {
-                // Background scripts have a hard limit beyond AbortSignal.timeout
-                // What has likely happened here is the prompt is taking too long to complete
-                // The results of long-running prompts are often cached though, so retrying may yield a result
-                // We sleep a little bit before retrying to give the system a chance to complete the original request
-                const retryDelayMs = 240000; // 4 minutes
-                const countdownStartTime = Date.now();
-
-                console.log(`Waiting ${retryDelayMs / 1000} seconds before retrying...`);
-
-                // Log countdown every 10 seconds
-                const countdownInterval = setInterval(() => {
-                    const elapsedMs = Date.now() - countdownStartTime;
-                    const remainingSeconds = Math.floor((retryDelayMs - elapsedMs) / 1000);
-
-                    if (remainingSeconds > 0) {
-                        console.log(`Retrying in ${remainingSeconds} seconds...`);
-                    } else {
-                        clearInterval(countdownInterval);
-                    }
-                }, 10000);
-
-                setTimeout(() => {
-                    clearInterval(countdownInterval);
-                    console.log('Retrying API call now...');
-                    callOctoAIAPI(request, sendResponse, count + 1);
-                }, retryDelayMs);
-            }
+            // Always send a response to prevent message channel from closing
+            sendResponse({error: error, prompt: request.prompt});
         });
 }
 
