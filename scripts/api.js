@@ -95,13 +95,13 @@ async function callOctoAi(systemPrompt, prompt) {
 
         const result = await processResponse(prompt, systemPrompt, responses);
 
-        displayMarkdownResponseV2(result, getColors());
-
         if (result.type === "confirmation") {
             displayConfirmation(responses);
         } else {
             showExamples();
         }
+
+        displayMarkdownResponseV2(result, getColors());
     } catch (error) {
         Logger.error(error.message);
         throw error;
@@ -176,6 +176,7 @@ function displayConfirmation(responses) {
 
 async function processResponse(prompt, systemPrompt, responses) {
     if (responses.length === 1 && !responses[0].error && isActionSseResponse(responses[0].response)) {
+        const titleAndMessage = getConfirmationTitleAndMessage(responses[0].response);
         return {
             type: "confirmation",
             prompt: prompt,
@@ -235,7 +236,7 @@ async function sendPrompts(prompts, creds, serverUrl) {
             serverUrl: serverUrl
         }));
     }
-    return results;
+    return Promise.all(results);
 }
 
 async function approveConfirmation(id) {
