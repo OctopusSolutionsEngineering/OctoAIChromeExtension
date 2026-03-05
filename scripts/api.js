@@ -93,108 +93,131 @@ async function callOctoAi(systemPrompt, prompt) {
         // The order of the prompts is important, so we keep the original order.
         const responses = await sendPrompts(enrichedPrompts, creds, serverUrl);
 
-        if (responses.length === 1 && !responses[0].error && isActionSseResponse(responses[0].response)) {
-            // This is a confirmation prompt rather than an answer
-            showConfirmation();
-            hideForm();
-            const titleAndMessage = getConfirmationTitleAndMessage(responses[0].response);
+        const result = await processResponse(prompt, systemPrompt, responses);
 
-            // 4 minutes to approve
-            const timeout = setTimeout(function() {
-                hideConfirmation();
-                hideResponse();
-                showForm();
-                showExamples();
-                showPrompt();
-                enableSubmitButton();
-            }, 4 * 60 * 1000)
+        displayMarkdownResponseV2(result, getColors());
 
-            document.getElementById("octo-ai-approve").onclick = function() {
-                clearTimeout(timeout);
-
-                hideResponse();
-                hideConfirmation();
-                disableSubmitButton();
-                showForm();
-
-                const thinkingAnimation = showThinking();
-
-                getProjectCount()
-                    .then(projectCount => {
-                        approveConfirmation(timeout, titleAndMessage.id)
-                            .then(response => {
-                                if (response.error) {
-                                    displayMarkdownResponseV2(
-                                        {
-                                            prompt: "",
-                                            systemPrompt: "",
-                                            response: "There was an error processing your request. You may try the prompt again."
-                                        },
-                                        getColors());
-                                } else {
-                                    displayMarkdownResponseV2(
-                                    {
-                                        prompt: response.prompt,
-                                        systemPrompt: "",
-                                        response: convertFromSseResponse(response.response)
-                                    },
-                                    getColors());
-                                }
-                            })
-                            .finally(() => {
-                                clearInterval(thinkingAnimation);
-                                showExamples();
-                                showPrompt();
-                                enableSubmitButton();
-
-                                getProjectCount().then(newProjectCount => {
-                                    if (projectCount === 0 && newProjectCount > 0) {
-                                        getSpaceId().then(spaceId => {
-                                            window.location.hash = "#/" + spaceId;
-                                        })
-                                    }
-                                });
-                            })
-                    })
-            }
-
-            return {
-                prompt: prompt,
-                systemPrompt: systemPrompt,
-                response: titleAndMessage.title + "\n\n" + titleAndMessage.message
-            };
-        } else if (responses.length > 1) {
-            const errors = responses
-                .filter(response => response.error)
-                .map(response => response.prompt);
-
-            if (errors.length !== 0) {
-                return {
-                    prompt: prompt,
-                    systemPrompt: systemPrompt,
-                    response: "The following prompts were not processed successfully. You may try the prompts again: " + errors.join("\n\n")
-                };
-            }
-
-            return {prompt: prompt, systemPrompt: systemPrompt, response: "All the prompts were processed successfully."};
+        if (result.type === "confirmation") {
+            displayConfirmation(responses);
+        } else {
+            showExamples();
         }
-
-        showExamples();
-
-        if (responses[0].error) {
-
-            return {
-                prompt: prompt,
-                systemPrompt: systemPrompt,
-                response: "There was an error processing your request. You may try the prompt again."
-            };
-        }
-
-        return {prompt: prompt, systemPrompt: systemPrompt, response: convertFromSseResponse(responses[0].response)};
     } catch (error) {
         Logger.error(error.message);
         throw error;
     }
+}
+
+function displayConfirmation(responses) {
+    // This is a confirmation prompt rather than an answer
+    showConfirmation();
+    hideForm();
+    const titleAndMessage = getConfirmationTitleAndMessage(responses[0].response);
+
+    // 4 minutes to approve
+    const timeout = setTimeout(function() {
+        hideConfirmation();
+        hideResponse();
+        showForm();
+        showExamples();
+        showPrompt();
+        enableSubmitButton();
+    }, 4 * 60 * 1000)
+
+    document.getElementById("octo-ai-approve").onclick = function() {
+        clearTimeout(timeout);
+
+        hideResponse();
+        hideConfirmation();
+        disableSubmitButton();
+        showForm();
+
+        const thinkingAnimation = showThinking();
+
+        getProjectCount()
+            .then(projectCount => {
+                approveConfirmation(timeout, titleAndMessage.id)
+                    .then(response => {
+                        if (response.error) {
+                            displayMarkdownResponseV2(
+                                {
+                                    prompt: "",
+                                    systemPrompt: "",
+                                    response: "There was an error processing your request. You may try the prompt again."
+                                },
+                                getColors());
+                        } else {
+                            displayMarkdownResponseV2(
+                            {
+                                prompt: response.prompt,
+                                systemPrompt: "",
+                                response: convertFromSseResponse(response.response)
+                            },
+                            getColors());
+                        }
+                    })
+                    .finally(() => {
+                        clearInterval(thinkingAnimation);
+                        showExamples();
+                        showPrompt();
+                        enableSubmitButton();
+
+                        getProjectCount().then(newProjectCount => {
+                            if (projectCount === 0 && newProjectCount > 0) {
+                                getSpaceId().then(spaceId => {
+                                    window.location.hash = "#/" + spaceId;
+                                })
+                            }
+                        });
+                    })
+            });
+    }
+}
+
+async function processResponse(prompt, systemPrompt, responses) {
+    if (responses.length === 1 && !responses[0].error && isActionSseResponse(responses[0].response)) {
+        return {
+            type: "confirmation",
+            prompt: prompt,
+            systemPrompt: systemPrompt,
+            response: titleAndMessage.title + "\n\n" + titleAndMessage.message
+        };
+    } else if (responses.length > 1) {
+        const errors = responses
+            .filter(response => response.error)
+            .map(response => response.prompt);
+
+        if (errors.length !== 0) {
+            return {
+                type: "error",
+                prompt: prompt,
+                systemPrompt: systemPrompt,
+                response: "The following prompts were not processed successfully. You may try the prompts again: " + errors.join("\n\n")
+            };
+        }
+
+        return {
+            type: "complete",
+            prompt: prompt,
+            systemPrompt: systemPrompt,
+            response: "All the prompts were processed successfully."};
+    }
+
+    if (responses[0].error) {
+
+        return {
+            type: "error",
+            prompt: prompt,
+            systemPrompt: systemPrompt,
+            response: "There was an error processing your request. You may try the prompt again."
+        };
+    }
+
+    return {
+        type: "complete",
+        prompt: prompt,
+        systemPrompt: systemPrompt,
+        response: convertFromSseResponse(responses[0].response)};
 }
 
 async function sendPrompts(prompts, creds, serverUrl) {

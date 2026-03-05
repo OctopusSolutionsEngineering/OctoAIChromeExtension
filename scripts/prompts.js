@@ -274,11 +274,7 @@ function submitPrompt(systemPrompt, originalPrompt) {
     addFeedbackListener(feedback, thumbsUp, thumbsDown, originalPrompt);
 
     callOctoAi(systemPrompt, originalPrompt)
-        .then(result => {
-            displayMarkdownResponseV2(result, getColors());
-        })
-        .catch(e =>
-            Logger.error(e))
+        .catch(e => Logger.error(e))
         .finally(() =>
             {
                 clearInterval(thinkingAnimation)
