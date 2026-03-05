@@ -110,7 +110,52 @@ async function callOctoAi(systemPrompt, prompt) {
             }, 4 * 60 * 1000)
 
             document.getElementById("octo-ai-approve").onclick = function() {
-                approveConfirmation(timeout, titleAndMessage.id);
+                clearTimeout(timeout);
+
+                hideResponse();
+                hideConfirmation();
+                disableSubmitButton();
+                showForm();
+
+                const thinkingAnimation = showThinking();
+
+                getProjectCount()
+                    .then(projectCount => {
+                        approveConfirmation(timeout, titleAndMessage.id)
+                            .then(response => {
+                                if (response.error) {
+                                    displayMarkdownResponseV2(
+                                        {
+                                            prompt: "",
+                                            systemPrompt: "",
+                                            response: "There was an error processing your request. You may try the prompt again."
+                                        },
+                                        getColors());
+                                } else {
+                                    displayMarkdownResponseV2(
+                                    {
+                                        prompt: response.prompt,
+                                        systemPrompt: "",
+                                        response: convertFromSseResponse(response.response)
+                                    },
+                                    getColors());
+                                }
+                            })
+                            .finally(() => {
+                                clearInterval(thinkingAnimation);
+                                showExamples();
+                                showPrompt();
+                                enableSubmitButton();
+
+                                getProjectCount().then(newProjectCount => {
+                                    if (projectCount === 0 && newProjectCount > 0) {
+                                        getSpaceId().then(spaceId => {
+                                            window.location.hash = "#/" + spaceId;
+                                        })
+                                    }
+                                });
+                            })
+                    })
             }
 
             return {
@@ -170,64 +215,20 @@ async function sendPrompts(prompts, creds, serverUrl) {
     return results;
 }
 
-async function approveConfirmation(timeout, id) {
-    const projectCount = await getProjectCount();
-
-    clearTimeout(timeout);
-    hideResponse();
-    hideConfirmation();
-    disableSubmitButton();
-    showForm();
-
-    const thinkingAnimation = showThinking();
-
+async function approveConfirmation(id) {
     const creds = await createOctopusApiKey();
 
     // Get the server URL from the current location
     const serverUrl = window.location.origin;
 
-    try {
-        const response = await chrome.runtime
-            .sendMessage({
-                action: "confirmation",
-                id: id,
-                accessToken: creds.accessToken,
-                apiKey: creds.apiKey,
-                serverUrl: serverUrl
-            });
-
-        if (response.error) {
-            displayMarkdownResponseV2(
-                {
-                    prompt: "",
-                    systemPrompt: "",
-                    response: "There was an error processing your request. You may try the prompt again."
-                },
-                getColors());
-            return;
-        }
-
-        displayMarkdownResponseV2(
-            {
-                prompt: response.prompt,
-                systemPrompt: "",
-                response: convertFromSseResponse(response.response)
-            },
-            getColors());
-    }
-    finally {
-        clearInterval(thinkingAnimation);
-        showExamples();
-        showPrompt();
-        enableSubmitButton();
-
-        // We need to refresh the page so the new project appears.
-        const newProjectCount = await getProjectCount();
-
-        if (projectCount === 0 && newProjectCount > 0) {
-            window.location.hash = "#/" + await getSpaceId();
-        }
-    }
+    return await chrome.runtime
+        .sendMessage({
+            action: "confirmation",
+            id: id,
+            accessToken: creds.accessToken,
+            apiKey: creds.apiKey,
+            serverUrl: serverUrl
+        });
 }
 
 /**
