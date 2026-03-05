@@ -96,7 +96,7 @@ async function callOctoAi(systemPrompt, prompt) {
         const result = await processResponse(prompt, systemPrompt, responses);
 
         if (result.type === "confirmation") {
-            displayConfirmation(responses);
+            displayConfirmation(responses, approvedChanges);
         } else {
             showExamples();
         }
@@ -108,7 +108,7 @@ async function callOctoAi(systemPrompt, prompt) {
     }
 }
 
-function displayConfirmation(responses) {
+function displayConfirmation(responses, approveCallback) {
     // This is a confirmation prompt rather than an answer
     showConfirmation();
     hideForm();
@@ -137,40 +137,46 @@ function displayConfirmation(responses) {
         getProjectCount()
             .then(projectCount =>
                 approveConfirmation(titleAndMessage.id)
-                    .then(response => {
-                        if (response.error) {
-                            displayMarkdownResponseV2(
-                                {
-                                    prompt: "",
-                                    systemPrompt: "",
-                                    response: "There was an error processing your request. You may try the prompt again."
-                                },
-                                getColors());
-                        } else {
-                            displayMarkdownResponseV2(
-                            {
-                                prompt: response.prompt,
-                                systemPrompt: "",
-                                response: convertFromSseResponse(response.response)
-                            },
-                            getColors());
-                        }
-                    })
+                    .then(result => approveCallback(result, projectCount))
                     .finally(() => {
                         clearInterval(thinkingAnimation);
-                        showExamples();
-                        showPrompt();
-                        enableSubmitButton();
-
-                        getProjectCount().then(newProjectCount => {
-                            if (projectCount === 0 && newProjectCount > 0) {
-                                getSpaceId().then(spaceId => {
-                                    window.location.hash = "#/" + spaceId;
-                                })
-                            }
-                        });
                     })
             );
+    }
+}
+
+function approvedChanges(response, projectCount) {
+    try {
+        if (response.error) {
+            displayMarkdownResponseV2(
+                {
+                    prompt: "",
+                    systemPrompt: "",
+                    response: "There was an error processing your request. You may try the prompt again."
+                },
+                getColors());
+        } else {
+            displayMarkdownResponseV2(
+                {
+                    prompt: response.prompt,
+                    systemPrompt: "",
+                    response: convertFromSseResponse(response.response)
+                },
+                getColors());
+        }
+    } finally {
+
+        showExamples();
+        showPrompt();
+        enableSubmitButton();
+
+        getProjectCount().then(newProjectCount => {
+            if (projectCount === 0 && newProjectCount > 0) {
+                getSpaceId().then(spaceId => {
+                    window.location.hash = "#/" + spaceId;
+                })
+            }
+        });
     }
 }
 
