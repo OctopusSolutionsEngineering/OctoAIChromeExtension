@@ -135,8 +135,8 @@ function displayConfirmation(responses) {
         const thinkingAnimation = showThinking();
 
         getProjectCount()
-            .then(projectCount => {
-                approveConfirmation(timeout, titleAndMessage.id)
+            .then(projectCount =>
+                approveConfirmation(titleAndMessage.id)
                     .then(response => {
                         if (response.error) {
                             displayMarkdownResponseV2(
@@ -170,7 +170,7 @@ function displayConfirmation(responses) {
                             }
                         });
                     })
-            });
+            );
     }
 }
 
