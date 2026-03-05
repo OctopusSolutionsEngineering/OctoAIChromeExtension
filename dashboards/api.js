@@ -40,38 +40,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             .catch(error => {
                 console.log("Error approving confirmation in dashboard: ", error);
 
-                // Retry once after 4 minutes on failure
-                if (retryCount === 0) {
-                    const retryDelayMs = 240000; // 4 minutes
-                    console.log(`Approval request failed. Waiting ${retryDelayMs / 1000} seconds before retrying...`);
-
-                    // Log countdown every 10 seconds
-                    const countdownStartTime = Date.now();
-                    const countdownInterval = setInterval(() => {
-                        const elapsedMs = Date.now() - countdownStartTime;
-                        const remainingSeconds = Math.floor((retryDelayMs - elapsedMs) / 1000);
-
-                        if (remainingSeconds > 0) {
-                            console.log(`Retrying approval in ${remainingSeconds} seconds...`);
-                        } else {
-                            clearInterval(countdownInterval);
-                        }
-                    }, 10000);
-
-                    return new Promise(resolve => {
-                        setTimeout(() => {
-                            clearInterval(countdownInterval);
-                            console.log('Retrying approval API call now...');
-                            resolve(dashboardApprovePrompt(id, serverUrl, 1));
-                        }, retryDelayMs);
-                    });
-                }
-
-                // Final error after retry
-                return {
-                    response: "An error occurred while processing your request. Please sign in to Octopus and try again.",
-                    state: "Error"
-                }
+                return _retryOctoAICall(() => dashboardApprovePrompt(id, serverUrl, retryCount + 1), retryCount, 1);
             });
     }
 
@@ -94,39 +63,43 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             .catch(error => {
                 console.log("Error sending prompt to dashboard: ", error);
 
-                // Retry once after 4 minutes on failure
-                if (retryCount === 0) {
-                    const retryDelayMs = 240000; // 4 minutes
-                    console.log(`Request failed. Waiting ${retryDelayMs / 1000} seconds before retrying...`);
-
-                    // Log countdown every 10 seconds
-                    const countdownStartTime = Date.now();
-                    const countdownInterval = setInterval(() => {
-                        const elapsedMs = Date.now() - countdownStartTime;
-                        const remainingSeconds = Math.floor((retryDelayMs - elapsedMs) / 1000);
-
-                        if (remainingSeconds > 0) {
-                            console.log(`Retrying in ${remainingSeconds} seconds...`);
-                        } else {
-                            clearInterval(countdownInterval);
-                        }
-                    }, 10000);
-
-                    return new Promise(resolve => {
-                        setTimeout(() => {
-                            clearInterval(countdownInterval);
-                            console.log('Retrying API call now...');
-                            resolve(dashboardSendPrompt(prompt, serverUrl, 1));
-                        }, retryDelayMs);
-                    });
-                }
-
-                // Final error after retry
-                return {
-                    response: "An error occurred while processing your request. Please sign in to Octopus and try again.",
-                    state: "Error"
-                }
+                return _retryOctoAICall(() => dashboardSendPrompt(prompt, serverUrl, retryCount + 1), retryCount, 1);
             });
+    }
+
+    function _retryOctoAICall(callback, retryCount, maxRetries) {
+        // Retry once after 4 minutes on failure
+        if (retryCount < maxRetries) {
+            const retryDelayMs = 240000; // 4 minutes
+            console.log(`OctoAI request failed. Waiting ${retryDelayMs / 1000} seconds before retrying...`);
+
+            // Log countdown every 10 seconds
+            const countdownStartTime = Date.now();
+            const countdownInterval = setInterval(() => {
+                const elapsedMs = Date.now() - countdownStartTime;
+                const remainingSeconds = Math.floor((retryDelayMs - elapsedMs) / 1000);
+
+                if (remainingSeconds > 0) {
+                    console.log(`Retrying OctoAI call in ${remainingSeconds} seconds...`);
+                } else {
+                    clearInterval(countdownInterval);
+                }
+            }, 10000);
+
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    clearInterval(countdownInterval);
+                    console.log('Retrying OctoAI call now...');
+                    resolve(callback());
+                }, retryDelayMs);
+            });
+        }
+
+        // Final error after retry
+        return Promise.resolve({
+            response: "An error occurred while processing your request. Please sign in to Octopus and try again.",
+            state: "Error"
+        });
     }
 
     function _getAccessToken(serverUrl) {
