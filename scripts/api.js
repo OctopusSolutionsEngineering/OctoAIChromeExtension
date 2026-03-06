@@ -93,15 +93,71 @@ async function callOctoAi(systemPrompt, prompt) {
         // The order of the prompts is important, so we keep the original order.
         const responses = await sendPrompts(enrichedPrompts, creds, serverUrl);
 
-        const result = await processResponse(prompt, systemPrompt, responses);
+        function displayFinalResults(result, prompts, index) {
+            // Completed one prompt successfully - display the results
+            if (prompts.length === 1) {
+                displayMarkdownResponseV2(result, getColors());
+                return;
+            }
 
-        if (result.type === "confirmation") {
-            displayConfirmation(responses, approvedChanges);
-        } else {
-            showExamples();
+            if (index < prompts.length - 1) {
+                // All good, move to the next prompt if there is one
+                sendPrompt(prompts, index + 1);
+            } else {
+                // We completed all the prompts successfully - display a summary message
+                displayMarkdownResponseV2({
+                    prompt: "",
+                    systemPrompt: "",
+                    response: prompts.length + " prompts were processed successfully."
+                }, getColors());
+            }
         }
 
-        displayMarkdownResponseV2(result, getColors());
+        // We need to loop over each prompt, allowing each to be manually confirmed if necessary.
+        // The flows are:
+        // Multiple prompts -> process first prompt -> if confirmation needed, ask for confirmation -> if approved, process next prompt
+        // Single prompt -> process prompt -> if confirmation needed, ask for confirmation -> if approved, show result
+        // Auto-approval enabled -> Multiple prompts -> process first prompt -> process next prompt
+        // Any errors or aborted confirmations end the flow and show the results up to that point.
+        function sendPrompt(prompts, index) {
+            sendPrompts([prompts[index]], creds, serverUrl)
+                .then(responses => {
+                    processResponse(prompt, systemPrompt, responses)
+                        .then(result => {
+
+                            if (result.type === "confirmation") {
+                                // Prompt requires confirmation
+
+                                if (localStorage.getItem('octoai-auto-apply') === 'true') {
+                                    // auto approve is enabled, so confirm and move to the next prompt
+                                    const titleAndMessage = getConfirmationTitleAndMessage(responses[0].response);
+
+                                    approveConfirmation(titleAndMessage.id)
+                                        .then(response => processResponse(prompt, systemPrompt, [response]))
+                                        .then(result => displayFinalResults(result, prompts, index));
+                                } else {
+                                    // need to display a manual confirmation prompt to the user
+                                    displayConfirmation(responses, function (response, projectCount) {
+                                        // Get the result of the confirmation
+                                        processResponse(prompt, systemPrompt, [response])
+                                            .then(result => displayFinalResults(result, prompts, index));
+                                    });
+
+                                    // Display the details of what is being confirmed
+                                    displayMarkdownResponseV2(result, getColors());
+                                }
+                            } else if (result.type === "error") {
+                                // Any error ends the processing
+                                displayMarkdownResponseV2(result, getColors());
+                            } else {
+                                // A prompt with no confirmation needed - display the results or move to the next prompt
+                                displayFinalResults(result, prompts, index);
+                            }
+                        })
+                });
+        }
+
+        sendPrompt(enrichedPrompts, 0);
     } catch (error) {
         Logger.error(error.message);
         throw error;
@@ -145,41 +201,9 @@ function displayConfirmation(responses, approveCallback) {
     }
 }
 
-function approvedChanges(response, projectCount) {
-    try {
-        if (response.error) {
-            displayMarkdownResponseV2(
-                {
-                    prompt: "",
-                    systemPrompt: "",
-                    response: "There was an error processing your request. You may try the prompt again."
-                },
-                getColors());
-        } else {
-            displayMarkdownResponseV2(
-                {
-                    prompt: response.prompt,
-                    systemPrompt: "",
-                    response: convertFromSseResponse(response.response)
-                },
-                getColors());
-        }
-    } finally {
-
-        showExamples();
-        showPrompt();
-        enableSubmitButton();
-
-        getProjectCount().then(newProjectCount => {
-            if (projectCount === 0 && newProjectCount > 0) {
-                getSpaceId().then(spaceId => {
-                    window.location.hash = "#/" + spaceId;
-                })
-            }
-        });
-    }
-}
-
+/**
+ * Take the raw SEE response and process it into a structure that can be displayed to the user.
+ */
 async function processResponse(prompt, systemPrompt, responses) {
     if (responses.length === 1 && !responses[0].error && isActionSseResponse(responses[0].response)) {
         const titleAndMessage = getConfirmationTitleAndMessage(responses[0].response);
