@@ -96,15 +96,23 @@ async function callOctoAi(systemPrompt, prompt) {
         function displayFinalResults(result, prompts, index) {
             // Completed one prompt successfully - display the results
             if (prompts.length === 1) {
+                showForm();
+                showExamples();
+                showPrompt();
+                enableSubmitButton();
                 displayMarkdownResponseV2(result, getColors());
                 return;
             }
 
             if (index < prompts.length - 1) {
-                // All good, move to the next prompt if there is one
+                // Move to the next prompt if there is one
                 sendPrompt(prompts, index + 1);
             } else {
                 // We completed all the prompts successfully - display a summary message
+                showForm();
+                showExamples();
+                showPrompt();
+                enableSubmitButton();
                 displayMarkdownResponseV2({
                     prompt: "",
                     systemPrompt: "",
@@ -148,6 +156,10 @@ async function callOctoAi(systemPrompt, prompt) {
                                 }
                             } else if (result.type === "error") {
                                 // Any error ends the processing
+                                showForm();
+                                showExamples();
+                                showPrompt();
+                                enableSubmitButton();
                                 displayMarkdownResponseV2(result, getColors());
                             } else {
                                 // A prompt with no confirmation needed - display the results or move to the next prompt
