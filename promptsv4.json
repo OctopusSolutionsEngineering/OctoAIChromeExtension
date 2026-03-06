@@ -6,7 +6,7 @@
         "dashboardName": "Octopus Easy Mode",
         "dashboardFile": "easymode/index.html"
       },
-      "Create a Kubernetes project called \"K8s App\".",
+      "Create a Kubernetes project called \"Kubernetes Web App\".",
       "Create an Azure Web App project called \"Azure Web App\".",
       "Create an Azure Functions project called \"Azure Function App\".",
       "Create an AWS Lambda project called \"AWS Lambda App\".",
@@ -40,7 +40,7 @@
       {
         "name": "Create a new project...",
         "prompts": [
-          "Create a Kubernetes project called \"K8s App\".",
+          "Create a Kubernetes project called \"Kubernetes Web App\".",
           "Create an Azure Web App project called \"Azure Web App\".",
           "Create an Azure Functions project called \"Azure Function App\".",
           "Create an AWS Lambda project called \"AWS Lambda App\".",
