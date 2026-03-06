@@ -351,6 +351,28 @@ function displayPromptUIV2(theme) {
     header.appendChild(info);
     addSvgFromFile('img/info.svg', 'octoai-info');
 
+    const gear = document.createElement('span');
+    gear.setAttribute('title', 'Settings');
+    gear.id = 'octoai-gear';
+    gear.style.color = theme.textSecondary;
+    gear.style.paddingLeft = '8px';
+    gear.style.cursor = 'pointer';
+    header.appendChild(gear);
+    addSvgFromFile('img/gear.svg', 'octoai-gear');
+
+    // Add hover effect for gear icon
+    gear.addEventListener('mouseover', () => {
+        gear.style.color = theme.text;
+    });
+    gear.addEventListener('mouseout', () => {
+        gear.style.color = theme.textSecondary;
+    });
+
+    // Add click event to show settings
+    gear.addEventListener('click', () => {
+        displaySettings(theme);
+    });
+
     // Add close button (right side)
     const closeButton = document.createElement('span');
     closeButton.textContent = '✕';
@@ -504,6 +526,8 @@ function displayPromptUIV2(theme) {
         hideResponse();
         showExamples();
         showForm();
+        showPrompt();
+        enableSubmitButton();
     }
 
     confirmationContainer.appendChild(approveButton);
@@ -726,4 +750,88 @@ function addFeedbackListener(feedback, thumbsUp, thumbsDown, prompt) {
                 thumbsUp: false
             }))
     }
+}
+
+function displaySettings(theme) {
+    // Hide the examples container
+    hideExamples();
+    hideForm();
+    hideResponse();
+
+    // Get or create the settings container
+    let settingsContainer = document.getElementById('octoai-settings');
+
+    if (!settingsContainer) {
+        settingsContainer = document.createElement('div');
+        settingsContainer.id = 'octoai-settings';
+        settingsContainer.style.fontFamily = 'Arial, sans-serif';
+        settingsContainer.style.padding = '16px';
+
+        const container = document.getElementById('octoai-container');
+        if (container) {
+            container.appendChild(settingsContainer);
+        }
+    }
+
+    // Clear existing content
+    settingsContainer.innerHTML = '';
+    settingsContainer.style.display = 'block';
+
+    // Create settings title
+    const title = document.createElement('h3');
+    title.textContent = 'Settings';
+    title.style.color = theme.text;
+    title.style.marginTop = '0';
+    title.style.marginBottom = '16px';
+    settingsContainer.appendChild(title);
+
+    // Create checkbox container
+    const checkboxContainer = document.createElement('div');
+    checkboxContainer.style.marginBottom = '24px';
+    checkboxContainer.style.display = 'flex';
+    checkboxContainer.style.alignItems = 'center';
+
+    // Create checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'octoai-auto-apply-checkbox';
+    checkbox.style.marginRight = '8px';
+    checkbox.style.cursor = 'pointer';
+    checkbox.style.width = '16px';
+    checkbox.style.height = '16px';
+
+    // Load saved value from local storage
+    const savedValue = localStorage.getItem('octoai-auto-apply');
+    if (savedValue === 'true') {
+        checkbox.checked = true;
+    }
+
+    // Create label
+    const label = document.createElement('label');
+    label.htmlFor = 'octoai-auto-apply-checkbox';
+    label.textContent = 'Auto-apply new resources';
+    label.style.color = theme.text;
+    label.style.cursor = 'pointer';
+    label.style.fontSize = '14px';
+
+    checkboxContainer.appendChild(checkbox);
+    checkboxContainer.appendChild(label);
+    settingsContainer.appendChild(checkboxContainer);
+
+    // Create OK button
+    const okButton = createButton('OK', theme, 'octoai-settings-ok');
+    okButton.style.width = 'auto';
+    okButton.style.padding = '10px 24px';
+
+    okButton.addEventListener('click', () => {
+        // Save checkbox value to local storage
+        localStorage.setItem('octoai-auto-apply', checkbox.checked);
+
+        // Hide settings and show examples again
+        settingsContainer.style.display = 'none';
+        showExamples();
+        showForm();
+    });
+
+    settingsContainer.appendChild(okButton);
 }
