@@ -143,11 +143,13 @@ async function callOctoAi(systemPrompt, prompt) {
                                         .then(response => processResponse(prompt, systemPrompt, [response]))
                                         .then(result => displayFinalResults(result, prompts, index, thinkingAnimation));
                                 } else {
+                                    clearInterval(thinkingAnimation);
+
                                     // need to display a manual confirmation prompt to the user
                                     displayConfirmation(responses, function (response, projectCount) {
                                         // Get the result of the confirmation
                                         processResponse(prompt, systemPrompt, [response])
-                                            .then(result => displayFinalResults(result, prompts, index, thinkingAnimation));
+                                            .then(result => displayFinalResults(result, prompts, index, showThinking()));
                                     });
 
                                     // Display the details of what is being confirmed
