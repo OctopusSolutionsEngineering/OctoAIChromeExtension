@@ -90,12 +90,10 @@ async function callOctoAi(systemPrompt, prompt) {
         const enrichedPrompts = await Promise.all(
             splitPrompts.map(p => enrichPrompt(p)))
 
-        // The order of the prompts is important, so we keep the original order.
-        const responses = await sendPrompts(enrichedPrompts, creds, serverUrl);
-
-        function displayFinalResults(result, prompts, index) {
+        function displayFinalResults(result, prompts, index, thinkingAnimation) {
             // Completed one prompt successfully - display the results
             if (prompts.length === 1) {
+                clearInterval(thinkingAnimation);
                 showForm();
                 showExamples();
                 showPrompt();
@@ -106,9 +104,10 @@ async function callOctoAi(systemPrompt, prompt) {
 
             if (index < prompts.length - 1) {
                 // Move to the next prompt if there is one
-                sendPrompt(prompts, index + 1);
+                sendPrompt(prompts, index + 1, thinkingAnimation);
             } else {
                 // We completed all the prompts successfully - display a summary message
+                clearInterval(thinkingAnimation);
                 showForm();
                 showExamples();
                 showPrompt();
@@ -127,7 +126,7 @@ async function callOctoAi(systemPrompt, prompt) {
         // Single prompt -> process prompt -> if confirmation needed, ask for confirmation -> if approved, show result
         // Auto-approval enabled -> Multiple prompts -> process first prompt -> process next prompt
         // Any errors or aborted confirmations end the flow and show the results up to that point.
-        function sendPrompt(prompts, index) {
+        function sendPrompt(prompts, index, thinkingAnimation) {
             sendPrompts([prompts[index]], creds, serverUrl)
                 .then(responses => {
                     processResponse(prompt, systemPrompt, responses)
@@ -142,13 +141,13 @@ async function callOctoAi(systemPrompt, prompt) {
 
                                     approveConfirmation(titleAndMessage.id)
                                         .then(response => processResponse(prompt, systemPrompt, [response]))
-                                        .then(result => displayFinalResults(result, prompts, index));
+                                        .then(result => displayFinalResults(result, prompts, index, thinkingAnimation));
                                 } else {
                                     // need to display a manual confirmation prompt to the user
                                     displayConfirmation(responses, function (response, projectCount) {
                                         // Get the result of the confirmation
                                         processResponse(prompt, systemPrompt, [response])
-                                            .then(result => displayFinalResults(result, prompts, index));
+                                            .then(result => displayFinalResults(result, prompts, index, thinkingAnimation));
                                     });
 
                                     // Display the details of what is being confirmed
@@ -156,6 +155,7 @@ async function callOctoAi(systemPrompt, prompt) {
                                 }
                             } else if (result.type === "error") {
                                 // Any error ends the processing
+                                clearInterval(thinkingAnimation);
                                 showForm();
                                 showExamples();
                                 showPrompt();
@@ -163,13 +163,13 @@ async function callOctoAi(systemPrompt, prompt) {
                                 displayMarkdownResponseV2(result, getColors());
                             } else {
                                 // A prompt with no confirmation needed - display the results or move to the next prompt
-                                displayFinalResults(result, prompts, index);
+                                displayFinalResults(result, prompts, index, thinkingAnimation);
                             }
                         })
                 });
         }
 
-        sendPrompt(enrichedPrompts, 0);
+        return sendPrompt(enrichedPrompts, 0, showThinking());
     } catch (error) {
         Logger.error(error.message);
         throw error;
@@ -200,16 +200,10 @@ function displayConfirmation(responses, approveCallback) {
         disableSubmitButton();
         showForm();
 
-        const thinkingAnimation = showThinking();
-
         getProjectCount()
             .then(projectCount =>
                 approveConfirmation(titleAndMessage.id)
-                    .then(result => approveCallback(result, projectCount))
-                    .finally(() => {
-                        clearInterval(thinkingAnimation);
-                    })
-            );
+                    .then(result => approveCallback(result, projectCount)));
     }
 }
 
@@ -247,7 +241,6 @@ async function processResponse(prompt, systemPrompt, responses) {
     }
 
     if (responses[0].error) {
-
         return {
             type: "error",
             prompt: prompt,

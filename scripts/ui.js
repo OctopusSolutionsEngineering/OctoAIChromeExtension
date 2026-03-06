@@ -526,6 +526,8 @@ function displayPromptUIV2(theme) {
         hideResponse();
         showExamples();
         showForm();
+        showPrompt();
+        enableSubmitButton();
     }
 
     confirmationContainer.appendChild(approveButton);

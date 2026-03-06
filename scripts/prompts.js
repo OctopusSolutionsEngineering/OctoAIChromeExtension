@@ -265,8 +265,6 @@ function submitPrompt(systemPrompt, originalPrompt) {
     disableSubmitButton();
     hideResponse();
 
-    const thinkingAnimation = showThinking();
-
     const feedback = document.getElementById('octoai-feedback');
     const thumbsUp = document.getElementById('octo-ai-thumbs-up');
     const thumbsDown = document.getElementById('octo-ai-thumbs-down');
@@ -274,12 +272,5 @@ function submitPrompt(systemPrompt, originalPrompt) {
     addFeedbackListener(feedback, thumbsUp, thumbsDown, originalPrompt);
 
     callOctoAi(systemPrompt, originalPrompt)
-        .catch(e => Logger.error(e))
-        .finally(() =>
-            {
-                clearInterval(thinkingAnimation)
-                showPrompt();
-                enableSubmitButton();
-            }
-        );
+        .catch(e => Logger.error(e));
 }
