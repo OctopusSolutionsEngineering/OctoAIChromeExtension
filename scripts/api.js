@@ -136,13 +136,16 @@ async function callOctoAi(systemPrompt, prompt) {
                                 // Prompt requires confirmation
 
                                 if (localStorage.getItem('octoai-auto-apply') === 'true') {
-                                    // auto approve is enabled, so confirm and move to the next prompt
+                                    // Auto approve is enabled, so confirm and move to the next prompt
+
                                     const titleAndMessage = getConfirmationTitleAndMessage(responses[0].response);
 
                                     approveConfirmation(titleAndMessage.id)
                                         .then(response => processResponse(prompt, systemPrompt, [response]))
                                         .then(result => displayFinalResults(result, prompts, index, thinkingAnimation));
                                 } else {
+                                    // Show a manual confirmation prompt to the user.
+
                                     clearInterval(thinkingAnimation);
 
                                     // need to display a manual confirmation prompt to the user
