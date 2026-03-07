@@ -502,6 +502,20 @@ function displayPromptUIV2(theme) {
     // Append the form to the body
     container.appendChild(form);
 
+    // Create auto-apply status message
+    const autoApplyMessage = document.createElement('div');
+    autoApplyMessage.id = 'octoai-auto-apply-message';
+    autoApplyMessage.textContent = 'Auto-apply enabled';
+    autoApplyMessage.style.fontSize = '12px';
+    autoApplyMessage.style.color = theme.textSecondary;
+    autoApplyMessage.style.textAlign = 'right';
+    autoApplyMessage.style.marginTop = '-12px';
+    autoApplyMessage.style.marginBottom = '8px';
+    autoApplyMessage.style.paddingRight = '4px';
+    autoApplyMessage.style.display = 'none'; // Hidden by default
+    container.appendChild(autoApplyMessage);
+
+
     // Create a container for the UI
     const examplesContainer = document.createElement('div');
     examplesContainer.id = 'octoai-examples';
@@ -544,6 +558,9 @@ function displayPromptUIV2(theme) {
 
     // Append the container to the body
     document.body.appendChild(container);
+
+    // Update auto-apply message visibility after container is in DOM
+    updateAutoApplyMessage();
 }
 
 function showThinking() {
@@ -573,6 +590,14 @@ function showPrompt() {
     const input = document.getElementById('octoai-input');
     input.disabled = false
     input.value = localStorage.getItem("octoai-prompt");
+}
+
+function updateAutoApplyMessage() {
+    const message = document.getElementById('octoai-auto-apply-message');
+    if (message) {
+        const autoApplyEnabled = localStorage.getItem('octoai-auto-apply') === 'true';
+        message.style.display = autoApplyEnabled ? 'block' : 'none';
+    }
 }
 
 function disableSubmitButton() {
@@ -826,6 +851,9 @@ function displaySettings(theme) {
     okButton.addEventListener('click', () => {
         // Save checkbox value to local storage
         localStorage.setItem('octoai-auto-apply', checkbox.checked);
+
+        // Update the auto-apply message visibility
+        updateAutoApplyMessage();
 
         // Hide settings and show examples again
         settingsContainer.style.display = 'none';
