@@ -600,6 +600,13 @@ function updateAutoApplyMessage() {
     }
 }
 
+function hideAutoApplyMessage() {
+    const message = document.getElementById('octoai-auto-apply-message');
+    if (message) {
+        message.style.display = 'none';
+    }
+}
+
 function disableSubmitButton() {
     const submitButton = document.getElementById('octoai-submit');
     if (submitButton) {
@@ -782,6 +789,9 @@ function displaySettings(theme) {
     hideExamples();
     hideForm();
     hideResponse();
+
+    // Hide the auto-apply message
+    hideAutoApplyMessage();
 
     // Get or create the settings container
     let settingsContainer = document.getElementById('octoai-settings');
