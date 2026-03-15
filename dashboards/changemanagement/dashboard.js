@@ -71,6 +71,19 @@ function getUrlParams() {
     };
 }
 
+ /**
+  * Hides and clears the error banner shown by showError().
+  * This ensures stale errors are not visible when the user retries
+  * or after a successful report generation.
+  */
+ function hideError() {
+     const errorBanner = document.getElementById('errorBanner');
+     if (errorBanner) {
+         errorBanner.classList.remove('show');
+         errorBanner.textContent = '';
+     }
+ }
+
 // Get default space and project from URL params or dashboard config context
 function getDefaultSpaceAndProject() {
     const urlParams = getUrlParams();
@@ -94,8 +107,12 @@ async function loadSpaces(defaultSpace) {
         const response = await fetchOctopusApiJson(serverUrl, '/api/spaces/all');
         const spaces = response;
 
-        // Clear existing options except the first one
-        spaceSelect.innerHTML = '<option value="">-- Select a space --</option>';
+        // Clear existing options and add the default option
+        spaceSelect.textContent = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '-- Select a space --';
+        spaceSelect.appendChild(defaultOption);
 
         // Add spaces to dropdown
         spaces.forEach(space => {
@@ -136,7 +153,7 @@ async function loadProjects(spaceId) {
     try {
         // Show loading indicator
         loading.classList.add('show');
-        availableList.innerHTML = '';
+        availableList.textContent = '';
 
         // Fetch projects from Octopus API
         const response = await fetchOctopusApiJson(serverUrl, `/api/${spaceId}/projects/all`);
@@ -343,13 +360,12 @@ function setupEventListeners() {
     // Space selection change
     spaceSelect.addEventListener('change', async (e) => {
         const spaceId = e.target.value;
-        const spaceName = e.target.selectedOptions[0]?.dataset.spaceName;
 
         if (spaceId) {
             // Clear selections
             selectedProjectIds.clear();
-            availableList.innerHTML = '';
-            selectedList.innerHTML = '';
+            availableList.textContent = '';
+            selectedList.textContent = '';
             
             // Load projects for selected space
             await loadProjects(spaceId);
@@ -364,8 +380,8 @@ function setupEventListeners() {
             // Update Generate Report button state
             updateGenerateReportButtonState();
         } else {
-            availableList.innerHTML = '';
-            selectedList.innerHTML = '';
+            availableList.textContent = '';
+            selectedList.textContent = '';
             allProjects = [];
             selectAllButton.disabled = true;
             removeAllButton.disabled = true;
@@ -429,7 +445,7 @@ function setupEventListeners() {
         });
 
         // Clear available list
-        availableList.innerHTML = '';
+        availableList.textContent = '';
         
         // Update button states
         selectAllButton.disabled = true;
@@ -464,7 +480,7 @@ function setupEventListeners() {
         // Sort available list
         const options = Array.from(availableList.options);
         options.sort((a, b) => a.textContent.localeCompare(b.textContent));
-        availableList.innerHTML = '';
+        availableList.textContent = '';
         options.forEach(option => availableList.appendChild(option));
 
         // Update button states
@@ -495,12 +511,12 @@ function setupEventListeners() {
         });
 
         // Clear selected list
-        selectedList.innerHTML = '';
+        selectedList.textContent = '';
         
         // Sort available list
         const options = Array.from(availableList.options);
         options.sort((a, b) => a.textContent.localeCompare(b.textContent));
-        availableList.innerHTML = '';
+        availableList.textContent = '';
         options.forEach(option => availableList.appendChild(option));
         
         // Update button states
@@ -670,6 +686,7 @@ async function handleGenerateReportClick() {
 
     // Disable UI elements
     disableUI();
+    hideError();
 
     // Show results section
     resultsSection.style.display = 'block';
