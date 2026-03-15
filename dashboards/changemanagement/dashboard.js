@@ -732,6 +732,10 @@ async function generateComplianceReport(
 
     // Flag used to stop processing once we hit a safe upper bound on deployments
     let stopProcessing = false;
+    // Track whether we actually hit the global deployment limit
+    let reachedDeploymentLimit = false;
+    // Track projects that were not scanned because of the deployment limit
+    const skippedProjects = [];
 
     for (const project of projects) {
         if (stopProcessing) {
@@ -753,6 +757,7 @@ async function generateComplianceReport(
                 // Enforce a global cap on the total number of deployments processed
                 if (totalDeployments >= MAX_DEPLOYMENTS_TO_PROCESS) {
                     stopProcessing = true;
+                    reachedDeploymentLimit = true;
                     break;
                 }
 
@@ -805,12 +810,36 @@ async function generateComplianceReport(
         // Report results for this project
         onProjectResult(project, projectNonCompliantDeployments, projectTotalDeployments);
     }
+
+    // If we hit the deployment limit, compute which projects were not scanned and
+    // surface a clear warning via the progress callback.
+    if (reachedDeploymentLimit) {
+        const skippedCount = projects.length - processedCount;
+        if (skippedCount > 0) {
+            for (let i = processedCount; i < projects.length; i++) {
+                const skippedProject = projects[i];
+                if (skippedProject && skippedProject.Name) {
+                    skippedProjects.push(skippedProject.Name);
+                }
+            }
+        }
+
+        onProgress(
+            `Stopped processing after ${totalDeployments} deployments (limit ${MAX_DEPLOYMENTS_TO_PROCESS} reached).` +
+            (skippedProjects.length > 0
+                ? ` Skipped ${skippedProjects.length} project(s): ${skippedProjects.join(', ')}.`
+                : '')
+        );
+    }
     
     // Report overall summary
     onSummary({
         total: totalDeployments,
         compliant: compliantDeployments,
-        nonCompliant: nonCompliantDeployments
+        nonCompliant: nonCompliantDeployments,
+        // Indicate to consumers that this report may be incomplete
+        partial: reachedDeploymentLimit,
+        skippedProjects: skippedProjects
     });
 }
 
