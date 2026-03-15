@@ -758,6 +758,93 @@ function isSafeRegexPattern(pattern) {
     return true;
 }
 
+/**
+ * Check a single deployment for compliance against a regex pattern.
+ * Returns an object indicating whether the deployment is compliant and any error encountered.
+ */
+async function checkDeploymentCompliance(deployment, regex, serverUrl, spaceId) {
+    try {
+        const logs = await fetchDeploymentLogs(serverUrl, spaceId, deployment.TaskId);
+        const hasMatch = regex.test(logs);
+        
+        return {
+            compliant: hasMatch,
+            deployment: deployment,
+            error: null
+        };
+    } catch (error) {
+        console.error(`Error fetching logs for deployment ${deployment.Id}:`, error);
+        return {
+            compliant: false,
+            deployment: deployment,
+            error: 'Failed to fetch logs'
+        };
+    }
+}
+
+/**
+ * Process a single project and check all its deployments for compliance.
+ * Returns statistics and non-compliant deployments for the project.
+ */
+async function processProjectCompliance(project, regex, serverUrl, spaceId, deploymentCount, remainingDeploymentBudget) {
+    const projectNonCompliantDeployments = [];
+    let projectCompliantCount = 0;
+    let projectNonCompliantCount = 0;
+    let projectTotalDeployments = 0;
+    let reachedLimit = false;
+
+    try {
+        // Fetch deployments for this project
+        const deployments = await fetchDeploymentsForProject(serverUrl, spaceId, project.Id, deploymentCount);
+
+        // Check each deployment's logs
+        for (const deployment of deployments) {
+            // Check if we've reached the global deployment limit
+            if (projectTotalDeployments >= remainingDeploymentBudget) {
+                reachedLimit = true;
+                break;
+            }
+
+            projectTotalDeployments++;
+
+            const result = await checkDeploymentCompliance(deployment, regex, serverUrl, spaceId);
+
+            if (result.compliant) {
+                projectCompliantCount++;
+            } else {
+                projectNonCompliantCount++;
+                projectNonCompliantDeployments.push({
+                    id: result.deployment.Id,
+                    version: result.deployment.ReleaseVersion,
+                    environment: result.deployment.EnvironmentName,
+                    created: result.deployment.Created,
+                    taskId: result.deployment.TaskId,
+                    error: result.error
+                });
+            }
+        }
+    } catch (error) {
+        console.error(`Error processing project ${project.Name}:`, error);
+
+        // If this looks like an authentication/authorization failure,
+        // rethrow so the caller can display a clear error
+        const status =
+            (error && (error.status || error.statusCode)) ||
+            (error && error.response && error.response.status);
+        if (status === 401 || status === 403) {
+            throw error;
+        }
+    }
+
+    return {
+        nonCompliantDeployments: projectNonCompliantDeployments,
+        totalDeployments: projectTotalDeployments,
+        compliantCount: projectCompliantCount,
+        nonCompliantCount: projectNonCompliantCount,
+        reachedLimit: reachedLimit
+    };
+}
+
 async function generateComplianceReport(
     serverUrl,
     spaceId,
@@ -768,6 +855,7 @@ async function generateComplianceReport(
     onProjectResult,
     onSummary
 ) {
+    // Validate regex pattern safety
     if (!isSafeRegexPattern(regexPattern)) {
         throw new Error(
             'The provided regular expression is too complex or potentially unsafe. ' +
@@ -775,6 +863,7 @@ async function generateComplianceReport(
         );
     }
 
+    // Create regex object
     let regex;
     try {
         regex = new RegExp(regexPattern);
@@ -786,120 +875,73 @@ async function generateComplianceReport(
     onProgress('Loading environments...');
     await fetchEnvironments(serverUrl, spaceId);
 
-    let processedCount = 0;
-    let totalDeployments = 0;
-    let compliantDeployments = 0;
-    let nonCompliantDeployments = 0;
+    // Initialize statistics
+    const stats = {
+        totalDeployments: 0,
+        compliantDeployments: 0,
+        nonCompliantDeployments: 0
+    };
 
-    // Flag used to stop processing once we hit a safe upper bound on deployments
-    let stopProcessing = false;
-    // Track whether we actually hit the global deployment limit
-    let reachedDeploymentLimit = false;
-    // Track projects that were not scanned because of the deployment limit
     const skippedProjects = [];
+    let processedCount = 0;
+    let remainingDeploymentBudget = MAX_DEPLOYMENTS_TO_PROCESS;
 
+    // Process each project
     for (const project of projects) {
-        if (stopProcessing) {
-            break;
+        // Check if we've exhausted our deployment budget
+        if (remainingDeploymentBudget <= 0) {
+            skippedProjects.push(project.Name);
+            continue;
         }
 
         processedCount++;
         onProgress(`Processing project ${processedCount} of ${projects.length}: ${project.Name}...`);
 
-        const projectNonCompliantDeployments = [];
-        let projectTotalDeployments = 0;
+        // Process the project
+        const projectResult = await processProjectCompliance(
+            project,
+            regex,
+            serverUrl,
+            spaceId,
+            deploymentCount,
+            remainingDeploymentBudget
+        );
 
-        try {
-            // Fetch deployments for this project
-            const deployments = await fetchDeploymentsForProject(serverUrl, spaceId, project.Id, deploymentCount);
-
-            // Check each deployment's logs
-            for (const deployment of deployments) {
-                // Enforce a global cap on the total number of deployments processed
-                if (totalDeployments >= MAX_DEPLOYMENTS_TO_PROCESS) {
-                    stopProcessing = true;
-                    reachedDeploymentLimit = true;
-                    break;
-                }
-
-                totalDeployments++;
-                projectTotalDeployments++;
-
-                try {
-                    const logs = await fetchDeploymentLogs(serverUrl, spaceId, deployment.TaskId);
-                    const hasMatch = regex.test(logs);
-
-                    if (!hasMatch) {
-                        nonCompliantDeployments++;
-                        projectNonCompliantDeployments.push({
-                            id: deployment.Id,
-                            version: deployment.ReleaseVersion,
-                            environment: deployment.EnvironmentName,
-                            created: deployment.Created,
-                            taskId: deployment.TaskId
-                        });
-                    } else {
-                        compliantDeployments++;
-                    }
-                } catch (error) {
-                    console.error(`Error fetching logs for deployment ${deployment.Id}:`, error);
-                    nonCompliantDeployments++;
-                    projectNonCompliantDeployments.push({
-                        id: deployment.Id,
-                        version: deployment.ReleaseVersion,
-                        environment: deployment.EnvironmentName,
-                        created: deployment.Created,
-                        taskId: deployment.TaskId,
-                        error: 'Failed to fetch logs'
-                    });
-                }
-            }
-        } catch (error) {
-            console.error(`Error processing project ${project.Name}:`, error);
-
-            // If this looks like an authentication/authorization failure,
-            // rethrow so the caller can display a clear error instead of
-            // silently treating the project as having no data.
-            const status =
-                (error && (error.status || error.statusCode)) ||
-                (error && error.response && error.response.status);
-            if (status === 401 || status === 403) {
-                throw error;
-            }
-        }
+        // Update statistics
+        stats.totalDeployments += projectResult.totalDeployments;
+        stats.compliantDeployments += projectResult.compliantCount;
+        stats.nonCompliantDeployments += projectResult.nonCompliantCount;
+        
+        // Update remaining budget
+        remainingDeploymentBudget -= projectResult.totalDeployments;
 
         // Report results for this project
-        onProjectResult(project, projectNonCompliantDeployments, projectTotalDeployments);
+        onProjectResult(project, projectResult.nonCompliantDeployments, projectResult.totalDeployments);
+
+        // If this project hit the limit, stop processing
+        if (projectResult.reachedLimit) {
+            // Add remaining projects to skipped list
+            for (let i = processedCount; i < projects.length; i++) {
+                skippedProjects.push(projects[i].Name);
+            }
+            break;
+        }
     }
 
-    // If we hit the deployment limit, compute which projects were not scanned and
-    // surface a clear warning via the progress callback.
-    if (reachedDeploymentLimit) {
-        const skippedCount = projects.length - processedCount;
-        if (skippedCount > 0) {
-            for (let i = processedCount; i < projects.length; i++) {
-                const skippedProject = projects[i];
-                if (skippedProject && skippedProject.Name) {
-                    skippedProjects.push(skippedProject.Name);
-                }
-            }
-        }
-
+    // Display warning if deployment limit was reached
+    if (skippedProjects.length > 0) {
         onProgress(
-            `Stopped processing after ${totalDeployments} deployments (limit ${MAX_DEPLOYMENTS_TO_PROCESS} reached).` +
-            (skippedProjects.length > 0
-                ? ` Skipped ${skippedProjects.length} project(s): ${skippedProjects.join(', ')}.`
-                : '')
+            `Stopped processing after ${stats.totalDeployments} deployments (limit ${MAX_DEPLOYMENTS_TO_PROCESS} reached). ` +
+            `Skipped ${skippedProjects.length} project(s): ${skippedProjects.join(', ')}.`
         );
     }
     
     // Report overall summary
     onSummary({
-        total: totalDeployments,
-        compliant: compliantDeployments,
-        nonCompliant: nonCompliantDeployments,
-        // Indicate to consumers that this report may be incomplete
-        partial: reachedDeploymentLimit,
+        total: stats.totalDeployments,
+        compliant: stats.compliantDeployments,
+        nonCompliant: stats.nonCompliantDeployments,
+        partial: skippedProjects.length > 0,
         skippedProjects: skippedProjects
     });
 }
