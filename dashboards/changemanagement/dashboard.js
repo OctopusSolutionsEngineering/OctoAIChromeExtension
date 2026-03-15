@@ -790,6 +790,16 @@ async function generateComplianceReport(
             }
         } catch (error) {
             console.error(`Error processing project ${project.Name}:`, error);
+
+            // If this looks like an authentication/authorization failure,
+            // rethrow so the caller can display a clear error instead of
+            // silently treating the project as having no data.
+            const status =
+                (error && (error.status || error.statusCode)) ||
+                (error && error.response && error.response.status);
+            if (status === 401 || status === 403) {
+                throw error;
+            }
         }
 
         // Report results for this project
