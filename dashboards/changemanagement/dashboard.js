@@ -592,27 +592,36 @@ function loadRegexFromStorage() {
 
 // Save regex to local storage
 function saveRegexToStorage(regexValue) {
-    chrome.storage.local.set({ [REGEX_STORAGE_KEY]: regexValue }, () => {
+    if (window.localStorage) {
+        window.localStorage.setItem(REGEX_STORAGE_KEY, regexValue);
         console.log('Regex pattern saved to local storage:', regexValue);
-    });
+    } else {
+        console.warn('Local storage is not available; regex pattern was not persisted.');
+    }
 }
 
 // Load deployment history from local storage
 function loadDeploymentHistoryFromStorage() {
-    chrome.storage.local.get(DEPLOYMENT_HISTORY_STORAGE_KEY, (result) => {
-        const savedHistory = result[DEPLOYMENT_HISTORY_STORAGE_KEY];
-        if (savedHistory) {
-            const deploymentHistoryInput = document.getElementById('deployment-history');
+    const savedHistory = window.localStorage
+        ? window.localStorage.getItem(DEPLOYMENT_HISTORY_STORAGE_KEY)
+        : null;
+
+    if (savedHistory) {
+        const deploymentHistoryInput = document.getElementById('deployment-history');
+        if (deploymentHistoryInput) {
             deploymentHistoryInput.value = savedHistory;
         }
-    });
+    }
 }
 
 // Save deployment history to local storage
 function saveDeploymentHistoryToStorage(historyValue) {
-    chrome.storage.local.set({ [DEPLOYMENT_HISTORY_STORAGE_KEY]: historyValue }, () => {
+    if (window.localStorage) {
+        window.localStorage.setItem(DEPLOYMENT_HISTORY_STORAGE_KEY, historyValue);
         console.log('Deployment history saved to local storage:', historyValue);
-    });
+    } else {
+        console.warn('Local storage is not available; deployment history was not persisted.');
+    }
 }
 
 // Handle Generate Report button click - UI interaction wrapper
