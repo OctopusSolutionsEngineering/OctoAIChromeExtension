@@ -851,19 +851,28 @@ async function fetchDeploymentsForProject(serverUrl, spaceId, projectId, count) 
     // Get environment map for name resolution
     const envMap = environmentsCache.get(spaceId) || new Map();
     
-    // Fetch release details for each deployment to get version
+    // Derive release version for each deployment, only fetching the release when needed
     const deploymentsWithVersions = await Promise.all(
         response.Items.map(async (deployment) => {
-            let releaseVersion = 'Unknown';
+            // Prefer any version already provided on the deployment
+            let releaseVersion = deployment.ReleaseVersion || 'Unknown';
             
-            try {
-                // Fetch the release to get the version
-                const release = await fetchRelease(serverUrl, spaceId, deployment.ReleaseId);
-                releaseVersion = release.Version;
-            } catch (error) {
-                console.error(`Error fetching release ${deployment.ReleaseId}:`, error);
-                // Fall back to ReleaseId if release fetch fails
-                releaseVersion = deployment.ReleaseId;
+            // Only fetch the release if the deployment doesn't already include a usable version
+            if (!deployment.ReleaseVersion) {
+                try {
+                    // Fetch the release to get the version
+                    const release = await fetchRelease(serverUrl, spaceId, deployment.ReleaseId);
+                    if (release && release.Version) {
+                        releaseVersion = release.Version;
+                    } else {
+                        // Fall back to ReleaseId if release or version is unavailable
+                        releaseVersion = deployment.ReleaseId;
+                    }
+                } catch (error) {
+                    console.error(`Error fetching release ${deployment.ReleaseId}:`, error);
+                    // Fall back to ReleaseId if release fetch fails
+                    releaseVersion = deployment.ReleaseId;
+                }
             }
             
             return {
