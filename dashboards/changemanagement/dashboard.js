@@ -209,7 +209,11 @@ async function fetchOctopusApiJson(serverUrl, endpoint) {
             });
 
             if (!apiResponse.ok) {
-                throw new Error(`API request failed: ${apiResponse.status} ${apiResponse.statusText}`);
+                const error = new Error(`API request failed: ${apiResponse.status} ${apiResponse.statusText}`);
+                // Attach HTTP status information so retryApiCall can decide whether to retry
+                error.status = apiResponse.status;
+                error.statusText = apiResponse.statusText;
+                throw error;
             }
 
             return await apiResponse.json();
@@ -229,7 +233,11 @@ async function fetchOctopusApiText(serverUrl, endpoint) {
             });
 
             if (!apiResponse.ok) {
-                throw new Error(`API request failed: ${apiResponse.status} ${apiResponse.statusText}`);
+                const error = new Error(`API request failed: ${apiResponse.status} ${apiResponse.statusText}`);
+                // Attach HTTP status information so retryApiCall can decide whether to retry
+                error.status = apiResponse.status;
+                error.statusText = apiResponse.statusText;
+                throw error;
             }
 
             return await apiResponse.text();
@@ -242,6 +250,13 @@ async function retryApiCall(apiFunction, retryCount = 0) {
     try {
         return await apiFunction();
     } catch (error) {
+        // Fail fast for non-retryable HTTP status codes (e.g., auth failures and 404s)
+        const status = error && typeof error.status === 'number' ? error.status : null;
+        if (status === 400 || status === 401 || status === 403 || status === 404) {
+            console.error(`Non-retryable API error (status ${status}). Failing fast without retries.`, error.message);
+            throw error;
+        }
+
         if (retryCount < MAX_RETRIES) {
             console.log(`API call failed (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Retrying in ${RETRY_DELAY_MS / 1000} seconds...`, error.message);
             
