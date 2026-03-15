@@ -651,7 +651,19 @@ async function handleGenerateReportClick() {
         return;
     }
 
-    const deploymentCount = parseInt(deploymentHistoryInput.value) || 3;
+    const rawDeploymentCount = deploymentHistoryInput.value.trim();
+    let deploymentCount;
+    if (rawDeploymentCount === '') {
+        // Preserve existing default behavior when no value is entered
+        deploymentCount = 3;
+    } else {
+        deploymentCount = parseInt(rawDeploymentCount, 10);
+        if (!Number.isInteger(deploymentCount) || deploymentCount < 1) {
+            showError('Please enter a valid number of deployments (1 or more).');
+            return;
+        }
+    }
+
     const spaceId = spaceSelect.value;
     const serverUrl = dashboardConfig.lastServerUrl || dashboardConfig.serverUrls[0];
     const selectedProjects = allProjects.filter(p => selectedProjectIds.has(p.Id));
