@@ -34,6 +34,10 @@
           {
             "dashboardName": "AWS Well-Architected Framework Dashboard",
             "dashboardFile": "awswellarchitected/index.html"
+          },
+          {
+            "dashboardName": "Change Request Compliance Dashboard",
+            "dashboardFile": "changemanagement/index.html"
           }
         ]
       },
