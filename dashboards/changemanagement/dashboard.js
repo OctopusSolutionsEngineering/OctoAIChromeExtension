@@ -961,24 +961,75 @@ function displaySummary(summary) {
         ? Math.round((summary.compliant / summary.total) * 100) 
         : 0;
     
-    summaryDiv.innerHTML = `
-        <div class="summary-stats">
-            <div class="stat-item">
-                <div class="stat-label">Total Deployments</div>
-                <div class="stat-value">${summary.total}</div>
-            </div>
-            <div class="stat-item compliant">
-                <div class="stat-label">Compliant</div>
-                <div class="stat-value">${summary.compliant}</div>
-                <div class="stat-percentage">${compliantPercentage}% with change request</div>
-            </div>
-            <div class="stat-item non-compliant">
-                <div class="stat-label">Non-Compliant</div>
-                <div class="stat-value">${summary.nonCompliant}</div>
-                <div class="stat-percentage">${100 - compliantPercentage}% missing</div>
-            </div>
-        </div>
-    `;
+    // Clear any existing content safely
+    summaryDiv.textContent = '';
+
+    // Create container for summary statistics
+    const summaryStatsDiv = document.createElement('div');
+    summaryStatsDiv.className = 'summary-stats';
+
+    // Total deployments stat
+    const totalStatItem = document.createElement('div');
+    totalStatItem.className = 'stat-item';
+
+    const totalLabel = document.createElement('div');
+    totalLabel.className = 'stat-label';
+    totalLabel.textContent = 'Total Deployments';
+
+    const totalValue = document.createElement('div');
+    totalValue.className = 'stat-value';
+    totalValue.textContent = String(summary.total);
+
+    totalStatItem.appendChild(totalLabel);
+    totalStatItem.appendChild(totalValue);
+
+    // Compliant stat
+    const compliantStatItem = document.createElement('div');
+    compliantStatItem.className = 'stat-item compliant';
+
+    const compliantLabel = document.createElement('div');
+    compliantLabel.className = 'stat-label';
+    compliantLabel.textContent = 'Compliant';
+
+    const compliantValue = document.createElement('div');
+    compliantValue.className = 'stat-value';
+    compliantValue.textContent = String(summary.compliant);
+
+    const compliantPercentageDiv = document.createElement('div');
+    compliantPercentageDiv.className = 'stat-percentage';
+    compliantPercentageDiv.textContent = `${compliantPercentage}% with change request`;
+
+    compliantStatItem.appendChild(compliantLabel);
+    compliantStatItem.appendChild(compliantValue);
+    compliantStatItem.appendChild(compliantPercentageDiv);
+
+    // Non-compliant stat
+    const nonCompliantStatItem = document.createElement('div');
+    nonCompliantStatItem.className = 'stat-item non-compliant';
+
+    const nonCompliantLabel = document.createElement('div');
+    nonCompliantLabel.className = 'stat-label';
+    nonCompliantLabel.textContent = 'Non-Compliant';
+
+    const nonCompliantValue = document.createElement('div');
+    nonCompliantValue.className = 'stat-value';
+    nonCompliantValue.textContent = String(summary.nonCompliant);
+
+    const nonCompliantPercentageDiv = document.createElement('div');
+    nonCompliantPercentageDiv.className = 'stat-percentage';
+    nonCompliantPercentageDiv.textContent = `${100 - compliantPercentage}% missing`;
+
+    nonCompliantStatItem.appendChild(nonCompliantLabel);
+    nonCompliantStatItem.appendChild(nonCompliantValue);
+    nonCompliantStatItem.appendChild(nonCompliantPercentageDiv);
+
+    // Assemble the summary stats container
+    summaryStatsDiv.appendChild(totalStatItem);
+    summaryStatsDiv.appendChild(compliantStatItem);
+    summaryStatsDiv.appendChild(nonCompliantStatItem);
+
+    // Add to the summary container
+    summaryDiv.appendChild(summaryStatsDiv);
 }
 
 // Disable all UI elements
