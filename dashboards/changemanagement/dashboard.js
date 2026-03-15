@@ -5,6 +5,7 @@ let selectedProjectIds = new Set();
 let defaultProjectToSelect = null;
 let environmentsCache = new Map(); // Cache for environment ID to name mapping
 let releasesCache = new Map(); // Cache for release ID to release object mapping
+let tenantsCache = new Map(); // Cache for tenant ID to name mapping
 
 // Rate limiting for API calls
 let apiCallQueue = [];
@@ -817,6 +818,7 @@ async function processProjectCompliance(project, regex, serverUrl, spaceId, depl
                     id: result.deployment.Id,
                     version: result.deployment.ReleaseVersion,
                     environment: result.deployment.EnvironmentName,
+                    tenant: result.deployment.TenantName,
                     created: result.deployment.Created,
                     taskId: result.deployment.TaskId,
                     error: result.error
@@ -874,6 +876,10 @@ async function generateComplianceReport(
     // Fetch environments for name resolution
     onProgress('Loading environments...');
     await fetchEnvironments(serverUrl, spaceId);
+
+    // Fetch tenants for name resolution
+    onProgress('Loading tenants...');
+    await fetchTenants(serverUrl, spaceId);
 
     // Initialize statistics
     const stats = {
@@ -951,10 +957,11 @@ async function fetchDeploymentsForProject(serverUrl, spaceId, projectId, count) 
     const endpoint = `/api/${spaceId}/deployments?projects=${projectId}&take=${count}`;
     const response = await fetchOctopusApiJson(serverUrl, endpoint);
     
-    // Get environment map for name resolution
+    // Get environment and tenant maps for name resolution
     const envMap = environmentsCache.get(spaceId) || new Map();
-    
-    // Derive release version for each deployment, only fetching the release when needed
+    const tenantMap = tenantsCache.get(spaceId) || new Map();
+
+    // Derive release version and tenant name for each deployment
     const deploymentsWithVersions = await Promise.all(
         response.Items.map(async (deployment) => {
             // Prefer any version already provided on the deployment
@@ -978,10 +985,17 @@ async function fetchDeploymentsForProject(serverUrl, spaceId, projectId, count) 
                 }
             }
             
+            // Resolve tenant name if deployment has a tenant
+            let tenantName = null;
+            if (deployment.TenantId) {
+                tenantName = tenantMap.get(deployment.TenantId) || deployment.TenantId;
+            }
+            
             return {
                 Id: deployment.Id,
                 ReleaseVersion: releaseVersion,
                 EnvironmentName: envMap.get(deployment.EnvironmentId) || deployment.EnvironmentId,
+                TenantName: tenantName,
                 Created: deployment.Created,
                 TaskId: deployment.TaskId
             };
@@ -1039,6 +1053,28 @@ async function fetchEnvironments(serverUrl, spaceId) {
     return envMap;
 }
 
+// Fetch and cache tenants for a space
+async function fetchTenants(serverUrl, spaceId) {
+    // Return cached tenants if already fetched
+    if (tenantsCache.has(spaceId)) {
+        return tenantsCache.get(spaceId);
+    }
+
+    const endpoint = `/api/${spaceId}/tenants/all`;
+    const tenants = await fetchOctopusApiJson(serverUrl, endpoint);
+    
+    // Create a map of tenant ID to name
+    const tenantMap = new Map();
+    tenants.forEach(tenant => {
+        tenantMap.set(tenant.Id, tenant.Name);
+    });
+    
+    // Cache the map
+    tenantsCache.set(spaceId, tenantMap);
+    
+    return tenantMap;
+}
+
 // Display results for a project
 function displayProjectResults(project, nonCompliantDeployments, projectTotalDeployments, serverUrl, spaceId) {
     const resultsContent = document.getElementById('results-content');
@@ -1079,10 +1115,12 @@ function displayProjectResults(project, nonCompliantDeployments, projectTotalDep
             infoDiv.className = 'deployment-info';
             
             if (deployment.error) {
-                infoDiv.textContent = `Environment: ${deployment.environment} | Error: ${deployment.error}`;
+                const errorText = `Environment: ${deployment.environment}${deployment.tenant ? ` | Tenant: ${deployment.tenant}` : ''} | Error: ${deployment.error}`;
+                infoDiv.textContent = errorText;
             } else {
                 const date = new Date(deployment.created).toLocaleString();
-                infoDiv.textContent = `Environment: ${deployment.environment} | Deployed: ${date}`;
+                const infoText = `Environment: ${deployment.environment}${deployment.tenant ? ` | Tenant: ${deployment.tenant}` : ''} | Deployed: ${date}`;
+                infoDiv.textContent = infoText;
             }
             
             deploymentDiv.appendChild(infoDiv);

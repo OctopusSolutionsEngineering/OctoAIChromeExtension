@@ -30,6 +30,8 @@ The dashboard must include a `metadata.json` file with the author's email addres
 
 The dashboard must be in a file called `index.html`.
 
+Any values saved to local storage must be prefixed with an identifier for the dashboard to prevent conflicts with other dashboards.
+
 ## Sample Prompts
 
 The files named `promptsv#.json` (where `#` is a number) contain sample prompts displayed by the AI Assistant. These
