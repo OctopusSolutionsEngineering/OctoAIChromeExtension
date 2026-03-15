@@ -25,6 +25,14 @@ h1 {
     font-size: 28px;
 }
 
+h3 {
+    color: #4a5568;
+    margin-bottom: 30px;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.6;
+}
+
 .form-group {
     margin-bottom: 20px;
 }
@@ -33,7 +41,8 @@ label {
     display: block;
     margin-bottom: 8px;
     font-weight: 600;
-    color: #4a5568;
+    color: #2d3748;
+    font-size: 16px;
 }
 
 select {
@@ -98,6 +107,7 @@ input[type="number"]:focus {
     margin-bottom: 10px;
     font-size: 16px;
     color: #2d3748;
+    font-weight: 600;
 }
 
 .project-list {
