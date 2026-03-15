@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Change Management Compliance Report</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="../api.js" defer></script>
+    <script src="dashboard.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Change Management Compliance Report</h1>
+
+        <div class="error" id="error-message"></div>
+
+        <div class="form-group">
+            <label for="space-select">Select Space:</label>
+            <select id="space-select">
+                <option value="">-- Select a space --</option>
+            </select>
+        </div>
+
+        <div class="loading" id="loading">
+            Loading projects...
+        </div>
+
+        <div class="project-selection">
+            <div class="project-list-container">
+                <h3>Available Projects</h3>
+                <select id="available-projects" class="project-list" size="15" multiple>
+                </select>
+            </div>
+
+            <div class="button-group">
+                <button id="add-project" disabled>Add →</button>
+                <button id="select-all" disabled>Add All →</button>
+                <button id="remove-all" disabled>← Remove All</button>
+                <button id="remove-project" disabled>← Remove</button>
+            </div>
+
+            <div class="project-list-container">
+                <h3>Selected Projects</h3>
+                <select id="selected-projects" class="project-list" size="15" multiple>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 30px;">
+            <label for="regex-preset">Change Request Identification Regex</label>
+            <select id="regex-preset">
+                <option value="">-- Select a preset or enter custom --</option>
+                <option value="CHG\d{7}">ServiceNow (CHG0000001)</option>
+                <option value="[A-Z]+\-\d+">JIRA (PROJ-123)</option>
+                <option value="#\d+">GitHub (#123)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <input type="text" id="regex-input" placeholder="Enter custom regex pattern..." />
+        </div>
+
+        <div class="form-group" style="margin-top: 30px;">
+            <label for="deployment-history">Deployment History</label>
+            <input type="number" id="deployment-history" min="1" value="3" />
+        </div>
+
+        <div class="form-group" style="margin-top: 20px;">
+            <button id="go-button" class="go-button">Generate Report</button>
+        </div>
+
+        <div id="results-section" style="margin-top: 30px; display: none;">
+            <h2>Compliance Report Results</h2>
+            <div id="progress" class="progress-message"></div>
+            <div id="results-content"></div>
+        </div>
+    </div>
+</body>
+</html>
+
