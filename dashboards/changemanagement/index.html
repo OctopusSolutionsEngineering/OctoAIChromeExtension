@@ -61,7 +61,8 @@
         </div>
 
         <div class="form-group">
-            <input type="text" id="regex-input" placeholder="Enter custom regex pattern..." />
+            <label for="regex-input">Custom regex pattern</label>
+            <input type="text" id="regex-input" placeholder="Enter custom regex pattern..." aria-describedby="regex-warning" />
             <div id="regex-warning" class="warning-message" style="display: none;">
                 ⚠️ Please enter a valid regex pattern
             </div>
