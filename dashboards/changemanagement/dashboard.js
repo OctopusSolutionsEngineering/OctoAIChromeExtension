@@ -949,14 +949,22 @@ function enableUI() {
     document.getElementById('space-select').disabled = false;
     document.getElementById('available-projects').disabled = false;
     document.getElementById('selected-projects').disabled = false;
-    document.getElementById('add-project').disabled = false;
-    document.getElementById('select-all').disabled = availableList.options.length === 0;
-    document.getElementById('remove-all').disabled = selectedList.options.length === 0;
-    document.getElementById('remove-project').disabled = false;
+
+    // Enable/disable project action buttons based on current list state
+    const hasAvailableSelection = availableList && availableList.selectedOptions && availableList.selectedOptions.length > 0;
+    const hasSelectedSelection = selectedList && selectedList.selectedOptions && selectedList.selectedOptions.length > 0;
+
+    document.getElementById('add-project').disabled = !hasAvailableSelection;
+    document.getElementById('select-all').disabled = !availableList || availableList.options.length === 0;
+    document.getElementById('remove-all').disabled = !selectedList || selectedList.options.length === 0;
+    document.getElementById('remove-project').disabled = !hasSelectedSelection;
+
     document.getElementById('regex-preset').disabled = false;
     document.getElementById('regex-input').disabled = false;
     document.getElementById('deployment-history').disabled = false;
-    document.getElementById('go-button').disabled = false;
+
+    // Recompute Generate Report button state based on current projects and regex
+    updateGenerateReportButtonState();
 }
 
 // Show error message
