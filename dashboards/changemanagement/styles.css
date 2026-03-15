@@ -173,6 +173,55 @@ h2 {
     margin-bottom: 20px;
 }
 
+.summary-section {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+}
+
+.summary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.stat-item {
+    padding: 15px;
+    background: white;
+    border-radius: 4px;
+    border-left: 4px solid #4299e1;
+}
+
+.stat-item.compliant {
+    border-left-color: #48bb78;
+}
+
+.stat-item.non-compliant {
+    border-left-color: #f56565;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #718096;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.stat-percentage {
+    font-size: 14px;
+    color: #718096;
+    margin-top: 5px;
+}
+
 .project-result {
     margin-bottom: 30px;
     border: 1px solid #e2e8f0;

@@ -597,6 +597,7 @@ async function handleGenerateReportClick() {
     const resultsSection = document.getElementById('results-section');
     const progressDiv = document.getElementById('progress');
     const resultsContent = document.getElementById('results-content');
+    const summaryDiv = document.getElementById('summary');
 
     // Validate inputs
     if (!spaceSelect.value) {
@@ -626,6 +627,7 @@ async function handleGenerateReportClick() {
     // Show results section
     resultsSection.style.display = 'block';
     resultsContent.innerHTML = '';
+    summaryDiv.innerHTML = '';
     progressDiv.textContent = 'Generating compliance report...';
 
     try {
@@ -640,8 +642,12 @@ async function handleGenerateReportClick() {
                 progressDiv.textContent = message;
             },
             // Result callback
-            (project, nonCompliantDeployments) => {
-                displayProjectResults(project, nonCompliantDeployments, serverUrl, spaceId);
+            (project, nonCompliantDeployments, projectTotalDeployments) => {
+                displayProjectResults(project, nonCompliantDeployments, projectTotalDeployments, serverUrl, spaceId);
+            },
+            // Summary callback
+            (summary) => {
+                displaySummary(summary);
             }
         );
 
@@ -663,7 +669,8 @@ async function generateComplianceReport(
     regexPattern,
     deploymentCount,
     onProgress,
-    onProjectResult
+    onProjectResult,
+    onSummary
 ) {
     const regex = new RegExp(regexPattern);
 
@@ -672,35 +679,46 @@ async function generateComplianceReport(
     await fetchEnvironments(serverUrl, spaceId);
 
     let processedCount = 0;
+    let totalDeployments = 0;
+    let compliantDeployments = 0;
+    let nonCompliantDeployments = 0;
 
     for (const project of projects) {
         processedCount++;
         onProgress(`Processing project ${processedCount} of ${projects.length}: ${project.Name}...`);
 
-        const nonCompliantDeployments = [];
+        const projectNonCompliantDeployments = [];
+        let projectTotalDeployments = 0;
 
         try {
             // Fetch deployments for this project
             const deployments = await fetchDeploymentsForProject(serverUrl, spaceId, project.Id, deploymentCount);
+            projectTotalDeployments = deployments.length;
 
             // Check each deployment's logs
             for (const deployment of deployments) {
+                totalDeployments++;
+                
                 try {
                     const logs = await fetchDeploymentLogs(serverUrl, spaceId, deployment.TaskId);
                     const hasMatch = regex.test(logs);
 
                     if (!hasMatch) {
-                        nonCompliantDeployments.push({
+                        nonCompliantDeployments++;
+                        projectNonCompliantDeployments.push({
                             id: deployment.Id,
                             version: deployment.ReleaseVersion,
                             environment: deployment.EnvironmentName,
                             created: deployment.Created,
                             taskId: deployment.TaskId
                         });
+                    } else {
+                        compliantDeployments++;
                     }
                 } catch (error) {
                     console.error(`Error fetching logs for deployment ${deployment.Id}:`, error);
-                    nonCompliantDeployments.push({
+                    nonCompliantDeployments++;
+                    projectNonCompliantDeployments.push({
                         id: deployment.Id,
                         version: deployment.ReleaseVersion,
                         environment: deployment.EnvironmentName,
@@ -715,8 +733,15 @@ async function generateComplianceReport(
         }
 
         // Report results for this project
-        onProjectResult(project, nonCompliantDeployments);
+        onProjectResult(project, projectNonCompliantDeployments, projectTotalDeployments);
     }
+    
+    // Report overall summary
+    onSummary({
+        total: totalDeployments,
+        compliant: compliantDeployments,
+        nonCompliant: nonCompliantDeployments
+    });
 }
 
 // Fetch deployments for a project
@@ -804,7 +829,7 @@ async function fetchEnvironments(serverUrl, spaceId) {
 }
 
 // Display results for a project
-function displayProjectResults(project, nonCompliantDeployments, serverUrl, spaceId) {
+function displayProjectResults(project, nonCompliantDeployments, projectTotalDeployments, serverUrl, spaceId) {
     const resultsContent = document.getElementById('results-content');
     
     const projectDiv = document.createElement('div');
@@ -817,13 +842,13 @@ function displayProjectResults(project, nonCompliantDeployments, serverUrl, spac
     if (nonCompliantDeployments.length === 0) {
         const noIssuesDiv = document.createElement('div');
         noIssuesDiv.className = 'no-issues';
-        noIssuesDiv.textContent = '✓ All deployments contain the required change request reference.';
+        noIssuesDiv.textContent = `✓ All ${projectTotalDeployments} deployment(s) contain the required change request reference.`;
         projectDiv.appendChild(noIssuesDiv);
     } else {
         const issuesTitle = document.createElement('p');
         issuesTitle.style.marginBottom = '10px';
         issuesTitle.style.fontWeight = '600';
-        issuesTitle.textContent = `${nonCompliantDeployments.length} deployment(s) missing change request reference:`;
+        issuesTitle.textContent = `${nonCompliantDeployments.length} out of ${projectTotalDeployments} deployment(s) missing change request reference:`;
         projectDiv.appendChild(issuesTitle);
 
         nonCompliantDeployments.forEach(deployment => {
@@ -855,6 +880,35 @@ function displayProjectResults(project, nonCompliantDeployments, serverUrl, spac
     }
 
     resultsContent.appendChild(projectDiv);
+}
+
+// Display overall summary statistics
+function displaySummary(summary) {
+    const summaryDiv = document.getElementById('summary');
+    
+    // Calculate percentage
+    const compliantPercentage = summary.total > 0 
+        ? Math.round((summary.compliant / summary.total) * 100) 
+        : 0;
+    
+    summaryDiv.innerHTML = `
+        <div class="summary-stats">
+            <div class="stat-item">
+                <div class="stat-label">Total Deployments</div>
+                <div class="stat-value">${summary.total}</div>
+            </div>
+            <div class="stat-item compliant">
+                <div class="stat-label">Compliant</div>
+                <div class="stat-value">${summary.compliant}</div>
+                <div class="stat-percentage">${compliantPercentage}% with change request</div>
+            </div>
+            <div class="stat-item non-compliant">
+                <div class="stat-label">Non-Compliant</div>
+                <div class="stat-value">${summary.nonCompliant}</div>
+                <div class="stat-percentage">${100 - compliantPercentage}% missing</div>
+            </div>
+        </div>
+    `;
 }
 
 // Disable all UI elements
