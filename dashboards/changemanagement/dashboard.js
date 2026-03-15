@@ -127,7 +127,7 @@ async function loadSpaces(defaultSpace) {
 }
 
 // Load projects for selected space
-async function loadProjects(spaceId, spaceName) {
+async function loadProjects(spaceId) {
     const availableList = document.getElementById('available-projects');
     const selectedList = document.getElementById('selected-projects');
     const loading = document.getElementById('loading');
@@ -352,7 +352,7 @@ function setupEventListeners() {
             selectedList.innerHTML = '';
             
             // Load projects for selected space
-            await loadProjects(spaceId, spaceName);
+            await loadProjects(spaceId);
             
             // Enable/disable Select All and Remove All buttons based on list contents
             selectAllButton.disabled = availableList.options.length === 0;
