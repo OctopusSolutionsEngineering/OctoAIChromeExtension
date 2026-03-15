@@ -14,6 +14,10 @@ const API_CALL_DELAY_MS = 1000; // 1 second between calls
 
 // Retry configuration
 const MAX_RETRIES = 3;
+
+// Safety limit to prevent excessive API calls when generating reports
+// This caps the total number of deployments whose logs will be fetched in a single run.
+const MAX_DEPLOYMENTS_TO_PROCESS = 500;
 const RETRY_DELAY_MS = 10000; // 10 seconds between retries
 
 // Local storage key for regex
@@ -705,7 +709,14 @@ async function generateComplianceReport(
     let compliantDeployments = 0;
     let nonCompliantDeployments = 0;
 
+    // Flag used to stop processing once we hit a safe upper bound on deployments
+    let stopProcessing = false;
+
     for (const project of projects) {
+        if (stopProcessing) {
+            break;
+        }
+
         processedCount++;
         onProgress(`Processing project ${processedCount} of ${projects.length}: ${project.Name}...`);
 
@@ -715,12 +726,18 @@ async function generateComplianceReport(
         try {
             // Fetch deployments for this project
             const deployments = await fetchDeploymentsForProject(serverUrl, spaceId, project.Id, deploymentCount);
-            projectTotalDeployments = deployments.length;
 
             // Check each deployment's logs
             for (const deployment of deployments) {
+                // Enforce a global cap on the total number of deployments processed
+                if (totalDeployments >= MAX_DEPLOYMENTS_TO_PROCESS) {
+                    stopProcessing = true;
+                    break;
+                }
+
                 totalDeployments++;
-                
+                projectTotalDeployments++;
+
                 try {
                     const logs = await fetchDeploymentLogs(serverUrl, spaceId, deployment.TaskId);
                     const hasMatch = regex.test(logs);
