@@ -209,6 +209,24 @@ h2 {
     color: #2d3748;
 }
 
+.deployment-link {
+    display: inline-block;
+    font-weight: 600;
+    color: #2b6cb0;
+    text-decoration: none;
+    margin-bottom: 5px;
+    transition: color 0.2s;
+}
+
+.deployment-link:hover {
+    color: #2c5282;
+    text-decoration: underline;
+}
+
+.deployment-link:visited {
+    color: #5a67d8;
+}
+
 .no-issues {
     padding: 12px;
     background: #f0fff4;
@@ -239,5 +257,16 @@ h2 {
 
 .error.show {
     display: block;
+}
+
+.warning-message {
+    margin-top: 10px;
+    padding: 10px;
+    background: #fef5e7;
+    color: #b7791f;
+    border-left: 4px solid #f39c12;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
 }
 

@@ -33,16 +33,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // Get URL parameters and default values
-        const urlParams = getUrlParams();
-
-        // URL params take precedence over config context
-        const defaultSpace = urlParams.space || dashboardConfig.context?.space;
-        const defaultProject = urlParams.project || dashboardConfig.context?.project;
+        // Get default space and project
+        const defaults = getDefaultSpaceAndProject();
         
         // Store default project for later use
-        if (defaultProject) {
-            defaultProjectToSelect = defaultProject;
+        if (defaults.project) {
+            defaultProjectToSelect = defaults.project;
         }
 
         // Set up event listeners
@@ -55,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadDeploymentHistoryFromStorage();
 
         // Load spaces and select default if available
-        await loadSpaces(defaultSpace);
+        await loadSpaces(defaults.space);
     } catch (error) {
         console.error('Error initializing dashboard:', error);
         showError('Failed to initialize dashboard: ' + error.message);
@@ -68,6 +64,20 @@ function getUrlParams() {
     return {
         space: params.get('space'),
         project: params.get('project')
+    };
+}
+
+// Get default space and project from URL params or dashboard config context
+function getDefaultSpaceAndProject() {
+    const urlParams = getUrlParams();
+    
+    // URL params take precedence over config context
+    const defaultSpace = urlParams.space || dashboardConfig.context?.space;
+    const defaultProject = urlParams.project || dashboardConfig.context?.project;
+    
+    return {
+        space: defaultSpace,
+        project: defaultProject
     };
 }
 
@@ -170,6 +180,12 @@ async function loadProjects(spaceId, spaceName) {
             // Clear the default project after first use
             defaultProjectToSelect = null;
         }
+
+        // Update warning visibility
+        updateNoProjectsWarning();
+        
+        // Update Generate Report button state
+        updateGenerateReportButtonState();
 
         // Hide loading indicator
         loading.classList.remove('show');
@@ -322,12 +338,20 @@ function setupEventListeners() {
             // Enable/disable Select All and Remove All buttons based on list contents
             selectAllButton.disabled = availableList.options.length === 0;
             removeAllButton.disabled = selectedList.options.length === 0;
+            
+            // Update warning visibility
+            updateNoProjectsWarning();
+            
+            // Update Generate Report button state
+            updateGenerateReportButtonState();
         } else {
             availableList.innerHTML = '';
             selectedList.innerHTML = '';
             allProjects = [];
             selectAllButton.disabled = true;
             removeAllButton.disabled = true;
+            updateNoProjectsWarning();
+            updateGenerateReportButtonState();
         }
     });
 
@@ -362,6 +386,12 @@ function setupEventListeners() {
         addButton.disabled = true;
         selectAllButton.disabled = availableList.options.length === 0;
         removeAllButton.disabled = selectedList.options.length === 0;
+        
+        // Update warning visibility
+        updateNoProjectsWarning();
+        
+        // Update Generate Report button state
+        updateGenerateReportButtonState();
     });
 
     // Select All button
@@ -386,6 +416,12 @@ function setupEventListeners() {
         selectAllButton.disabled = true;
         addButton.disabled = true;
         removeAllButton.disabled = false;
+        
+        // Update warning visibility
+        updateNoProjectsWarning();
+        
+        // Update Generate Report button state
+        updateGenerateReportButtonState();
     });
 
     // Remove project button
@@ -416,6 +452,12 @@ function setupEventListeners() {
         removeButton.disabled = true;
         selectAllButton.disabled = availableList.options.length === 0;
         removeAllButton.disabled = selectedList.options.length === 0;
+        
+        // Update warning visibility
+        updateNoProjectsWarning();
+        
+        // Update Generate Report button state
+        updateGenerateReportButtonState();
     });
 
     // Remove All button
@@ -446,6 +488,12 @@ function setupEventListeners() {
         removeAllButton.disabled = true;
         removeButton.disabled = true;
         selectAllButton.disabled = availableList.options.length === 0;
+        
+        // Update warning visibility
+        updateNoProjectsWarning();
+        
+        // Update Generate Report button state
+        updateGenerateReportButtonState();
     });
 
     // Regex preset selection
@@ -454,6 +502,8 @@ function setupEventListeners() {
         if (presetValue) {
             regexInput.value = presetValue;
             saveRegexToStorage(presetValue);
+            validateRegex();
+            updateGenerateReportButtonState();
         }
     });
 
@@ -466,6 +516,12 @@ function setupEventListeners() {
         if (regexValue && regexValue !== regexPreset.value) {
             regexPreset.value = '';
         }
+        
+        // Validate regex
+        validateRegex();
+        
+        // Update Generate Report button state
+        updateGenerateReportButtonState();
     });
 
     // Deployment history input change
@@ -498,6 +554,12 @@ function loadRegexFromStorage() {
             if (matchingPreset) {
                 regexPreset.value = savedRegex;
             }
+            
+            // Validate the loaded regex
+            validateRegex();
+            
+            // Update Generate Report button state
+            updateGenerateReportButtonState();
         }
     });
 }
@@ -579,7 +641,7 @@ async function handleGenerateReportClick() {
             },
             // Result callback
             (project, nonCompliantDeployments) => {
-                displayProjectResults(project, nonCompliantDeployments);
+                displayProjectResults(project, nonCompliantDeployments, serverUrl, spaceId);
             }
         );
 
@@ -742,7 +804,7 @@ async function fetchEnvironments(serverUrl, spaceId) {
 }
 
 // Display results for a project
-function displayProjectResults(project, nonCompliantDeployments) {
+function displayProjectResults(project, nonCompliantDeployments, serverUrl, spaceId) {
     const resultsContent = document.getElementById('results-content');
     
     const projectDiv = document.createElement('div');
@@ -768,10 +830,14 @@ function displayProjectResults(project, nonCompliantDeployments) {
             const deploymentDiv = document.createElement('div');
             deploymentDiv.className = 'deployment-item';
             
-            const versionSpan = document.createElement('div');
-            versionSpan.className = 'deployment-version';
-            versionSpan.textContent = `Version: ${deployment.version}`;
-            deploymentDiv.appendChild(versionSpan);
+            // Create link to deployment in Octopus web UI
+            const deploymentLink = document.createElement('a');
+            deploymentLink.href = `${serverUrl}/app#/${spaceId}/deployments/${deployment.id}`;
+            deploymentLink.target = '_blank';
+            deploymentLink.rel = 'noopener noreferrer';
+            deploymentLink.className = 'deployment-link';
+            deploymentLink.textContent = `Version: ${deployment.version}`;
+            deploymentDiv.appendChild(deploymentLink);
 
             const infoDiv = document.createElement('div');
             infoDiv.className = 'deployment-info';
@@ -829,5 +895,48 @@ function showError(message) {
     const errorDiv = document.getElementById('error-message');
     errorDiv.textContent = message;
     errorDiv.classList.add('show');
+}
+
+// Update the no projects warning visibility
+function updateNoProjectsWarning() {
+    const warningDiv = document.getElementById('no-projects-warning');
+    if (selectedProjectIds.size === 0) {
+        warningDiv.style.display = 'block';
+    } else {
+        warningDiv.style.display = 'none';
+    }
+}
+
+// Validate regex and update warning visibility
+function validateRegex() {
+    const regexInput = document.getElementById('regex-input');
+    const warningDiv = document.getElementById('regex-warning');
+    const regexValue = regexInput.value.trim();
+    
+    // Check if empty
+    if (!regexValue) {
+        warningDiv.style.display = 'block';
+        return false;
+    }
+    
+    // Check if valid regex
+    try {
+        new RegExp(regexValue);
+        warningDiv.style.display = 'none';
+        return true;
+    } catch (e) {
+        warningDiv.style.display = 'block';
+        return false;
+    }
+}
+
+// Update Generate Report button state based on warnings
+function updateGenerateReportButtonState() {
+    const goButton = document.getElementById('go-button');
+    const hasProjects = selectedProjectIds.size > 0;
+    const hasValidRegex = validateRegex();
+    
+    // Disable button if there are any warnings
+    goButton.disabled = !hasProjects || !hasValidRegex;
 }
 
