@@ -709,6 +709,33 @@ async function handleGenerateReportClick() {
 }
 
 // Generate compliance report (refactored to be HTML-agnostic)
+
+// Basic safety checks for user-supplied regular expressions to reduce
+// the risk of catastrophic backtracking on large log inputs.
+function isSafeRegexPattern(pattern) {
+    if (typeof pattern !== 'string') {
+        return false;
+    }
+
+    // Limit pattern length to avoid extremely large expressions.
+    const MAX_PATTERN_LENGTH = 500;
+    if (pattern.length > MAX_PATTERN_LENGTH) {
+        return false;
+    }
+
+    // Heuristic checks for nested quantifiers that commonly cause
+    // catastrophic backtracking, such as (.*)+, (.+)+, or quantified
+    // groups that themselves contain quantified subpatterns.
+    const nestedWildcardQuantifiers = /\((?:[^()]*?)(?:\.\*|\.\+)(?:[^()]*)\)(?:\+|\*|\{)/;
+    const nestedGroupQuantifiers = /\((?:[^()]*?)(?:\+|\*|\{[^}]*\})(?:[^()]*)\)(?:\+|\*|\{)/;
+
+    if (nestedWildcardQuantifiers.test(pattern) || nestedGroupQuantifiers.test(pattern)) {
+        return false;
+    }
+
+    return true;
+}
+
 async function generateComplianceReport(
     serverUrl,
     spaceId,
@@ -719,7 +746,19 @@ async function generateComplianceReport(
     onProjectResult,
     onSummary
 ) {
-    const regex = new RegExp(regexPattern);
+    if (!isSafeRegexPattern(regexPattern)) {
+        throw new Error(
+            'The provided regular expression is too complex or potentially unsafe. ' +
+            'Please simplify the pattern and try again.'
+        );
+    }
+
+    let regex;
+    try {
+        regex = new RegExp(regexPattern);
+    } catch (e) {
+        throw new Error('The provided regular expression is invalid: ' + (e && e.message ? e.message : String(e)));
+    }
 
     // Fetch environments for name resolution
     onProgress('Loading environments...');
