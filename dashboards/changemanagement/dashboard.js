@@ -77,7 +77,7 @@ function getUrlParams() {
   * or after a successful report generation.
   */
  function hideError() {
-     const errorBanner = document.getElementById('errorBanner');
+     const errorBanner = document.getElementById('error-message');
      if (errorBanner) {
          errorBanner.classList.remove('show');
          errorBanner.textContent = '';
@@ -104,8 +104,7 @@ async function loadSpaces(defaultSpace) {
     const serverUrl = dashboardConfig.lastServerUrl || dashboardConfig.serverUrls[0];
 
     try {
-        const response = await fetchOctopusApiJson(serverUrl, '/api/spaces/all');
-        const spaces = response;
+        const spaces = await fetchOctopusApiJson(serverUrl, '/api/spaces/all');
 
         // Clear existing options and add the default option
         spaceSelect.textContent = '';
@@ -668,7 +667,9 @@ async function handleGenerateReportClick() {
     }
 
     const rawDeploymentCount = deploymentHistoryInput.value.trim();
+    const MAX_DEPLOYMENTS_PER_PROJECT = 25;
     let deploymentCount;
+    
     if (rawDeploymentCount === '') {
         // Preserve existing default behavior when no value is entered
         deploymentCount = 3;
@@ -676,6 +677,10 @@ async function handleGenerateReportClick() {
         deploymentCount = parseInt(rawDeploymentCount, 10);
         if (!Number.isInteger(deploymentCount) || deploymentCount < 1) {
             showError('Please enter a valid number of deployments (1 or more).');
+            return;
+        }
+        if (deploymentCount > MAX_DEPLOYMENTS_PER_PROJECT) {
+            showError(`Deployment history cannot exceed ${MAX_DEPLOYMENTS_PER_PROJECT} deployments per project. Please enter a smaller number.`);
             return;
         }
     }
@@ -690,8 +695,8 @@ async function handleGenerateReportClick() {
 
     // Show results section
     resultsSection.style.display = 'block';
-    resultsContent.innerHTML = '';
-    summaryDiv.innerHTML = '';
+    resultsContent.textContent = '';
+    summaryDiv.textContent = '';
     progressDiv.textContent = 'Generating compliance report...';
 
     try {
