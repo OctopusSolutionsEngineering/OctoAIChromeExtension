@@ -553,30 +553,37 @@ function setupEventListeners() {
 
 // Load regex from local storage
 function loadRegexFromStorage() {
-    chrome.storage.local.get(REGEX_STORAGE_KEY, (result) => {
-        const savedRegex = result[REGEX_STORAGE_KEY];
-        if (savedRegex) {
-            const regexInput = document.getElementById('regex-input');
-            const regexPreset = document.getElementById('regex-preset');
-            
+    // Use window.localStorage instead of chrome.storage.local to avoid
+    // depending on the Chrome extensions API from within the dashboard.
+    const savedRegex = window.localStorage
+        ? window.localStorage.getItem(REGEX_STORAGE_KEY)
+        : null;
+
+    if (savedRegex) {
+        const regexInput = document.getElementById('regex-input');
+        const regexPreset = document.getElementById('regex-preset');
+
+        if (regexInput) {
             regexInput.value = savedRegex;
-            
+        }
+
+        if (regexPreset) {
             // Check if saved regex matches a preset
             const matchingPreset = Array.from(regexPreset.options).find(
                 option => option.value === savedRegex
             );
-            
+
             if (matchingPreset) {
                 regexPreset.value = savedRegex;
             }
-            
-            // Validate the loaded regex
-            validateRegex();
-            
-            // Update Generate Report button state
-            updateGenerateReportButtonState();
         }
-    });
+
+        // Validate the loaded regex
+        validateRegex();
+
+        // Update Generate Report button state
+        updateGenerateReportButtonState();
+    }
 }
 
 // Save regex to local storage
