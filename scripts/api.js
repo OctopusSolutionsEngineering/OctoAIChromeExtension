@@ -250,7 +250,7 @@ async function processResponse(prompt, systemPrompt, responses) {
             type: "error",
             prompt: prompt,
             systemPrompt: systemPrompt,
-            response: "There was an error processing your request. You may try the prompt again."
+            response: "There was an error processing your request. This may be due to network restrictions. See https://octopus.com/docs/octopus-ai/assistant/getting-started#using-with-on-premises-instances for more details on enabling network to on-premises instances and cloud instances with IP whitelists."
         };
     }
 
