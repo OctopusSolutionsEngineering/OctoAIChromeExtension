@@ -1,12 +1,21 @@
 
+function getSpaceMatch() {
+    const match = window.location.href.match(/(Spaces-\d+)/);
+    return match ? match[1] : null;
+}
+
 async function getPageName() {
     const pageName = Object.keys(getPageRegex())
         .filter(key => window.location.href.match(getPageRegex()[key]))
         .sort((a, b) => a.length - b.length)
         .pop();
 
+    const spaceId = getSpaceMatch();
+
+    const localPrompts = await findLibraryVariableSet(spaceId);
+
     // The dashboard has some special handling
-    if (pageName !== "Dashboard") {
+    if (pageName !== "Dashboard" || localPrompts) {
         return pageName;
     }
 
@@ -14,9 +23,9 @@ async function getPageName() {
 }
 
 async function getProjectCount() {
-    const match = window.location.href.match(/(Spaces-\d+)/);
-    if (match) {
-        return await fetch("/api/Spaces/" + match[1] + "/Projects", {credentials: 'include'})
+    const spaceId = getSpaceMatch();
+    if (spaceId) {
+        return await fetch("/api/Spaces/" + spaceId + "/Projects", {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.TotalResults)
             .catch(() => -1)
@@ -26,9 +35,9 @@ async function getProjectCount() {
 }
 
 async function getFirstEnvironmentName() {
-    const match = window.location.href.match(/(Spaces-\d+)/);
-    if (match) {
-        const names = await fetch("/api/Spaces/" + match[1] + "/Environments", {credentials: 'include'})
+    const spaceId = getSpaceMatch();
+    if (spaceId) {
+        const names = await fetch("/api/Spaces/" + spaceId + "/Environments", {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Items.map(item => item.Name))
 
@@ -41,18 +50,10 @@ async function getFirstEnvironmentName() {
     return null;
 }
 
-async function getSpaceId() {
-    const match = window.location.href.match(/(Spaces-\d+)/);
-    if (match) {
-        return match[1]
-    }
-    return null;
-}
-
 async function getSpaceName() {
-    const match = window.location.href.match(/(Spaces-\d+)/);
-    if (match) {
-        return await fetch("/api/Spaces/" + match[1], {credentials: 'include'})
+    const spaceId = getSpaceMatch();
+    if (spaceId) {
+        return await fetch("/api/Spaces/" + spaceId, {credentials: 'include'})
             .then(response => response.json())
             .then(json => json.Name)
     }
@@ -132,7 +133,7 @@ async function getRunbookName() {
 
     // We also need the runbook name from a runbook run
     const runbookRun = await getRunbookRun();
-    const spaceId = await getSpaceId()
+    const spaceId = await getSpaceMatch()
     if (runbookRun && spaceId) {
         return await fetch("/api/" + spaceId + "/RunbookRuns/" + runbookRun, {credentials: 'include'})
             .then(response => response.json())
@@ -191,7 +192,7 @@ async function getEnvironment() {
 
     // We can also extract an environment from a deployment
     const deploymentId = await getDeploymentId()
-    const spaceId = await getSpaceId()
+    const spaceId = await getSpaceMatch()
 
     if (deploymentId) {
         const environmentId = await fetch("/api/" + spaceId + "/Deployments/" + deploymentId, {credentials: 'include'})

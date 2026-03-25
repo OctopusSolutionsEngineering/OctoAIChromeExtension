@@ -1,5 +1,18 @@
+async function findLibraryVariableSet(spaceId) {
+    if (!spaceId) {
+        return null;
+    }
+
+    const lvsName = "OctoAI Prompts"
+    const collection = await fetch("/api/Spaces/" + spaceId + "/LibraryVariableSets", {credentials: 'include'})
+        .then(response => response.json())
+        .then(json => json.Items);
+
+    return collection.filter(lvs => lvs.Name === lvsName).pop();
+}
+
 async function getLocalPrompts() {
-    const octoAILvsName = "OctoAI Prompts"
+    
     const maxPrompts = 5
 
     const pageName = await getPageName();
@@ -9,23 +22,19 @@ async function getLocalPrompts() {
     }
 
     try {
-        const match = window.location.href.match(/(Spaces-\d+)/);
+        const match = getSpaceMatch();
         if (match) {
-            const collection = await fetch("/api/Spaces/" + match[1] + "/LibraryVariableSets", {credentials: 'include'})
-                .then(response => response.json())
-                .then(json => json.Items);
-
-            const octoAiLvs = collection.filter(lvs => lvs.Name === octoAILvsName).pop();
+            const octoAiLvs = await findLibraryVariableSet(match);
 
             if (!octoAiLvs) {
                 return null;
             }
 
-            const octoAiLvsVariableSetId = await fetch("/api/Spaces/" + match[1] + "/LibraryVariableSets/" + octoAiLvs.Id, {credentials: 'include'})
+            const octoAiLvsVariableSetId = await fetch("/api/Spaces/" + match + "/LibraryVariableSets/" + octoAiLvs.Id, {credentials: 'include'})
                 .then(response => response.json())
                 .then(json => json.VariableSetId);
 
-            const octoAiLvsVariables = await fetch("/api/Spaces/" + match[1] + "/Variables/" + octoAiLvsVariableSetId, {credentials: 'include'})
+            const octoAiLvsVariables = await fetch("/api/Spaces/" + match + "/Variables/" + octoAiLvsVariableSetId, {credentials: 'include'})
                 .then(response => response.json())
                 .then(json => json.Variables);
 
@@ -52,7 +61,6 @@ async function getLocalPrompts() {
     }
 
     return null;
-
 }
 
 async function isOnEmptyDashboardPage() {
