@@ -190,14 +190,14 @@ function displayExamples(prompts, parentPrompts, theme) {
         const button = createButton(buttonName, theme);
 
 
-        if (prompt.systemPrompt) {
+        if (prompt.systemPrompt || prompt.systemPromptOnly) {
             // System prompts are those defined in a library variable set
 
             button.textContent = "TEAM: " + prompt.prompt;
 
             // Add click event
             button.addEventListener('click', () => {
-                submitPrompt(prompt.systemPrompt, prompt.prompt);
+                submitPrompt(prompt.systemPrompt, prompt.systemPromptOnly, prompt.prompt);
             });
 
         }
@@ -553,7 +553,7 @@ function displayPromptUIV2(theme) {
     // Add a submit event listener
     form.addEventListener('submit', (event) => {
         event.preventDefault();
-        submitPrompt("", input.value.trim());
+        submitPrompt("", "", input.value.trim());
     });
 
     // Append the container to the body

@@ -67,12 +67,18 @@ function getOctopusCsrfTokenFromCookie() {
     }
 }
 
-async function callOctoAi(systemPrompt, prompt) {
+async function callOctoAi(systemPrompt, systemPromptOnly, prompt) {
     Logger.info(systemPrompt)
+    Logger.info(systemPromptOnly)
     Logger.info(prompt)
 
     try {
-        const combinedPrompt = [systemPrompt, prompt]
+        const fixedSystemPrompt = systemPrompt || ""
+        const fixedSystemPromptOnly = systemPromptOnly || ""
+        const fixedPrompt = prompt || ""
+
+        // We either pass only the system prompt (fixedSystemPromptOnly), or the system prompt and the prompt combined
+        const combinedPrompt = fixedSystemPromptOnly.trim() || [fixedSystemPrompt, fixedPrompt]
             .filter(p => p.trim())
             .map(p => p.trim())
             .join("\n");

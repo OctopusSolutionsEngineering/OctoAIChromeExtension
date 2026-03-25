@@ -43,14 +43,20 @@ async function getLocalPrompts() {
                 const prompt = octoAiLvsVariables
                     .filter(v => v.Name.trim() === pageName + "[" + i + "].Prompt")
                     .map(v => v.Value)
-                    .pop();
+                    .pop() || "";
+
                 const systemPrompt = octoAiLvsVariables
                     .filter(v => v.Name.trim() === pageName + "[" + i + "].SystemPrompt")
                     .map(v => v.Value)
-                    .pop();
+                    .pop() || "";
+
+                const systemPromptOnly = octoAiLvsVariables
+                    .filter(v => v.Name.trim() === pageName + "[" + i + "].SystemPromptOnly")
+                    .map(v => v.Value)
+                    .pop() || "";
 
                 if (prompt) {
-                    prompts.push({"prompt": prompt, "systemPrompt": systemPrompt});
+                    prompts.push({"prompt": prompt, "systemPrompt": systemPrompt, 'systemPromptOnly': systemPromptOnly});
                 }
             }
 
@@ -177,6 +183,7 @@ async function processPrompts(prompts) {
         return {
             "prompt": replaceMarker(prompt.prompt, template, replacement),
             "systemPrompt": replaceMarker(prompt.systemPrompt, template, replacement),
+            "systemPromptOnly": replaceMarker(prompt.systemPromptOnly, template, replacement),
             "fullPrompt": replaceMarker(prompt.fullPrompt, template, replacement),
             "dashboardFile": prompt.dashboardFile,
             "dashboardName": prompt.dashboardName
@@ -258,7 +265,7 @@ async function enrichPrompt(prompt) {
 
 
 
-function submitPrompt(systemPrompt, originalPrompt) {
+function submitPrompt(systemPrompt, systemPromptOnly, originalPrompt) {
     if (!originalPrompt) {
         return
     }
@@ -279,6 +286,6 @@ function submitPrompt(systemPrompt, originalPrompt) {
 
     addFeedbackListener(feedback, thumbsUp, thumbsDown, originalPrompt);
 
-    callOctoAi(systemPrompt, originalPrompt)
+    callOctoAi(systemPrompt, systemPromptOnly, originalPrompt)
         .catch(e => Logger.error(e));
 }
