@@ -50,7 +50,30 @@ Create a feed called "Google Container Registry" in Octopus Deploy with a feed U
 
 # Base Project Prompt
 
-The base prompt creates an empty project in Octopus Deploy with the same name as the Spinnaker application:
+This is an example of a pipeline in Spinnaker:
+
+```json
+{
+  "appConfig": {},
+  "application": "app-0001",
+  "disabled": true,
+  "id": "d8af8c03-39fe-4e9f-8bf8-774614d8315d",
+  "index": 2,
+  "keepWaitingPipelines": false,
+  "lastModifiedBy": "johnsmith",
+  "limitConcurrent": true,
+  "name": "My Project",
+  "roles": [
+    "org-0001"
+  ],
+  "schema": "1",
+  "stages": [],
+  "triggers": [],
+  "updateTs": "1604917677484"
+}
+```
+
+Pipelines are represented by a project. This is the base prompt to create an empty project in Octopus Deploy with the same name as the Spinnaker application:
 
 ```
 Create a project called "My Project" in Octopus Deploy with no steps.
@@ -62,6 +85,12 @@ Other prompts are then appended to the base prompt to create the equivalent proj
 Create a project called "My Project" in Octopus Deploy with no steps, and then:
 * Add a project trigger that runs on a schedule with the following cron expression: "0 0 12 1/1 * ? *". The trigger must be enabled.
 * etc
+```
+
+If the `disabled` property of the Spinnaker pipeline is `true`, add the following sentence to the end of the prompt:
+
+```
+* The project must be disabled.
 ```
 
 # Triggers
@@ -129,9 +158,9 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.f
 
 # Stages
 
-## Run Job Stage
+## Kubernetes Run Job Stage
 
-* The following snippet is an example of a "Run Job" stage in Spinnaker:
+* The following snippet is an example of a Kubernetes (defined by the `cloudProvider` setting set to `kubernetes`) "Run Job" stage in Spinnaker:
 
 ```json
 {
@@ -236,10 +265,11 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.f
 }
 ```
 
-* The equivalent step in an Octopus Deploy project is created with the prompt, replacing `<Kubernetes manifest from Spinnaker stage>` with the `containers` array in the Spinnaker stage converted to a Kubernetes manifest format, and replacing `<account>` with the value of the `account` property in the Spinnaker stage:
+* The equivalent step in an Octopus Deploy project is created with the prompt, replacing `<Kubernetes manifest from Spinnaker stage>` with the `containers` array in the Spinnaker stage converted to a Kubernetes manifest format, replacing `<account>` with the value of the `account` property in the Spinnaker stage, and replacing the `<namespace>` with the value of the `namespace` property in the Spinnaker stage:
 
 ````
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "copy-suggestions-from-gcs". Set the "YAML" property to the Kubernetes manifest in the Spinnaker stage. Only run the step when the previous step has succeeded, with the target tag of <account>.
+* Set the step namespace to <namespace>,
 * Set the step YAML to:
 
 ```yaml

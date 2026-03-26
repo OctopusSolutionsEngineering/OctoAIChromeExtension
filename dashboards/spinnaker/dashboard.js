@@ -1,5 +1,6 @@
 let dashboardConfig = null;
 const SPINNAKER_JSON_KEY = 'spinnaker_pipelineJson';
+const SPINNAKER_MIGRATION_PROMPT_KEY = 'spinnaker_migrationPrompt';
 
 
 function buildFullPrompt(spinnakerJson) {
@@ -14,13 +15,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const migrationPrompt = document.getElementById('migrationPrompt');
 
-    // Populate the Migration Prompt textarea from prompt.md
+    // Populate the Migration Prompt textarea from local storage or prompt.md
     try {
-        const promptTemplate = await fetch('prompt.md').then(r => r.text());
-        migrationPrompt.value = promptTemplate;
+        const savedPrompt = localStorage.getItem(SPINNAKER_MIGRATION_PROMPT_KEY);
+        if (savedPrompt) {
+            migrationPrompt.value = savedPrompt;
+        } else {
+            const promptTemplate = await fetch('prompt.md').then(r => r.text());
+            migrationPrompt.value = promptTemplate;
+        }
     } catch (e) {
         console.error('Failed to load prompt.md:', e);
     }
+
+    migrationPrompt.addEventListener('input', () => {
+        if (migrationPrompt.value.trim()) {
+            localStorage.setItem(SPINNAKER_MIGRATION_PROMPT_KEY, migrationPrompt.value);
+        }
+    });
 
     const convertButton = document.getElementById('convertButton');
     const copyPromptButton = document.getElementById('copyPromptButton');
