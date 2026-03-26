@@ -17,6 +17,7 @@ function setFieldsLocked(locked) {
     const convertButton = document.getElementById('convertButton');
     const copyPromptButton = document.getElementById('copyPromptButton');
     const executeButton = document.getElementById('executeButton');
+    const autoApproveCheckbox = document.getElementById('autoApproveCheckbox');
 
     migrationPrompt.disabled = locked;
     migrationPrompt.readOnly = locked;
@@ -26,6 +27,32 @@ function setFieldsLocked(locked) {
     convertButton.disabled = locked;
     copyPromptButton.disabled = locked;
     executeButton.disabled = locked;
+    autoApproveCheckbox.disabled = locked;
+}
+
+function updateSectionCount(text) {
+    const count = text.trim()
+        ? text.trim().split('\n\n---\n\n').length
+        : 0;
+    const label = count === 1 ? 'section' : 'sections';
+    document.getElementById('sectionCount').textContent =
+        count > 0 ? `${count} ${label}` : '';
+}
+
+function updatePipelineCount(text) {
+    const el = document.getElementById('pipelineCount');
+    if (!text.trim()) {
+        el.textContent = '';
+        return;
+    }
+    try {
+        const parsed = JSON.parse(text);
+        const count = Array.isArray(parsed) ? parsed.length : 1;
+        const label = count === 1 ? 'pipeline' : 'pipelines';
+        el.textContent = `${count} ${label}`;
+    } catch {
+        el.textContent = '';
+    }
 }
 
 function extractMarkdownCodeBlock(text) {
@@ -121,6 +148,7 @@ async function onConvert() {
             promptOutput.value = await convertSingle(spinnakerJson, serverUrl);
         }
 
+        updateSectionCount(promptOutput.value);
         convertSucceeded = true;
     } catch (e) {
         promptOutput.value = e.message || 'An error occurred while converting the pipeline. Please try again.';
@@ -260,10 +288,12 @@ function initSpinnakerInput() {
     const savedJson = localStorage.getItem(SPINNAKER_JSON_KEY);
     if (savedJson) {
         spinnakerInput.value = savedJson;
+        updatePipelineCount(savedJson);
     }
 
     spinnakerInput.addEventListener('input', () => {
         localStorage.setItem(SPINNAKER_JSON_KEY, spinnakerInput.value);
+        updatePipelineCount(spinnakerInput.value);
     });
 }
 
@@ -289,4 +319,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     copyPromptButton.addEventListener('click', onCopyPrompt);
     convertButton.addEventListener('click', onConvert);
     executeButton.addEventListener('click', onExecute);
+
+    document.getElementById('octopusAiProjectPrompt').addEventListener('input', e => {
+        updateSectionCount(e.target.value);
+    });
 });

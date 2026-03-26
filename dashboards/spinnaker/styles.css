@@ -63,6 +63,12 @@ body {
     color: #2d3e50;
 }
 
+.section-count {
+    font-size: 12px;
+    font-weight: 400;
+    color: #586069;
+}
+
 .form-textarea {
     width: 100%;
     min-height: 160px;
