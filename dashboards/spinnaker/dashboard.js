@@ -17,6 +17,7 @@ function setFieldsLocked(locked) {
     const convertButton = document.getElementById('convertButton');
     const copyPromptButton = document.getElementById('copyPromptButton');
     const executeButton = document.getElementById('executeButton');
+    const copyProjectPromptButton = document.getElementById('copyProjectPromptButton');
     const autoApproveCheckbox = document.getElementById('autoApproveCheckbox');
 
     migrationPrompt.disabled = locked;
@@ -27,6 +28,7 @@ function setFieldsLocked(locked) {
     convertButton.disabled = locked;
     copyPromptButton.disabled = locked;
     executeButton.disabled = locked;
+    copyProjectPromptButton.disabled = locked;
     autoApproveCheckbox.disabled = locked;
 }
 
@@ -81,6 +83,24 @@ async function initMigrationPrompt() {
     });
 }
 
+async function onCopyProjectPrompt() {
+    const promptOutput = document.getElementById('octopusAiProjectPrompt');
+    const copyProjectPromptButton = document.getElementById('copyProjectPromptButton');
+    const text = promptOutput.value.trim();
+
+    if (!text) {
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(text);
+        copyProjectPromptButton.textContent = 'Copied!';
+        setTimeout(() => { copyProjectPromptButton.textContent = 'Copy Project Prompt'; }, 2000);
+    } catch (e) {
+        console.error('Failed to copy project prompt:', e);
+    }
+}
+
 async function onCopyPrompt() {
     const spinnakerInput = document.getElementById('spinnakerPipelineJson');
     const promptOutput = document.getElementById('octopusAiProjectPrompt');
@@ -96,7 +116,7 @@ async function onCopyPrompt() {
         const fullPrompt = buildFullPrompt(spinnakerJson);
         await navigator.clipboard.writeText(fullPrompt);
         copyPromptButton.textContent = 'Copied!';
-        setTimeout(() => { copyPromptButton.textContent = 'Copy Prompt'; }, 2000);
+        setTimeout(() => { copyPromptButton.textContent = 'Copy Conversion Prompt'; }, 2000);
     } catch (e) {
         promptOutput.value = 'An error occurred while copying the prompt. Please try again.';
     }
@@ -156,6 +176,7 @@ async function onConvert() {
         setFieldsLocked(false);
         promptOutput.readOnly = !convertSucceeded;
         executeButton.disabled = !convertSucceeded;
+        document.getElementById('copyProjectPromptButton').disabled = !convertSucceeded;
     }
 }
 
@@ -319,6 +340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     copyPromptButton.addEventListener('click', onCopyPrompt);
     convertButton.addEventListener('click', onConvert);
     executeButton.addEventListener('click', onExecute);
+    document.getElementById('copyProjectPromptButton').addEventListener('click', onCopyProjectPrompt);
 
     document.getElementById('octopusAiProjectPrompt').addEventListener('input', e => {
         updateSectionCount(e.target.value);
