@@ -158,6 +158,68 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.f
 
 # Stages
 
+## Deploy Manifest Kubernetes Stage
+
+* The following snippet is an example of a Kubernetes (defined by the `cloudProvider` setting set to `kubernetes`) "Deploy Manifest" stage in Spinnaker:
+
+```json
+{
+  "expectedArtifacts": [
+    {
+      "defaultArtifact": {
+        "id": "d4d013f3-8dc1-4a66-9701-a45ab76534b4",
+        "name": "job/batch-generate-listing-suggest-index-dev.yaml",
+        "reference": "https://example.invalid/url-0068",
+        "type": "github/file",
+        "version": "kannan-batch-generate-listing-index"
+      },
+      "displayName": "job/batch-generate-listing-suggest-index-dev.yaml",
+      "id": "462d6bdc-be1d-4479-804b-a0fed60a168a",
+      "matchArtifact": {
+        "id": "4177409b-33d6-4d35-9647-593a0d3d9feb",
+        "name": "job/batch-generate-listing-suggest-index-dev.yaml",
+        "type": "github/file"
+      },
+      "useDefaultArtifact": true,
+      "usePriorArtifact": false
+    }
+  ],
+  "stages": [
+    {
+      "account": "<redacted-cluster>",
+      "cloudProvider": "kubernetes",
+      "manifestArtifactAccount": "org-0001-ci",
+      "manifestArtifactId": "462d6bdc-be1d-4479-804b-a0fed60a168a",
+      "moniker": {
+        "app": "app-0001"
+      },
+      "name": "Deploy (Manifest)",
+      "refId": "1",
+      "relationships": {
+        "loadBalancers": [],
+        "securityGroups": []
+      },
+      "requiredArtifactIds": [
+        "3a4d16c4-1f46-4165-936e-e71e436ae450"
+      ],
+      "requisiteStageRefIds": [],
+      "skipExpressionEvaluation": false,
+      "source": "artifact",
+      "type": "deployManifest"
+    }
+  ]
+}
+```
+
+* The equivalent step in an Octopus Deploy project is created with the prompt.
+* Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
+* Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
+* Replace `<account>` with the value of the `account` property in the Spinnaker stage.
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
+```
+
 ## Kubernetes Run Job Stage
 
 * The following snippet is an example of a Kubernetes (defined by the `cloudProvider` setting set to `kubernetes`) "Run Job" stage in Spinnaker:
