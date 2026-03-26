@@ -1,6 +1,8 @@
 let dashboardConfig = null;
+let spaceName = 'Unknown';
 const SPINNAKER_JSON_KEY = 'spinnaker_pipelineJson';
 const SPINNAKER_MIGRATION_PROMPT_KEY = 'spinnaker_migrationPrompt';
+const SPINNAKER_AUTO_APPROVE_KEY = 'spinnaker_autoApprove';
 
 
 function buildFullPrompt(spinnakerJson) {
@@ -108,9 +110,113 @@ async function onConvert() {
     }
 }
 
+function showView(id) {
+    document.getElementById('inputSection').style.display    = id === 'inputSection'    ? 'flex'   : 'none';
+    document.getElementById('confirmationView').style.display = id === 'confirmationView' ? 'flex'   : 'none';
+    document.getElementById('loadingView').style.display      = id === 'loadingView'      ? 'block'  : 'none';
+    document.getElementById('failureView').style.display      = id === 'failureView'      ? 'flex'   : 'none';
+}
+
+function showFailure(message) {
+    document.getElementById('failureText').value = message;
+    document.getElementById('failureOkButton').onclick = () => {
+        showView('inputSection');
+        setFieldsLocked(false);
+    };
+    showView('failureView');
+}
+
+function showConfirmation(result, serverUrl, onApprove, onReject) {
+    const autoApprove = localStorage.getItem(SPINNAKER_AUTO_APPROVE_KEY) === 'true';
+
+    if (autoApprove) {
+        showView('loadingView');
+        dashboardApprovePrompt(result.id, serverUrl)
+            .then(approvalResult => {
+                if (approvalResult.state === 'Error') {
+                    showFailure(approvalResult.response);
+                } else {
+                    onApprove();
+                }
+            })
+            .catch(() => showFailure('An error occurred while auto-approving. Please try again.'));
+        return;
+    }
+
+    const confirmationText = document.getElementById('confirmationText');
+    const approveButton = document.getElementById('approveButton');
+    const rejectButton = document.getElementById('rejectButton');
+
+    confirmationText.value = result.response;
+    showView('confirmationView');
+
+    // Auto-reject after 4 minutes
+    const confirmationTimeout = setTimeout(() => onReject(), 240000);
+
+    approveButton.onclick = async () => {
+        clearTimeout(confirmationTimeout);
+        showView('loadingView');
+
+        try {
+            const approvalResult = await dashboardApprovePrompt(result.id, serverUrl);
+            if (approvalResult.state === 'Error') {
+                showFailure(approvalResult.response);
+            } else {
+                onApprove();
+            }
+        } catch (e) {
+            showFailure('An error occurred while approving. Please try again.');
+        }
+    };
+
+    rejectButton.onclick = () => {
+        clearTimeout(confirmationTimeout);
+        onReject();
+    };
+}
+
+async function processSections(sections, index, serverUrl) {
+    if (index >= sections.length) {
+        showView('inputSection');
+        setFieldsLocked(false);
+        return;
+    }
+
+    const section = sections[index].trim();
+    if (!section) {
+        await processSections(sections, index + 1, serverUrl);
+        return;
+    }
+
+    document.getElementById('loadingText').textContent =
+        `Processing section ${index + 1} of ${sections.length}. This can take a few minutes, as the AI is generating many Octopus resources...`;
+    showView('loadingView');
+
+    try {
+        const result = await dashboardSendPrompt(section, serverUrl);
+
+        if (result.state === 'Error') {
+            showFailure(result.response);
+            return;
+        }
+
+        if (result.id) {
+            showConfirmation(
+                result,
+                serverUrl,
+                () => processSections(sections, index + 1, serverUrl),
+                () => { showView('inputSection'); setFieldsLocked(false); }
+            );
+        } else {
+            await processSections(sections, index + 1, serverUrl);
+        }
+    } catch (e) {
+        showFailure(`An error occurred while processing section ${index + 1}. Please try again.`);
+    }
+}
+
 async function onExecute() {
     const promptOutput = document.getElementById('octopusAiProjectPrompt');
-    const executeButton = document.getElementById('executeButton');
     const prompt = promptOutput.value.trim();
 
     if (!prompt) {
@@ -119,21 +225,12 @@ async function onExecute() {
 
     setFieldsLocked(true);
 
-    try {
-        const serverUrl = dashboardConfig?.lastServerUrl;
-        const result = await dashboardSendPrompt(prompt, serverUrl);
+    const sections = prompt
+        .split('\n\n---\n\n')
+        .map(section => `${section.trimEnd()}\n\nThe current space is "${spaceName}"`);
+    const serverUrl = dashboardConfig?.lastServerUrl;
 
-        promptOutput.value = result.response;
-
-        if (result.state === 'Error') {
-            promptOutput.readOnly = true;
-            executeButton.disabled = true;
-        }
-    } catch (e) {
-        promptOutput.value = 'An error occurred while executing the prompt. Please try again.';
-    } finally {
-        setFieldsLocked(false);
-    }
+    await processSections(sections, 0, serverUrl);
 }
 
 function initSpinnakerInput() {
@@ -152,6 +249,7 @@ function initSpinnakerInput() {
 document.addEventListener('DOMContentLoaded', async () => {
     dashboardGetConfig(config => {
         dashboardConfig = config;
+        spaceName = config.context.space || 'Unknown';
     });
 
     await initMigrationPrompt();
@@ -160,6 +258,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const convertButton = document.getElementById('convertButton');
     const copyPromptButton = document.getElementById('copyPromptButton');
     const executeButton = document.getElementById('executeButton');
+    const autoApproveCheckbox = document.getElementById('autoApproveCheckbox');
+
+    autoApproveCheckbox.checked = localStorage.getItem(SPINNAKER_AUTO_APPROVE_KEY) === 'true';
+    autoApproveCheckbox.addEventListener('change', () => {
+        localStorage.setItem(SPINNAKER_AUTO_APPROVE_KEY, autoApproveCheckbox.checked);
+    });
 
     copyPromptButton.addEventListener('click', onCopyPrompt);
     convertButton.addEventListener('click', onConvert);

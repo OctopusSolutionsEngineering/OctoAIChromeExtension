@@ -16,7 +16,7 @@
         </header>
 
         <main class="main-content">
-            <section class="input-section">
+            <section class="input-section" id="inputSection">
                 <div class="form-group">
                     <label for="migrationPrompt">Migration Prompt</label>
                     <textarea id="migrationPrompt" class="form-textarea"></textarea>
@@ -33,8 +33,40 @@
                     <label for="octopusAiProjectPrompt">Octopus AI Project Prompt</label>
                     <textarea id="octopusAiProjectPrompt" class="form-textarea" readonly></textarea>
                 </div>
+                <div class="auto-approve-container">
+                    <input type="checkbox" id="autoApproveCheckbox" class="auto-approve-checkbox">
+                    <label for="autoApproveCheckbox" class="auto-approve-label">Auto-approve</label>
+                </div>
                 <div class="execute-section">
                     <button class="execute-button" id="executeButton" disabled>Execute</button>
+                </div>
+            </section>
+
+            <section id="confirmationView" style="display: none;" class="input-section">
+                <div class="form-group">
+                    <label for="confirmationText">Confirmation</label>
+                    <textarea id="confirmationText" class="form-textarea form-textarea--tall" readonly></textarea>
+                </div>
+                <div class="response-actions">
+                    <button class="approve-button" id="approveButton">Approve</button>
+                    <button class="reject-button" id="rejectButton">Reject</button>
+                </div>
+            </section>
+
+            <div id="loadingView" style="display: none;">
+                <div class="loading-container">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text" id="loadingText">Processing your request. This can take a few minutes, as the AI is generating many Octopus resources...</p>
+                </div>
+            </div>
+
+            <section id="failureView" style="display: none;" class="input-section">
+                <div class="form-group">
+                    <label for="failureText">Error</label>
+                    <textarea id="failureText" class="form-textarea" readonly></textarea>
+                </div>
+                <div class="response-actions">
+                    <button class="reload-button" id="failureOkButton">OK</button>
                 </div>
             </section>
         </main>

@@ -45,6 +45,12 @@ The following snippet is an example of an artifact in Spinnaker that is expected
 Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
 ```
 
+* For other values of `matchArtifact.name`, a feed must be created with the "Google Container Registry" feed type in Octopus, replacing the feed URL with the registry URL extracted from the `matchArtifact.name` property. For example, if the `matchArtifact.name` property is `myregistry.com/myimage`, the feed URL would be `https://myregistry.com`:
+
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "<url>".
+```
+
 * Feed prompts must appear before the base project prompt in the output.
 * You must separate the prompts for feeds with a blank line, three dashes (`---`), and a new blank line.
 

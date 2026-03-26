@@ -77,8 +77,11 @@ body {
     line-height: 1.5;
 }
 
-.form-textarea:focus {
-    outline: none;
+.form-textarea--tall {
+    min-height: 320px;
+}
+
+.form-textarea:focus {    outline: none;
     box-shadow: 0 0 0 3px rgba(13, 128, 216, 0.1);
 }
 
@@ -143,3 +146,207 @@ body {
         padding: 12px;
     }
 }
+
+/* Auto-approve */
+.auto-approve-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.auto-approve-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #0d80d8;
+}
+.auto-approve-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #2d3e50;
+    cursor: pointer;
+}
+
+/* Confirmation Section */
+.confirmation-section {
+    margin-top: 8px;
+}
+
+/* Loading */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+}
+.loading-spinner {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, rgb(31, 242, 255), rgb(13, 129, 216), rgb(31, 242, 255));
+    animation: spin 1s linear infinite;
+    position: relative;
+}
+.loading-spinner::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    background: #fff;
+    border-radius: 50%;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.loading-text {
+    margin-top: 20px;
+    font-size: 16px;
+    color: #586069;
+}
+
+/* Response Container */
+.response-container {
+    padding: 32px;
+}
+.response-container h2 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #2d3e50;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e8ecef;
+}
+.response-container.error h2 {
+    color: #d73a49;
+}
+.response-text {
+    border: 3px double transparent;
+    background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(31, 242, 255), rgb(13, 129, 216)) border-box rgb(27, 36, 45);
+    border-radius: 6px;
+    padding: 20px;
+    margin-bottom: 24px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #2d3e50;
+    max-height: 350px;
+    overflow-y: auto;
+}
+.response-text pre {
+    background-color: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 4px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 12px 0;
+}
+.response-text code {
+    background-color: rgba(27, 31, 35, 0.05);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+}
+.response-text pre code {
+    background-color: transparent;
+    padding: 0;
+}
+.response-text ul,
+.response-text ol {
+    margin: 12px 0;
+    padding-left: 24px;
+}
+.response-text li {
+    margin: 6px 0;
+}
+.response-text h1,
+.response-text h2,
+.response-text h3,
+.response-text h4,
+.response-text h5,
+.response-text h6 {
+    margin: 16px 0 8px 0;
+    font-weight: 600;
+}
+.response-text p {
+    margin: 12px 0;
+}
+
+/* Response Actions */
+.response-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+.approve-button,
+.reject-button,
+.reload-button,
+.ok-button {
+    padding: 12px 32px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.approve-button {
+    color: #2d3e50;
+    border: 3px double transparent;
+    background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(46, 213, 115), rgb(34, 164, 78)) border-box rgb(27, 36, 45);
+}
+.approve-button:hover {
+    border-color: #2da44e;
+    box-shadow: 0 4px 12px rgba(45, 164, 78, 0.15);
+    transform: translateY(-2px);
+}
+.approve-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(45, 164, 78, 0.2);
+}
+.reject-button {
+    color: #2d3e50;
+    border: 3px double transparent;
+    background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(255, 107, 107), rgb(215, 58, 73)) border-box rgb(27, 36, 45);
+}
+.reject-button:hover {
+    border-color: #d73a49;
+    box-shadow: 0 4px 12px rgba(215, 58, 73, 0.15);
+    transform: translateY(-2px);
+}
+.reject-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(215, 58, 73, 0.2);
+}
+.reload-button {
+    color: #2d3e50;
+    border: 3px double transparent;
+    background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(31, 242, 255), rgb(13, 129, 216)) border-box rgb(27, 36, 45);
+}
+.reload-button:hover {
+    border-color: #0d80d8;
+    box-shadow: 0 4px 12px rgba(13, 128, 216, 0.15);
+    transform: translateY(-2px);
+}
+.reload-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(13, 128, 216, 0.2);
+}
+.ok-button {
+    color: #2d3e50;
+    border: 3px double transparent;
+    background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(31, 242, 255), rgb(13, 129, 216)) border-box rgb(27, 36, 45);
+}
+.ok-button:hover {
+    border-color: #0d80d8;
+    box-shadow: 0 4px 12px rgba(13, 128, 216, 0.15);
+    transform: translateY(-2px);
+}
+.ok-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(13, 128, 216, 0.2);
+}
+
