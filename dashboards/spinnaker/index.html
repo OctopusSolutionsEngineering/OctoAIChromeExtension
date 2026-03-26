@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Octopus Spinnaker Migration</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="../api.js" defer></script>
+    <script src="dashboard.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="title">Octopus Spinnaker Migration</h1>
+            <div>AI prompt-based Spinnaker Pipeline Migration</div>
+        </header>
+
+        <main class="main-content">
+            <section class="input-section">
+                <div class="form-group">
+                    <label for="migrationPrompt">Migration Prompt</label>
+                    <textarea id="migrationPrompt" class="form-textarea"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="spinnakerPipelineJson">Spinnaker Pipeline JSON</label>
+                    <textarea id="spinnakerPipelineJson" class="form-textarea" placeholder="Paste your Spinnaker pipeline JSON here..."></textarea>
+                </div>
+                <div class="execute-section">
+                    <button class="execute-button" id="convertButton">Convert</button>
+                    <button class="execute-button" id="copyPromptButton">Copy Prompt</button>
+                </div>
+                <div class="form-group">
+                    <label for="octopusAiProjectPrompt">Octopus AI Project Prompt</label>
+                    <textarea id="octopusAiProjectPrompt" class="form-textarea" readonly></textarea>
+                </div>
+                <div class="execute-section">
+                    <button class="execute-button" id="executeButton" disabled>Execute</button>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
