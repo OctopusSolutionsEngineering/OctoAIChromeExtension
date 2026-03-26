@@ -152,7 +152,7 @@ The following snippet is an example of a Docker trigger in Spinnaker:
 The equivalent trigger in an Octopus Deploy project is created with the prompt:
 
 ```
-Add an external feed trigger that creates a new release for each step that deploys a Docker image.
+Add a single external feed trigger that creates a new release for each step that deploys a Docker image.
 ```
 
 # Notifications
@@ -184,7 +184,7 @@ The following snippet is an example of a Slack notification in Spinnaker:
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.starting` event is created with the prompt:
 
 ```
-* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
+* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
 ```
 
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.failed` event is created with the prompt:
@@ -448,7 +448,7 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 * Replace `<name>` with the `name` property in the Spinnaker stage.
 
 ```
-* Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following PowerShell code: `Start-Sleep -Seconds <seconds>`
+* Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
 ```
 
 # Parameter Config
@@ -554,6 +554,12 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ``` 
 The variable must be required.
+```
+
+* If the `required` property of the parameter in the Spinnaker pipeline is `true`, add the following sentence to the end of the prompt:
+
+``` 
+The variable must not be required.
 ```
 
 ## Running steps in parallel
