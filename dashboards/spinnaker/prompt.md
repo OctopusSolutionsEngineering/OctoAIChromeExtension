@@ -103,6 +103,8 @@ If the `disabled` property of the Spinnaker pipeline is `true`, add the followin
 
 # Triggers
 
+## Cron Triggers
+
 The following snippet is an example of a cron trigger in Spinnaker:
 
 ```json
@@ -119,13 +121,39 @@ The following snippet is an example of a cron trigger in Spinnaker:
 }
 ```
 
-The equivalent trigger in an Octopus Deploy project is created with the prompt:
+* The equivalent trigger in an Octopus Deploy project is created with the prompt.
+* Replace `<cron>` with the value of the `cronExpression` property in the Spinnaker trigger.
 
 ```
-Create a project trigger that runs on a schedule with the following cron expression: "0 0 12 1/1 * ? *". The trigger must be enabled.
+Create a project trigger that runs on a schedule with the following cron expression: "<cron>". The trigger must be enabled.
 ```
 
 * There is no equivalent of the `runAsUser` or `id` properties in Octopus Deploy, so they are not included in the prompt.
+
+## Docker Triggers
+
+The following snippet is an example of a Docker trigger in Spinnaker:
+
+```json
+{
+  "triggers": [
+    {
+      "account": "org-0004-appboy-worker-us-dev",
+      "enabled": false,
+      "organization": "org-0004-appboy-worker-us-dev",
+      "registry": "gcr.io",
+      "repository": "org-0004-appboy-worker-us-dev/appboy-integration",
+      "runAsUser": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9@managed-service-account",
+      "type": "docker"
+    }
+}
+```
+
+The equivalent trigger in an Octopus Deploy project is created with the prompt:
+
+```
+Create a an external feed trigger that creates a new release for each step that deploys a Docker image.
+```
 
 # Notifications
 
@@ -413,6 +441,105 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ```
 * Add a "Run a Script" step to the deployment process. Set the script to the following PowerShell code: `Start-Sleep -Seconds <seconds>`
+```
+
+# Parameter Config
+
+* The following snippet is an example of a Spinnaker pipeline with parameter configuration:
+
+```json
+{
+    "appConfig": {},
+    "application": "app-0002",
+    "id": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9",
+    "index": 7,
+    "keepWaitingPipelines": false,
+    "lastModifiedBy": "<redacted-owner>",
+    "limitConcurrent": true,
+    "name": "[DEV] Custom Event Backfill",
+    "parameterConfig": [
+      {
+        "default": "org-0004-de-us-dev",
+        "description": "The BQ project ID",
+        "hasOptions": false,
+        "label": "bq_project_id",
+        "name": "bq_project_id",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "us-west1",
+        "description": "The location of the query. The default value is US.",
+        "hasOptions": false,
+        "label": "query_location",
+        "name": "query_location",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "",
+        "description": "The query to run. This must return 4 columns: `user_id`, `time`, `event_name`, `properties`",
+        "hasOptions": false,
+        "label": "custom_query",
+        "name": "custom_query",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": true
+      },
+      {
+        "default": "50",
+        "description": "The # of events/attriibutes to include in each call to Braze. Max 75. Default value is 75.",
+        "hasOptions": false,
+        "label": "braze_api_batch_size",
+        "name": "braze_api_batch_size",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "",
+        "description": "Prefix to prepend to custom event name when performing the backfill",
+        "hasOptions": false,
+        "label": "custom_event_prefix",
+        "name": "custom_event_prefix",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      }
+    ]
+  }
+```
+
+* For each parameter in the `parameterConfig` property of the Spinnaker pipeline, add the following prompt to the output.
+* Replace `<parameter name>` with the `name` property of the parameter in the Spinnaker pipeline.
+* Replace `<parameter default>` with the `default` property of the parameter in the Spinnaker pipeline.
+* Replace `<parameter description>` with the `description` property of the parameter in the Spinnaker pipeline.
+* Replace `<parameter label>` with the `label` property of the parameter in the Spinnaker pipeline.
+
+```
+* Add a project variable called "<parameter name>", with a default value of "<parameter default>", the description "<parameter description>", and the label "<parameter label>". The variable must be prompted for when creating a release.
 ```
 
 ## Running steps in parallel
