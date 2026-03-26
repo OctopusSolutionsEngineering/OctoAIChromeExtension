@@ -125,7 +125,7 @@ The following snippet is an example of a cron trigger in Spinnaker:
 * Replace `<cron>` with the value of the `cronExpression` property in the Spinnaker trigger.
 
 ```
-Create a project trigger that runs on a schedule with the following cron expression: "<cron>". The trigger must be enabled.
+Add a schedule trigger with the following cron expression: "<cron>". The trigger must be enabled.
 ```
 
 * There is no equivalent of the `runAsUser` or `id` properties in Octopus Deploy, so they are not included in the prompt.
@@ -152,7 +152,7 @@ The following snippet is an example of a Docker trigger in Spinnaker:
 The equivalent trigger in an Octopus Deploy project is created with the prompt:
 
 ```
-Create a an external feed trigger that creates a new release for each step that deploys a Docker image.
+Add an external feed trigger that creates a new release for each step that deploys a Docker image.
 ```
 
 # Notifications
@@ -545,7 +545,8 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ## Running steps in parallel
 
-When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start". If the stage does not have a `requisiteStageRefIds` property, the step start trigger must be set to "Run in parallel with the previous step".
+* When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start". If the stage does not have a `requisiteStageRefIds` property, the step start trigger must be set to "Run in parallel with the previous step".
+* Do not start a step after a notification step to run in parallel as the notification steps must run on their own.
 
 # Replacing placeholder values
 
