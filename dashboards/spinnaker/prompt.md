@@ -82,7 +82,7 @@ This is an example of a pipeline in Spinnaker:
 Pipelines are represented by a project. This is the base prompt to create an empty project in Octopus Deploy with the same name as the Spinnaker application:
 
 ```
-Create a project called "My Project" in Octopus Deploy with no steps.
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
 ```
 
 Other prompts are then appended to the base prompt to create the equivalent project in Octopus Deploy, for example:

@@ -41,7 +41,6 @@ body {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 120px);
 }
 
 /* Input Section */
