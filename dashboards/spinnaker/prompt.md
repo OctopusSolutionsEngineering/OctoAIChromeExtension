@@ -265,7 +265,10 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.f
 }
 ```
 
-* The equivalent step in an Octopus Deploy project is created with the prompt, replacing `<Kubernetes manifest from Spinnaker stage>` with the `containers` array in the Spinnaker stage converted to a Kubernetes manifest format, replacing `<account>` with the value of the `account` property in the Spinnaker stage, and replacing the `<namespace>` with the value of the `namespace` property in the Spinnaker stage:
+* The equivalent step in an Octopus Deploy project is created with the following prompt.
+* You must replace `<Kubernetes manifest from Spinnaker stage>` with the `containers` array in the Spinnaker stage converted to a Kubernetes manifest format, complete with the `apiVersion`, `kind`, `metadata`, and `spec` fields.
+* You must replace `<account>` with the value of the `account` property in the Spinnaker stage.
+* You must replace the `<namespace>` with the value of the `namespace` property in the Spinnaker stage.
 
 ````
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "copy-suggestions-from-gcs". Set the "YAML" property to the Kubernetes manifest in the Spinnaker stage. Only run the step when the previous step has succeeded, with the target tag of <account>.
