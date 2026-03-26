@@ -415,15 +415,12 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 }
 ```
 
-* The equivalent step in an Octopus Deploy project is created with the following prompt.
+* The equivalent step in an Octopus Deploy project is created with the following prompt (in the code block starting with "````").
 * Replace `<seconds>` with the `waitTime` property in the Spinnaker stage.
 
-````
-* Add a "Run a Script" step to the deployment process. Set the script to the following PowerShell code:
-```powershell
-Start-Sleep -Seconds <seconds>
 ```
-````
+* Add a "Run a Script" step to the deployment process. Set the script to the following PowerShell code: `Start-Sleep -Seconds <seconds>`
+```
 
 # Final Instructions
 
