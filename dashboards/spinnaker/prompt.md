@@ -389,6 +389,42 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 * You must separate the prompts for each child project with a blank line, three dashes (`---`), and a new blank line.
 
+## Wait Stage
+
+* The following snippet is an example of a "Run Pipeline" stage in Spinnaker:
+
+```json
+{
+    "stages": [
+      {
+        "name": "Wait for dev deployments (13min)",
+        "refId": "5",
+        "requisiteStageRefIds": [
+          "1",
+          "2",
+          "4",
+          "17",
+          "16",
+          "15",
+          "18"
+        ],
+        "type": "wait",
+        "waitTime": 780
+      }
+    ]
+}
+```
+
+* The equivalent step in an Octopus Deploy project is created with the following prompt.
+* Replace `<seconds>` with the `waitTime` property in the Spinnaker stage.
+
+````
+* Add a "Run a Script" step to the deployment process. Set the script to the following PowerShell code:
+```powershell
+Start-Sleep -Seconds <seconds>
+```
+````
+
 # Final Instructions
 
 Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy. The prompt must be wrapped in a Markdown code block with four backticks (````).

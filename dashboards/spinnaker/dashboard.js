@@ -75,6 +75,15 @@ async function onCopyPrompt() {
     }
 }
 
+async function convertSingle(spinnakerJson, serverUrl) {
+    const fullPrompt = buildFullPrompt(spinnakerJson);
+    const result = await dashboardSendPrompt(fullPrompt, serverUrl);
+    if (result.state === 'Error') {
+        throw new Error(result.response);
+    }
+    return extractMarkdownCodeBlock(result.response);
+}
+
 async function onConvert() {
     const spinnakerInput = document.getElementById('spinnakerPipelineJson');
     const promptOutput = document.getElementById('octopusAiProjectPrompt');
@@ -91,18 +100,30 @@ async function onConvert() {
     let convertSucceeded = false;
 
     try {
-        const fullPrompt = buildFullPrompt(spinnakerJson);
         const serverUrl = dashboardConfig?.lastServerUrl;
+        let parsed;
 
-        const result = await dashboardSendPrompt(fullPrompt, serverUrl);
-
-        promptOutput.value = extractMarkdownCodeBlock(result.response);
-
-        if (result.state !== 'Error') {
-            convertSucceeded = true;
+        try {
+            parsed = JSON.parse(spinnakerJson);
+        } catch {
+            parsed = null;
         }
+
+        if (Array.isArray(parsed)) {
+            const results = [];
+            for (let i = 0; i < parsed.length; i++) {
+                promptOutput.value = `Converting element ${i + 1} of ${parsed.length}...`;
+                const elementJson = JSON.stringify(parsed[i], null, 2);
+                results.push(await convertSingle(elementJson, serverUrl));
+            }
+            promptOutput.value = results.join('\n\n---\n\n');
+        } else {
+            promptOutput.value = await convertSingle(spinnakerJson, serverUrl);
+        }
+
+        convertSucceeded = true;
     } catch (e) {
-        promptOutput.value = 'An error occurred while converting the pipeline. Please try again.';
+        promptOutput.value = e.message || 'An error occurred while converting the pipeline. Please try again.';
     } finally {
         setFieldsLocked(false);
         promptOutput.readOnly = !convertSucceeded;
