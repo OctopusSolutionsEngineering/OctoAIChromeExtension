@@ -2,7 +2,9 @@ You are an expert in parsing Spinnaker pipelines and converting them to prompts 
 
 # Prompt Structure
 
-* Multiple prompts can be separated with a blank line, three dashes (`---`), and a new blank line.
+* Multiple prompts can be separated into multiple sections with a blank line, three dashes (`---`), and a new blank line.
+* The prompts to create a project and the prompts to create steps must appear in the same section.
+* The prompts to create feeds must appear in a separate section before the prompts to create the project and steps.
 
 # Feeds
 
@@ -399,15 +401,6 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
       {
         "name": "Wait for dev deployments (13min)",
         "refId": "5",
-        "requisiteStageRefIds": [
-          "1",
-          "2",
-          "4",
-          "17",
-          "16",
-          "15",
-          "18"
-        ],
         "type": "wait",
         "waitTime": 780
       }
@@ -421,6 +414,10 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 ```
 * Add a "Run a Script" step to the deployment process. Set the script to the following PowerShell code: `Start-Sleep -Seconds <seconds>`
 ```
+
+## Running steps in parallel
+
+When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start". If the stage does not have a `requisiteStageRefIds` property, the step start trigger must be set to "Run in parallel with the previous step".
 
 # Final Instructions
 
