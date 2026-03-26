@@ -20,6 +20,7 @@ function setFieldsLocked(locked) {
     const executeButton = document.getElementById('executeButton');
     const copyProjectPromptButton = document.getElementById('copyProjectPromptButton');
     const autoApproveCheckbox = document.getElementById('autoApproveCheckbox');
+    const resetPromptButton = document.getElementById('resetPromptButton');
 
     migrationPrompt.disabled = locked;
     migrationPrompt.readOnly = locked;
@@ -31,6 +32,7 @@ function setFieldsLocked(locked) {
     executeButton.disabled = locked;
     copyProjectPromptButton.disabled = locked;
     autoApproveCheckbox.disabled = locked;
+    resetPromptButton.disabled = locked;
 }
 
 function updateSectionCount(text) {
@@ -73,6 +75,16 @@ function deduplicateSections(text) {
         return true;
     });
     return unique.join(SECTION_SEPARATOR);
+}
+
+async function onResetPrompt() {
+    const migrationPrompt = document.getElementById('migrationPrompt');
+    try {
+        migrationPrompt.value = await fetch('prompt.md').then(r => r.text());
+        localStorage.removeItem(SPINNAKER_MIGRATION_PROMPT_KEY);
+    } catch (e) {
+        console.error('Failed to reset prompt:', e);
+    }
 }
 
 async function initMigrationPrompt() {
@@ -354,6 +366,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     convertButton.addEventListener('click', onConvert);
     executeButton.addEventListener('click', onExecute);
     document.getElementById('copyProjectPromptButton').addEventListener('click', onCopyProjectPrompt);
+    document.getElementById('resetPromptButton').addEventListener('click', onResetPrompt);
 
     document.getElementById('octopusAiProjectPrompt').addEventListener('input', e => {
         updateSectionCount(e.target.value);
