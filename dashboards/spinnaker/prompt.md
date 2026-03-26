@@ -173,7 +173,8 @@ The following snippet is an example of a Slack notification in Spinnaker:
       "type": "slack",
       "when": [
         "pipeline.starting",
-        "pipeline.failed"
+        "pipeline.failed",
+        "pipeline.complete"
       ]
     }
   ]
@@ -189,7 +190,13 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.s
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.failed` event is created with the prompt:
 
 ```
-* Add a community step template step with the name "Slack Notification - End" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the preious step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Please rerun the pipeline."
+* Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Please rerun the pipeline."
+```
+
+The equivalent step in an Octopus Deploy project that replicates the `pipeline.complete` event is created with the prompt:
+
+```
+* Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Please rerun the pipeline."
 ```
 
 # Stages
@@ -543,9 +550,17 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 * Add a project variable called "<parameter name>", with a default value of "<parameter default>", the description "<parameter description>", and the label "<parameter label>". The variable must be prompted for when creating a release.
 ```
 
+* If the `required` property of the parameter in the Spinnaker pipeline is `true`, add the following sentence to the end of the prompt:
+
+``` 
+The variable must be required.
+```
+
 ## Running steps in parallel
 
-* When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start". If the stage does not have a `requisiteStageRefIds` property, the step start trigger must be set to "Run in parallel with the previous step".
+* When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start". 
+* When sequential stages all have the same `requisiteStageRefIds` property, they can be run in parallel. In this case, the prompt to create the steps for these stages must specify that the steps should run in parallel with each other.
+* If the stage does not have a `requisiteStageRefIds` property, the step start trigger must be set to "Run in parallel with the previous step".
 * Do not start a step after a notification step to run in parallel as the notification steps must run on their own.
 
 # Replacing placeholder values
