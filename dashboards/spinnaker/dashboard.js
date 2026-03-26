@@ -3,6 +3,7 @@ let spaceName = 'Unknown';
 const SPINNAKER_JSON_KEY = 'spinnaker_pipelineJson';
 const SPINNAKER_MIGRATION_PROMPT_KEY = 'spinnaker_migrationPrompt';
 const SPINNAKER_AUTO_APPROVE_KEY = 'spinnaker_autoApprove';
+const SECTION_SEPARATOR = '\n\n---\n\n';
 
 
 function buildFullPrompt(spinnakerJson) {
@@ -34,7 +35,7 @@ function setFieldsLocked(locked) {
 
 function updateSectionCount(text) {
     const count = text.trim()
-        ? text.trim().split('\n\n---\n\n').length
+        ? text.trim().split(SECTION_SEPARATOR).length
         : 0;
     const label = count === 1 ? 'section' : 'sections';
     document.getElementById('sectionCount').textContent =
@@ -60,6 +61,18 @@ function updatePipelineCount(text) {
 function extractMarkdownCodeBlock(text) {
     const match = text.match(/```[^\n]*\n([\s\S]*?)```/);
     return match ? match[1].trim() : text;
+}
+
+function deduplicateSections(text) {
+    const sections = text.split(SECTION_SEPARATOR);
+    const seen = new Set();
+    const unique = sections.filter(section => {
+        const key = section.trim();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    return unique.join(SECTION_SEPARATOR);
 }
 
 async function initMigrationPrompt() {
@@ -163,9 +176,9 @@ async function onConvert() {
                 const elementJson = JSON.stringify(parsed[i], null, 2);
                 results.push(await convertSingle(elementJson, serverUrl));
             }
-            promptOutput.value = results.join('\n\n---\n\n');
+            promptOutput.value = deduplicateSections(results.join(SECTION_SEPARATOR));
         } else {
-            promptOutput.value = await convertSingle(spinnakerJson, serverUrl);
+            promptOutput.value = deduplicateSections(await convertSingle(spinnakerJson, serverUrl));
         }
 
         updateSectionCount(promptOutput.value);
@@ -296,7 +309,7 @@ async function onExecute() {
     setFieldsLocked(true);
 
     const sections = prompt
-        .split('\n\n---\n\n')
+        .split(SECTION_SEPARATOR)
         .map(section => `${section.trimEnd()}\n\nThe current space is "${spaceName}"`);
     const serverUrl = dashboardConfig?.lastServerUrl;
 

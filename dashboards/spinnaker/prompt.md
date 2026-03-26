@@ -90,7 +90,7 @@ Create a project called "My Project" in the "Default Project Group" project grou
 Other prompts are then appended to the base prompt to create the equivalent project in Octopus Deploy, for example:
 
 ```
-Create a project called "My Project" in Octopus Deploy with no steps, and then:
+Create a project called "My Project" in the "Default Project Group" project group with no steps, and then:
 * Add a project trigger that runs on a schedule with the following cron expression: "0 0 12 1/1 * ? *". The trigger must be enabled.
 * etc
 ```
@@ -183,13 +183,13 @@ The following snippet is an example of a Slack notification in Spinnaker:
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.starting` event is created with the prompt:
 
 ```
-* Add a community step template step with the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
+* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
 ```
 
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.failed` event is created with the prompt:
 
 ```
-* Add a community step template step with the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the preious step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Please rerun the pipeline."
+* Add a community step template step with the name "Slack Notification - End" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the preious step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Please rerun the pipeline."
 ```
 
 # Stages
@@ -438,9 +438,10 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 * The equivalent step in an Octopus Deploy project is created with the following prompt (in the code block starting with "````").
 * Replace `<seconds>` with the `waitTime` property in the Spinnaker stage.
+* Replace `<name>` with the `name` property in the Spinnaker stage.
 
 ```
-* Add a "Run a Script" step to the deployment process. Set the script to the following PowerShell code: `Start-Sleep -Seconds <seconds>`
+* Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following PowerShell code: `Start-Sleep -Seconds <seconds>`
 ```
 
 # Parameter Config
@@ -545,6 +546,10 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 ## Running steps in parallel
 
 When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start". If the stage does not have a `requisiteStageRefIds` property, the step start trigger must be set to "Run in parallel with the previous step".
+
+# Replacing placeholder values
+
+* A value like `redacted-cluster` for a target tag must be replaced with the generic tag `Kubernetes`
 
 # Final Instructions
 
