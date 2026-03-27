@@ -218,6 +218,8 @@ The equivalent trigger in an Octopus Deploy project is created with the prompt:
 Add a single external feed trigger that creates a new release for each step that deploys a Docker image.
 ```
 
+* Place the external feed trigger prompt **after** all deployment step prompts (including Slack notification steps) and all variable prompts, but **before** the `* The project must be disabled.` line.
+
 ## Pubsub Triggers
 
 The following snippet is an example of a Google Pub/Sub trigger in Spinnaker that fires when a Docker image is published:
@@ -625,6 +627,39 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 * Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
 ```
 
+## Delete Manifest Stage
+
+The following snippet is an example of a `deleteManifest` stage in Spinnaker:
+
+```json
+{
+  "account": "<redacted-cluster>",
+  "app": "app-0028",
+  "cloudProvider": "kubernetes",
+  "location": "app-0028-prod",
+  "manifestName": "cronJob houjinsearchjp-update-corporations-prod",
+  "mode": "static",
+  "name": "Delete (Manifest)",
+  "options": {
+    "cascading": true
+  },
+  "refId": "2",
+  "requisiteStageRefIds": ["1"],
+  "type": "deleteManifest"
+}
+```
+
+A `deleteManifest` stage represents the deletion of a named Kubernetes resource. The equivalent step in an Octopus Deploy project is a "Delete Kubernetes Resource" step:
+
+* Replace `<stage name>` with the `name` property of the stage.
+* Replace `<manifestName>` with the `manifestName` property of the stage.
+* Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
+* Replace `<cascading>` with the boolean value of `options.cascading` (e.g., `true` or `false`).
+
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to delete the resource in the `manifestName` field. Set the target tag to <account>.
+```
+
 # Parameter Config
 
 * The following snippet is an example of a Spinnaker pipeline with parameter configuration:
@@ -738,17 +773,19 @@ The variable must not be required.
 
 ## Running steps in parallel
 
-* When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start".
-* When sequential stages all have the same value for the `requisiteStageRefIds` property, they must be run in parallel, and the step trigger for the second and subsequent stages must be set to "Run in parallel with the previous step".
-* If the stage does not have a `requisiteStageRefIds` property, or it is set to an empty array, the step start trigger must be set to "Run in parallel with the previous step".
-* Do not start a step after a notification step to run in parallel as the notification steps must run on their own.
+* First, topologically sort all deployment stages by their `requisiteStageRefIds` dependency graph. Treat each `refId` as a node and each entry in `requisiteStageRefIds` as a directed edge from prerequisite to dependent. Stages with an empty or absent `requisiteStageRefIds` array have no prerequisites and must appear first in the sorted order; stages that depend only on those come next; and so on, until all stages are ordered.
+* When the topologically-sorted execution order differs from the original JSON array order (i.e., a stage with empty `requisiteStageRefIds` appears later in the JSON than a stage that depends on it):
+  * Append `Run this step first.` to the first stage's step prompt (the stage that has no prerequisites and was moved earlier by the topological sort).
+  * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent stage's step prompt in the sorted list.
+* When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. For the second and subsequent stages in such a group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
+* Do not set a notification step to run in parallel with the previous step as the notification steps must run on their own.
 
 ## Notification Step Ordering
 
 When a project has both notification steps and deployment stage steps, the generated prompt must list them in the following order:
 
 1. The "Slack Notification - Start" step (if `pipeline.starting` is in the `when` array) must be listed first, before any deployment stage steps.
-2. All deployment stage steps must be listed next, ordered so that stages with an empty or absent `requisiteStageRefIds` array appear before stages with a non-empty `requisiteStageRefIds` array.
+2. All deployment stage steps must be listed next, in topological execution order as described in the "Running steps in parallel" section above. When multiple stages share the same dependency level, preserve their relative order from the original JSON array.
 3. The "Slack Notification - Finish" step (if `pipeline.failed` is in the `when` array) must be listed after all deployment stage steps.
 4. The "Slack Notification - Complete" step (if `pipeline.complete` is in the `when` array) must be listed last, after the Finish step.
 
