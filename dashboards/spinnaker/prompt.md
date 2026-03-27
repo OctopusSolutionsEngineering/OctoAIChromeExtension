@@ -158,7 +158,7 @@ Create a project called "Deploy cronjob example to dev" in the "Default Project 
 * Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has failed."
 * Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has completed."
 * Add a project variable called "enableAutomatedTrigger" with the value "false".
-* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-0420"".
+* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-0420".
 * The project must be disabled.
 ```
 
@@ -207,7 +207,7 @@ The following snippet is an example of a Docker trigger in Spinnaker:
       "runAsUser": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9@managed-service-account",
       "type": "docker"
     }
-}
+    }
 ```
 
 The equivalent trigger in an Octopus Deploy project is created with the prompt:
@@ -272,6 +272,9 @@ The following snippet is an example of a Slack notification in Spinnaker:
   ]
 }
 ```
+
+* A notification step is ONLY generated for an event if that event appears in the `when` array. If `pipeline.starting` is not in `when`, do not generate a Start step. If `pipeline.failed` is not in `when`, do not generate a Finish step. If `pipeline.complete` is not in `when`, do not generate a Complete step.
+* If the `message` property is absent entirely from the notification object, all notification steps are generated without any `ssn_Message` property.
 
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.starting` event is created with the prompt:
 
@@ -371,10 +374,10 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
       "cloudProvider": "kubernetes",
       "manifestArtifact": {
         "artifactAccount": "org-0001-ci",
-          "id": "f49fc8fc-48de-4874-b822-92dbe6bb602a",
-          "name": "resource-0786",
-          "reference": "https://example.invalid/url-1054",
-          "type": "github/file"
+        "id": "f49fc8fc-48de-4874-b822-92dbe6bb602a",
+        "name": "resource-0786",
+        "reference": "https://example.invalid/url-1054",
+        "type": "github/file"
       },
       "name": "Deploy user-profile worker (dev)",
       "refId": "1",
@@ -389,110 +392,152 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths.
 * Replace `<account>` with the value of the `account` property in the stage.
 
+## Run Job Manifest Stage
+
+Stages with `"type": "runJobManifest"` represent Kubernetes job executions and must be converted using exactly the same rules as `deployManifest` stages. Apply the artifact reference logic identically:
+
+* If the stage has a `manifestArtifactId` property, look up the matching entry in `expectedArtifacts` by `id` and use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths.
+* If the stage has a direct `manifestArtifact` property, use `manifestArtifact.reference` as the Repository URL and `manifestArtifact.name` as the File Paths.
+* Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` → `Kubernetes`).
+
+The resulting prompt is identical to a `deployManifest` stage:
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
+```
+
+## Manual Judgment Stage
+
+The following is an example of a `manualJudgment` stage in Spinnaker:
+
+```json
+{
+  "stages": [
+    {
+      "failPipeline": true,
+      "judgmentInputs": [],
+      "name": "Manual Judgment",
+      "notifications": [],
+      "refId": "3",
+      "requisiteStageRefIds": [],
+      "type": "manualJudgment"
+    }
+  ]
+}
+```
+
+* A `manualJudgment` stage represents a human approval gate. The equivalent step in an Octopus Deploy project is a "Manual Intervention" step:
+
+```
+* Add a "Manual Intervention" step with the name "<stage name>" to the deployment process. Set the instructions to "Please review and approve."
+```
+
+* Replace `<stage name>` with the `name` property of the stage.
+
 ## Kubernetes Run Job Stage
 
 * The following snippet is an example of a Kubernetes (defined by the `cloudProvider` setting set to `kubernetes`) "Run Job" stage in Spinnaker:
 
 ```json
 {
-    "stages": [
-      {
-        "account": "BOREALIS",
-        "annotations": {},
-        "application": "app-0001",
-        "cloudProvider": "kubernetes",
-        "cloudProviderType": "kubernetes",
-        "containers": [
-          {
-            "args": [],
-            "command": [],
-            "envFrom": [],
-            "envVars": [
-              {
-                "name": "BOREALIS_APP_ID_PRODUCTION",
-                "value": "6102AREHZ4"
-              },
-              {
-                "envSource": {
-                  "secretSource": {
-                    "key": "dev-write-api-key",
-                    "optional": true,
-                    "secretName": "org-0004-BOREALIS-integration-secrets"
-                  }
-                },
-                "name": "BOREALIS_API_KEY_PRODUCTION"
-              },
-              {
-                "name": "BOREALIS_INDEX_NAME_PRODUCTION",
-                "value": "custom_generated_listing_suggestions_v1"
-              },
-              {
-                "name": "GCS_BUCKET",
-                "value": "org-0004-BOREALIS-integration-dev"
-              },
-              {
-                "name": "FOLDER_NAME",
-                "value": "listing-name-suggestions-dev-2020-04-15"
-              },
-              {
-                "name": "FOLDER_DESTINATION",
-                "value": "listing-name-suggestions-dev-completed-2020-04-15"
-              },
-              {
-                "name": "BUFFER_SIZE",
-                "value": "100"
-              },
-              {
-                "name": "JOB_SIZE",
-                "value": "1000"
-              },
-              {
-                "name": "CHUNK_SIZE",
-                "value": "500"
-              },
-              {
-                "name": "WAIT_TIME",
-                "value": "1ms"
-              },
-              {
-                "name": "DRY_RUN",
-                "value": "false"
-              }
-            ],
-            "imageDescription": {
-              "account": "resource-0033",
-              "imageId": "registry.example.invalid/image-0078",
-              "registry": "gcr.io",
-              "repository": "org-0004-artifacts/BOREALIS-batch-copy-suggestions-from-gcs",
-              "tag": "pr-222"
+  "stages": [
+    {
+      "account": "BOREALIS",
+      "annotations": {},
+      "application": "app-0001",
+      "cloudProvider": "kubernetes",
+      "cloudProviderType": "kubernetes",
+      "containers": [
+        {
+          "args": [],
+          "command": [],
+          "envFrom": [],
+          "envVars": [
+            {
+              "name": "BOREALIS_APP_ID_PRODUCTION",
+              "value": "6102AREHZ4"
             },
-            "imagePullPolicy": "ALWAYS",
-            "limits": {},
-            "name": "batch-for-copy-suggestions-from-gcs",
-            "ports": [
-              {
-                "containerPort": 80,
-                "name": "http",
-                "protocol": "TCP"
-              }
-            ],
-            "requests": {},
-            "volumeMounts": []
-          }
-        ],
-        "dnsPolicy": "ClusterFirst",
-        "labels": {},
-        "name": "copy-suggestions-from-gcs",
-        "namespace": "org-0004-BOREALIS-worker",
-        "nodeSelector": {},
-        "overrideTimeout": true,
-        "refId": "1",
-        "requisiteStageRefIds": [],
-        "stageTimeoutMs": 36000000,
-        "type": "runJob",
-        "volumeSources": []
-      }
-    ]
+            {
+              "envSource": {
+                "secretSource": {
+                  "key": "dev-write-api-key",
+                  "optional": true,
+                  "secretName": "org-0004-BOREALIS-integration-secrets"
+                }
+              },
+              "name": "BOREALIS_API_KEY_PRODUCTION"
+            },
+            {
+              "name": "BOREALIS_INDEX_NAME_PRODUCTION",
+              "value": "custom_generated_listing_suggestions_v1"
+            },
+            {
+              "name": "GCS_BUCKET",
+              "value": "org-0004-BOREALIS-integration-dev"
+            },
+            {
+              "name": "FOLDER_NAME",
+              "value": "listing-name-suggestions-dev-2020-04-15"
+            },
+            {
+              "name": "FOLDER_DESTINATION",
+              "value": "listing-name-suggestions-dev-completed-2020-04-15"
+            },
+            {
+              "name": "BUFFER_SIZE",
+              "value": "100"
+            },
+            {
+              "name": "JOB_SIZE",
+              "value": "1000"
+            },
+            {
+              "name": "CHUNK_SIZE",
+              "value": "500"
+            },
+            {
+              "name": "WAIT_TIME",
+              "value": "1ms"
+            },
+            {
+              "name": "DRY_RUN",
+              "value": "false"
+            }
+          ],
+          "imageDescription": {
+            "account": "resource-0033",
+            "imageId": "registry.example.invalid/image-0078",
+            "registry": "gcr.io",
+            "repository": "org-0004-artifacts/BOREALIS-batch-copy-suggestions-from-gcs",
+            "tag": "pr-222"
+          },
+          "imagePullPolicy": "ALWAYS",
+          "limits": {},
+          "name": "batch-for-copy-suggestions-from-gcs",
+          "ports": [
+            {
+              "containerPort": 80,
+              "name": "http",
+              "protocol": "TCP"
+            }
+          ],
+          "requests": {},
+          "volumeMounts": []
+        }
+      ],
+      "dnsPolicy": "ClusterFirst",
+      "labels": {},
+      "name": "copy-suggestions-from-gcs",
+      "namespace": "org-0004-BOREALIS-worker",
+      "nodeSelector": {},
+      "overrideTimeout": true,
+      "refId": "1",
+      "requisiteStageRefIds": [],
+      "stageTimeoutMs": 36000000,
+      "type": "runJob",
+      "volumeSources": []
+    }
+  ]
 }
 ```
 
@@ -699,7 +744,7 @@ The variable must not be required.
 When a project has both notification steps and deployment stage steps, the generated prompt must list them in the following order:
 
 1. The "Slack Notification - Start" step (if `pipeline.starting` is in the `when` array) must be listed first, before any deployment stage steps.
-2. All deployment stage steps must be listed next, in the order they appear in the `stages` array.
+2. All deployment stage steps must be listed next, ordered so that stages with an empty or absent `requisiteStageRefIds` array appear before stages with a non-empty `requisiteStageRefIds` array.
 3. The "Slack Notification - Finish" step (if `pipeline.failed` is in the `when` array) must be listed after all deployment stage steps.
 4. The "Slack Notification - Complete" step (if `pipeline.complete` is in the `when` array) must be listed last, after the Finish step.
 
