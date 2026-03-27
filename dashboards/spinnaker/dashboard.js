@@ -78,6 +78,10 @@ function deduplicateSections(text) {
 }
 
 async function onResetPrompt() {
+    if (!confirm('Are you sure you want to reset the migration prompt to its default? Any changes you have made will be lost.')) {
+        return;
+    }
+
     const migrationPrompt = document.getElementById('migrationPrompt');
     try {
         migrationPrompt.value = await fetch('prompt.md').then(r => r.text());
