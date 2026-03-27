@@ -13,29 +13,29 @@ The following snippet is an example of an artifact in Spinnaker that is expected
 ```json
 {
   "expectedArtifacts": [
-        {
-          "defaultArtifact": {
-            "customKind": true,
-            "id": "********"
-          },
-          "displayName": "Docker image",
-          "id": "******",
-          "matchArtifact": {
-            "artifactAccount": "docker-registry",
-            "id": "*******",
-            "name": "gcr.io/test-prod/test",
-            "type": "docker/image"
-          },
-          "useDefaultArtifact": false,
-          "usePriorArtifact": false
-        }
-      ],
-      "name": "Find Artifacts From Execution",
-      "pipeline": "******",
-      "refId": "1",
-      "requisiteStageRefIds": [],
-      "type": "findArtifactFromExecution"
+    {
+      "defaultArtifact": {
+        "customKind": true,
+        "id": "********"
+      },
+      "displayName": "Docker image",
+      "id": "******",
+      "matchArtifact": {
+        "artifactAccount": "docker-registry",
+        "id": "*******",
+        "name": "gcr.io/test-prod/test",
+        "type": "docker/image"
+      },
+      "useDefaultArtifact": false,
+      "usePriorArtifact": false
     }
+  ],
+  "name": "Find Artifacts From Execution",
+  "pipeline": "******",
+  "refId": "1",
+  "requisiteStageRefIds": [],
+  "type": "findArtifactFromExecution"
+}
 }
 ```
 
@@ -55,6 +55,7 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "<url>".
 
 * Feed prompts must appear before the base project prompt in the output.
 * You must separate the prompts for feeds with a blank line, three dashes (`---`), and a new blank line.
+* Each unique feed URL must only be created once in the output, even if multiple pipelines reference the same registry. Do not emit duplicate feed creation prompts for the same feed URL.
 
 # Base Project Prompt
 
@@ -155,6 +156,37 @@ The equivalent trigger in an Octopus Deploy project is created with the prompt:
 Add a single external feed trigger that creates a new release for each step that deploys a Docker image.
 ```
 
+## Pubsub Triggers
+
+The following snippet is an example of a Google Pub/Sub trigger in Spinnaker that fires when a Docker image is published:
+
+```json
+{
+  "triggers": [
+    {
+      "enabled": true,
+      "payloadConstraints": {
+        "action": "INSERT",
+        "tag": "registry.example.invalid/image-0001"
+      },
+      "pubsubSystem": "google",
+      "runAsUser": "...",
+      "subscriptionName": "resource-0001",
+      "type": "pubsub"
+    }
+  ]
+}
+```
+
+* When a `pubsub` trigger has a `payloadConstraints.tag` value that references a Docker image, treat it as equivalent to a Docker trigger.
+* If a pipeline already has a Docker trigger that produces an external feed trigger prompt, do not add a second external feed trigger prompt for the pubsub trigger — they combine into a single prompt:
+
+```
+Add an external feed trigger that creates a new release for each step that deploys a Docker image.
+```
+
+* There is no equivalent of the `runAsUser`, `subscriptionName`, or `pubsubSystem` properties in Octopus Deploy, so they are not included in the prompt.
+
 # Notifications
 
 The following snippet is an example of a Slack notification in Spinnaker:
@@ -184,7 +216,7 @@ The following snippet is an example of a Slack notification in Spinnaker:
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.starting` event is created with the prompt:
 
 ```
-* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
+* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
 ```
 
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.failed` event is created with the prompt:
@@ -255,7 +287,7 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 ```
 
 * The equivalent step in an Octopus Deploy project is created with the prompt.
-* Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
+* Replace `<reference>` with the `name` property of the `matchArtifact` in the Spinnaker stage.
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
 
@@ -552,19 +584,19 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 * If the `required` property of the parameter in the Spinnaker pipeline is `true`, add the following sentence to the end of the prompt:
 
-``` 
+```
 The variable must be required.
 ```
 
-* If the `required` property of the parameter in the Spinnaker pipeline is `true`, add the following sentence to the end of the prompt:
+* If the `required` property of the parameter in the Spinnaker pipeline is `false`, add the following sentence to the end of the prompt:
 
-``` 
+```
 The variable must not be required.
 ```
 
 ## Running steps in parallel
 
-* When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start". 
+* When a stage has a `requisiteStageRefIds` property, the step start trigger must be set to "Wait for all previous steps to complete, then start".
 * When sequential stages all have the same value for the `requisiteStageRefIds` property, they must be run in parallel, and the step trigger for the second and subsequent stages must be set to "Run in parallel with the previous step".
 * If the stage does not have a `requisiteStageRefIds` property, or it is set to an empty array, the step start trigger must be set to "Run in parallel with the previous step".
 * Do not start a step after a notification step to run in parallel as the notification steps must run on their own.
