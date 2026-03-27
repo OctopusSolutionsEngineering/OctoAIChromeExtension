@@ -1,24 +1,3 @@
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job (Manifest)". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "gs://example-bucket/storage-0910". Set the File Paths to "gs://example-bucket/storage-0910". Set the target tag to Kubernetes.
-* Add a "Manual Intervention" step with the name "Manual Judgment" to the deployment process. Set the instructions to "release: *${trigger['tag']}*". Run this step first.
-* Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "CDMS3MAR4". Set the "ssn_Message" property to "*PROD release failed!!!!!!!* :danger:"
-
----
-
-Create a project called "[PROD] publisher canary scale in" in the "Default Project Group" project group with no steps, and then:
-* Add a "Run a kubectl script" step to the deployment process and name the step "Scale (Manifest)". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field. Set the target tag to Kubernetes.
-* The project must be disabled.
-
----
-
-Create a project called "[PROD] bq-syncer canary scale in" in the "Default Project Group" project group with no steps, and then:
-* Add a "Run a kubectl script" step to the deployment process and name the step "Scale bq created". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field. Set the target tag to Kubernetes. Run this step first.
-* Add a "Run a kubectl script" step to the deployment process and name the step "Scale bq updated". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field. Set the target tag to Kubernetes. Set the start trigger to "Run in parallel with the previous step".
-* The project must be disabled.
-* Add a "Manual Intervention" step with the name "Manual Judgment Canary" to the deployment process. Set the instructions to "release: *${trigger['tag']}*".
-* Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "CDMS3MAR4".
-* Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "CDMS3MAR4".
-  You are an expert in parsing Spinnaker pipelines and converting them to prompts that create equivalent projects in Octopus Deploy.
-
 # Prompt Structure
 
 * Multiple prompts can be separated into multiple sections with a blank line, three dashes (`---`), and a new blank line.
