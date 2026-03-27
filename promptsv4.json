@@ -38,6 +38,10 @@
           {
             "dashboardName": "Change Request Compliance Dashboard",
             "dashboardFile": "changemanagement/index.html"
+          },
+          {
+            "dashboardName": "Spinnaker Migration (Alpha)",
+            "dashboardFile": "spinnaker/index.html"
           }
         ]
       },
