@@ -61,7 +61,7 @@ function updatePipelineCount(text) {
 }
 
 function extractMarkdownCodeBlock(text) {
-    const match = text.match(/```[^\n]*\n([\s\S]*?)```/);
+    const match = text.match(/(`{3,4})[^\n]*\n([\s\S]*?)\1/);
     return match ? match[1].trim() : text;
 }
 
@@ -106,9 +106,7 @@ async function initMigrationPrompt() {
     }
 
     migrationPrompt.addEventListener('input', () => {
-        if (migrationPrompt.value.trim()) {
-            localStorage.setItem(SPINNAKER_MIGRATION_PROMPT_KEY, migrationPrompt.value);
-        }
+        localStorage.setItem(SPINNAKER_MIGRATION_PROMPT_KEY, migrationPrompt.value);
     });
 }
 

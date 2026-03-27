@@ -92,7 +92,8 @@ body {
     min-height: 320px;
 }
 
-.form-textarea:focus {    outline: none;
+.form-textarea:focus {
+    outline: none;
     box-shadow: 0 0 0 3px rgba(13, 128, 216, 0.1);
 }
 

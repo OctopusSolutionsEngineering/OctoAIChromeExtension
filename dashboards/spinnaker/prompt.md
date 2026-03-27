@@ -34,7 +34,6 @@ The following snippet is an example of an artifact in Spinnaker that is expected
   "requisiteStageRefIds": [],
   "type": "findArtifactFromExecution"
 }
-}
 ```
 
 * A feed in Octopus must be created to represent the expected artifact in Spinnaker.
@@ -585,6 +584,7 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 
 ```yaml
 <Kubernetes manifest from Spinnaker stage>
+```
 ````
 
 ## Run Pipeline Stage
@@ -756,7 +756,7 @@ Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource
       },
       {
         "default": "50",
-        "description": "The # of events/attriibutes to include in each call to Braze. Max 75. Default value is 75.",
+        "description": "The # of events/attributes to include in each call to Braze. Max 75. Default value is 75.",
         "hasOptions": false,
         "label": "braze_api_batch_size",
         "name": "braze_api_batch_size",
