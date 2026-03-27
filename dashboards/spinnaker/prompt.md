@@ -277,7 +277,9 @@ The following snippet is an example of a Slack notification in Spinnaker:
 }
 ```
 
+* Only process notifications where the `level` property is `"pipeline"`. Notifications with `"level": "stage"` are stage-level and must be completely ignored — do not generate any Slack notification steps from them.
 * A notification step is ONLY generated for an event if that event appears in the `when` array. If `pipeline.starting` is not in `when`, do not generate a Start step. If `pipeline.failed` is not in `when`, do not generate a Finish step. If `pipeline.complete` is not in `when`, do not generate a Complete step.
+* When the `notifications` array contains multiple pipeline-level entries, each entry independently generates its own set of Start, Finish, and Complete steps. Process every entry in the array — do not stop at the first entry.
 * If the `message` property is absent entirely from the notification object, all notification steps are generated without any `ssn_Message` property.
 
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.starting` event is created with the prompt:
@@ -660,6 +662,18 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to delete the resource in the `manifestName` field. Set the target tag to <account>.
 ```
 
+## Scale Manifest Stage
+
+Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource to a target replica count (e.g., scaling to zero to effectively stop a deployment). Convert them using the same prompt as `deleteManifest` stages:
+
+* Replace `<stage name>` with the `name` property of the stage.
+* Replace `<manifestName>` with the `manifestName` property of the stage.
+* Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
+
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field. Set the target tag to <account>.
+```
+
 # Parameter Config
 
 * The following snippet is an example of a Spinnaker pipeline with parameter configuration:
@@ -782,12 +796,14 @@ The variable must not be required.
 
 ## Notification Step Ordering
 
-When a project has both notification steps and deployment stage steps, the generated prompt must list them in the following order:
+When a project has pipeline-level notification entries, the generated prompt must list all steps in the following order:
 
-1. The "Slack Notification - Start" step (if `pipeline.starting` is in the `when` array) must be listed first, before any deployment stage steps.
+1. All "Slack Notification - Start" steps (one per `notifications` array entry that has `pipeline.starting` in its `when` array) must be listed first, before any deployment stage steps, in `notifications` array order.
 2. All deployment stage steps must be listed next, in topological execution order as described in the "Running steps in parallel" section above. When multiple stages share the same dependency level, preserve their relative order from the original JSON array.
-3. The "Slack Notification - Finish" step (if `pipeline.failed` is in the `when` array) must be listed after all deployment stage steps.
-4. The "Slack Notification - Complete" step (if `pipeline.complete` is in the `when` array) must be listed last, after the Finish step.
+3. All "Slack Notification - Finish" steps (one per `notifications` array entry that has `pipeline.failed` in its `when` array) must be listed after all deployment stage steps, in `notifications` array order.
+4. All "Slack Notification - Complete" steps (one per `notifications` array entry that has `pipeline.complete` in its `when` array) must be listed last, after all Finish steps, in `notifications` array order.
+5. All `parameterConfig` variable prompts must follow all notification steps (after the Complete steps). When there are NO pipeline-level notification steps, variable prompts must appear BEFORE the deployment stage steps.
+6. The external feed trigger prompt (if any) must follow all variable prompts and all notification steps, but before `* The project must be disabled.`.
 
 # Replacing placeholder values
 
