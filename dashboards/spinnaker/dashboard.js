@@ -330,16 +330,41 @@ async function onExecute() {
 
 function initSpinnakerInput() {
     const spinnakerInput = document.getElementById('spinnakerPipelineJson');
+    const errorSpan = document.getElementById('pipelineJsonError');
+    const convertButton = document.getElementById('convertButton');
+
+    function validateJson(value) {
+        if (!value.trim()) {
+            errorSpan.style.display = 'none';
+            errorSpan.textContent = '';
+            convertButton.disabled = true;
+            return;
+        }
+        try {
+            JSON.parse(value);
+            errorSpan.style.display = 'none';
+            errorSpan.textContent = '';
+            convertButton.disabled = false;
+        } catch (e) {
+            errorSpan.textContent = `Invalid JSON: ${e.message}`;
+            errorSpan.style.display = 'inline';
+            convertButton.disabled = true;
+        }
+    }
 
     const savedJson = localStorage.getItem(SPINNAKER_JSON_KEY);
     if (savedJson) {
         spinnakerInput.value = savedJson;
         updatePipelineCount(savedJson);
+        validateJson(savedJson);
     }
 
+    let validationTimer = null;
     spinnakerInput.addEventListener('input', () => {
         localStorage.setItem(SPINNAKER_JSON_KEY, spinnakerInput.value);
         updatePipelineCount(spinnakerInput.value);
+        clearTimeout(validationTimer);
+        validateJson(spinnakerInput.value);
     });
 }
 

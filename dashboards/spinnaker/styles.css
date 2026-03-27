@@ -68,6 +68,12 @@ body {
     color: #586069;
 }
 
+.validation-error {
+    font-size: 12px;
+    font-weight: 400;
+    color: #d73a49;
+}
+
 .form-textarea {
     width: 100%;
     min-height: 160px;
