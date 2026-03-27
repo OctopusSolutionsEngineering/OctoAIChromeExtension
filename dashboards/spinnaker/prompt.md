@@ -58,8 +58,8 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "<url>".
 * Each unique feed URL must only be created once in the output, even if multiple pipelines reference the same registry. Do not emit duplicate feed creation prompts for the same feed URL.
 * When a pipeline has `expectedArtifacts` entries with `matchArtifact.type` set to `docker/image`, create feeds from those entries and do NOT also create a feed from the pipeline's Docker trigger `registry` field.
 * When a pipeline has NO `expectedArtifacts` entries of `type: "docker/image"` but does have a Docker trigger with a `registry` property, create a feed from that trigger's `registry` value:
-    * If `registry` is `gcr.io`, create the "Google Container Registry" feed: `Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".`
-    * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
+  * If `registry` is `gcr.io`, create the "Google Container Registry" feed: `Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".`
+  * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
 
 # Base Project Prompt
 
@@ -106,10 +106,60 @@ If the `disabled` property of the Spinnaker pipeline is `true`, add the followin
 * The project must be disabled.
 ```
 
-If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a shared template and its stage definitions cannot be read from the JSON directly. Treat it as an empty project with only its name and disabled status — do not attempt to convert any stages, triggers, or notifications from it. For example:
+If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a shared template whose stage definitions are stored externally and cannot be read from the JSON directly. The following rules apply:
+
+* Do NOT convert any `stages` from the JSON — stages come from the shared template.
+* DO convert any `notifications` from the JSON — notification steps are project-level and must be preserved.
+* DO apply the `disabled` status — add `* The project must be disabled.` when `disabled: true`.
+* DO NOT add feed creation prompts — `templatedPipeline` types have no `expectedArtifacts` in the top-level JSON.
+
+* A `templatedPipeline` entry may contain a `variables` object with deployment configuration. These are added as variables to the project.
+* This is an example of the prompt added to the project to define a project variable.
+* Replace `<variable name>` with the name of the variable and `<variable value>` with the value of the variable:
 
 ```
-Create a project called "demonstration" in the "Default Project Group" project group with no steps.
+* Add a project variable called <variable name> with the value <variable value>.
+```
+
+* The following is a full example of a `templatedPipeline` JSON entry and its expected output:
+
+```json
+{
+  "application": "app-0015",
+  "disabled": true,
+  "name": "Deploy cronjob example to dev",
+  "notifications": [
+    {
+      "address": "#pj-example-channel",
+      "level": "pipeline",
+      "message": {
+        "pipeline.complete": { "text": "${execution.name} has completed." },
+        "pipeline.failed":   { "text": "${execution.name} has failed." },
+        "pipeline.starting": { "text": "${execution.name} has started." }
+      },
+      "type": "slack",
+      "when": ["pipeline.starting", "pipeline.failed", "pipeline.complete"]
+    }
+  ],
+  "stages": [],
+  "type": "templatedPipeline",
+  "variables": {
+    "enableAutomatedTrigger": false,
+    "manifestURL": "gs://example-bucket/storage-0420"
+  }
+}
+```
+
+The equivalent prompt for this entry is:
+
+```
+Create a project called "Deploy cronjob example to dev" in the "Default Project Group" project group with no steps.
+* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has started."
+* Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has failed."
+* Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has completed."
+* Add a project variable called "enableAutomatedTrigger" with the value "false".
+* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-0420"".
+* The project must be disabled.
 ```
 
 # Triggers
@@ -229,7 +279,7 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.s
 * Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
 ```
 
-* The `ssn_Message` value for the Starting step must come from `notifications[].message.pipeline.starting.text`. If `message.pipeline.starting.text` is absent or empty, omit the `ssn_Message` property entirely. Do NOT fall back to the `pipeline.starting` message text.
+* If `message.pipeline.starting.text` is present and non-empty, add `Set the "ssn_Message" property to "<text>".` to the end of the Start step prompt, where `<text>` is the value of `message.pipeline.starting.text`. If `message.pipeline.starting.text` is absent or empty, omit the `ssn_Message` property entirely.
 
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.failed` event is created with the prompt:
 
@@ -458,7 +508,6 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 
 ```yaml
 <Kubernetes manifest from Spinnaker stage>
-```
 ````
 
 ## Run Pipeline Stage
@@ -467,22 +516,22 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 
 ```json
 {
-    "stages": [
-      {
-          "application": "<service-name>",
-          "failPipeline": true,
-          "name": "Run \"[DEV] Deploy Sandbox API\"",
-          "pipeline": "1067496e-afd0-4260-be13-d388586ae53c",
-          "pipelineParameters": {},
-          "refId": "2",
-          "requisiteStageRefIds": [
-            "1"
-          ],
-          "restrictExecutionDuringTimeWindow": false,
-          "type": "pipeline",
-          "waitForCompletion": true
-        }
-    ]
+  "stages": [
+    {
+      "application": "<service-name>",
+      "failPipeline": true,
+      "name": "Run \"[DEV] Deploy Sandbox API\"",
+      "pipeline": "1067496e-afd0-4260-be13-d388586ae53c",
+      "pipelineParameters": {},
+      "refId": "2",
+      "requisiteStageRefIds": [
+        "1"
+      ],
+      "restrictExecutionDuringTimeWindow": false,
+      "type": "pipeline",
+      "waitForCompletion": true
+    }
+  ]
 }
 ```
 
@@ -508,14 +557,14 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ```json
 {
-    "stages": [
-      {
-        "name": "Wait for dev deployments (13min)",
-        "refId": "5",
-        "type": "wait",
-        "waitTime": 780
-      }
-    ]
+  "stages": [
+    {
+      "name": "Wait for dev deployments (13min)",
+      "refId": "5",
+      "type": "wait",
+      "waitTime": 780
+    }
+  ]
 }
 ```
 
@@ -533,87 +582,87 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ```json
 {
-    "appConfig": {},
-    "application": "app-0002",
-    "id": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9",
-    "index": 7,
-    "keepWaitingPipelines": false,
-    "lastModifiedBy": "<redacted-owner>",
-    "limitConcurrent": true,
-    "name": "[DEV] Custom Event Backfill",
-    "parameterConfig": [
-      {
-        "default": "org-0004-de-us-dev",
-        "description": "The BQ project ID",
-        "hasOptions": false,
-        "label": "bq_project_id",
-        "name": "bq_project_id",
-        "options": [
-          {
-            "value": ""
-          }
-        ],
-        "pinned": false,
-        "required": false
-      },
-      {
-        "default": "us-west1",
-        "description": "The location of the query. The default value is US.",
-        "hasOptions": false,
-        "label": "query_location",
-        "name": "query_location",
-        "options": [
-          {
-            "value": ""
-          }
-        ],
-        "pinned": false,
-        "required": false
-      },
-      {
-        "default": "",
-        "description": "The query to run. This must return 4 columns: `user_id`, `time`, `event_name`, `properties`",
-        "hasOptions": false,
-        "label": "custom_query",
-        "name": "custom_query",
-        "options": [
-          {
-            "value": ""
-          }
-        ],
-        "pinned": false,
-        "required": true
-      },
-      {
-        "default": "50",
-        "description": "The # of events/attriibutes to include in each call to Braze. Max 75. Default value is 75.",
-        "hasOptions": false,
-        "label": "braze_api_batch_size",
-        "name": "braze_api_batch_size",
-        "options": [
-          {
-            "value": ""
-          }
-        ],
-        "pinned": false,
-        "required": false
-      },
-      {
-        "default": "",
-        "description": "Prefix to prepend to custom event name when performing the backfill",
-        "hasOptions": false,
-        "label": "custom_event_prefix",
-        "name": "custom_event_prefix",
-        "options": [
-          {
-            "value": ""
-          }
-        ],
-        "pinned": false,
-        "required": false
-      }
-    ]
-  }
+  "appConfig": {},
+  "application": "app-0002",
+  "id": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9",
+  "index": 7,
+  "keepWaitingPipelines": false,
+  "lastModifiedBy": "<redacted-owner>",
+  "limitConcurrent": true,
+  "name": "[DEV] Custom Event Backfill",
+  "parameterConfig": [
+    {
+      "default": "org-0004-de-us-dev",
+      "description": "The BQ project ID",
+      "hasOptions": false,
+      "label": "bq_project_id",
+      "name": "bq_project_id",
+      "options": [
+        {
+          "value": ""
+        }
+      ],
+      "pinned": false,
+      "required": false
+    },
+    {
+      "default": "us-west1",
+      "description": "The location of the query. The default value is US.",
+      "hasOptions": false,
+      "label": "query_location",
+      "name": "query_location",
+      "options": [
+        {
+          "value": ""
+        }
+      ],
+      "pinned": false,
+      "required": false
+    },
+    {
+      "default": "",
+      "description": "The query to run. This must return 4 columns: `user_id`, `time`, `event_name`, `properties`",
+      "hasOptions": false,
+      "label": "custom_query",
+      "name": "custom_query",
+      "options": [
+        {
+          "value": ""
+        }
+      ],
+      "pinned": false,
+      "required": true
+    },
+    {
+      "default": "50",
+      "description": "The # of events/attriibutes to include in each call to Braze. Max 75. Default value is 75.",
+      "hasOptions": false,
+      "label": "braze_api_batch_size",
+      "name": "braze_api_batch_size",
+      "options": [
+        {
+          "value": ""
+        }
+      ],
+      "pinned": false,
+      "required": false
+    },
+    {
+      "default": "",
+      "description": "Prefix to prepend to custom event name when performing the backfill",
+      "hasOptions": false,
+      "label": "custom_event_prefix",
+      "name": "custom_event_prefix",
+      "options": [
+        {
+          "value": ""
+        }
+      ],
+      "pinned": false,
+      "required": false
+    }
+  ]
+}
 ```
 
 * For each parameter in the `parameterConfig` property of the Spinnaker pipeline, add the following prompt to the output.
