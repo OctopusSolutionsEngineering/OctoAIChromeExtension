@@ -62,7 +62,7 @@ function updatePipelineCount(text) {
 
 function extractMarkdownCodeBlock(text) {
     const match = text.match(/(`{3,4})[^\n]*\n([\s\S]*?)\1/);
-    return match ? match[1].trim() : text;
+    return match ? match[2].trim() : text;
 }
 
 function deduplicateSections(text) {
