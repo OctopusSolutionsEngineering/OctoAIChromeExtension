@@ -657,7 +657,7 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * Replace `<manifestName>` with the `manifestName` property of the stage.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<cascading>` with the boolean value of `options.cascading` (e.g., `true` or `false`).
-* Replace `<code>` with a powershell script to call `kubectl` to delete the resource in the `manifestName` field.
+* Replace `<code>` with a PowerShell script to call `kubectl` to delete the resource in the `manifestName` field.
 
 ```
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell with the code `<code>`. Set the target tag to <account>.
@@ -670,7 +670,7 @@ Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource
 * Replace `<stage name>` with the `name` property of the stage.
 * Replace `<manifestName>` with the `manifestName` property of the stage.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
-* Replace `<code>` with a powershell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field.
+* Replace `<code>` with a PowerShell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field.
 
 ```
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell with the code `<code>`. Set the target tag to <account>.
