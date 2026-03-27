@@ -56,6 +56,10 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "<url>".
 * Feed prompts must appear before the base project prompt in the output.
 * You must separate the prompts for feeds with a blank line, three dashes (`---`), and a new blank line.
 * Each unique feed URL must only be created once in the output, even if multiple pipelines reference the same registry. Do not emit duplicate feed creation prompts for the same feed URL.
+* When a pipeline has `expectedArtifacts` entries with `matchArtifact.type` set to `docker/image`, create feeds from those entries and do NOT also create a feed from the pipeline's Docker trigger `registry` field.
+* When a pipeline has NO `expectedArtifacts` entries of `type: "docker/image"` but does have a Docker trigger with a `registry` property, create a feed from that trigger's `registry` value:
+    * If `registry` is `gcr.io`, create the "Google Container Registry" feed: `Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".`
+    * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
 
 # Base Project Prompt
 
@@ -100,6 +104,12 @@ If the `disabled` property of the Spinnaker pipeline is `true`, add the followin
 
 ```
 * The project must be disabled.
+```
+
+If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a shared template and its stage definitions cannot be read from the JSON directly. Treat it as an empty project with only its name and disabled status — do not attempt to convert any stages, triggers, or notifications from it. For example:
+
+```
+Create a project called "demonstration" in the "Default Project Group" project group with no steps.
 ```
 
 # Triggers
@@ -182,7 +192,7 @@ The following snippet is an example of a Google Pub/Sub trigger in Spinnaker tha
 * If a pipeline already has a Docker trigger that produces an external feed trigger prompt, do not add a second external feed trigger prompt for the pubsub trigger — they combine into a single prompt:
 
 ```
-Add an external feed trigger that creates a new release for each step that deploys a Docker image.
+Add a single external feed trigger that creates a new release for each step that deploys a Docker image.
 ```
 
 * There is no equivalent of the `runAsUser`, `subscriptionName`, or `pubsubSystem` properties in Octopus Deploy, so they are not included in the prompt.
@@ -219,17 +229,23 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.s
 * Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
 ```
 
+* The `ssn_Message` value for the Starting step must come from `notifications[].message.pipeline.starting.text`. If `message.pipeline.starting.text` is absent or empty, omit the `ssn_Message` property entirely. Do NOT fall back to the `pipeline.starting` message text.
+
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.failed` event is created with the prompt:
 
 ```
 * Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Please rerun the pipeline."
 ```
 
+* The `ssn_Message` value for the Finish step must come from `notifications[].message.pipeline.failed.text`. If `message.pipeline.failed.text` is absent or empty, omit the `ssn_Message` property entirely.
+
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.complete` event is created with the prompt:
 
 ```
-* Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Please rerun the pipeline."
+* Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Deployment completed."
 ```
+
+* The `ssn_Message` value for the Complete step must come from `notifications[].message.pipeline.complete.text`. If `message.pipeline.complete.text` is absent or empty, omit the `ssn_Message` property entirely. Do NOT fall back to the `pipeline.failed` message text.
 
 # Stages
 
@@ -329,104 +345,104 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 
 ```json
 {
-  "stages": [
-    {
-      "account": "BOREALIS",
-      "annotations": {},
-      "application": "app-0001",
-      "cloudProvider": "kubernetes",
-      "cloudProviderType": "kubernetes",
-      "containers": [
-        {
-          "args": [],
-          "command": [],
-          "envFrom": [],
-          "envVars": [
-            {
-              "name": "BOREALIS_APP_ID_PRODUCTION",
-              "value": "6102AREHZ4"
-            },
-            {
-              "envSource": {
-                "secretSource": {
-                  "key": "dev-write-api-key",
-                  "optional": true,
-                  "secretName": "org-0004-BOREALIS-integration-secrets"
-                }
+    "stages": [
+      {
+        "account": "BOREALIS",
+        "annotations": {},
+        "application": "app-0001",
+        "cloudProvider": "kubernetes",
+        "cloudProviderType": "kubernetes",
+        "containers": [
+          {
+            "args": [],
+            "command": [],
+            "envFrom": [],
+            "envVars": [
+              {
+                "name": "BOREALIS_APP_ID_PRODUCTION",
+                "value": "6102AREHZ4"
               },
-              "name": "BOREALIS_API_KEY_PRODUCTION"
+              {
+                "envSource": {
+                  "secretSource": {
+                    "key": "dev-write-api-key",
+                    "optional": true,
+                    "secretName": "org-0004-BOREALIS-integration-secrets"
+                  }
+                },
+                "name": "BOREALIS_API_KEY_PRODUCTION"
+              },
+              {
+                "name": "BOREALIS_INDEX_NAME_PRODUCTION",
+                "value": "custom_generated_listing_suggestions_v1"
+              },
+              {
+                "name": "GCS_BUCKET",
+                "value": "org-0004-BOREALIS-integration-dev"
+              },
+              {
+                "name": "FOLDER_NAME",
+                "value": "listing-name-suggestions-dev-2020-04-15"
+              },
+              {
+                "name": "FOLDER_DESTINATION",
+                "value": "listing-name-suggestions-dev-completed-2020-04-15"
+              },
+              {
+                "name": "BUFFER_SIZE",
+                "value": "100"
+              },
+              {
+                "name": "JOB_SIZE",
+                "value": "1000"
+              },
+              {
+                "name": "CHUNK_SIZE",
+                "value": "500"
+              },
+              {
+                "name": "WAIT_TIME",
+                "value": "1ms"
+              },
+              {
+                "name": "DRY_RUN",
+                "value": "false"
+              }
+            ],
+            "imageDescription": {
+              "account": "resource-0033",
+              "imageId": "registry.example.invalid/image-0078",
+              "registry": "gcr.io",
+              "repository": "org-0004-artifacts/BOREALIS-batch-copy-suggestions-from-gcs",
+              "tag": "pr-222"
             },
-            {
-              "name": "BOREALIS_INDEX_NAME_PRODUCTION",
-              "value": "custom_generated_listing_suggestions_v1"
-            },
-            {
-              "name": "GCS_BUCKET",
-              "value": "org-0004-BOREALIS-integration-dev"
-            },
-            {
-              "name": "FOLDER_NAME",
-              "value": "listing-name-suggestions-dev-2020-04-15"
-            },
-            {
-              "name": "FOLDER_DESTINATION",
-              "value": "listing-name-suggestions-dev-completed-2020-04-15"
-            },
-            {
-              "name": "BUFFER_SIZE",
-              "value": "100"
-            },
-            {
-              "name": "JOB_SIZE",
-              "value": "1000"
-            },
-            {
-              "name": "CHUNK_SIZE",
-              "value": "500"
-            },
-            {
-              "name": "WAIT_TIME",
-              "value": "1ms"
-            },
-            {
-              "name": "DRY_RUN",
-              "value": "false"
-            }
-          ],
-          "imageDescription": {
-            "account": "resource-0033",
-            "imageId": "registry.example.invalid/image-0078",
-            "registry": "gcr.io",
-            "repository": "org-0004-artifacts/BOREALIS-batch-copy-suggestions-from-gcs",
-            "tag": "pr-222"
-          },
-          "imagePullPolicy": "ALWAYS",
-          "limits": {},
-          "name": "batch-for-copy-suggestions-from-gcs",
-          "ports": [
-            {
-              "containerPort": 80,
-              "name": "http",
-              "protocol": "TCP"
-            }
-          ],
-          "requests": {},
-          "volumeMounts": []
-        }
-      ],
-      "dnsPolicy": "ClusterFirst",
-      "labels": {},
-      "name": "copy-suggestions-from-gcs",
-      "namespace": "org-0004-BOREALIS-worker",
-      "nodeSelector": {},
-      "overrideTimeout": true,
-      "refId": "1",
-      "requisiteStageRefIds": [],
-      "stageTimeoutMs": 36000000,
-      "type": "runJob",
-      "volumeSources": []
-    }
-  ]
+            "imagePullPolicy": "ALWAYS",
+            "limits": {},
+            "name": "batch-for-copy-suggestions-from-gcs",
+            "ports": [
+              {
+                "containerPort": 80,
+                "name": "http",
+                "protocol": "TCP"
+              }
+            ],
+            "requests": {},
+            "volumeMounts": []
+          }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "labels": {},
+        "name": "copy-suggestions-from-gcs",
+        "namespace": "org-0004-BOREALIS-worker",
+        "nodeSelector": {},
+        "overrideTimeout": true,
+        "refId": "1",
+        "requisiteStageRefIds": [],
+        "stageTimeoutMs": 36000000,
+        "type": "runJob",
+        "volumeSources": []
+      }
+    ]
 }
 ```
 
@@ -451,22 +467,22 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 
 ```json
 {
-  "stages": [
-    {
-      "application": "<service-name>",
-      "failPipeline": true,
-      "name": "Run \"[DEV] Deploy Sandbox API\"",
-      "pipeline": "1067496e-afd0-4260-be13-d388586ae53c",
-      "pipelineParameters": {},
-      "refId": "2",
-      "requisiteStageRefIds": [
-        "1"
-      ],
-      "restrictExecutionDuringTimeWindow": false,
-      "type": "pipeline",
-      "waitForCompletion": true
-    }
-  ]
+    "stages": [
+      {
+          "application": "<service-name>",
+          "failPipeline": true,
+          "name": "Run \"[DEV] Deploy Sandbox API\"",
+          "pipeline": "1067496e-afd0-4260-be13-d388586ae53c",
+          "pipelineParameters": {},
+          "refId": "2",
+          "requisiteStageRefIds": [
+            "1"
+          ],
+          "restrictExecutionDuringTimeWindow": false,
+          "type": "pipeline",
+          "waitForCompletion": true
+        }
+    ]
 }
 ```
 
@@ -492,14 +508,14 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ```json
 {
-  "stages": [
-    {
-      "name": "Wait for dev deployments (13min)",
-      "refId": "5",
-      "type": "wait",
-      "waitTime": 780
-    }
-  ]
+    "stages": [
+      {
+        "name": "Wait for dev deployments (13min)",
+        "refId": "5",
+        "type": "wait",
+        "waitTime": 780
+      }
+    ]
 }
 ```
 
@@ -517,87 +533,87 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ```json
 {
-  "appConfig": {},
-  "application": "app-0002",
-  "id": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9",
-  "index": 7,
-  "keepWaitingPipelines": false,
-  "lastModifiedBy": "<redacted-owner>",
-  "limitConcurrent": true,
-  "name": "[DEV] Custom Event Backfill",
-  "parameterConfig": [
-    {
-      "default": "org-0004-de-us-dev",
-      "description": "The BQ project ID",
-      "hasOptions": false,
-      "label": "bq_project_id",
-      "name": "bq_project_id",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": false
-    },
-    {
-      "default": "us-west1",
-      "description": "The location of the query. The default value is US.",
-      "hasOptions": false,
-      "label": "query_location",
-      "name": "query_location",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": false
-    },
-    {
-      "default": "",
-      "description": "The query to run. This must return 4 columns: `user_id`, `time`, `event_name`, `properties`",
-      "hasOptions": false,
-      "label": "custom_query",
-      "name": "custom_query",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": true
-    },
-    {
-      "default": "50",
-      "description": "The # of events/attriibutes to include in each call to Braze. Max 75. Default value is 75.",
-      "hasOptions": false,
-      "label": "braze_api_batch_size",
-      "name": "braze_api_batch_size",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": false
-    },
-    {
-      "default": "",
-      "description": "Prefix to prepend to custom event name when performing the backfill",
-      "hasOptions": false,
-      "label": "custom_event_prefix",
-      "name": "custom_event_prefix",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": false
-    }
-  ]
-}
+    "appConfig": {},
+    "application": "app-0002",
+    "id": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9",
+    "index": 7,
+    "keepWaitingPipelines": false,
+    "lastModifiedBy": "<redacted-owner>",
+    "limitConcurrent": true,
+    "name": "[DEV] Custom Event Backfill",
+    "parameterConfig": [
+      {
+        "default": "org-0004-de-us-dev",
+        "description": "The BQ project ID",
+        "hasOptions": false,
+        "label": "bq_project_id",
+        "name": "bq_project_id",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "us-west1",
+        "description": "The location of the query. The default value is US.",
+        "hasOptions": false,
+        "label": "query_location",
+        "name": "query_location",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "",
+        "description": "The query to run. This must return 4 columns: `user_id`, `time`, `event_name`, `properties`",
+        "hasOptions": false,
+        "label": "custom_query",
+        "name": "custom_query",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": true
+      },
+      {
+        "default": "50",
+        "description": "The # of events/attriibutes to include in each call to Braze. Max 75. Default value is 75.",
+        "hasOptions": false,
+        "label": "braze_api_batch_size",
+        "name": "braze_api_batch_size",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "",
+        "description": "Prefix to prepend to custom event name when performing the backfill",
+        "hasOptions": false,
+        "label": "custom_event_prefix",
+        "name": "custom_event_prefix",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      }
+    ]
+  }
 ```
 
 * For each parameter in the `parameterConfig` property of the Spinnaker pipeline, add the following prompt to the output.
@@ -628,6 +644,15 @@ The variable must not be required.
 * When sequential stages all have the same value for the `requisiteStageRefIds` property, they must be run in parallel, and the step trigger for the second and subsequent stages must be set to "Run in parallel with the previous step".
 * If the stage does not have a `requisiteStageRefIds` property, or it is set to an empty array, the step start trigger must be set to "Run in parallel with the previous step".
 * Do not start a step after a notification step to run in parallel as the notification steps must run on their own.
+
+## Notification Step Ordering
+
+When a project has both notification steps and deployment stage steps, the generated prompt must list them in the following order:
+
+1. The "Slack Notification - Start" step (if `pipeline.starting` is in the `when` array) must be listed first, before any deployment stage steps.
+2. All deployment stage steps must be listed next, in the order they appear in the `stages` array.
+3. The "Slack Notification - Finish" step (if `pipeline.failed` is in the `when` array) must be listed after all deployment stage steps.
+4. The "Slack Notification - Complete" step (if `pipeline.complete` is in the `when` array) must be listed last, after the Finish step.
 
 # Replacing placeholder values
 
