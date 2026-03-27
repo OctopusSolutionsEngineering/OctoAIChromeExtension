@@ -114,11 +114,13 @@ If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a 
 * DO NOT add feed creation prompts — `templatedPipeline` types have no `expectedArtifacts` in the top-level JSON.
 
 * A `templatedPipeline` entry may contain a `variables` object with deployment configuration. These are added as variables to the project.
+* If the `variables` property is absent or empty, do not output any project variable prompts.
+* For each key-value pair in `variables`, all values must be converted to quoted strings in the output, including booleans (e.g., `true` → `"true"`, `false` → `"false"`) and numbers (e.g., `3` → `"3"`).
 * This is an example of the prompt added to the project to define a project variable.
-* Replace `<variable name>` with the name of the variable and `<variable value>` with the value of the variable:
+* Replace `<variable name>` with the name of the variable and `<variable value>` with the string value of the variable:
 
 ```
-* Add a project variable called <variable name> with the value <variable value>.
+* Add a project variable called "<variable name>" with the value "<variable value>".
 ```
 
 * The following is a full example of a `templatedPipeline` JSON entry and its expected output:
@@ -207,7 +209,7 @@ The following snippet is an example of a Docker trigger in Spinnaker:
       "runAsUser": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9@managed-service-account",
       "type": "docker"
     }
-    }
+}
 ```
 
 The equivalent trigger in an Octopus Deploy project is created with the prompt:
@@ -356,7 +358,7 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 ```
 
 * The equivalent step in an Octopus Deploy project is created with the prompt.
-* Replace `<reference>` with the `name` property of the `matchArtifact` in the Spinnaker stage.
+* Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
 
@@ -374,10 +376,10 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
       "cloudProvider": "kubernetes",
       "manifestArtifact": {
         "artifactAccount": "org-0001-ci",
-        "id": "f49fc8fc-48de-4874-b822-92dbe6bb602a",
-        "name": "resource-0786",
-        "reference": "https://example.invalid/url-1054",
-        "type": "github/file"
+          "id": "f49fc8fc-48de-4874-b822-92dbe6bb602a",
+          "name": "resource-0786",
+          "reference": "https://example.invalid/url-1054",
+          "type": "github/file"
       },
       "name": "Deploy user-profile worker (dev)",
       "refId": "1",
@@ -390,6 +392,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 ```
 
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths.
+* If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
 * Replace `<account>` with the value of the `account` property in the stage.
 
 ## Run Job Manifest Stage
@@ -398,7 +401,7 @@ Stages with `"type": "runJobManifest"` represent Kubernetes job executions and m
 
 * If the stage has a `manifestArtifactId` property, look up the matching entry in `expectedArtifacts` by `id` and use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths.
 * If the stage has a direct `manifestArtifact` property, use `manifestArtifact.reference` as the Repository URL and `manifestArtifact.name` as the File Paths.
-* Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` → `Kubernetes`).
+* Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 
 The resulting prompt is identical to a `deployManifest` stage:
 
@@ -429,10 +432,11 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 * A `manualJudgment` stage represents a human approval gate. The equivalent step in an Octopus Deploy project is a "Manual Intervention" step:
 
 ```
-* Add a "Manual Intervention" step with the name "<stage name>" to the deployment process. Set the instructions to "Please review and approve."
+* Add a "Manual Intervention" step with the name "<stage name>" to the deployment process. Set the instructions to "<instructions>".
 ```
 
 * Replace `<stage name>` with the `name` property of the stage.
+* Replace `<instructions>` with the `instructions` property of the stage. If the `instructions` property is absent or empty, use `"Please review and approve."` as the default instructions text.
 
 ## Kubernetes Run Job Stage
 
@@ -440,104 +444,104 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 
 ```json
 {
-  "stages": [
-    {
-      "account": "BOREALIS",
-      "annotations": {},
-      "application": "app-0001",
-      "cloudProvider": "kubernetes",
-      "cloudProviderType": "kubernetes",
-      "containers": [
-        {
-          "args": [],
-          "command": [],
-          "envFrom": [],
-          "envVars": [
-            {
-              "name": "BOREALIS_APP_ID_PRODUCTION",
-              "value": "6102AREHZ4"
-            },
-            {
-              "envSource": {
-                "secretSource": {
-                  "key": "dev-write-api-key",
-                  "optional": true,
-                  "secretName": "org-0004-BOREALIS-integration-secrets"
-                }
+    "stages": [
+      {
+        "account": "BOREALIS",
+        "annotations": {},
+        "application": "app-0001",
+        "cloudProvider": "kubernetes",
+        "cloudProviderType": "kubernetes",
+        "containers": [
+          {
+            "args": [],
+            "command": [],
+            "envFrom": [],
+            "envVars": [
+              {
+                "name": "BOREALIS_APP_ID_PRODUCTION",
+                "value": "6102AREHZ4"
               },
-              "name": "BOREALIS_API_KEY_PRODUCTION"
+              {
+                "envSource": {
+                  "secretSource": {
+                    "key": "dev-write-api-key",
+                    "optional": true,
+                    "secretName": "org-0004-BOREALIS-integration-secrets"
+                  }
+                },
+                "name": "BOREALIS_API_KEY_PRODUCTION"
+              },
+              {
+                "name": "BOREALIS_INDEX_NAME_PRODUCTION",
+                "value": "custom_generated_listing_suggestions_v1"
+              },
+              {
+                "name": "GCS_BUCKET",
+                "value": "org-0004-BOREALIS-integration-dev"
+              },
+              {
+                "name": "FOLDER_NAME",
+                "value": "listing-name-suggestions-dev-2020-04-15"
+              },
+              {
+                "name": "FOLDER_DESTINATION",
+                "value": "listing-name-suggestions-dev-completed-2020-04-15"
+              },
+              {
+                "name": "BUFFER_SIZE",
+                "value": "100"
+              },
+              {
+                "name": "JOB_SIZE",
+                "value": "1000"
+              },
+              {
+                "name": "CHUNK_SIZE",
+                "value": "500"
+              },
+              {
+                "name": "WAIT_TIME",
+                "value": "1ms"
+              },
+              {
+                "name": "DRY_RUN",
+                "value": "false"
+              }
+            ],
+            "imageDescription": {
+              "account": "resource-0033",
+              "imageId": "registry.example.invalid/image-0078",
+              "registry": "gcr.io",
+              "repository": "org-0004-artifacts/BOREALIS-batch-copy-suggestions-from-gcs",
+              "tag": "pr-222"
             },
-            {
-              "name": "BOREALIS_INDEX_NAME_PRODUCTION",
-              "value": "custom_generated_listing_suggestions_v1"
-            },
-            {
-              "name": "GCS_BUCKET",
-              "value": "org-0004-BOREALIS-integration-dev"
-            },
-            {
-              "name": "FOLDER_NAME",
-              "value": "listing-name-suggestions-dev-2020-04-15"
-            },
-            {
-              "name": "FOLDER_DESTINATION",
-              "value": "listing-name-suggestions-dev-completed-2020-04-15"
-            },
-            {
-              "name": "BUFFER_SIZE",
-              "value": "100"
-            },
-            {
-              "name": "JOB_SIZE",
-              "value": "1000"
-            },
-            {
-              "name": "CHUNK_SIZE",
-              "value": "500"
-            },
-            {
-              "name": "WAIT_TIME",
-              "value": "1ms"
-            },
-            {
-              "name": "DRY_RUN",
-              "value": "false"
-            }
-          ],
-          "imageDescription": {
-            "account": "resource-0033",
-            "imageId": "registry.example.invalid/image-0078",
-            "registry": "gcr.io",
-            "repository": "org-0004-artifacts/BOREALIS-batch-copy-suggestions-from-gcs",
-            "tag": "pr-222"
-          },
-          "imagePullPolicy": "ALWAYS",
-          "limits": {},
-          "name": "batch-for-copy-suggestions-from-gcs",
-          "ports": [
-            {
-              "containerPort": 80,
-              "name": "http",
-              "protocol": "TCP"
-            }
-          ],
-          "requests": {},
-          "volumeMounts": []
-        }
-      ],
-      "dnsPolicy": "ClusterFirst",
-      "labels": {},
-      "name": "copy-suggestions-from-gcs",
-      "namespace": "org-0004-BOREALIS-worker",
-      "nodeSelector": {},
-      "overrideTimeout": true,
-      "refId": "1",
-      "requisiteStageRefIds": [],
-      "stageTimeoutMs": 36000000,
-      "type": "runJob",
-      "volumeSources": []
-    }
-  ]
+            "imagePullPolicy": "ALWAYS",
+            "limits": {},
+            "name": "batch-for-copy-suggestions-from-gcs",
+            "ports": [
+              {
+                "containerPort": 80,
+                "name": "http",
+                "protocol": "TCP"
+              }
+            ],
+            "requests": {},
+            "volumeMounts": []
+          }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "labels": {},
+        "name": "copy-suggestions-from-gcs",
+        "namespace": "org-0004-BOREALIS-worker",
+        "nodeSelector": {},
+        "overrideTimeout": true,
+        "refId": "1",
+        "requisiteStageRefIds": [],
+        "stageTimeoutMs": 36000000,
+        "type": "runJob",
+        "volumeSources": []
+      }
+    ]
 }
 ```
 
@@ -561,22 +565,22 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 
 ```json
 {
-  "stages": [
-    {
-      "application": "<service-name>",
-      "failPipeline": true,
-      "name": "Run \"[DEV] Deploy Sandbox API\"",
-      "pipeline": "1067496e-afd0-4260-be13-d388586ae53c",
-      "pipelineParameters": {},
-      "refId": "2",
-      "requisiteStageRefIds": [
-        "1"
-      ],
-      "restrictExecutionDuringTimeWindow": false,
-      "type": "pipeline",
-      "waitForCompletion": true
-    }
-  ]
+    "stages": [
+      {
+          "application": "<service-name>",
+          "failPipeline": true,
+          "name": "Run \"[DEV] Deploy Sandbox API\"",
+          "pipeline": "1067496e-afd0-4260-be13-d388586ae53c",
+          "pipelineParameters": {},
+          "refId": "2",
+          "requisiteStageRefIds": [
+            "1"
+          ],
+          "restrictExecutionDuringTimeWindow": false,
+          "type": "pipeline",
+          "waitForCompletion": true
+        }
+    ]
 }
 ```
 
@@ -602,14 +606,14 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ```json
 {
-  "stages": [
-    {
-      "name": "Wait for dev deployments (13min)",
-      "refId": "5",
-      "type": "wait",
-      "waitTime": 780
-    }
-  ]
+    "stages": [
+      {
+        "name": "Wait for dev deployments (13min)",
+        "refId": "5",
+        "type": "wait",
+        "waitTime": 780
+      }
+    ]
 }
 ```
 
@@ -627,87 +631,87 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 ```json
 {
-  "appConfig": {},
-  "application": "app-0002",
-  "id": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9",
-  "index": 7,
-  "keepWaitingPipelines": false,
-  "lastModifiedBy": "<redacted-owner>",
-  "limitConcurrent": true,
-  "name": "[DEV] Custom Event Backfill",
-  "parameterConfig": [
-    {
-      "default": "org-0004-de-us-dev",
-      "description": "The BQ project ID",
-      "hasOptions": false,
-      "label": "bq_project_id",
-      "name": "bq_project_id",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": false
-    },
-    {
-      "default": "us-west1",
-      "description": "The location of the query. The default value is US.",
-      "hasOptions": false,
-      "label": "query_location",
-      "name": "query_location",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": false
-    },
-    {
-      "default": "",
-      "description": "The query to run. This must return 4 columns: `user_id`, `time`, `event_name`, `properties`",
-      "hasOptions": false,
-      "label": "custom_query",
-      "name": "custom_query",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": true
-    },
-    {
-      "default": "50",
-      "description": "The # of events/attriibutes to include in each call to Braze. Max 75. Default value is 75.",
-      "hasOptions": false,
-      "label": "braze_api_batch_size",
-      "name": "braze_api_batch_size",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": false
-    },
-    {
-      "default": "",
-      "description": "Prefix to prepend to custom event name when performing the backfill",
-      "hasOptions": false,
-      "label": "custom_event_prefix",
-      "name": "custom_event_prefix",
-      "options": [
-        {
-          "value": ""
-        }
-      ],
-      "pinned": false,
-      "required": false
-    }
-  ]
-}
+    "appConfig": {},
+    "application": "app-0002",
+    "id": "b6e10dff-ceaf-4f30-8d85-8bd56e88a3b9",
+    "index": 7,
+    "keepWaitingPipelines": false,
+    "lastModifiedBy": "<redacted-owner>",
+    "limitConcurrent": true,
+    "name": "[DEV] Custom Event Backfill",
+    "parameterConfig": [
+      {
+        "default": "org-0004-de-us-dev",
+        "description": "The BQ project ID",
+        "hasOptions": false,
+        "label": "bq_project_id",
+        "name": "bq_project_id",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "us-west1",
+        "description": "The location of the query. The default value is US.",
+        "hasOptions": false,
+        "label": "query_location",
+        "name": "query_location",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "",
+        "description": "The query to run. This must return 4 columns: `user_id`, `time`, `event_name`, `properties`",
+        "hasOptions": false,
+        "label": "custom_query",
+        "name": "custom_query",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": true
+      },
+      {
+        "default": "50",
+        "description": "The # of events/attriibutes to include in each call to Braze. Max 75. Default value is 75.",
+        "hasOptions": false,
+        "label": "braze_api_batch_size",
+        "name": "braze_api_batch_size",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      },
+      {
+        "default": "",
+        "description": "Prefix to prepend to custom event name when performing the backfill",
+        "hasOptions": false,
+        "label": "custom_event_prefix",
+        "name": "custom_event_prefix",
+        "options": [
+          {
+            "value": ""
+          }
+        ],
+        "pinned": false,
+        "required": false
+      }
+    ]
+  }
 ```
 
 * For each parameter in the `parameterConfig` property of the Spinnaker pipeline, add the following prompt to the output.
@@ -751,6 +755,7 @@ When a project has both notification steps and deployment stage steps, the gener
 # Replacing placeholder values
 
 * A value like `redacted-cluster` for a target tag must be replaced with the generic tag `Kubernetes`
+* An empty string (`""`) for a target tag must also be replaced with the generic tag `Kubernetes`
 
 # Final Instructions
 
