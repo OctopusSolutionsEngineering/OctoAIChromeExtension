@@ -1,4 +1,23 @@
-You are an expert in parsing Spinnaker pipelines and converting them to prompts that create equivalent projects in Octopus Deploy.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job (Manifest)". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "gs://example-bucket/storage-0910". Set the File Paths to "gs://example-bucket/storage-0910". Set the target tag to Kubernetes.
+* Add a "Manual Intervention" step with the name "Manual Judgment" to the deployment process. Set the instructions to "release: *${trigger['tag']}*". Run this step first.
+* Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "CDMS3MAR4". Set the "ssn_Message" property to "*PROD release failed!!!!!!!* :danger:"
+
+---
+
+Create a project called "[PROD] publisher canary scale in" in the "Default Project Group" project group with no steps, and then:
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale (Manifest)". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field. Set the target tag to Kubernetes.
+* The project must be disabled.
+
+---
+
+Create a project called "[PROD] bq-syncer canary scale in" in the "Default Project Group" project group with no steps, and then:
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale bq created". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field. Set the target tag to Kubernetes. Run this step first.
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale bq updated". Set the script to inline Powershell. Generate a powershell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field. Set the target tag to Kubernetes. Set the start trigger to "Run in parallel with the previous step".
+* The project must be disabled.
+* Add a "Manual Intervention" step with the name "Manual Judgment Canary" to the deployment process. Set the instructions to "release: *${trigger['tag']}*".
+* Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "CDMS3MAR4".
+* Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "CDMS3MAR4".
+  You are an expert in parsing Spinnaker pipelines and converting them to prompts that create equivalent projects in Octopus Deploy.
 
 # Prompt Structure
 
@@ -250,6 +269,32 @@ Add a single external feed trigger that creates a new release for each step that
 ```
 
 * There is no equivalent of the `runAsUser`, `subscriptionName`, or `pubsubSystem` properties in Octopus Deploy, so they are not included in the prompt.
+
+## Pipeline Triggers
+
+The following snippet is an example of a pipeline trigger in Spinnaker that fires when another named pipeline completes:
+
+```json
+{
+  "triggers": [
+    {
+      "application": "app-0030",
+      "enabled": true,
+      "pipeline": "1838ff8c-a3d0-416d-94f6-e600003be5f9",
+      "runAsUser": "ee3d44f7-3985-4c17-82d9-08d6405fe1c1@managed-service-account",
+      "status": [
+        "successful",
+        "failed",
+        "canceled"
+      ],
+      "type": "pipeline"
+    }
+  ]
+}
+```
+
+* Pipeline triggers have no equivalent in Octopus Deploy and must be **completely ignored**. Do not generate any prompt output from a trigger whose `"type"` is `"pipeline"`.
+* Do not add any external feed trigger prompt, schedule trigger prompt, or any other trigger-related output for a `"type": "pipeline"` trigger entry.
 
 # Notifications
 
@@ -654,9 +699,7 @@ The following snippet is an example of a `deleteManifest` stage in Spinnaker:
 A `deleteManifest` stage represents the deletion of a named Kubernetes resource. The equivalent step in an Octopus Deploy project is a "Delete Kubernetes Resource" step:
 
 * Replace `<stage name>` with the `name` property of the stage.
-* Replace `<manifestName>` with the `manifestName` property of the stage.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
-* Replace `<cascading>` with the boolean value of `options.cascading` (e.g., `true` or `false`).
 * Replace `<code>` with a PowerShell script to call `kubectl` to delete the resource in the `manifestName` field.
 
 ```
@@ -668,7 +711,6 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource to a target replica count (e.g., scaling to zero to effectively stop a deployment). Convert them using the same prompt as `deleteManifest` stages:
 
 * Replace `<stage name>` with the `name` property of the stage.
-* Replace `<manifestName>` with the `manifestName` property of the stage.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<code>` with a PowerShell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field.
 
@@ -806,6 +848,7 @@ When a project has pipeline-level notification entries, the generated prompt mus
 4. All "Slack Notification - Complete" steps (one per `notifications` array entry that has `pipeline.complete` in its `when` array) must be listed last, after all Finish steps, in `notifications` array order.
 5. All `parameterConfig` variable prompts must follow all notification steps (after the Complete steps). When there are NO pipeline-level notification steps, variable prompts must appear BEFORE the deployment stage steps.
 6. The external feed trigger prompt (if any) must follow all variable prompts and all notification steps, but before `* The project must be disabled.`.
+7. `* The project must be disabled.` must **always** be the very last line in the project's prompt block — it must appear after all step prompts, all variable prompts, and the external feed trigger prompt. No other prompt item may follow it.
 
 # Replacing placeholder values
 
