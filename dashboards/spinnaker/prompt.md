@@ -836,4 +836,4 @@ When a project has pipeline-level notification entries, the generated prompt mus
 
 # Final Instructions
 
-Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy. The prompt must be wrapped in a Markdown code block with three backticks (```).
+Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy.
