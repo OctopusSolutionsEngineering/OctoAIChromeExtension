@@ -217,6 +217,8 @@ Add a single external feed trigger that creates a new release for each step that
 
 * Place the external feed trigger prompt **after** all deployment step prompts (including Slack notification steps) and all variable prompts, but **before** the `* The project must be disabled.` line.
 
+* If none of the deployment steps reference a Docker image, do not add the external feed trigger prompt at all, because Octopus triggers require docker image be referenced by a deployment step in order to work. If there is no Docker image reference in any step, the external feed trigger would be non-functional and should be omitted entirely.
+
 ## Pubsub Triggers
 
 The following snippet is an example of a Google Pub/Sub trigger in Spinnaker that fires when a Docker image is published:
