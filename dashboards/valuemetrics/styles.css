@@ -1117,6 +1117,43 @@ tbody tr:last-child td {
   opacity: 1;
 }
 
+.metrics-loading-overlay {
+  z-index: 9998;
+}
+
+.metrics-loading-overlay[hidden] {
+  display: none !important;
+}
+
+.metrics-loading-card {
+  max-width: 440px;
+}
+
+.metrics-loading-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-xl) var(--space-lg);
+}
+
+.metrics-loading-spinner-wrap {
+  margin-bottom: var(--space-md);
+}
+
+.metrics-loading-spinner {
+  font-size: 2.5rem;
+  color: var(--colorPrimaryLighter);
+}
+
+.metrics-loading-title {
+  margin-bottom: var(--space-xs);
+}
+
+.metrics-loading-text {
+  margin-bottom: 0;
+}
+
 /* Header with progress */
 .onboarding-header {
   display: flex;

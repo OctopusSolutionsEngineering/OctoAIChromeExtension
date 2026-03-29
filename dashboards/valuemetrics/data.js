@@ -559,6 +559,8 @@ const DashboardData = (() => {
 
 const DashboardUI = (() => {
 
+  let _loadingDepth = 0;
+
   async function loadDashboard() {
     if (!OctopusApi.isConfigured()) return;
 
@@ -589,7 +591,43 @@ const DashboardUI = (() => {
   }
 
   function setLoading(loading) {
-    document.body.classList.toggle('is-loading', loading);
+    const overlay = document.getElementById('metrics-loading-overlay');
+    const detail = document.getElementById('metrics-loading-detail');
+    const card = document.getElementById('metrics-loading-card');
+
+    if (loading) {
+      _loadingDepth++;
+      document.body.classList.add('is-loading');
+      if (_loadingDepth !== 1) return;
+
+      if (detail && detail.dataset.defaultText) {
+        detail.textContent = detail.dataset.defaultText;
+      }
+      if (card) card.setAttribute('aria-busy', 'true');
+      if (overlay) {
+        overlay.removeAttribute('hidden');
+        overlay.setAttribute('aria-hidden', 'false');
+        requestAnimationFrame(() => {
+          overlay.classList.add('visible');
+        });
+      }
+      return;
+    }
+
+    _loadingDepth = Math.max(0, _loadingDepth - 1);
+    if (_loadingDepth > 0) return;
+
+    document.body.classList.remove('is-loading');
+    if (card) card.setAttribute('aria-busy', 'false');
+    if (overlay) {
+      overlay.classList.remove('visible');
+      overlay.setAttribute('aria-hidden', 'true');
+      setTimeout(() => {
+        if (_loadingDepth === 0) {
+          overlay.setAttribute('hidden', '');
+        }
+      }, 300);
+    }
   }
 
   function setStatusMessage(msg) {
@@ -597,6 +635,10 @@ const DashboardUI = (() => {
     if (el) {
       el.textContent = msg || '';
       el.style.display = msg ? '' : 'none';
+    }
+    const loadingDetail = document.getElementById('metrics-loading-detail');
+    if (loadingDetail && msg && document.body.classList.contains('is-loading')) {
+      loadingDetail.textContent = msg;
     }
   }
 
