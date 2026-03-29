@@ -353,6 +353,10 @@ a:hover {
   border-color: var(--colorBorderActive);
 }
 
+.card.card--chart-tooltips {
+  overflow: visible;
+}
+
 .card-header {
   display: flex;
   align-items: center;
@@ -564,6 +568,96 @@ a:hover {
   visibility: visible;
 }
 
+.deployment-trend-chart {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+.deployment-trend-bars {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  min-height: 12.5rem;
+  height: auto;
+  padding-bottom: var(--space-xxs);
+  box-sizing: border-box;
+}
+.deployment-trend-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+  cursor: help;
+}
+.deployment-trend-value {
+  flex-shrink: 0;
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextTertiary);
+  margin-bottom: var(--space-xxs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  line-height: 1.2;
+  max-width: 100%;
+}
+.deployment-trend-value--emph {
+  font: var(--textBodyBoldXSmall);
+  color: var(--colorTextSecondary);
+}
+.deployment-trend-bar-area {
+  flex-shrink: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+.deployment-trend-bar-stack {
+  width: 100%;
+  max-width: min(36px, 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+.deployment-trend-seg {
+  flex-shrink: 0;
+}
+.deployment-trend-seg--fail {
+  background: var(--colorDanger);
+}
+.deployment-trend-seg--other {
+  background: var(--colorBackgroundTertiary);
+}
+.deployment-trend-seg--success {
+  background: var(--colorSuccess);
+}
+.deployment-trend-axis-label {
+  flex-shrink: 0;
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextTertiary);
+  margin-top: var(--space-xs);
+  white-space: normal;
+  word-break: break-word;
+  text-align: center;
+  line-height: 1.25;
+  min-height: 2.5em;
+}
+
+.deployment-trend-bars > [data-tooltip]:first-child:not(:last-child)::after {
+  left: 0;
+  transform: none;
+}
+.deployment-trend-bars > [data-tooltip]:last-child:not(:first-child)::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -712,6 +806,11 @@ tbody tr:last-child td {
   justify-content: center;
   color: var(--colorTextTertiary);
   font: var(--textBodyRegularMedium);
+}
+
+.chart-container:has(.deployment-trend-chart) {
+  align-items: stretch;
+  justify-content: stretch;
 }
 
 

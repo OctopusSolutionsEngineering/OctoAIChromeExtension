@@ -884,6 +884,55 @@ const DashboardUI = (() => {
       .slice(-12);
   }
 
+  const _ISO_WEEK_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  /** Monday 00:00 UTC of ISO week `isoWeek` in ISO week-year `isoYear`. */
+  function getIsoWeekMondayUTC(isoYear, isoWeek) {
+    const jan4 = new Date(Date.UTC(isoYear, 0, 4));
+    const dow = jan4.getUTCDay() || 7;
+    const monday = new Date(jan4);
+    monday.setUTCDate(jan4.getUTCDate() - dow + 1 + (isoWeek - 1) * 7);
+    return monday;
+  }
+
+  /** e.g. 129 → "129", 12_400 → "12.4K" (exact value stays in tooltip). */
+  function formatCompactCount(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return '0';
+    return new Intl.NumberFormat('en-AU', { notation: 'compact', maximumFractionDigits: 2 }).format(x);
+  }
+
+  /** Max stacked bar height in px (sqrt-scaled; cap keeps charts readable). */
+  const TREND_BAR_MAX_PX = 168;
+
+  /**
+   * Pixel height for one column’s stacked bar (sqrt scale vs max in view).
+   */
+  function trendBarPixelHeight(total, maxTotal, maxPx = TREND_BAR_MAX_PX) {
+    const t = Math.max(0, Number(total) || 0);
+    const mx = Math.max(1, Number(maxTotal) || 0);
+    if (t <= 0) return 0;
+    const h = (Math.sqrt(t) / Math.sqrt(mx)) * maxPx;
+    return Math.max(4, Math.round(h));
+  }
+
+  /** Calendar span for chart copy, e.g. "3–9 Mar 2026" (Mon–Sun of that ISO week, UTC). */
+  function formatIsoWeekDateRange(isoYear, isoWeek) {
+    const monday = getIsoWeekMondayUTC(isoYear, isoWeek);
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    const d1 = monday.getUTCDate();
+    const d2 = sunday.getUTCDate();
+    const m1 = monday.getUTCMonth();
+    const m2 = sunday.getUTCMonth();
+    const y1 = monday.getUTCFullYear();
+    const y2 = sunday.getUTCFullYear();
+    const M = _ISO_WEEK_MONTHS;
+    if (y1 === y2 && m1 === m2) return `${d1}–${d2} ${M[m1]} ${y1}`;
+    if (y1 === y2) return `${d1} ${M[m1]} – ${d2} ${M[m2]} ${y2}`;
+    return `${d1} ${M[m1]} ${y1} – ${d2} ${M[m2]} ${y2}`;
+  }
+
   function renderWeeklyTrend(weeklyTrend, range) {
     if (weeklyTrend) _fullWeeklyTrend = weeklyTrend;
     if (range) _currentRange = range;
@@ -900,19 +949,22 @@ const DashboardUI = (() => {
         success: m.success,
         failed: m.failed,
         label: MONTH_NAMES[m.month] + (m.month === 0 ? '<br>' + m.year : ''),
-        tooltip: `${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed, ${m.total - m.success - m.failed} other)`,
+        tooltip: _tooltipAttr(`${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed, ${m.total - m.success - m.failed} other)`),
       }));
     } else {
       const weeksToShow = _currentRange === '90d' ? 13 : 5;
       const sliced = _fullWeeklyTrend.slice(-weeksToShow);
       bars = sliced.map((w, i) => {
         const showYear = (i === 0) || (sliced[i - 1] && sliced[i - 1].year !== w.year);
+        const rangeStr = formatIsoWeekDateRange(w.year, w.week);
+        const counts = `${w.total} deployments (${w.success} success, ${w.failed} failed, ${w.total - w.success - w.failed} other)`;
+        const tip = `${rangeStr} · ISO week ${w.week}, ${w.year} (Mon–Sun, UTC). ${counts}`;
         return {
           total: w.total,
           success: w.success,
           failed: w.failed,
           label: `W${w.week}${showYear ? '<br>' + w.year : ''}`,
-          tooltip: `Week ${w.week}, ${w.year}: ${w.total} deployments (${w.success} success, ${w.failed} failed, ${w.total - w.success - w.failed} other)`,
+          tooltip: _tooltipAttr(tip),
         };
       });
     }
@@ -929,23 +981,31 @@ const DashboardUI = (() => {
     const maxTotal = Math.max(...bars.map(b => b.total), 1);
 
     el.innerHTML = `
-      <div style="width:100%;overflow-x:auto;">
-        <div style="display:flex;align-items:flex-end;gap:6px;height:200px;padding:0 var(--space-xs);">
+      <div class="deployment-trend-chart">
+        <div class="deployment-trend-bars" style="gap:6px;padding:0 var(--space-xs);">
           ${bars.map(b => {
-            const h = Math.max(4, (b.total / maxTotal) * 180);
-            const successH = b.total > 0 ? (b.success / b.total * h) : 0;
-            const failH = b.total > 0 ? (b.failed / b.total * h) : 0;
-            const otherH = h - successH - failH;
+            const t = b.total;
+            const hPx = trendBarPixelHeight(t, maxTotal);
+            let failH = 0;
+            let otherH = 0;
+            let succH = 0;
+            if (t > 0 && hPx > 0) {
+              failH = Math.round((b.failed / t) * hPx);
+              succH = Math.round((b.success / t) * hPx);
+              otherH = Math.max(0, hPx - failH - succH);
+            }
             const topSegment = failH > 0 ? 'fail' : (otherH > 0 ? 'other' : 'success');
             return `
-              <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:28px;cursor:default;" title="${b.tooltip}">
-                <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-bottom:4px;">${b.total}</div>
-                <div style="width:100%;max-width:40px;display:flex;flex-direction:column;">
-                  ${failH > 0 ? `<div style="height:${failH}px;background:var(--colorDanger);border-radius:${topSegment === 'fail' ? '3px 3px' : '0 0'} 0 0;"></div>` : ''}
-                  ${otherH > 0 ? `<div style="height:${otherH}px;background:var(--colorBackgroundTertiary);border-radius:${topSegment === 'other' ? '3px 3px' : '0 0'} ${successH > 0 ? '0 0' : '3px 3px'};"></div>` : ''}
-                  ${successH > 0 ? `<div style="height:${successH}px;background:var(--colorSuccess);border-radius:0 0 3px 3px;"></div>` : ''}
+              <div class="deployment-trend-col" data-tooltip="${b.tooltip}">
+                <div class="deployment-trend-value">${formatCompactCount(t)}</div>
+                <div class="deployment-trend-bar-area">
+                  <div class="deployment-trend-bar-stack" style="height:${t > 0 ? hPx : 0}px;">
+                    ${failH > 0 ? `<div class="deployment-trend-seg deployment-trend-seg--fail" style="height:${failH}px;border-radius:${topSegment === 'fail' ? '3px 3px' : '0 0'} 0 0;"></div>` : ''}
+                    ${otherH > 0 ? `<div class="deployment-trend-seg deployment-trend-seg--other" style="height:${otherH}px;border-radius:${topSegment === 'other' ? '3px 3px' : '0 0'} ${succH > 0 ? '0 0' : '3px 3px'};"></div>` : ''}
+                    ${succH > 0 ? `<div class="deployment-trend-seg deployment-trend-seg--success" style="height:${succH}px;border-radius:0 0 3px 3px;"></div>` : ''}
+                  </div>
                 </div>
-                <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:4px;white-space:nowrap;text-align:center;height:2.5em;line-height:1.25em;">${b.label}</div>
+                <div class="deployment-trend-axis-label">${b.label}</div>
               </div>`;
           }).join('')}
         </div>
@@ -1014,6 +1074,10 @@ const DashboardUI = (() => {
     setTrendRange,
     // Expose helpers for views
     timeAgo,
+    formatIsoWeekDateRange,
+    formatCompactCount,
+    trendBarPixelHeight,
+    TREND_BAR_MAX_PX,
   };
 
 })();

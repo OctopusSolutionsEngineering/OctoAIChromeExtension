@@ -204,7 +204,7 @@ const Views = (() => {
 
     <!-- Charts Row -->
     <div class="dashboard-grid mb-lg">
-      <div class="card col-span-8">
+      <div class="card col-span-8 card--chart-tooltips">
         <div class="card-header">
           <h3 class="card-title">Deployment Trends</h3>
           <div class="flex items-center gap-md">
@@ -415,7 +415,7 @@ const Views = (() => {
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-chart-bar"></i> Deployment Timeline</h2>
     </div>
-    <div class="card mb-lg">
+    <div class="card card--chart-tooltips mb-lg">
       <div class="card-header">
         <h3 class="card-title">Deployments Over Time</h3>
         <div class="flex items-center gap-md">
@@ -514,6 +514,10 @@ const Views = (() => {
     return Object.values(monthMap).sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month).slice(-12);
   }
 
+  function _trendTipAttr(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
   function _renderTrendChart(weeklyTrend, range) {
     let bars;
     if (range === '12m') {
@@ -521,17 +525,20 @@ const Views = (() => {
       bars = monthly.map(m => ({
         total: m.total, success: m.success, failed: m.failed,
         label: MONTH_NAMES[m.month] + (m.month === 0 ? '<br>' + m.year : ''),
-        tooltip: `${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed, ${m.total - m.success - m.failed} other)`,
+        tooltip: _trendTipAttr(`${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed, ${m.total - m.success - m.failed} other)`),
       }));
     } else {
       const weeks = range === '90d' ? 13 : 5;
       const sliced = weeklyTrend.slice(-weeks);
       bars = sliced.map((w, i) => {
         const showYear = i === 0 || (sliced[i - 1] && sliced[i - 1].year !== w.year);
+        const rangeStr = DashboardData.formatIsoWeekDateRange(w.year, w.week);
+        const counts = `${w.total} deployments (${w.success} success, ${w.failed} failed, ${w.total - w.success - w.failed} other)`;
+        const tip = `${rangeStr} · ISO week ${w.week}, ${w.year} (Mon–Sun, UTC). ${counts}`;
         return {
           total: w.total, success: w.success, failed: w.failed,
           label: `W${w.week}${showYear ? '<br>' + w.year : ''}`,
-          tooltip: `Week ${w.week}, ${w.year}: ${w.total} deployments (${w.success} success, ${w.failed} failed, ${w.total - w.success - w.failed} other)`,
+          tooltip: _trendTipAttr(tip),
         };
       });
     }
@@ -539,25 +546,33 @@ const Views = (() => {
       return '<div class="text-tertiary" style="text-align:center;padding:var(--space-lg);">No trend data available</div>';
     }
     const maxTotal = Math.max(...bars.map(b => b.total), 1);
-    const barWidth = range === '12m' ? 32 : range === '90d' ? 24 : 40;
     const gap = range === '12m' ? 8 : range === '90d' ? 6 : 12;
-    const maxBarH = 180;
-    return `<div style="width:100%;overflow-x:auto;">
-      <div style="display:flex;align-items:flex-end;gap:${gap}px;height:200px;padding:var(--space-sm) 0;">
+    const maxBar = DashboardData.TREND_BAR_MAX_PX;
+    const fmt = (n) => DashboardData.formatCompactCount(n);
+    return `<div class="deployment-trend-chart">
+      <div class="deployment-trend-bars" style="gap:${gap}px;padding:var(--space-sm) 0;">
         ${bars.map(b => {
-          const h = Math.max(4, (b.total / maxTotal) * maxBarH);
-          const successH = b.total > 0 ? (b.success / b.total * h) : 0;
-          const failH = b.total > 0 ? (b.failed / b.total * h) : 0;
-          const otherH = h - successH - failH;
+          const t = b.total;
+          const hPx = DashboardData.trendBarPixelHeight(t, maxTotal, maxBar);
+          let failH = 0;
+          let otherH = 0;
+          let succH = 0;
+          if (t > 0 && hPx > 0) {
+            failH = Math.round((b.failed / t) * hPx);
+            succH = Math.round((b.success / t) * hPx);
+            otherH = Math.max(0, hPx - failH - succH);
+          }
           const topSegment = failH > 0 ? 'fail' : (otherH > 0 ? 'other' : 'success');
-          return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:${barWidth}px;max-width:60px;" title="${b.tooltip}">
-            <div style="font:var(--textBodyBoldXSmall);color:var(--colorTextSecondary);margin-bottom:4px;">${b.total}</div>
-            <div style="width:100%;display:flex;flex-direction:column;">
-              ${failH > 0 ? `<div style="height:${failH}px;background:var(--colorDanger);border-radius:${topSegment === 'fail' ? '3px 3px' : '0 0'} 0 0;"></div>` : ''}
-              ${otherH > 0 ? `<div style="height:${otherH}px;background:var(--colorBackgroundTertiary);border-radius:${topSegment === 'other' ? '3px 3px' : '0 0'} ${successH > 0 ? '0 0' : '3px 3px'};"></div>` : ''}
-              ${successH > 0 ? `<div style="height:${successH}px;background:var(--colorSuccess);border-radius:0 0 3px 3px;"></div>` : ''}
+          return `<div class="deployment-trend-col" data-tooltip="${b.tooltip}">
+            <div class="deployment-trend-value deployment-trend-value--emph">${fmt(t)}</div>
+            <div class="deployment-trend-bar-area">
+              <div class="deployment-trend-bar-stack" style="height:${t > 0 ? hPx : 0}px;">
+                ${failH > 0 ? `<div class="deployment-trend-seg deployment-trend-seg--fail" style="height:${failH}px;border-radius:${topSegment === 'fail' ? '3px 3px' : '0 0'} 0 0;"></div>` : ''}
+                ${otherH > 0 ? `<div class="deployment-trend-seg deployment-trend-seg--other" style="height:${otherH}px;border-radius:${topSegment === 'other' ? '3px 3px' : '0 0'} ${succH > 0 ? '0 0' : '3px 3px'};"></div>` : ''}
+                ${succH > 0 ? `<div class="deployment-trend-seg deployment-trend-seg--success" style="height:${succH}px;border-radius:0 0 3px 3px;"></div>` : ''}
+              </div>
             </div>
-            <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:4px;text-align:center;height:2.5em;line-height:1.25em;">${b.label}</div>
+            <div class="deployment-trend-axis-label">${b.label}</div>
           </div>`;
         }).join('')}
       </div>
@@ -695,7 +710,7 @@ const Views = (() => {
 
     <!-- Velocity trend -->
     <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-chart-area"></i> Velocity Over Time</h2></div>
-    <div class="card mb-lg">
+    <div class="card card--chart-tooltips mb-lg">
       <div class="card-header">
         <h3 class="card-title"></h3>
         <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
