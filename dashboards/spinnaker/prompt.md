@@ -57,6 +57,8 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "<url>".
 * When a pipeline has NO `expectedArtifacts` entries of `type: "docker/image"` but does have a Docker trigger with a `registry` property, create a feed from that trigger's `registry` value:
   * If `registry` is `gcr.io`, create the "Google Container Registry" feed: `Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".`
   * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
+* **NOTE**: An `expectedArtifacts` array that is present but empty (`[]`) satisfies the condition "NO `docker/image` entries". A pipeline with `"expectedArtifacts": []` and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field. Do not skip feed creation just because `expectedArtifacts` is an empty array rather than absent.
+* **IMPORTANT**: Feed prompts are ONLY generated from `expectedArtifacts[].matchArtifact.type == "docker/image"` entries or from Docker/Pubsub trigger `registry` fields. The `manifestArtifact` property on individual stages (regardless of its `type`) does NOT generate any feed prompt. In particular, `manifestArtifact` entries with `"type": "gcs/object"` or `"type": "github/file"` must NEVER trigger feed creation — those are artifact source types for the Kubernetes manifest itself, not Docker container registries.
 
 # Base Project Prompt
 
@@ -96,6 +98,14 @@ Create a project called "My Project" in the "Default Project Group" project grou
 * Add a project trigger that runs on a schedule with the following cron expression: "0 0 12 1/1 * ? *". The trigger must be enabled.
 * etc
 ```
+
+If the `description` property of the Spinnaker pipeline is present and non-empty, add the following sentence immediately after the opening "Create a project…" line (before any step bullets):
+
+```
+* Set the project description to "<description>".
+```
+
+Replace `<description>` with the value of the `description` property in the Spinnaker pipeline.
 
 If the `disabled` property of the Spinnaker pipeline is `true`, add the following sentence to the end of the prompt:
 
@@ -212,12 +222,17 @@ The following snippet is an example of a Docker trigger in Spinnaker:
 The equivalent trigger in an Octopus Deploy project is created with the prompt:
 
 ```
-Add a single external feed trigger that creates a new release for each step that deploys a Docker image.
+Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be enabled.
 ```
+
+* If the Docker trigger has `"enabled": false`, use `The trigger must be disabled.` instead of `The trigger must be enabled.`
 
 * Place the external feed trigger prompt **after** all deployment step prompts (including Slack notification steps) and all variable prompts, but **before** the `* The project must be disabled.` line.
 
-* If none of the deployment steps reference a Docker image, do not add the external feed trigger prompt at all, because Octopus triggers require docker image be referenced by a deployment step in order to work. If there is no Docker image reference in any step, the external feed trigger would be non-functional and should be omitted entirely.
+* **CRITICAL**: A Docker trigger in the pipeline JSON does NOT automatically mean the external feed trigger prompt should be generated. The external feed trigger is only valid when at least one deployment step in the project actually deploys a Docker image. Before emitting the external feed trigger prompt, check every deployment stage (`deployManifest`, `runJobManifest`, `runJob`) in the pipeline:
+  * A `runJob` stage qualifies if its `containers` array contains an `imageDescription` field.
+  * A `deployManifest` or `runJobManifest` stage qualifies **only if** its artifact has `type: "docker/image"`. Stages whose `manifestArtifact.type` is `"gcs/object"` or `"github/file"` do **NOT** reference Docker images.
+  * If no qualifying Docker-image steps are found, omit the external feed trigger prompt entirely — even if the pipeline has Docker or Pubsub triggers.
 
 ## Pubsub Triggers
 
@@ -245,9 +260,11 @@ The following snippet is an example of a Google Pub/Sub trigger in Spinnaker tha
 * If a pipeline already has a Docker trigger that produces an external feed trigger prompt, do not add a second external feed trigger prompt for the pubsub trigger — they combine into a single prompt:
 
 ```
-Add a single external feed trigger that creates a new release for each step that deploys a Docker image.
+Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be enabled.
 ```
 
+* Apply the same enabled/disabled rule as for Docker triggers: if the Pubsub trigger has `"enabled": false`, use `The trigger must be disabled.` instead of `The trigger must be enabled.`
+* The same **CRITICAL** check applies: only emit the external feed trigger prompt when at least one deployment step actually deploys a Docker image (see the Docker Triggers section above for the qualifying criteria).
 * There is no equivalent of the `runAsUser`, `subscriptionName`, or `pubsubSystem` properties in Octopus Deploy, so they are not included in the prompt.
 
 ## Pipeline Triggers
@@ -421,6 +438,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 ```
 
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths.
+* **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs. Still use the `reference` field as the Repository URL and the `name` field as the File Paths in the prompt, but be aware that in practice this step will require additional GCS configuration in the target Octopus environment. Do NOT generate a feed prompt from `manifestArtifact` GCS references.
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
 * Replace `<account>` with the value of the `account` property in the stage.
 
@@ -813,11 +831,55 @@ The variable must not be required.
 ## Running steps in parallel
 
 * First, topologically sort all deployment stages by their `requisiteStageRefIds` dependency graph. Treat each `refId` as a node and each entry in `requisiteStageRefIds` as a directed edge from prerequisite to dependent. Stages with an empty or absent `requisiteStageRefIds` array have no prerequisites and must appear first in the sorted order; stages that depend only on those come next; and so on, until all stages are ordered.
+* **CRITICAL: Perform the topological sort based purely on `requisiteStageRefIds` values — NOT on the position of the stage in the JSON array.** A stage that appears late in the JSON array but has `"requisiteStageRefIds": []` must still be placed in the first (root) group, even if the JSON places it after a stage that depends on it.
 * When the topologically-sorted execution order differs from the original JSON array order (i.e., a stage with empty `requisiteStageRefIds` appears later in the JSON than a stage that depends on it):
   * Append `Run this step first.` to the first stage's step prompt (the stage that has no prerequisites and was moved earlier by the topological sort).
   * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent stage's step prompt in the sorted list.
-* When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. For the second and subsequent stages in such a group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
+* When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. **This includes stages that all have an empty `requisiteStageRefIds` array `[]`** — an empty array `[]` is a shared value just like any other. For the second and subsequent stages in such a parallel group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
+  * Example: If stages with refIds 1, 2, 4, 15, 16, 17, 18 all have `"requisiteStageRefIds": []`, then the step for refId 1 gets no parallel annotation (it is first), but the steps for refIds 2, 4, 15, 16, 17, and 18 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
+  * Similarly, if stages with refIds 8, 9, 11, 12, 13, 14, 19 all have `"requisiteStageRefIds": ["5"]`, then the step for refId 8 gets no parallel annotation (it is first in the group), but the steps for refIds 9, 11, 12, 13, 14, and 19 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
 * Do not set a notification step to run in parallel with the previous step as the notification steps must run on their own.
+
+### Worked example: stages with `[]` appearing late in JSON
+
+Consider a pipeline whose stages in JSON order are:
+
+| JSON position | refId | requisiteStageRefIds |
+|---|---|---|
+| 1 | 1 | `[]` |
+| 2 | 2 | `[]` |
+| 3 | 4 | `[]` |
+| 4 | 5 | `["1","2","4","17","16","15","18"]` |
+| 5 | 8 | `["5"]` |
+| 6 | 9 | `["5"]` |
+| 7 | 15 | `[]` |
+| 8 | 16 | `[]` |
+| 9 | 17 | `[]` |
+| 10 | 18 | `[]` |
+| 11 | 19 | `["5"]` |
+
+Topological sort groups:
+1. **Root group (no deps):** refIds 1, 2, 4, 15, 16, 17, 18 — ALL stages with `[]`, regardless of JSON position
+2. **Depends only on root:** refId 5
+3. **Depends only on 5:** refIds 8, 9, 19
+
+The wait stage (refId 5) must come **after ALL seven root stages** — including refIds 15, 16, 17, 18 which appear **after** the wait stage in the JSON. Do not use JSON position to determine order.
+
+The generated output for the deployment stages would include:
+
+```
+* Add "Step for refId 1" ...   ← first in root group, no annotation
+* Add "Step for refId 2" ... Set the start trigger to "Run in parallel with the previous step".
+* Add "Step for refId 4" ... Set the start trigger to "Run in parallel with the previous step".
+* Add "Step for refId 15" ... Set the start trigger to "Run in parallel with the previous step".
+* Add "Step for refId 16" ... Set the start trigger to "Run in parallel with the previous step".
+* Add "Step for refId 17" ... Set the start trigger to "Run in parallel with the previous step".
+* Add "Step for refId 18" ... Set the start trigger to "Run in parallel with the previous step".
+* Add "Step for refId 5" ...   ← depends on all above; first in its group, no parallel annotation
+* Add "Step for refId 8" ...   ← first in its group (depends on 5), no parallel annotation
+* Add "Step for refId 9" ... Set the start trigger to "Run in parallel with the previous step".
+* Add "Step for refId 19" ... Set the start trigger to "Run in parallel with the previous step".
+```
 
 ## Notification Step Ordering
 
