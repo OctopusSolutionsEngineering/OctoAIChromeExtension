@@ -426,8 +426,6 @@ const DashboardData = (() => {
         healthyTargetsPct: healthyPct,
         totalReleases,
         totalRunbooks,
-        // Estimated time saved: ~15 min saved per automated deployment vs manual
-        timeSavedHours: Math.round(totalDeploymentsCount * 15 / 60),
       },
 
       // Breakdown
@@ -609,7 +607,6 @@ const DashboardUI = (() => {
     setText('kpi-success-rate', kpi.successRate + '%');
     setText('kpi-projects', kpi.activeProjects.toLocaleString());
     setText('kpi-frequency', kpi.deployFrequency + '/day');
-    setText('kpi-time-saved', formatHours(kpi.timeSavedHours));
     setText('kpi-targets', kpi.totalTargets.toLocaleString());
     setText('kpi-target-health', kpi.healthyTargetsPct + '%');
     setText('kpi-active-spaces', kpi.activeSpaces + '/' + kpi.totalSpaces);
@@ -620,14 +617,6 @@ const DashboardUI = (() => {
     setTrendLabel('kpi-frequency-label', `last 30 days`);
     setTrendLabel('kpi-targets-label', `${kpi.healthyTargets} healthy`);
     setTrendLabel('kpi-spaces-label', `${kpi.totalSpaces} total`);
-  }
-
-  function formatHours(h) {
-    if (h >= 24) {
-      const days = Math.round(h / 8); // working days
-      return days + ' days';
-    }
-    return h + ' hrs';
   }
 
   function setTrendLabel(id, text) {
@@ -691,11 +680,21 @@ const DashboardUI = (() => {
     return parts.join(' <span class="text-tertiary" style="opacity:.4;">·</span> ') + ` <span class="text-tertiary">/ ${total}</span>`;
   }
 
+  function _tooltipAttr(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
   function healthBadge(rate, hasDeployments) {
-    if (rate >= 95) return '<span class="badge success">Healthy</span>';
-    if (rate >= 80) return '<span class="badge warning">Attention</span>';
-    if (rate < 80 && (rate > 0 || hasDeployments)) return '<span class="badge danger">At Risk</span>';
-    return '<span class="badge neutral">No data</span>';
+    if (rate >= 95) {
+      return `<span class="badge success" data-tooltip="${_tooltipAttr('Deployment success rate is 95% or higher for this row in the selected time range.')}">Healthy</span>`;
+    }
+    if (rate >= 80) {
+      return `<span class="badge info" data-tooltip="${_tooltipAttr('Success rate is between 80% and 94%. Worth monitoring before it drops further.')}">Attention</span>`;
+    }
+    if (rate < 80 && (rate > 0 || hasDeployments)) {
+      return `<span class="badge warning" data-tooltip="${_tooltipAttr('Success rate is below 80%, or there was deployment activity with a low success rate. Review failed deployments and trends.')}">Warning</span>`;
+    }
+    return `<span class="badge neutral" data-tooltip="${_tooltipAttr('Not enough deployment outcomes in the selected period to calculate a success rate.')}">No data</span>`;
   }
 
   // ---- Recent Deployments ----

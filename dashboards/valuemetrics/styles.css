@@ -528,6 +528,42 @@ a:hover {
   color: var(--colorTextSecondary);
 }
 
+[data-tooltip] {
+  position: relative;
+  cursor: help;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  padding: var(--space-xs) var(--space-sm);
+  max-width: min(22rem, 85vw);
+  min-width: 8rem;
+  width: max-content;
+  background: var(--colorBackgroundSecondaryDefault);
+  border: 1px solid var(--colorBorderDefault);
+  border-radius: var(--radiusMedium);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  font: var(--textBodyRegularSmall);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--colorTextPrimary);
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+  z-index: 10000;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;

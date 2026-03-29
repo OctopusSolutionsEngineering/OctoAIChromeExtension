@@ -404,7 +404,6 @@ function formatCSV(data) {
     row('Total Targets', data.kpi.totalTargets);
     row('Healthy Targets', data.kpi.healthyTargetsPct + '%');
     row('Total Releases', data.kpi.totalReleases);
-    row('Time Saved (est. hrs)', data.kpi.timeSavedHours);
     lines.push('');
 
     if (data.valueImpact) {

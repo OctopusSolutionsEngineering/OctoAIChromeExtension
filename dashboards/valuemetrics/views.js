@@ -21,11 +21,22 @@ const Views = (() => {
     return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
   }
 
+  function _tooltipAttr(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  /** Deployment success–rate tier for the selected dashboard period (not target/machine health). */
   function healthBadge(rate, hasDeployments) {
-    if (rate >= 95) return '<span class="badge success">Healthy</span>';
-    if (rate >= 80) return '<span class="badge warning">Attention</span>';
-    if (rate < 80 && (rate > 0 || hasDeployments)) return '<span class="badge danger">At Risk</span>';
-    return '<span class="badge neutral">No data</span>';
+    if (rate >= 95) {
+      return `<span class="badge success" data-tooltip="${_tooltipAttr('Deployment success rate is 95% or higher for this row in the selected time range.')}">Healthy</span>`;
+    }
+    if (rate >= 80) {
+      return `<span class="badge info" data-tooltip="${_tooltipAttr('Success rate is between 80% and 94%. Worth monitoring before it drops further.')}">Attention</span>`;
+    }
+    if (rate < 80 && (rate > 0 || hasDeployments)) {
+      return `<span class="badge warning" data-tooltip="${_tooltipAttr('Success rate is below 80%, or there was deployment activity with a low success rate. Review failed deployments and trends.')}">Warning</span>`;
+    }
+    return `<span class="badge neutral" data-tooltip="${_tooltipAttr('Not enough deployment outcomes in the selected period to calculate a success rate.')}">No data</span>`;
   }
 
   function guessEnvClass(name) {
@@ -140,14 +151,6 @@ const Views = (() => {
         <span class="kpi-value" id="kpi-avg-duration">--</span>
         <span class="kpi-trend neutral"><i class="fa-solid fa-clock"></i> <span>per deployment</span></span>
       </div>
-      <div class="kpi-card">
-        <div class="flex items-center justify-between">
-          <span class="kpi-label">Time Saved (est.)</span>
-          <div class="kpi-icon green"><i class="fa-solid fa-hourglass-half"></i></div>
-        </div>
-        <span class="kpi-value" id="kpi-time-saved">--</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-hand-sparkles"></i> <span>vs manual process</span></span>
-      </div>
     </div>
 
     <!-- KPI Row 2 -->
@@ -245,7 +248,6 @@ const Views = (() => {
     <!-- Spaces Section Header -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-cubes"></i> Space Breakdown</h2>
-      <span class="badge info">All Spaces</span>
     </div>
 
     <!-- Spaces Breakdown Table -->
@@ -257,7 +259,8 @@ const Views = (() => {
               <thead>
                 <tr>
                   <th>Space</th><th>Projects</th><th>Envs</th><th>Deployments</th>
-                  <th>Success Rate</th><th>Targets</th><th>Last Deploy</th><th>Health</th>
+                  <th>Success Rate</th><th>Targets</th><th>Last Deploy</th>
+                  <th data-tooltip="Deployment success tier for the selected time range (not target health). Hover a badge for definitions: Healthy ≥95%, Attention 80–94%, Warning &lt;80%, No data when there is nothing to score.">Health</th>
                 </tr>
               </thead>
               <tbody id="table-spaces">
@@ -1254,7 +1257,7 @@ const Views = (() => {
       <div class="card-body" style="padding:0;">
         <div class="table-wrapper">
           <table>
-            <thead><tr><th>Environment</th><th>Type</th><th>Spaces</th><th>Deployments</th><th>Success Rate</th><th>Health</th></tr></thead>
+            <thead><tr><th>Environment</th><th>Type</th><th>Spaces</th><th>Deployments</th><th>Success Rate</th><th data-tooltip="Deployment success tier for the selected time range (not target machine health). Hover each badge for Healthy, Attention, Warning, and No data.">Health</th></tr></thead>
             <tbody>
               ${envHealth.map(e => `<tr>
                 <td><span class="env-tag ${guessEnvClass(e.name)}">${DOMPurify.sanitize(e.name)}</span></td>
