@@ -1553,7 +1553,7 @@ const Views = (() => {
     if (projects.length === 0) {
       return '<tr><td colspan="5" class="text-secondary" style="text-align:center;padding:var(--space-lg);">No projects found</td></tr>';
     }
-    return projects.map(p => `<tr data-project-name="${DOMPurify.sanitize(p.name.toLowerCase())}">
+    return projects.map(p => `<tr data-project-name="${_escapeAttr(p.name.toLowerCase())}">
       <td><div class="flex items-center gap-sm">
         <i class="fa-solid fa-diagram-project text-tertiary" style="font-size:0.8rem;"></i>
         ${p.octopusProjectUrl
@@ -1735,7 +1735,7 @@ const Views = (() => {
             <i class="fa-solid fa-layer-group"></i>
             Spaces for <span id="env-spaces-modal-envname"></span>
           </h3>
-          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-close" type="button">
+          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-close" type="button" aria-label="Close">
             <i class="fa-solid fa-times"></i>
           </button>
         </div>

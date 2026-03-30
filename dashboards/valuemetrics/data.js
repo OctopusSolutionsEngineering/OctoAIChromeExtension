@@ -1124,7 +1124,7 @@ const DashboardData = (() => {
     try {
       const cached = _loadHistCache();
       const cacheValid = cached && cached.totalTasksFetched > 0 &&
-        (allTime ? cached.lookbackMonths === 0 : cached.lookbackMonths >= lookbackMonths);
+        cached.lookbackMonths === lookbackMonths;
       if (cacheValid) {
         _histAgg = cached;
         Object.assign(_enrichment, { state: 'complete', progress: 100, tasksFetched: cached.totalTasksFetched, oldestDate: cached.oldestTaskDate });
@@ -1176,9 +1176,21 @@ const DashboardData = (() => {
         while (!chunkDone && agg.totalTasksFetched < ENRICH_CAP) {
           if (_enrichCancelled) return;
 
-          const resp = await safeGet(
-            `/api/tasks?spaces=${encodeURIComponent(ids)}&name=Deploy&states=Success,Failed&take=${ENRICH_PAGE}&skip=${skip}`
-          );
+          let resp;
+          try {
+            resp = await OctopusApi.get(
+              `/api/tasks?spaces=${encodeURIComponent(ids)}&name=Deploy&states=Success,Failed&take=${ENRICH_PAGE}&skip=${skip}`
+            );
+          } catch (err) {
+            if (err.status === 401 || err.status === 403) {
+              Object.assign(_enrichment, { state: 'error', error: 'Permission denied — your API key may lack TaskView permission.' });
+              notify();
+              log('Enrichment: auth/permission error', err.status);
+              return;
+            }
+            if (err.status === 404) { chunkDone = true; break; }
+            throw err;
+          }
 
           if (!resp?.Items?.length) { chunkDone = true; break; }
           if (!estimatedTotal && resp.TotalResults) estimatedTotal = resp.TotalResults;
@@ -1260,6 +1272,11 @@ const DashboardData = (() => {
   function computeEnrichedKPIs() {
     if (!_histAgg) return null;
     const agg = _histAgg;
+    // If the enrichment aggregate has no buckets or no tasks were fetched,
+    // treat this as "no enriched data" so callers fall back to base KPIs.
+    if (!agg.weeklyBuckets || Object.keys(agg.weeklyBuckets).length === 0 || agg.totalTasksFetched === 0) {
+      return null;
+    }
     let total = 0, success = 0, failed = 0;
     for (const w of Object.values(agg.weeklyBuckets)) {
       total += w.total;
@@ -2029,18 +2046,12 @@ const DashboardUI = (() => {
     renderRecentDeployments(summary.recentDeployments);
     renderEnvHealth(summary.envHealth);
 
-    // Use enriched counts for the donut chart when available
-    const enriched = DashboardData.computeEnrichedKPIs();
-    if (enriched) {
-      renderSuccessFailureChart({
-        ...summary,
-        successCount: enriched.totalSuccess,
-        failedCount: enriched.totalFailed,
-        cancelledCount: Math.max(0, enriched.totalDeployments - enriched.totalSuccess - enriched.totalFailed),
-      });
-    } else {
-      renderSuccessFailureChart(summary);
-    }
+    // Always use summary deployment counts for the donut chart so that
+    // all task outcomes (including Cancelled and other non-success/failure
+    // states) are represented accurately. The enriched KPI aggregation
+    // currently only covers Success/Failed, so it must not be used to
+    // derive donut counts.
+    renderSuccessFailureChart(summary);
 
     // Use enriched weekly trend for the chart when available
     const enrichedWeekly = DashboardData.getHistoricalWeeklyTrend();

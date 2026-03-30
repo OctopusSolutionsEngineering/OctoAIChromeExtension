@@ -267,18 +267,23 @@ function startEnrichment() {
     DashboardData.startHistoricalEnrichment(months, onEnrichmentProgress);
 }
 
+// Track last confirmed lookback so we can restore it on cancel
+let lastConfirmedLookbackMonths = getSelectedLookback();
+
 // Wire lookback dropdown
 document.getElementById('lookback-select').addEventListener('change', () => {
+    const previousMonths = lastConfirmedLookbackMonths;
     const months = getSelectedLookback();
     if (months > 12 || months === 0) {
         const label = months === 0 ? 'all time' : `${months / 12} years`;
         if (!confirm(`Fetching ${label} of data may take a while and could be heavy on large Octopus instances.\n\nContinue?`)) {
-            document.getElementById('lookback-select').value = '12';
+            document.getElementById('lookback-select').value = String(previousMonths);
             return;
         }
     }
     DashboardData.clearHistoryCache();
     startEnrichment();
+    lastConfirmedLookbackMonths = months;
 });
 
 // ================================================================
