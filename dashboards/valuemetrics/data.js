@@ -1277,6 +1277,11 @@ const DashboardData = (() => {
     if (!agg.weeklyBuckets || Object.keys(agg.weeklyBuckets).length === 0 || agg.totalTasksFetched === 0) {
       return null;
     }
+    // If the enrichment aggregate has no buckets or no tasks were fetched,
+    // treat this as "no enriched data" so callers fall back to base KPIs.
+    if (!agg.weeklyBuckets || Object.keys(agg.weeklyBuckets).length === 0 || agg.totalTasksFetched === 0) {
+      return null;
+    }
     let total = 0, success = 0, failed = 0;
     for (const w of Object.values(agg.weeklyBuckets)) {
       total += w.total;
