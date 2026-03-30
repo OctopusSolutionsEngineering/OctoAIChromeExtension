@@ -97,6 +97,55 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
 * **NOTE**: When `expectedArtifacts` is **absent entirely** (the key does not exist in the pipeline JSON), treat it identically to an empty array `[]`. A pipeline with no `expectedArtifacts` key at all and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field.
 * **NOTE**: When `expectedArtifacts` contains entries of types OTHER than `docker/image` (e.g., `"github/file"`, `"gcs/object"`) but NO entries of type `"docker/image"`, this still satisfies the condition "NO `docker/image` entries". A pipeline where `expectedArtifacts` has only github/file or gcs/object entries AND has a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field.
 
+**ABSOLUTE RULE — `expectedArtifacts: []` (empty array) with Docker trigger MUST produce a feed section**: When the pipeline has `"expectedArtifacts": []` (empty array — NOT absent, but explicitly empty) and a Docker trigger with a `registry` field, a feed section MUST be generated from the Docker trigger's `registry` field. The empty array means there are no docker/image entries, so the fallback to the Docker trigger applies.
+
+**Worked example — `expectedArtifacts: []` (empty) with gcr.io Docker trigger AND pubsub trigger**: The following pipeline has `expectedArtifacts: []` (empty), a Docker trigger with `registry: "gcr.io"`, AND a Pubsub trigger with `payloadConstraints.tag: "registry.example.invalid/image-0504"`. TWO separate feed sections MUST be produced:
+
+```json
+{
+  "name": "[dev] my-service",
+  "disabled": true,
+  "expectedArtifacts": [],
+  "stages": [
+    {
+      "account": "<redacted-cluster>",
+      "manifestArtifact": { "reference": "gs://example-bucket/storage-1058", "type": "gcs/object" },
+      "name": "Deploy (Manifest)",
+      "type": "deployManifest"
+    }
+  ],
+  "triggers": [
+    { "registry": "gcr.io", "type": "docker", "enabled": false },
+    { "payloadConstraints": { "tag": "registry.example.invalid/image-0504" }, "type": "pubsub", "enabled": true }
+  ]
+}
+```
+
+The **CORRECT** output (TWO feed sections — one for GCR from Docker trigger, one for Docker Feed from Pubsub trigger):
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+
+---
+
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+
+---
+
+Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
+* The project must be disabled.
+```
+
+The **WRONG** output (only ONE feed section — GCR feed is missing because `expectedArtifacts: []` was incorrectly treated as preventing feed creation from Docker trigger):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+
+---
+
+Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
+* The project must be disabled.
+```
+
 **Worked example — `expectedArtifacts` with only github/file entries and gcr.io Docker trigger**: The following pipeline has `expectedArtifacts` with only github/file entries but no docker/image entries, and a Docker trigger with `registry: "gcr.io"`. A GCR feed section **MUST** be produced:
 
 ```json
@@ -328,6 +377,40 @@ Example — pipeline WITHOUT `disabled` field: when the pipeline JSON contains n
 **CORRECT output** for a pipeline with no `disabled` key (the disabled line is simply absent — it does not matter whether the pipeline name suggests it is for production, development, or any other environment):
 ```
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
+```
+
+**ABSOLUTE RULE — `disabled: true` on a regular pipeline does NOT skip stage conversion**: Setting `"disabled": true` on a regular pipeline (one that does NOT have `"type": "templatedPipeline"`) means ONLY that the project must be disabled in Octopus (i.e., `* The project must be disabled.` is appended). It does NOT affect stage conversion in any way. ALL stages MUST still be converted to their equivalent Octopus steps regardless of whether `disabled` is `true`. Do NOT omit any stage or use "with no steps" just because the pipeline is disabled.
+
+**Negative example — disabled pipeline's stages silently dropped (COMMON MISTAKE)**:
+
+Given a pipeline with `"disabled": true` and one `deployManifest` stage:
+```json
+{
+  "name": "[dev] my-service",
+  "disabled": true,
+  "expectedArtifacts": [],
+  "stages": [
+    {
+      "account": "<redacted-cluster>",
+      "manifestArtifact": { "reference": "gs://example-bucket/storage-1058", "type": "gcs/object" },
+      "name": "Deploy (Manifest)",
+      "type": "deployManifest"
+    }
+  ]
+}
+```
+
+The **WRONG** output (stages silently dropped because `disabled: true` — FORBIDDEN):
+```
+Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
+* The project must be disabled.
+```
+
+The **CORRECT** output (stage IS converted AND the project is disabled):
+```
+Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
+* The project must be disabled.
 ```
 
 If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a shared template whose stage definitions are stored externally and cannot be read from the JSON directly. The following rules apply:
@@ -1439,6 +1522,20 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * Replace `<code>` with a PowerShell script to call `kubectl` to delete the resource in the `manifestName` field.
 * The `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"job my-job"` → `kubectl delete job my-job`). Parse the kind and name from this field.
 * If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"job job-denpyo-checker"` and `location` is `"app-0251-dev"`, the command is `kubectl delete job job-denpyo-checker -n app-0251-dev`.
+* **IMPORTANT — step name special character replacement and step description**: The same rules as `deployManifest` stages apply. If the stage `name` contains parentheses `()` or square brackets `[]`, replace them with underscores `_` in the step name (e.g., `Delete (canary)` → `Delete _canary_`). For every `deleteManifest` step where the stage name contained parentheses or other special characters, ALSO set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+
+**Negative example — `deleteManifest` stage with parentheses and no step description (COMMON MISTAKE)**:
+
+Given a `deleteManifest` stage with `"name": "Delete (canary)"`, the **WRONG** output omits the step description:
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Delete _canary_". Set the script to inline Powershell with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes.
+```
+← WRONG: The step description is MISSING. The original name "Delete (canary)" had parentheses, so the description must be added.
+
+The **CORRECT** output (step description added to preserve original name with parentheses):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Delete _canary_". Set the script to inline Powershell with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Delete (canary)".
+```
 
 ```
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell with the code `<code>`. Set the target tag to <account>.
@@ -1592,6 +1689,31 @@ The **WRONG** output (missing "The variable must be required." — this is a com
 
 * **IMPORTANT**: Generating `parameterConfig` variable prompts does **not** replace or cancel stage generation. After processing all `parameterConfig` entries, you **must** continue and convert every entry in the `stages` array to its equivalent Octopus step prompt. Do not stop after outputting variables — all deployment stages must be converted even when `parameterConfig` is present.
 
+**ABSOLUTE RULE — `parameterConfig` variables and deployment stages MUST appear in the SAME project creation section**: When a pipeline has both `parameterConfig` entries AND `stages`, the variable prompts and step prompts MUST all appear together in a SINGLE `Create a project...` block. NEVER create two separate `Create a project...` sections for the same pipeline — one for variables and one for stages. This is strictly forbidden. A pipeline may only generate ONE project creation prompt block, which contains ALL variables AND ALL steps in the correct order per the Notification Step Ordering rules.
+
+**Negative example — `parameterConfig` and stages split into TWO separate project blocks (FORBIDDEN)**:
+
+Given a pipeline with `parameterConfig` entries AND `stages`, the following output is completely **WRONG**:
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+* Add a project variable called "batch_size", with a default value of "50"...
+* Add a project variable called "timeout", with a default value of "30"...
+
+---
+
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step ...
+```
+← WRONG: Two separate `Create a project...` blocks for the same project are FORBIDDEN.
+
+The **CORRECT** output (all variables and steps in ONE project creation block):
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_" ...
+* Add a project variable called "batch_size", with a default value of "50"...
+* Add a project variable called "timeout", with a default value of "30"...
+```
+
 ## Running steps in parallel
 
 > **ABSOLUTE RULE — JSON position is irrelevant to execution order.** A stage's topological group is determined **exclusively** by its `requisiteStageRefIds` value. A stage with `"requisiteStageRefIds": []` is **always** in the root group, even if it appears as the last item in the JSON array. Never use the position of a stage in the JSON array to decide its topological group or whether it runs before or after another stage. When you identify the root group, scan the **entire** `stages` array and collect ALL stages whose `requisiteStageRefIds` is empty or absent regardless of where they appear in the JSON.
@@ -1602,6 +1724,40 @@ The **WRONG** output (missing "The variable must be required." — this is a com
   * Append `Run this step first.` to the first stage's step prompt (the root stage that was promoted to the front of the sorted list because it has no prerequisites).
   * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent NON-PARALLEL stage's step prompt — i.e., every stage that is the FIRST in its dependency group (except the root group which has already been handled). Parallel siblings (2nd, 3rd, etc. stages within the same dependency group) continue to use `"Run in parallel with the previous step"` as before.
 * **IMPORTANT**: The `Run this step first.` annotation and the `"Wait for all previous steps to complete, then start"` annotation are ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved), do NOT add either annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
+
+**ABSOLUTE RULE — do NOT add "Wait for all previous steps" when stages are already in topological order**: If evaluating the `requisiteStageRefIds` dependency graph results in a topological order that MATCHES the JSON array order exactly (no stage needs to be moved), then ZERO annotations of any kind are added. Only parallel sibling annotations (`"Run in parallel with the previous step"`) apply in that case.
+
+**Negative example — spurious "Wait for all previous steps" on a sequential pipeline (COMMON MISTAKE)**:
+
+Given a pipeline where stages are already in topological order:
+
+| JSON position | refId | requisiteStageRefIds | stage name |
+|---|---|---|---|
+| 1 | 1 | `[]` | Manual Judgment |
+| 2 | 2 | `["1"]` | Deploy Canary |
+| 3 | 3 | `["2"]` | Manual Judgment (Deploy All) |
+| 4 | 4 | `["3"]` | Deploy |
+| 5 | 5 | `["3"]` | Delete Canary |
+
+Topological order: 1→2→3→{4,5}. This EXACTLY MATCHES the JSON order (no stage is moved). Therefore, **no** `Run this step first.` or `Set the start trigger to "Wait for all previous steps to complete, then start"` annotations are needed.
+
+The **WRONG** output (spurious "Wait for all previous steps" added — FORBIDDEN when stages are in topological order):
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ... Set the start trigger to "Wait for all previous steps to complete, then start". ← WRONG
+* Add a "Manual Intervention" step ... "Manual Judgment (Deploy All)" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ... Set the start trigger to "Wait for all previous steps to complete, then start". ← WRONG
+* Add a "Run a kubectl script" step ... "Delete Canary" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **CORRECT** output (no "Wait for all previous steps" — sequential pipeline, only parallel annotation for step 5):
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ...
+* Add a "Manual Intervention" step ... "Manual Judgment (Deploy All)" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ...
+* Add a "Run a kubectl script" step ... "Delete Canary" ... Set the start trigger to "Run in parallel with the previous step".
+```
 * **CRITICAL — the `Run this step first.` annotation applies to the ROOT stage even if it is a `manualJudgment` or other non-deployment type.** Any stage that has `requisiteStageRefIds: []` and appears AFTER other stages in the JSON (i.e., it is moved to the front by the topological sort) MUST receive `Run this step first.` appended to its step prompt, regardless of its stage type.
 * When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. **This includes stages that all have an empty `requisiteStageRefIds` array `[]`** — an empty array `[]` is a shared value just like any other. For the second and subsequent stages in such a parallel group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
   * Example: If stages with refIds 1, 2, 4, 15, 16, 17, 18 all have `"requisiteStageRefIds": []`, then the step for refId 1 gets no parallel annotation (it is first), but the steps for refIds 2, 4, 15, 16, 17, and 18 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
