@@ -27,7 +27,7 @@ Reset the scratchpad space.
 
 ## Convert the pipeline
 
-Create a temporary file using bash in the `/Users/matthewcasperson/Scratchpad` dir, grant everyone read access to the file, and replace the placeholders with the contents of the appropiate files using bash commands like `cat` and `jq` rather than reading the files directly:
+Create a temporary file using bash in the `/Users/matthewcasperson/Scratchpad` dir, grant everyone read access to the file, and replace the placeholders with the contents of the appropriate files using bash commands like `cat` and `jq` rather than reading the files directly:
 
 ```
 <prompt.md contents>
@@ -39,9 +39,9 @@ Run the temporary file with the AI Assistant - the filename can be passed direct
 
 The response from the AI Assistant is another prompt describing how to recreate the Spinnaker pipeline as Octopus resources. There is not a strict one-to-one relationship between Spinnaker and Octopus resources.
 
-The prompt may contain multiple sections separated by a tripple dash (`---`).
+The prompt may contain multiple sections separated by a triple dash (`---`).
 
-Split the result up on the tripple dash separators.
+Split the result up on the triple dash separators.
 
 Append `The current space is "Scratchpad"` to the end of each individual prompt.
 
@@ -53,13 +53,13 @@ Display the prompt being send in the chat.
 
 The default timeout of 60 seconds is often not enough for call to `send_prompt` or `send_prompt_from_file`, which means they time out. If the `send_prompt` or `send_prompt_from_file` tools time out, sleep for 180 seconds, and try again. You can retry calls to the `send_prompt` or `send_prompt_from_file` tools up to 5 times.
 
-When sleeping, run the command `sleep 180` with no other arguments or commands. You must assume that when the command is done, you have slept for the appropiate amount of time.
+When sleeping, run the command `sleep 180` with no other arguments or commands. You must assume that when the command is done, you have slept for the appropriate amount of time.
 
 DO NOT attempt to fix the timeout issues with any other strategy than sleeping.
 
 ## Read the converted projects
 
-Serialize the project `<project name>` in the space `Scratcpad` to terraform with the `convertOctopusToTerraform` tool. Replace `<project name>` with the name of the project that was just created.
+Serialize the project `<project name>` in the space `Scratchpad` to terraform with the `convertOctopusToTerraform` tool. Replace `<project name>` with the name of the project that was just created.
 
 The project name is defined in the `projectName` argument sent to the `convertOctopusToTerraform` tool, which is an array. The space name is defined in the `space` argument sent to the `convertOctopusToTerraform` tool, which is a string.
   
