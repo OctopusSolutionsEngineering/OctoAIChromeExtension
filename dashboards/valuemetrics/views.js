@@ -1628,7 +1628,7 @@ const Views = (() => {
       const url = octopusEnvUrl(envName, spaceName);
       if (!url) return '';
 
-      return `<a class="env-octopus-link text-tertiary" href="${url}" target="_blank" rel="noopener noreferrer" data-tooltip="${_tooltipAttr('Open this environment in Octopus (in the selected space)')}">
+      return `<a class="env-octopus-link text-tertiary" href="${_escapeAttr(url)}" target="_blank" rel="noopener noreferrer" data-tooltip="${_tooltipAttr('Open this environment in Octopus (in the selected space)')}">
         <span class="env-octopus-link-label">Open in Octopus</span>
         <span class="env-octopus-link-arrow" aria-hidden="true">&rarr;</span>
       </a>`;
