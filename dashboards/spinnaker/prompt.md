@@ -807,7 +807,12 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
 * Replace `<account>` with the value of the `account` property in the stage.
 
-**GCS artifacts via `manifestArtifactId`**: When a stage uses `manifestArtifactId` to reference an entry in `expectedArtifacts`, resolve the artifact by looking up the matching entry by `id`. If the `defaultArtifact.type` of the resolved entry is `"gcs/object"`, apply the **same GCS inline YAML rules** as for a direct `manifestArtifact.type: "gcs/object"` stage:
+**GCS artifacts via `manifestArtifactId`**: When a stage uses `manifestArtifactId` to reference an entry in `expectedArtifacts`, you MUST:
+1. Find the `expectedArtifacts` entry whose `id` matches the stage's `manifestArtifactId` value.
+2. Check the `defaultArtifact.type` of that entry.
+3. If `defaultArtifact.type` is `"gcs/object"`, **STOP** — do NOT use "Files from a Git repository". Apply the **GCS inline YAML rules** instead.
+
+If the `defaultArtifact.type` of the resolved entry is `"gcs/object"`, apply the **same GCS inline YAML rules** as for a direct `manifestArtifact.type: "gcs/object"` stage:
 * Use `defaultArtifact.reference` as the GCS path.
 * If the stage has a non-empty `manifests` array, serialize those manifests to YAML as the inline YAML content.
 * If there is no `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to `# TODO: replace with manifest downloaded from <reference>`. Append the same NOTE as for direct GCS stages.
@@ -893,6 +898,28 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 
 * Replace `<stage name>` with the `name` property of the stage.
 * Replace `<instructions>` with the `instructions` property of the stage. If the `instructions` property is absent or empty, use `"Please review and approve."` as the default instructions text.
+
+* If the `judgmentInputs` array is non-empty, append the judgment options to the instructions text. Extract the `value` property from each entry and list them as a comma-separated note. For example, if `judgmentInputs` is `[{"value": "Continue"}, {"value": "Rollback"}]`, append ` Available options: Continue, Rollback.` to the instructions text.
+
+  **Example — `judgmentInputs` with options**:
+
+  Given:
+  ```json
+  {
+    "instructions": "Review the deployment.",
+    "judgmentInputs": [{"value": "Continue"}, {"value": "Rollback"}]
+  }
+  ```
+
+  The instructions must be:
+  ```
+  Set the instructions to "Review the deployment. Available options: Continue, Rollback."
+  ```
+
+  If `instructions` is absent or empty and `judgmentInputs` is non-empty:
+  ```
+  Set the instructions to "Please review and approve. Available options: Continue, Rollback."
+  ```
 
 **IMPORTANT — Spinnaker SpEL expressions in `instructions`**: Spinnaker's pipeline expression language uses the syntax `${ ... }` (e.g., `${ trigger['tag'] }`, `${ parameters['key'] }`, `${execution.name}`). These expressions are Spinnaker-specific and do NOT evaluate in Octopus Deploy. When the `instructions` property contains such patterns, copy the text verbatim AND append a parenthetical note so the operator knows to convert them. For example:
 
@@ -1141,6 +1168,78 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 ```
 * Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
 ```
+
+## Stage Conditions (`stageEnabled`)
+
+Some Spinnaker stages have a `stageEnabled` property that controls whether the stage executes based on a condition:
+
+```json
+{
+  "stageEnabled": {
+    "expression": "${ #judgment(\"Manual Judgment\").equals(\"Continue\")}",
+    "type": "expression"
+  }
+}
+```
+
+* When `stageEnabled.expression` is `false` (a boolean literal, not a string), the stage is hard-disabled. **Skip this stage entirely** — do not generate any step for it.
+* When `stageEnabled.expression` is `true` (a boolean literal), the stage is always enabled — treat it as a normal stage.
+* When `stageEnabled.expression` is a **string** (a SpEL expression), there is no direct Octopus Deploy equivalent. **Convert the stage normally** but append the following NOTE to the step prompt:
+
+  ```
+  Add the following description: `This step has a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent: stageEnabled.expression = "<expression>". Manually review whether this step should be conditionally disabled or use an Octopus run condition.`
+  ```
+
+  Replace `<expression>` with the verbatim value of `stageEnabled.expression`.
+
+**Example — `stageEnabled` with SpEL expression**:
+
+Given a `deployManifest` stage with:
+```json
+{
+  "name": "Deploy Prod",
+  "stageEnabled": {
+    "expression": "${ #judgment(\"Manual Judgment\").equals(\"Continue\")}",
+    "type": "expression"
+  }
+}
+```
+
+The **CORRECT** output appends the conditional NOTE:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Prod". Add the following description: `This step has a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent: stageEnabled.expression = "${ #judgment(\"Manual Judgment\").equals(\"Continue\")}". Manually review whether this step should be conditionally disabled or use an Octopus run condition.`
+```
+
+## Time Window Restrictions (`restrictedExecutionWindow`)
+
+Some Spinnaker stages have a `restrictExecutionDuringTimeWindow` property combined with a `restrictedExecutionWindow` schedule:
+
+```json
+{
+  "restrictExecutionDuringTimeWindow": true,
+  "restrictedExecutionWindow": {
+    "days": [1, 2, 3, 4],
+    "whitelist": [
+      {
+        "startHour": 13,
+        "startMin": 0,
+        "endHour": 2,
+        "endMin": 0
+      }
+    ]
+  }
+}
+```
+
+* Octopus Deploy has no equivalent time-window restriction for individual steps. When a stage has `"restrictExecutionDuringTimeWindow": true`, convert the stage normally but append the following description to the step prompt:
+
+  ```
+  Add the following description: `This step originally had a Spinnaker execution time window restriction. Days: <days>. Window: <startHour>:<startMin>-<endHour>:<endMin>. Replicate this restriction manually in Octopus if required.`
+  ```
+
+  Replace `<days>` with the numeric day numbers from `restrictedExecutionWindow.days` (1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday) and `<startHour>:<startMin>-<endHour>:<endMin>` from the first whitelist entry.
+
+  If `restrictExecutionDuringTimeWindow` is `false` or absent, do NOT append any NOTE.
 
 ## Ignored Stage Types
 
@@ -1422,6 +1521,42 @@ The **CORRECT** output (stages 12 and 13 get "Run in parallel with the previous 
 * Add a "Deploy Kubernetes YAML" step ... "Deploy deprecated service(Manifest)" ... Set the start trigger to "Run in parallel with the previous step".   ← refId 13
 * Add a "Deploy Kubernetes YAML" step ... "Deploy CronJobs (Manifest)" ... Set the start trigger to "Wait for all previous steps to complete, then start"
 ```
+
+### Worked example: stage appearing FIRST in JSON depends on stage appearing LATER
+
+**CRITICAL — A stage appearing first in the JSON array may depend on a stage appearing later in the JSON array.** Always determine execution order from `requisiteStageRefIds`, never from JSON position.
+
+Consider this pipeline:
+
+| JSON position | refId | requisiteStageRefIds | stage name |
+|---|---|---|---|
+| 1 | 1 | `["3"]` | Deploy Prod |
+| 2 | 2 | `[]` | Deploy Prod Canary |
+| 3 | 3 | `["2"]` | Manual Judgment |
+| 4 | 4 | `["3"]` | Scale Down Canary |
+
+**Key observation**: Stage 1 (first in JSON) depends on stage 3. Stage 2 (second in JSON) is a root stage. The topological order is:
+1. Stage 2 (Deploy Prod Canary) — root, no prerequisites, runs FIRST
+2. Stage 3 (Manual Judgment) — depends on stage 2
+3. Stage 1 (Deploy Prod) AND Stage 4 (Scale Down Canary) — both depend on stage 3, run IN PARALLEL
+
+The **WRONG** output (follows JSON order, skips stage 2 entirely):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ...       ← WRONG: stage 1 placed first despite depending on stage 3
+* Add a "Manual Intervention" step ... "Manual Judgment" ...
+* Add a "Run a kubectl script" step ... "Scale Down Canary" ...
+[Deploy Prod Canary is MISSING]
+```
+
+The **CORRECT** output (follows topological order, stages 1 and 4 run in parallel after stage 3):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod Canary" ...                                    ← stage 2, root, runs FIRST
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← stage 3, depends on 2
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ... Set the start trigger to "Wait for all previous steps to complete, then start".   ← stage 1, first in {1,4} group, no parallel annotation
+* Add a "Run a kubectl script" step ... "Scale Down Canary" ... Set the start trigger to "Run in parallel with the previous step".            ← stage 4, parallel with stage 1
+```
+
+**ABSOLUTE RULE — Every stage MUST appear in the output exactly once.** Before outputting the final result, verify that every stage from the pipeline's `stages` array is represented by at least one step. A stage may NEVER be silently dropped.
 
 ### Worked example: stages with `[]` appearing late in JSON
 
