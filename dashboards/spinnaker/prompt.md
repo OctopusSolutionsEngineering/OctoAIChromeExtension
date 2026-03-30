@@ -812,6 +812,8 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 
 * The `ssn_Message` value for the Complete step must come from `notifications[].message.pipeline.complete.text` OR `notifications[].message.pipeline.completed.text` (whichever is present — they are equivalent). If both are absent or empty, omit the `ssn_Message` property entirely. Do NOT fall back to the `pipeline.failed` message text.
 
+* The name of notification steps must be unique. Append a counter the end of step names, like `Slack Notification - Complete 2`, to ensure step names are unique.
+
 # Stages
 
 ## Deploy Manifest Kubernetes Stage
