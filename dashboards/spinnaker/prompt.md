@@ -2111,7 +2111,7 @@ Given a pipeline with 2 `notifications` entries: one with `when: ["pipeline.fail
 ```
 * Add ... "Slack Notification - Finish" ... "dev-feed"       ← WRONG: Finish as first step
 * Add ... "Slack Notification - Start" ... "service-release"  ← WRONG: Start out of order
-* Add ... "Slack Notification - Finish" ... "service-release" ← WRONG: all notifications together before stages
+* Add ... "Slack Notification - Finish 2" ... "service-release" ← WRONG: all notifications together before stages
 * Add ... "Slack Notification - Complete" ... "service-release"
 * Add a "Manual Intervention" step ... "Approve" ...         ← deployment stages AFTER all notifications
 * Add a "Deploy Kubernetes YAML" step ...
@@ -2123,7 +2123,7 @@ The **CORRECT** ordering (Start first, deployment stages next, Finish/Complete l
 * Add a "Manual Intervention" step ... "Approve" ...           ← deployment stages
 * Add a "Deploy Kubernetes YAML" step ...
 * Add ... "Slack Notification - Finish" ... "dev-feed"        ← AFTER stages, in array order (dev-feed is notifications[0])
-* Add ... "Slack Notification - Finish" ... "service-release" ← AFTER stages, in array order (service-release is notifications[1])
+* Add ... "Slack Notification - Finish 2" ... "service-release" ← AFTER stages, in array order (service-release is notifications[1])
 * Add ... "Slack Notification - Complete" ... "service-release"
 ```
 
