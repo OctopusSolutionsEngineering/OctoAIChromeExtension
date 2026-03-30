@@ -93,6 +93,49 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
   * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
 * **NOTE**: An `expectedArtifacts` array that is present but empty (`[]`) satisfies the condition "NO `docker/image` entries". A pipeline with `"expectedArtifacts": []` and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field. Do not skip feed creation just because `expectedArtifacts` is an empty array rather than absent.
 * **NOTE**: When `expectedArtifacts` is **absent entirely** (the key does not exist in the pipeline JSON), treat it identically to an empty array `[]`. A pipeline with no `expectedArtifacts` key at all and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field.
+
+**Worked example — absent `expectedArtifacts` key with gcr.io Docker trigger**: The following pipeline has no `expectedArtifacts` key at all and a Docker trigger with `registry: "gcr.io"`. A GCR feed section **MUST** be produced as a separate section before the project prompt:
+
+```json
+{
+  "name": "my-service deploy to dev",
+  "stages": [
+    {
+      "account": "<redacted-cluster>",
+      "cloudProvider": "kubernetes",
+      "manifestArtifact": {
+        "reference": "gs://example-bucket/manifest.yaml",
+        "type": "gcs/object"
+      },
+      "name": "Deploy (Manifest)",
+      "type": "deployManifest"
+    }
+  ],
+  "triggers": [
+    {
+      "registry": "gcr.io",
+      "type": "docker"
+    }
+  ]
+}
+```
+
+**CORRECT output** (two separate sections — note the GCR feed section is REQUIRED because `expectedArtifacts` key is absent):
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+
+---
+
+Create a project called "my-service deploy to dev" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy (Manifest)". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/manifest.yaml`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/manifest.yaml". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes.
+```
+
+**WRONG output** (no GCR feed section — this is a common mistake when `expectedArtifacts` is absent):
+```
+Create a project called "my-service deploy to dev" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step...
+```
+
 * **IMPORTANT**: Feed prompts are ONLY generated from `expectedArtifacts[].matchArtifact.type == "docker/image"` entries or from Docker/Pubsub trigger `registry` fields. The `manifestArtifact` property on individual stages (regardless of its `type`) does NOT generate any feed prompt. In particular, `manifestArtifact` entries with `"type": "gcs/object"` or `"type": "github/file"` must NEVER trigger feed creation — those are artifact source types for the Kubernetes manifest itself, not Docker container registries.
 
 # Base Project Prompt
@@ -153,6 +196,16 @@ If the `disabled` property is `false`, absent, or `null`, do **NOT** add `* The 
 **IMPORTANT**: The `disabled` property must only be read from the top-level pipeline JSON object. Do not infer project disabled status from any other field (e.g., trigger `enabled` state, stage state, or presence of other flags). A pipeline JSON that has no `disabled` key at all must produce a project that is **not** disabled.
 
 Example — pipeline WITHOUT `disabled` field: when the pipeline JSON contains no `disabled` key (e.g., `{"name": "My Project", "stages": [...], "triggers": [...]}`), the output must NOT include `* The project must be disabled.`
+
+**WRONG output** (this line must NEVER appear when `disabled` is absent or `false` from the JSON):
+```
+* The project must be disabled.
+```
+
+**CORRECT output** for a pipeline with no `disabled` key (the disabled line is simply absent — it does not matter whether the pipeline name suggests it is for production, development, or any other environment):
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+```
 
 If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a shared template whose stage definitions are stored externally and cannot be read from the JSON directly. The following rules apply:
 
@@ -277,6 +330,39 @@ Add a single external feed trigger that creates a new release for each step that
 * **IMPORTANT**: Creating a feed from a Docker trigger's `registry` field (because `expectedArtifacts` is absent or empty) does **NOT** imply that an external feed trigger should be generated. The two decisions are independent. Even when a GCR or Docker feed is created solely from the trigger's `registry` field, you must still verify that at least one deployment stage qualifies as deploying a Docker image before emitting the external feed trigger prompt. If all stages use `manifestArtifact.type: "gcs/object"` or `"github/file"`, omit the external feed trigger prompt regardless of how the feed was determined.
 
 **ABSOLUTE RULE — GCS/GitHub-only deployments never get an external feed trigger**: If every `deployManifest`, `runJobManifest`, and `runJob` stage in the pipeline uses `manifestArtifact.type: "gcs/object"` or `manifestArtifact.type: "github/file"` (and no `runJob` stage has a `containers[].imageDescription`), the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger.
+
+**CRITICAL — absent `expectedArtifacts` does NOT qualify stages as Docker-image deployments**: When the `expectedArtifacts` key is entirely absent from the pipeline JSON (not present at all), and the only deployment stages use `manifestArtifact.type: "gcs/object"` or `manifestArtifact.type: "github/file"`, this combination **MUST NOT** generate an external feed trigger — even if a Docker trigger is present and even if a GCR feed is created. The absence of `expectedArtifacts` never implies that stages deploy Docker images.
+
+**Negative example — absent `expectedArtifacts` + Docker trigger + GCS-only stages (MOST COMMON MISTAKE)**:
+
+```json
+{
+  "name": "my-service deploy to prod",
+  "stages": [
+    {
+      "manifestArtifact": { "type": "gcs/object", "reference": "gs://bucket/manifest.yaml" },
+      "type": "deployManifest"
+    }
+  ],
+  "triggers": [ { "registry": "gcr.io", "type": "docker", "enabled": false } ]
+  // Note: no "expectedArtifacts" key at all
+}
+```
+
+The **CORRECT** output for this pipeline has a GCR feed section AND a project section with NO external feed trigger:
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+
+---
+
+Create a project called "my-service deploy to prod" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step... [no external feed trigger line]
+```
+
+The **WRONG** output (external feed trigger MUST NOT appear when all stages are GCS-only):
+```
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
+```
 
 **Negative example**: The following pipeline has a Docker trigger but the only `deployManifest` stage uses `manifestArtifact.type: "gcs/object"`. Because no stage qualifies as deploying a Docker image, the external feed trigger prompt **must NOT** be generated:
 
@@ -404,6 +490,10 @@ The following snippet is an example of a Slack notification in Spinnaker:
 * **IMPORTANT**: The `message.pipeline.starting.text`, `message.pipeline.failed.text`, and `message.pipeline.complete.text` values must be copied verbatim from the Spinnaker pipeline JSON into the `ssn_Message` property. Do not modify, truncate, redact, summarize, or reword the text in any way. Copy the exact string character-for-character. In particular, do NOT add or remove trailing punctuation such as periods (`.`) — if the original text does not end with a period, the output must not end with a period either.
 
   **Verbatim copy example**: If `message.pipeline.starting.text` is `"deployment started"` (no trailing period), the output MUST be `Set the "ssn_Message" property to "deployment started".` — NOT `Set the "ssn_Message" property to "deployment started.".` (with an added period).
+
+  **CRITICAL — do NOT redact or anonymize notification message text**: Words such as "api", "dev", "prod", "key", "token", "service", or similar terms that appear in notification messages are part of service names and deployment status descriptions — they are NOT secrets, API keys, or credentials. The notification messages must be copied character-for-character with no replacements. Never replace any portion of a notification message with asterisks (`*`) or other anonymization placeholders.
+
+  **Negative example — redaction of service names is FORBIDDEN**: If the original text is `"reviews-api-dev deployment started"`, the output MUST be `Set the "ssn_Message" property to "reviews-api-dev deployment started".` — NOT `Set the "ssn_Message" property to "reviews-***** deployment started".`
 * A notification step is ONLY generated for an event if that event appears in the `when` array. If `pipeline.starting` is not in `when`, do not generate a Start step. If `pipeline.failed` is not in `when`, do not generate a Finish step. If `pipeline.complete` is not in `when`, do not generate a Complete step.
 * **CRITICAL**: The presence or absence of message text determines ONLY whether the `ssn_Message` property is included inside the step prompt — it does **NOT** determine whether the step itself is generated. If `pipeline.starting` is in `when`, always generate the Start step (with or without `ssn_Message`). If `pipeline.failed` is in `when`, always generate the Finish step. If `pipeline.complete` is in `when`, always generate the Complete step. Do NOT skip a step because its corresponding message text is missing or because only some events have message text defined.
 * When the `notifications` array contains multiple pipeline-level entries, each entry independently generates its own set of Start, Finish, and Complete steps. Process every entry in the array — do not stop at the first entry.
@@ -525,7 +615,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths.
 * **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Use the following logic:
-  * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest.
+  * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest. The manifest YAML content must be serialized verbatim — do NOT redact, anonymize, or replace any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders. Service names, namespaces, and deployment names that appear in the manifest are Kubernetes resource identifiers, not secrets.
   * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Append a note: `NOTE: This step originally loaded its manifest from Google Cloud Storage at "<reference>". The manifest must be inlined or the step must be reconfigured to read from a supported source.`
 * Do NOT generate a feed prompt from `manifestArtifact` GCS references.
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
