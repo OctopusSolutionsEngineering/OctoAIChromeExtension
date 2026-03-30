@@ -58,6 +58,7 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "<url>".
   * If `registry` is `gcr.io`, create the "Google Container Registry" feed: `Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".`
   * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
 * **NOTE**: An `expectedArtifacts` array that is present but empty (`[]`) satisfies the condition "NO `docker/image` entries". A pipeline with `"expectedArtifacts": []` and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field. Do not skip feed creation just because `expectedArtifacts` is an empty array rather than absent.
+* **NOTE**: When `expectedArtifacts` is **absent entirely** (the key does not exist in the pipeline JSON), treat it identically to an empty array `[]`. A pipeline with no `expectedArtifacts` key at all and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field.
 * **IMPORTANT**: Feed prompts are ONLY generated from `expectedArtifacts[].matchArtifact.type == "docker/image"` entries or from Docker/Pubsub trigger `registry` fields. The `manifestArtifact` property on individual stages (regardless of its `type`) does NOT generate any feed prompt. In particular, `manifestArtifact` entries with `"type": "gcs/object"` or `"type": "github/file"` must NEVER trigger feed creation — those are artifact source types for the Kubernetes manifest itself, not Docker container registries.
 
 # Base Project Prompt
@@ -233,6 +234,32 @@ Add a single external feed trigger that creates a new release for each step that
   * A `runJob` stage qualifies if its `containers` array contains an `imageDescription` field.
   * A `deployManifest` or `runJobManifest` stage qualifies **only if** its artifact has `type: "docker/image"`. Stages whose `manifestArtifact.type` is `"gcs/object"` or `"github/file"` do **NOT** reference Docker images.
   * If no qualifying Docker-image steps are found, omit the external feed trigger prompt entirely — even if the pipeline has Docker or Pubsub triggers.
+
+**Negative example**: The following pipeline has a Docker trigger but all `deployManifest` stages use `manifestArtifact.type: "gcs/object"`. Because no stage qualifies as deploying a Docker image, the external feed trigger prompt **must NOT** be generated:
+
+```json
+{
+  "name": "Deploy Workers",
+  "stages": [
+    {
+      "type": "deployManifest",
+      "manifestArtifact": {
+        "type": "gcs/object",
+        "reference": "gs://bucket/worker.yaml"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "type": "docker",
+      "registry": "gcr.io",
+      "enabled": false
+    }
+  ]
+}
+```
+
+The correct output for this pipeline has **no external feed trigger prompt**. Only a GCR feed creation prompt and the project creation prompt are produced.
 
 ## Pubsub Triggers
 
@@ -438,7 +465,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 ```
 
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths.
-* **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs. Still use the `reference` field as the Repository URL and the `name` field as the File Paths in the prompt, but be aware that in practice this step will require additional GCS configuration in the target Octopus environment. Do NOT generate a feed prompt from `manifestArtifact` GCS references.
+* **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Instead, set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Append a note: `NOTE: This step originally loaded its manifest from Google Cloud Storage at "<reference>". The manifest must be inlined or the step must be reconfigured to read from a supported source.`. Do NOT generate a feed prompt from `manifestArtifact` GCS references.
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
 * Replace `<account>` with the value of the `account` property in the stage.
 
@@ -839,6 +866,7 @@ The variable must not be required.
   * Example: If stages with refIds 1, 2, 4, 15, 16, 17, 18 all have `"requisiteStageRefIds": []`, then the step for refId 1 gets no parallel annotation (it is first), but the steps for refIds 2, 4, 15, 16, 17, and 18 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
   * Similarly, if stages with refIds 8, 9, 11, 12, 13, 14, 19 all have `"requisiteStageRefIds": ["5"]`, then the step for refId 8 gets no parallel annotation (it is first in the group), but the steps for refIds 9, 11, 12, 13, 14, and 19 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
 * Do not set a notification step to run in parallel with the previous step as the notification steps must run on their own.
+* **IMPORTANT**: When multiple root-level stages (stages with `"requisiteStageRefIds": []`) are present, ALL stages after the first one in the sorted group MUST receive `Set the start trigger to "Run in parallel with the previous step".` appended. This applies even when there are many parallel root stages. Do not omit the parallel annotation for any stage in a parallel group — if 7 stages all have `"requisiteStageRefIds": []`, then stages 2 through 7 must all have the parallel annotation.
 
 ### Worked example: stages with `[]` appearing late in JSON
 
@@ -892,6 +920,26 @@ When a project has pipeline-level notification entries, the generated prompt mus
 5. All `parameterConfig` variable prompts must follow all notification steps (after the Complete steps). When there are NO pipeline-level notification steps, variable prompts must appear BEFORE the deployment stage steps.
 6. The external feed trigger prompt (if any) must follow all variable prompts and all notification steps, but before `* The project must be disabled.`.
 7. `* The project must be disabled.` must **always** be the very last line in the project's prompt block — it must appear after all step prompts, all variable prompts, and the external feed trigger prompt. No other prompt item may follow it.
+
+**CRITICAL: Do NOT group all notification steps together at the start of the output.** The Finish and Complete steps must appear **after** all deployment stage steps — they must never be listed immediately after the Start step when deployment stages are also present. The correct pattern is:
+
+```
+* Add ... "Slack Notification - Start" ... to the start of the deployment process.
+* Add ... [first deployment step] ...
+* Add ... [second deployment step] ...
+* ... [all remaining deployment steps] ...
+* Add ... "Slack Notification - Finish" ... to the end of the deployment process. Only run the step when the previous step has failed.
+* Add ... "Slack Notification - Complete" ... to the end of the deployment process. Always run the step.
+```
+
+This ordering is **incorrect** and must never appear:
+
+```
+* Add ... "Slack Notification - Start" ...
+* Add ... "Slack Notification - Finish" ...   ← WRONG: Finish before deployment steps
+* Add ... "Slack Notification - Complete" ...  ← WRONG: Complete before deployment steps
+* Add ... [deployment steps] ...
+```
 
 # Replacing placeholder values
 
