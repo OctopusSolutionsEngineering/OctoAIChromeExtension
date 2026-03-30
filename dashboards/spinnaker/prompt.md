@@ -93,6 +93,48 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
   * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
 * **NOTE**: An `expectedArtifacts` array that is present but empty (`[]`) satisfies the condition "NO `docker/image` entries". A pipeline with `"expectedArtifacts": []` and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field. Do not skip feed creation just because `expectedArtifacts` is an empty array rather than absent.
 * **NOTE**: When `expectedArtifacts` is **absent entirely** (the key does not exist in the pipeline JSON), treat it identically to an empty array `[]`. A pipeline with no `expectedArtifacts` key at all and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field.
+* **NOTE**: When `expectedArtifacts` contains entries of types OTHER than `docker/image` (e.g., `"github/file"`, `"gcs/object"`) but NO entries of type `"docker/image"`, this still satisfies the condition "NO `docker/image` entries". A pipeline where `expectedArtifacts` has only github/file or gcs/object entries AND has a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field.
+
+**Worked example — `expectedArtifacts` with only github/file entries and gcr.io Docker trigger**: The following pipeline has `expectedArtifacts` with only github/file entries but no docker/image entries, and a Docker trigger with `registry: "gcr.io"`. A GCR feed section **MUST** be produced:
+
+```json
+{
+  "name": "my-service deploy to prod",
+  "expectedArtifacts": [
+    {
+      "defaultArtifact": { "type": "github/file", "reference": "https://example.invalid/url-0001" },
+      "matchArtifact": { "type": "github/file" }
+    }
+  ],
+  "stages": [
+    {
+      "manifestArtifactId": "artifact-github",
+      "type": "deployManifest",
+      "account": "<redacted-cluster>",
+      "name": "Deploy (Manifest)"
+    }
+  ],
+  "triggers": [
+    { "registry": "gcr.io", "type": "docker", "enabled": false }
+  ]
+}
+```
+
+**CORRECT output** (GCR feed section is REQUIRED because there are no docker/image entries in expectedArtifacts):
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+
+---
+
+Create a project called "my-service deploy to prod" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy (Manifest)". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "https://example.invalid/url-0001". Set the File Paths to the resolved artifact name. Set the target tag to Kubernetes.
+```
+
+**WRONG output** (no GCR feed section — this is a common mistake when expectedArtifacts has non-docker entries):
+```
+Create a project called "my-service deploy to prod" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step...
+```
 
 **Worked example — absent `expectedArtifacts` key with gcr.io Docker trigger**: The following pipeline has no `expectedArtifacts` key at all and a Docker trigger with `registry: "gcr.io"`. A GCR feed section **MUST** be produced as a separate section before the project prompt:
 
@@ -184,6 +226,18 @@ If the `description` property of the Spinnaker pipeline is present and non-empty
 ```
 
 Replace `<description>` with the value of the `description` property in the Spinnaker pipeline.
+
+If the `description` property is absent, `null`, or an empty string (`""`), do **NOT** add `* Set the project description to "".` or any other description line. Only output the description line when the description value is a non-empty string.
+
+**WRONG output** (NEVER add a description line when description is absent or empty):
+```
+* Set the project description to "".
+```
+
+**CORRECT output** for a pipeline with no `description` key or an empty description (the description line is simply absent):
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+```
 
 If the `disabled` property of the Spinnaker pipeline is `true`, add the following sentence to the end of the prompt:
 
@@ -328,8 +382,34 @@ Add a single external feed trigger that creates a new release for each step that
 
 * **CRITICAL**: A Docker trigger in the pipeline JSON does NOT automatically mean the external feed trigger prompt should be generated. The external feed trigger is only valid when at least one deployment step in the project actually deploys a Docker image. Before emitting the external feed trigger prompt, check every deployment stage (`deployManifest`, `runJobManifest`, `runJob`) in the pipeline:
   * A `runJob` stage qualifies if its `containers` array contains an `imageDescription` field.
-  * A `deployManifest` or `runJobManifest` stage qualifies **only if** its artifact has `type: "docker/image"`. Stages whose `manifestArtifact.type` is `"gcs/object"` or `"github/file"` do **NOT** reference Docker images.
+  * A `deployManifest` or `runJobManifest` stage qualifies **only if** its manifest artifact has `type: "docker/image"`. Stages whose `manifestArtifact.type` is `"gcs/object"` or `"github/file"` do **NOT** reference Docker images.
   * If no qualifying Docker-image steps are found, omit the external feed trigger prompt entirely — even if the pipeline has Docker or Pubsub triggers.
+* **CRITICAL — `requiredArtifactIds` does NOT qualify a stage as deploying a Docker image**: A `deployManifest` or `runJobManifest` stage may have a `requiredArtifactIds` array that references a Docker image artifact. This field tells Spinnaker which artifacts must be bound before the stage runs (e.g., a Docker image to be injected into a GCS-sourced manifest). However, `requiredArtifactIds` does NOT change the type of the manifest artifact itself. If the stage's actual manifest comes from a `gcs/object` or `github/file` artifact (via `manifestArtifactId` or `manifestArtifact`), the stage does NOT qualify as deploying a Docker image for external feed trigger purposes — regardless of what is in `requiredArtifactIds`.
+
+  **Negative example — `requiredArtifactIds` pointing to Docker image but manifest is GCS**: Given a stage with `manifestArtifactId` resolving to a GCS artifact AND `requiredArtifactIds` pointing to a Docker image artifact, the stage does **NOT** qualify. The external feed trigger must **NOT** be generated.
+
+  ```json
+  {
+    "stages": [
+      {
+        "manifestArtifactId": "gcs-artifact-id",
+        "requiredArtifactIds": ["docker-image-artifact-id"],
+        "type": "deployManifest",
+        "name": "Deploy prod"
+      }
+    ]
+  }
+  ```
+
+  The **WRONG** output (generates external feed trigger because of `requiredArtifactIds` — FORBIDDEN):
+  ```
+  * Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be enabled.
+  ```
+
+  The **CORRECT** output (no external feed trigger because the manifest itself is GCS, not docker/image):
+  ```
+  [no external feed trigger line]
+  ```
 * **IMPORTANT**: Creating a feed from a Docker trigger's `registry` field (because `expectedArtifacts` is absent or empty) does **NOT** imply that an external feed trigger should be generated. The two decisions are independent. Even when a GCR or Docker feed is created solely from the trigger's `registry` field, you must still verify that at least one deployment stage qualifies as deploying a Docker image before emitting the external feed trigger prompt. If all stages use `manifestArtifact.type: "gcs/object"` or `"github/file"`, omit the external feed trigger prompt regardless of how the feed was determined.
 
 **ABSOLUTE RULE — GCS/GitHub-only deployments never get an external feed trigger**: If every `deployManifest`, `runJobManifest`, and `runJob` stage in the pipeline uses `manifestArtifact.type: "gcs/object"` or `manifestArtifact.type: "github/file"` (and no `runJob` stage has a `containers[].imageDescription`), the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger.
@@ -498,6 +578,9 @@ The following snippet is an example of a Slack notification in Spinnaker:
 
   **Negative example — redaction of service names is FORBIDDEN**: If the original text is `"reviews-api-dev deployment started"`, the output MUST be `Set the "ssn_Message" property to "reviews-api-dev deployment started".` — NOT `Set the "ssn_Message" property to "reviews-***** deployment started".`
 * A notification step is ONLY generated for an event if that event appears in the `when` array. If `pipeline.starting` is not in `when`, do not generate a Start step. If `pipeline.failed` is not in `when`, do not generate a Finish step. If `pipeline.complete` is not in `when`, do not generate a Complete step.
+* **CRITICAL — `pipeline.completed` and `pipeline.complete` are equivalent event names**: Some Spinnaker pipelines use `"pipeline.completed"` (with a trailing `d`) instead of `"pipeline.complete"` in the `when` array and as message keys. You MUST treat `"pipeline.completed"` as identical to `"pipeline.complete"`. If the `when` array contains `"pipeline.completed"`, generate the Complete step exactly as you would for `"pipeline.complete"`. When looking up the message text, check BOTH `message.pipeline.complete.text` and `message.pipeline.completed.text` — use whichever key is present.
+
+  **Worked example — `pipeline.completed` in `when` array**: Given `"when": ["pipeline.starting", "pipeline.failed", "pipeline.completed"]` and `"message": {"pipeline.completed": {"text": "Done."}}`, you MUST generate all three steps: Start, Finish, and Complete. The Complete step must use `"Done."` as its message text. Do NOT skip the Complete step because the key uses `pipeline.completed` instead of `pipeline.complete`.
 * **CRITICAL**: The presence or absence of message text determines ONLY whether the `ssn_Message` property is included inside the step prompt — it does **NOT** determine whether the step itself is generated. If `pipeline.starting` is in `when`, always generate the Start step (with or without `ssn_Message`). If `pipeline.failed` is in `when`, always generate the Finish step. If `pipeline.complete` is in `when`, always generate the Complete step. Do NOT skip a step because its corresponding message text is missing or because only some events have message text defined.
 * When the `notifications` array contains multiple pipeline-level entries, each entry independently generates its own set of Start, Finish, and Complete steps. Process every entry in the array — do not stop at the first entry.
 * If the `message` property is absent entirely from the notification object, all notification steps are generated without any `ssn_Message` property.
@@ -524,7 +607,7 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 * Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Deployment completed."
 ```
 
-* The `ssn_Message` value for the Complete step must come from `notifications[].message.pipeline.complete.text`. If `message.pipeline.complete.text` is absent or empty, omit the `ssn_Message` property entirely. Do NOT fall back to the `pipeline.failed` message text.
+* The `ssn_Message` value for the Complete step must come from `notifications[].message.pipeline.complete.text` OR `notifications[].message.pipeline.completed.text` (whichever is present — they are equivalent). If both are absent or empty, omit the `ssn_Message` property entirely. Do NOT fall back to the `pipeline.failed` message text.
 
 # Stages
 
@@ -1184,6 +1267,26 @@ The **CORRECT** output (only stages 7 and 8 get "Run in parallel"):
 * Do not set a notification step to run in parallel with the previous step as the notification steps must run on their own.
 * **IMPORTANT**: When multiple root-level stages (stages with `"requisiteStageRefIds": []`) are present, ALL stages after the first one in the sorted group MUST receive `Set the start trigger to "Run in parallel with the previous step".` appended. This applies even when there are many parallel root stages. Do not omit the parallel annotation for any stage in a parallel group — if 7 stages all have `"requisiteStageRefIds": []`, then stages 2 through 7 must all have the parallel annotation.
 * **CRITICAL — each step must have AT MOST ONE start trigger annotation.** Determine the correct single annotation for each step (none, "Run in parallel", or "Wait for all previous steps") and apply only that one. Never output both "Wait for all previous steps to complete, then start" and "Run in parallel with the previous step" on the same step — that is a contradiction. If a step belongs to a parallel group, use only "Run in parallel". If a step is the convergence point after a parallel group, use only "Wait for all previous steps to complete, then start".
+
+**Negative example — multiple root-level stages missing parallel annotations (VERY COMMON MISTAKE)**:
+
+Given a pipeline where stages refId 6, 12, and 13 all have `"requisiteStageRefIds": []`, and refId 14 depends on `["12"]`. Even in the absence of a Slack Notification - Start step, the root-level stages MUST receive the "Run in parallel" annotation for all stages after the first.
+
+The **WRONG** output (stages 12 and 13 do not get "Run in parallel" — this causes sequential instead of parallel execution):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy (Manifest)" ...                     ← refId 6, first, no annotation
+* Add a "Deploy Kubernetes YAML" step ... "Deploy CronJob ConfigMap (Manifest)" ...   ← refId 12, MISSING parallel annotation
+* Add a "Deploy Kubernetes YAML" step ... "Deploy deprecated service(Manifest)" ...   ← refId 13, MISSING parallel annotation
+* Add a "Deploy Kubernetes YAML" step ... "Deploy CronJobs (Manifest)" ... Set the start trigger to "Wait for all previous steps to complete, then start"
+```
+
+The **CORRECT** output (stages 12 and 13 get "Run in parallel with the previous step"):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy (Manifest)" ...                                                                    ← refId 6, first in root group, no annotation
+* Add a "Deploy Kubernetes YAML" step ... "Deploy CronJob ConfigMap (Manifest)" ... Set the start trigger to "Run in parallel with the previous step".   ← refId 12
+* Add a "Deploy Kubernetes YAML" step ... "Deploy deprecated service(Manifest)" ... Set the start trigger to "Run in parallel with the previous step".   ← refId 13
+* Add a "Deploy Kubernetes YAML" step ... "Deploy CronJobs (Manifest)" ... Set the start trigger to "Wait for all previous steps to complete, then start"
+```
 
 ### Worked example: stages with `[]` appearing late in JSON
 
