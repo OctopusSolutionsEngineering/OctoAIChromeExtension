@@ -1063,10 +1063,30 @@ const Views = (() => {
         const deploys = spaceData?.deployments || [];
         const recent = deploys.slice(0, 10);
 
+        const root = (typeof OctopusApi?.getInstanceUrl === 'function') ? OctopusApi.getInstanceUrl() : '';
+        const octopusSpaceUrl = root
+          ? `${root}/app#/${encodeURIComponent(spaceId)}/projects`
+          : '';
+
         panel.innerHTML = `
           <div class="card mt-lg">
             <div class="card-header">
-              <h3 class="card-title"><div class="space-avatar sm" style="display:inline-flex;vertical-align:middle;margin-right:var(--space-xs);">${spaceInfo.name.charAt(0).toUpperCase()}</div> ${DOMPurify.sanitize(spaceInfo.name)} — Detail</h3>
+              <h3 class="card-title">
+                <div class="space-avatar sm" style="display:inline-flex;vertical-align:middle;margin-right:var(--space-xs);">${spaceInfo.name.charAt(0).toUpperCase()}</div>
+                ${DOMPurify.sanitize(spaceInfo.name)} — Detail
+              </h3>
+              ${octopusSpaceUrl ? `
+                <a
+                  class="text-tertiary"
+                  href="${octopusSpaceUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="font:var(--textBodyRegularSmall);display:inline-flex;align-items:center;gap:var(--space-xxs);text-decoration:none;"
+                >
+                  <span>Open in Octopus</span>
+                  <span aria-hidden="true" style="opacity:.9;">&rarr;</span>
+                </a>
+              ` : ''}
               <button class="btn btn-secondary btn-sm" id="close-space-detail"><i class="fa-solid fa-times"></i></button>
             </div>
             <div class="card-body">
