@@ -563,7 +563,9 @@ a:hover {
   visibility: hidden;
   pointer-events: none;
 }
-[data-tooltip]:hover::after {
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after,
+[data-tooltip]:focus::after {
   opacity: 1;
   visibility: visible;
 }
