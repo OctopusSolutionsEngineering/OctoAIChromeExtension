@@ -270,6 +270,21 @@ If the `description` property is absent, `null`, or an empty string (`""`), do *
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
 ```
 
+**CRITICAL — do NOT omit the description line when the description IS present and non-empty**: When the pipeline JSON has a `description` property with a non-empty value, the description line MUST appear in the output. Silently omitting it is a common mistake.
+
+**WRONG output** (description present but omitted — COMMON MISTAKE):
+Given a pipeline with `"description": "Manually run the auto exporter to dev"`:
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+```
+← WRONG: The description line is missing despite the pipeline having a non-empty description.
+
+**CORRECT output** (description present and included):
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+* Set the project description to "Manually run the auto exporter to dev".
+```
+
 If the `disabled` property of the Spinnaker pipeline is `true`, add the following sentence to the end of the prompt:
 
 ```
@@ -707,6 +722,23 @@ The following snippet is an example of a pipeline trigger in Spinnaker that fire
 * Pipeline triggers have no equivalent in Octopus Deploy and must be **completely ignored**. Do not generate any prompt output from a trigger whose `"type"` is `"pipeline"`.
 * Do not add any external feed trigger prompt, schedule trigger prompt, or any other trigger-related output for a `"type": "pipeline"` trigger entry.
 
+## Unknown or Missing Trigger Type
+
+If a trigger entry in the `triggers` array has a `type` property that is **absent**, **`null`**, or any value not documented in this file (i.e., not `"cron"`, `"docker"`, `"pubsub"`, or `"pipeline"`), the trigger must be **completely ignored**. Do not generate any schedule trigger, external feed trigger, or any other output for it.
+
+**Example — trigger with no `type` field**:
+```json
+{ "enabled": true }
+```
+This trigger entry has no `type` key — it must be silently ignored. Do not infer a trigger type from any other field.
+
+**Example — trigger with an unrecognised `type` value**:
+```json
+{ "type": "git", "branch": "main", "enabled": true }
+```
+Because `"git"` is not a documented trigger type, this entry must be silently ignored.
+
+
 # Notifications
 
 The following snippet is an example of a Slack notification in Spinnaker:
@@ -925,6 +957,35 @@ The **WRONG** output (uses "Files from a Git repository" with a `gs://` URL — 
 The **CORRECT** output (resolves via `manifestArtifactId` to GCS → inline YAML):
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2091`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2091". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes.
+```
+
+## Namespace Override for Deploy Manifest Stages
+
+Some `deployManifest` stages include a `namespaceOverride` property that overrides the Kubernetes namespace for the deployed manifest:
+
+```json
+{
+  "type": "deployManifest",
+  "name": "Deploy (Manifest)",
+  "namespaceOverride": "org-0001-product-catalog-jp-dev",
+  "manifestArtifact": { "type": "gcs/object", "reference": "gs://example-bucket/storage-2053" }
+}
+```
+
+* If the `namespaceOverride` property is present and non-empty, append `Set the step namespace to "<namespaceOverride>".` to the step prompt. Replace `<namespaceOverride>` with the value of the `namespaceOverride` property.
+* If the `namespaceOverride` property is absent, `null`, or an empty string, do NOT add any namespace annotation.
+
+**Example — `deployManifest` stage with `namespaceOverride`**:
+
+The **CORRECT** output for a stage with `"namespaceOverride": "org-0001-product-catalog-jp-dev"`:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2053`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2053". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)". Set the step namespace to "org-0001-product-catalog-jp-dev".
+```
+
+The **WRONG** output (namespace annotation silently omitted):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_". Set the YAML Source to "Inline YAML". ...
+[Missing: Set the step namespace to "org-0001-product-catalog-jp-dev".]
 ```
 
 ## Run Job Manifest Stage
@@ -1486,7 +1547,7 @@ Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource
 * Replace `<parameter name>` with the `name` property of the parameter in the Spinnaker pipeline.
 * Replace `<parameter default>` with the `default` property of the parameter in the Spinnaker pipeline. If the `default` property is absent or null, use an empty string `""` as the default value.
 * Replace `<parameter description>` with the `description` property of the parameter in the Spinnaker pipeline. If the `description` property is absent, use an empty string `""`.
-* Replace `<parameter label>` with the `label` property of the parameter in the Spinnaker pipeline. If the `label` property is absent, use the `name` property as the label.
+* Replace `<parameter label>` with the `label` property of the parameter in the Spinnaker pipeline. If the `label` property is absent or an empty string (`""`), use the `name` property as the label.
 
 ```
 * Add a project variable called "<parameter name>", with a default value of "<parameter default>", the description "<parameter description>", and the label "<parameter label>". The variable must be prompted for when creating a release.
@@ -1607,6 +1668,41 @@ The **CORRECT** output (stages 12 and 13 get "Run in parallel with the previous 
 * Add a "Deploy Kubernetes YAML" step ... "Deploy deprecated service(Manifest)" ... Set the start trigger to "Run in parallel with the previous step".   ← refId 13
 * Add a "Deploy Kubernetes YAML" step ... "Deploy CronJobs (Manifest)" ... Set the start trigger to "Wait for all previous steps to complete, then start"
 ```
+
+### Worked example: simplest 2-stage reversed pipeline
+
+The most common case of topological reordering is a 2-stage pipeline where the only deployment stage appears first in the JSON array but depends on the second stage (the root):
+
+| JSON position | refId | requisiteStageRefIds | stage name |
+|---|---|---|---|
+| 1 | 1 | `["2"]` | Deploy Prod |
+| 2 | 2 | `[]` | Run Pre-Deploy Job |
+
+**Pipeline JSON**:
+```json
+{
+  "stages": [
+    { "refId": "1", "requisiteStageRefIds": ["2"], "type": "deployManifest", "name": "Deploy Prod", ... },
+    { "refId": "2", "requisiteStageRefIds": [], "type": "runJobManifest", "name": "Run Pre-Deploy Job", ... }
+  ]
+}
+```
+
+Topological order: refId 2 (root, JSON pos 2) → refId 1 (depends on 2, JSON pos 1). **The execution order differs from JSON order**, so annotations are required.
+
+The **WRONG** output (follows JSON order, no annotations — common mistake):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ...
+* Add a "Deploy Kubernetes YAML" step ... "Run Pre-Deploy Job" ...
+```
+
+The **CORRECT** output (refId 2 promoted to first with `Run this step first.`; refId 1 gets `Wait for all previous steps to complete, then start`):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Run Pre-Deploy Job" ... Run this step first.
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+
+**KEY RULE**: When the topological sort changes ANY stage's position relative to its JSON array position, ALL stages that follow the root must receive `Set the start trigger to "Wait for all previous steps to complete, then start"`. Never output a pipeline where stages are in the correct topological order but annotations are absent.
 
 ### Worked example: stage appearing FIRST in JSON depends on stage appearing LATER
 
