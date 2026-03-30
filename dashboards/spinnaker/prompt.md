@@ -772,29 +772,10 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 * Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
-* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, preserving all characters verbatim — including parentheses `()`, brackets `[]`, hyphens, and any other special characters. Do not replace parentheses or other special characters with underscores or any other character.
-
-**CRITICAL — parentheses in stage names MUST NOT be converted to underscores**: A stage named `"Deploy (Manifest)"` in Spinnaker MUST produce a step named exactly `"Deploy (Manifest)"` in the output prompt. It MUST NOT produce `"Deploy _Manifest_"` or `"Deploy Manifest"` or any other modified form. The Octopus AI assistant that receives the generated prompt may convert parentheses to underscores when creating steps — to prevent this, after the step name in the output prompt, append the following literal note: ` (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets)`.
-
-**ABSOLUTE RULE — underscores may NEVER substitute for parentheses in step names**: `(` and `)` must appear as `(` and `)` in the step name. They must NEVER be replaced with `_`, `__`, or removed. This is true for ALL stage types (`deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`).
-
-**WRONG** output (parentheses converted to underscores — this is a COMMON mistake):
-```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_".
-```
-
-**ALSO WRONG** (parentheses stripped entirely):
-```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Manifest".
-```
-
-**CORRECT** output (parentheses preserved, with explicit note):
-```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy (Manifest)" (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets).
-```
+* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores, brackets, or hashes.
 
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>" (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets). Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
 ```
 
 Some `deployManifest` stages do not use `manifestArtifactId` to reference an entry in `expectedArtifacts`. Instead, they embed the artifact directly in a `manifestArtifact` property on the stage itself. For example:
