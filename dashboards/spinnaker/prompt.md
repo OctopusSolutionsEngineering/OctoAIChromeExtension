@@ -935,10 +935,24 @@ Stages with `"type": "runJobManifest"` represent Kubernetes job executions and m
 * If the stage has a direct `manifestArtifact` property, use `manifestArtifact.reference` as the Repository URL and `manifestArtifact.name` as the File Paths.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 
-The resulting prompt is identical to a `deployManifest` stage:
+The resulting prompt must follow exactly the same rules as a `deployManifest` stage, including the stage name transformation rules.
+
+**IMPORTANT**: The `<stage name>` placeholder must follow the same rules as `deployManifest` stages: if the stage name contains parentheses `()`, replace them with underscores `-` (e.g., `Run Job (Manifest)` becomes `Run Job _Manifest_`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+
+**Negative example — `runJobManifest` stage name with parentheses not converted to square brackets (COMMON MISTAKE)**:
+
+Given a `runJobManifest` stage with `"name": "Run Job (Manifest)"`, the **WRONG** output preserves the parentheses:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job (Manifest)". ...
+```
+
+The **CORRECT** output converts parentheses to square brackets and adds a step description:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job _Manifest_". ... Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
+```
 
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>" (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets). Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
 ```
 
 ## Manual Judgment Stage
@@ -1720,8 +1734,8 @@ The generated output for the deployment stages would include:
 
 When a project has pipeline-level notification entries, the generated prompt must list all steps in the following order:
 
-1. All "Slack Notification - Start" steps (one per `notifications` array entry that has `pipeline.starting` in its `when` array) must be listed first, before any deployment stage steps, in `notifications` array order.
-2. All deployment stage steps must be listed next, in topological execution order as described in the "Running steps in parallel" section above. When multiple stages share the same dependency level, preserve their relative order from the original JSON array.
+1. All "Slack Notification - Start" steps (one per `notifications` array entry that has `pipeline.starting` in its `when` array) must be listed first, before any non-notification stage steps, in `notifications` array order.
+2. All non-notification stage steps must be listed next (this includes ALL stage types: `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, `pipeline`, and any unknown stage types), in topological execution order as described in the "Running steps in parallel" section above. When multiple stages share the same dependency level, preserve their relative order from the original JSON array. **CRITICAL**: `wait` stages, `manualJudgment` stages, and ALL other non-notification stage types MUST appear AFTER the Start step — do NOT place them before the Start step even if they appear earlier in the pipeline JSON.
 3. All "Slack Notification - Finish" steps (one per `notifications` array entry that has `pipeline.failed` in its `when` array) must be listed after all deployment stage steps, in `notifications` array order.
 4. All "Slack Notification - Complete" steps (one per `notifications` array entry that has `pipeline.complete` in its `when` array) must be listed last, after all Finish steps, in `notifications` array order.
 5. All `parameterConfig` variable prompts must follow all notification steps (after the Complete steps). When there are NO pipeline-level notification steps, variable prompts must appear BEFORE the deployment stage steps.
@@ -1729,8 +1743,8 @@ When a project has pipeline-level notification entries, the generated prompt mus
 7. `* The project must be disabled.` must **always** be the very last line in the project's prompt block — it must appear after all step prompts, all variable prompts, and the external feed trigger prompt. No other prompt item may follow it.
 
 **CRITICAL — when BOTH `notifications` and `parameterConfig` are present**: The complete correct ordering is:
-1. Slack Notification - Start steps (before deployment stages)
-2. All deployment stage steps (in topological order)
+1. Slack Notification - Start steps (before ALL non-notification stages)
+2. All non-notification stage steps (in topological order) — this includes `wait`, `manualJudgment`, `deleteManifest`, `scaleManifest`, and all other stage types, not just deploy-related stages
 3. Slack Notification - Finish steps (after deployment stages)
 4. Slack Notification - Complete steps (after Finish steps)
 5. `parameterConfig` variable prompts (after ALL notification steps)
@@ -1759,13 +1773,13 @@ The **CORRECT** ordering:
 * Add a project variable called "timeout"...                                 ← LAST
 ```
 
-**CRITICAL: Do NOT group all notification steps together at the start of the output.** The Finish and Complete steps must appear **after** all deployment stage steps — they must never be listed immediately after the Start step when deployment stages are also present. The correct pattern is:
+**CRITICAL: Do NOT group all notification steps together at the start of the output.** The Finish and Complete steps must appear **after** all non-notification stage steps — they must never be listed immediately after the Start step when any non-notification stages are also present. The correct pattern is:
 
 ```
 * Add ... "Slack Notification - Start" ... to the start of the deployment process.
-* Add ... [first deployment step] ...
-* Add ... [second deployment step] ...
-* ... [all remaining deployment steps] ...
+* Add ... [first non-notification stage step (e.g., wait, manualJudgment, deployManifest)] ...
+* Add ... [second non-notification stage step] ...
+* ... [all remaining non-notification stage steps] ...
 * Add ... "Slack Notification - Finish" ... to the end of the deployment process. Only run the step when the previous step has failed.
 * Add ... "Slack Notification - Complete" ... to the end of the deployment process. Always run the step.
 ```
@@ -1777,6 +1791,28 @@ This ordering is **incorrect** and must never appear:
 * Add ... "Slack Notification - Finish" ...   ← WRONG: Finish before deployment steps
 * Add ... "Slack Notification - Complete" ...  ← WRONG: Complete before deployment steps
 * Add ... [deployment steps] ...
+```
+
+**Negative example — `wait` stage placed BEFORE the Start notification step (COMMON MISTAKE)**:
+
+When a pipeline has a `wait` stage AND a Slack Start notification, the `wait` stage is a non-notification stage and MUST appear AFTER the Start step.
+
+Given a pipeline with `when: ["pipeline.starting", "pipeline.failed", "pipeline.complete"]` and a `wait` stage:
+
+The **WRONG** output (Wait placed before Start — FORBIDDEN):
+```
+* Add a "Run a Script" step with the name "Wait" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 30`   ← WRONG: wait before Start
+* Add a community step template step with the name "Slack Notification - Start" ... to the start of the deployment process.
+* Add a community step template step with the name "Slack Notification - Finish" ...
+* Add a community step template step with the name "Slack Notification - Complete" ...
+```
+
+The **CORRECT** output (Start first, THEN Wait, THEN Finish/Complete):
+```
+* Add a community step template step with the name "Slack Notification - Start" ... to the start of the deployment process.  ← CORRECT: Start first
+* Add a "Run a Script" step with the name "Wait" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 30`
+* Add a community step template step with the name "Slack Notification - Finish" ... to the end of the deployment process. Only run the step when the previous step has failed.
+* Add a community step template step with the name "Slack Notification - Complete" ... to the end of the deployment process. Always run the step.
 ```
 
 **Negative example — ONLY a Finish step (no Start step) placed BEFORE deployment stages (COMMON MISTAKE)**:
