@@ -983,6 +983,7 @@ const DashboardData = (() => {
 
   const ENRICH_PAGE = 200;
   const ENRICH_CAP = 10000;
+  const ENRICH_MAX_RETRIES = 3;
   const INITIAL_TAKE = 200;
   const CACHE_PFX = 'vdash_hist_';
   const CACHE_MAX_AGE = 4 * 3600 * 1000; // 4 hours
@@ -1089,7 +1090,7 @@ const DashboardData = (() => {
     const { durationBuckets, durationBucketWidth, durationStats } = agg;
     if (!durationStats || durationStats.count === 0) return null;
     const total = durationStats.count;
-    const thr = { p50: Math.floor(total * 0.5), p90: Math.floor(total * 0.9), p95: Math.floor(total * 0.95) };
+    const thr = { p50: Math.max(1, Math.ceil(total * 0.5)), p90: Math.max(1, Math.ceil(total * 0.9)), p95: Math.max(1, Math.ceil(total * 0.95)) };
     let cum = 0;
     const r = { p50: null, p90: null, p95: null };
     for (let i = 0; i < durationBuckets.length; i++) {
@@ -1133,16 +1134,22 @@ const DashboardData = (() => {
         return;
       }
 
-      const agg = _emptyAgg(lookbackMonths);
-      for (const task of _crossSpaceTasks) _accTask(agg, task);
-      _histAgg = agg;
-
       const useCutoff = !allTime;
       let cutoff = null;
       if (useCutoff) {
         cutoff = new Date();
         cutoff.setMonth(cutoff.getMonth() - lookbackMonths);
       }
+
+      const agg = _emptyAgg(lookbackMonths);
+      for (const task of _crossSpaceTasks) {
+        if (useCutoff) {
+          const td = new Date(task.CompletedTime || task.QueueTime || task.StartTime || 0);
+          if (td < cutoff) continue;
+        }
+        _accTask(agg, task);
+      }
+      _histAgg = agg;
 
       // Early-out: check if initial load already reaches the cutoff
       if (useCutoff && _crossSpaceTasks.length > 0) {
@@ -1177,20 +1184,31 @@ const DashboardData = (() => {
           if (_enrichCancelled) return;
 
           let resp;
-          try {
-            resp = await OctopusApi.get(
-              `/api/tasks?spaces=${encodeURIComponent(ids)}&name=Deploy&states=Success,Failed&take=${ENRICH_PAGE}&skip=${skip}`
-            );
-          } catch (err) {
-            if (err.status === 401 || err.status === 403) {
-              Object.assign(_enrichment, { state: 'error', error: 'Permission denied — your API key may lack TaskView permission.' });
-              notify();
-              log('Enrichment: auth/permission error', err.status);
-              return;
+          for (let attempt = 0; ; attempt++) {
+            try {
+              resp = await OctopusApi.get(
+                `/api/tasks?spaces=${encodeURIComponent(ids)}&name=Deploy&states=Success,Failed&take=${ENRICH_PAGE}&skip=${skip}`
+              );
+              break;
+            } catch (err) {
+              if (err.status === 401 || err.status === 403) {
+                Object.assign(_enrichment, { state: 'error', error: 'Permission denied — your API key may lack TaskView permission.' });
+                notify();
+                log('Enrichment: auth/permission error', err.status);
+                return;
+              }
+              if (err.status === 404) { chunkDone = true; break; }
+              if (err.status === 429 && attempt < ENRICH_MAX_RETRIES) {
+                const delay = Math.min(2000 * Math.pow(2, attempt), 16000);
+                log(`Enrichment: rate-limited (429), retrying in ${delay}ms (attempt ${attempt + 1}/${ENRICH_MAX_RETRIES})`);
+                await new Promise(r => setTimeout(r, delay));
+                if (_enrichCancelled) return;
+                continue;
+              }
+              throw err;
             }
-            if (err.status === 404) { chunkDone = true; break; }
-            throw err;
           }
+          if (chunkDone) break;
 
           if (!resp?.Items?.length) { chunkDone = true; break; }
           if (!estimatedTotal && resp.TotalResults) estimatedTotal = resp.TotalResults;
