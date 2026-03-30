@@ -271,6 +271,10 @@ function startEnrichment() {
 let lastConfirmedLookbackMonths = getSelectedLookback();
 
 // Wire lookback dropdown
+// Track last confirmed lookback so we can restore it on cancel
+let lastConfirmedLookbackMonths = getSelectedLookback();
+
+// Wire lookback dropdown
 document.getElementById('lookback-select').addEventListener('change', () => {
     const previousMonths = lastConfirmedLookbackMonths;
     const months = getSelectedLookback();
@@ -283,6 +287,7 @@ document.getElementById('lookback-select').addEventListener('change', () => {
     }
     DashboardData.clearHistoryCache();
     startEnrichment();
+    lastConfirmedLookbackMonths = months;
     lastConfirmedLookbackMonths = months;
 });
 
