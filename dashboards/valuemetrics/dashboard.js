@@ -242,12 +242,25 @@ function getSelectedLookback() {
 }
 
 function onEnrichmentProgress(state) {
-    const banner = document.getElementById('enrichment-banner');
-    if (banner && state.state === 'loading') {
-        const bar = banner.querySelector('.enrichment-progress-bar');
-        const text = banner.querySelector('.enrichment-text');
-        if (bar) bar.style.width = state.progress + '%';
-        if (text) text.innerHTML = `Loading historical data&hellip; ${(state.tasksFetched || 0).toLocaleString()} tasks`;
+    // Ensure the enrichment banner exists when we first enter "loading"
+    if (state.state === 'loading') {
+        const view = Router.getCurrentView();
+        const shouldShowBanner = (view === 'overview' || view === 'trends' || view === 'velocity');
+        let banner = document.getElementById('enrichment-banner');
+
+        // On first load the banner may not yet be in the DOM; force a refresh so
+        // the view re-renders with the banner, then rely on subsequent progress events.
+        if (shouldShowBanner && !banner) {
+            Router.refresh();
+            return;
+        }
+
+        if (banner) {
+            const bar = banner.querySelector('.enrichment-progress-bar');
+            const text = banner.querySelector('.enrichment-text');
+            if (bar) bar.style.width = state.progress + '%';
+            if (text) text.innerHTML = `Loading historical data&hellip; ${(state.tasksFetched || 0).toLocaleString()} tasks`;
+        }
     }
 
     if (state.state === 'complete' || state.state === 'error') {

@@ -271,7 +271,7 @@ const Views = (() => {
                 <tr>
                   <th>Space</th><th>Projects</th><th>Envs</th><th>Deployments</th>
                   <th>Success Rate</th><th>Targets</th><th>Last Deploy</th>
-                  <th data-tooltip="Deployment success tier for the selected time range (not target health). Hover a badge for definitions: Healthy ≥95%, Attention 80–94%, Warning &lt;80%, No data when there is nothing to score.">Health</th>
+                  <th data-tooltip="Deployment success tier for the selected time range (not target health). Hover a badge for definitions: Healthy ≥95%, Attention 80–94%, Warning &lt;80%, No data when there is nothing to score." title="Deployment success tier for the selected time range (not target health). Hover a badge for definitions: Healthy ≥95%, Attention 80–94%, Warning &lt;80%, No data when there is nothing to score.">Health</th>
                 </tr>
               </thead>
               <tbody id="table-spaces">
@@ -515,7 +515,7 @@ const Views = (() => {
             ${hourOfDay.map(h => {
               const pct = maxHour > 0 ? Math.round(h.count / maxHour * 100) : 0;
               const isPeak = h === busiestHour && h.count > 0;
-              return `<div class="hour-col${isPeak ? ' hour-col--peak' : ''}" data-tooltip="${String(h.hour).padStart(2, '0')}:00 UTC — ${h.count} deployments">
+              return `<div class="hour-col${isPeak ? ' hour-col--peak' : ''}" tabindex="0" role="img" aria-label="${String(h.hour).padStart(2, '0')}:00 UTC — ${h.count} deployments" title="${String(h.hour).padStart(2, '0')}:00 UTC — ${h.count} deployments" data-tooltip="${String(h.hour).padStart(2, '0')}:00 UTC — ${h.count} deployments">
                 <div class="hour-bar-wrap"><div class="hour-bar" style="height:${pct}%;"></div></div>
                 <span class="hour-label">${h.hour % 6 === 0 ? String(h.hour).padStart(2, '0') : ''}</span>
               </div>`;

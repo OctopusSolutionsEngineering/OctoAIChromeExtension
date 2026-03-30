@@ -985,7 +985,7 @@ const DashboardData = (() => {
   const ENRICH_CAP = 10000;
   const ENRICH_MAX_RETRIES = 3;
   const INITIAL_TAKE = 200;
-  const CACHE_PFX = 'vdash_hist_';
+  const CACHE_PFX = 'valuemetrics.hist.v1_';
   const CACHE_MAX_AGE = 4 * 3600 * 1000; // 4 hours
 
   let _enrichment = { state: 'idle', lookbackMonths: 3, tasksFetched: 0, oldestDate: null, progress: 0, error: null };
@@ -1192,7 +1192,10 @@ const DashboardData = (() => {
               break;
             } catch (err) {
               if (err.status === 401 || err.status === 403) {
-                Object.assign(_enrichment, { state: 'error', error: 'Permission denied — your API key may lack TaskView permission.' });
+                Object.assign(_enrichment, {
+                  state: 'error',
+                  error: 'Permission denied — the signed-in user/session may lack the TaskView permission, or your session may have expired.'
+                });
                 notify();
                 log('Enrichment: auth/permission error', err.status);
                 return;
