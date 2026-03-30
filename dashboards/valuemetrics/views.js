@@ -25,6 +25,7 @@ const Views = (() => {
     return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
+  
   function _escapeAttr(text) {
     return String(text)
       .replace(/&/g, '&amp;')
@@ -369,11 +370,40 @@ const Views = (() => {
     const totalDeploys = summary.kpi.totalDeployments;
     const successRate = summary.kpi.successRate;
     const frequency = summary.kpi.deployFrequency;
+    const trendChange = DashboardData.computeTrendChange(summary.weeklyTrend);
+    const dayOfWeek = DashboardData.computeDayOfWeekDistribution();
+    const hourOfDay = DashboardData.computeHourOfDayDistribution();
+    const envBreakdown = DashboardData.computePerEnvTypeDeployments();
+
+    const wt = summary.weeklyTrend || [];
+    const thisWeek = wt.length > 0 ? wt[wt.length - 1] : null;
+    const lastWeek = wt.length > 1 ? wt[wt.length - 2] : null;
+    const thisWeekTotal = thisWeek ? thisWeek.total : 0;
+    const weekChangeHtml = lastWeek && lastWeek.total > 0
+      ? (() => {
+          const pct = Math.round(((thisWeekTotal - lastWeek.total) / lastWeek.total) * 100);
+          const icon = pct > 0 ? 'fa-arrow-up' : pct < 0 ? 'fa-arrow-down' : 'fa-minus';
+          const cls = pct > 0 ? 'text-success' : pct < 0 ? 'text-danger' : 'text-secondary';
+          return `<span class="${cls}"><i class="fa-solid ${icon}"></i> ${Math.abs(pct)}% vs last wk</span>`;
+        })()
+      : '<span>current week</span>';
+
+    const trendArrow = !trendChange ? { icon: 'fa-minus', cls: 'amber', label: 'insufficient data' }
+      : trendChange.direction === 'up' ? { icon: 'fa-arrow-trend-up', cls: 'green', label: `↑ ${trendChange.pct}% vs prior period` }
+      : trendChange.direction === 'down' ? { icon: 'fa-arrow-trend-down', cls: 'danger', label: `↓ ${trendChange.pct}% vs prior period` }
+      : { icon: 'fa-minus', cls: 'amber', label: 'stable' };
+
+    const maxDow = Math.max(...dayOfWeek.map(d => d.count), 1);
+    const busiestDay = dayOfWeek.reduce((a, b) => a.count >= b.count ? a : b);
+    const maxHour = Math.max(...hourOfDay.map(h => h.count), 1);
+    const busiestHour = hourOfDay.reduce((a, b) => a.count >= b.count ? a : b);
+    const envTotal = envBreakdown.types.production + envBreakdown.types.staging + envBreakdown.types.dev;
+    const envPct = (n) => envTotal > 0 ? Math.round(n / envTotal * 100) : 0;
 
     return `
     <div class="page-header">
       <h1 class="page-title">Deployment Trends</h1>
-      <p class="page-subtitle">Deployment activity over time &mdash; track trends, patterns, and compare across spaces.</p>
+      <p class="page-subtitle">Deployment activity over time &mdash; track patterns, compare spaces, and spot trends.</p>
     </div>
 
     <!-- KPI strip -->
@@ -385,6 +415,14 @@ const Views = (() => {
         </div>
         <span class="kpi-value">${totalDeploys.toLocaleString()}</span>
         <span class="kpi-trend neutral"><i class="fa-solid fa-database"></i> <span>all time</span></span>
+      </div>
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">This Week</span>
+          <div class="kpi-icon purple"><i class="fa-solid fa-calendar-week"></i></div>
+        </div>
+        <span class="kpi-value">${thisWeekTotal}</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-line"></i> ${weekChangeHtml}</span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -404,19 +442,11 @@ const Views = (() => {
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
-          <span class="kpi-label">Successful</span>
-          <div class="kpi-icon green"><i class="fa-solid fa-check"></i></div>
+          <span class="kpi-label">4-Week Trend</span>
+          <div class="kpi-icon ${trendArrow.cls}"><i class="fa-solid ${trendArrow.icon}"></i></div>
         </div>
-        <span class="kpi-value">${summary.successCount.toLocaleString()}</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-thumbs-up"></i> <span>total successful</span></span>
-      </div>
-      <div class="kpi-card">
-        <div class="flex items-center justify-between">
-          <span class="kpi-label">Failed</span>
-          <div class="kpi-icon danger"><i class="fa-solid fa-xmark"></i></div>
-        </div>
-        <span class="kpi-value">${summary.failedCount.toLocaleString()}</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-triangle-exclamation"></i> <span>total failures</span></span>
+        <span class="kpi-value" style="${trendChange ? (trendChange.direction === 'up' ? 'color:var(--colorSuccess)' : trendChange.direction === 'down' ? 'color:var(--colorDanger)' : '') : ''}">${trendChange ? (trendChange.direction === 'flat' ? 'Stable' : `${trendChange.pct}%`) : '--'}</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-scale-balanced"></i> <span>${trendArrow.label}</span></span>
       </div>
     </div>
 
@@ -444,6 +474,104 @@ const Views = (() => {
         <div class="chart-container" id="trends-chart">${_renderTrendChart(summary, '30d')}</div>
       </div>
     </div>
+
+    <!-- Deployment Patterns -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-calendar-alt"></i> Deployment Patterns</h2>
+    </div>
+    <div class="dashboard-grid mb-lg">
+      <div class="card col-span-6">
+        <div class="card-header">
+          <h3 class="card-title">Day of Week</h3>
+          <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">Busiest: <strong style="color:var(--colorTextSecondary);">${busiestDay.name}</strong></span>
+        </div>
+        <div class="card-body">
+          <div class="dow-chart">
+            ${dayOfWeek.map(d => {
+              const pct = maxDow > 0 ? Math.round(d.count / maxDow * 100) : 0;
+              const isBusiest = d === busiestDay && d.count > 0;
+              return `<div class="dow-row${d.isWeekend ? ' dow-row--weekend' : ''}${isBusiest ? ' dow-row--peak' : ''}">
+                <span class="dow-label">${d.name}</span>
+                <div class="progress-bar dow-bar"><div class="progress-fill ${isBusiest ? 'info' : 'success'}" style="width:${pct}%;"></div></div>
+                <span class="dow-count monospace">${d.count}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="card col-span-6">
+        <div class="card-header">
+          <h3 class="card-title">Time of Day (UTC)</h3>
+          <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">Peak: <strong style="color:var(--colorTextSecondary);">${String(busiestHour.hour).padStart(2, '0')}:00</strong></span>
+        </div>
+        <div class="card-body">
+          <div class="hour-chart">
+            ${hourOfDay.map(h => {
+              const pct = maxHour > 0 ? Math.round(h.count / maxHour * 100) : 0;
+              const isPeak = h === busiestHour && h.count > 0;
+              return `<div class="hour-col${isPeak ? ' hour-col--peak' : ''}" data-tooltip="${String(h.hour).padStart(2, '0')}:00 UTC — ${h.count} deployments">
+                <div class="hour-bar-wrap"><div class="hour-bar" style="height:${pct}%;"></div></div>
+                <span class="hour-label">${h.hour % 6 === 0 ? String(h.hour).padStart(2, '0') : ''}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Environment Distribution -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-server"></i> Environment Distribution</h2>
+    </div>
+    <div class="dashboard-grid mb-lg">
+      <div class="card col-span-4">
+        <div class="card-body" style="text-align:center;padding:var(--space-lg);">
+          <div class="env-tag production" style="margin-bottom:var(--space-sm);display:inline-block;">Production</div>
+          <div style="font:var(--textHeadingLarge);color:var(--colorTextPrimary);">${envBreakdown.types.production.toLocaleString()}</div>
+          <div style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary);margin-top:var(--space-xxs);">${envPct(envBreakdown.types.production)}% of deployments</div>
+        </div>
+      </div>
+      <div class="card col-span-4">
+        <div class="card-body" style="text-align:center;padding:var(--space-lg);">
+          <div class="env-tag staging" style="margin-bottom:var(--space-sm);display:inline-block;">Staging / UAT</div>
+          <div style="font:var(--textHeadingLarge);color:var(--colorTextPrimary);">${envBreakdown.types.staging.toLocaleString()}</div>
+          <div style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary);margin-top:var(--space-xxs);">${envPct(envBreakdown.types.staging)}% of deployments</div>
+        </div>
+      </div>
+      <div class="card col-span-4">
+        <div class="card-body" style="text-align:center;padding:var(--space-lg);">
+          <div class="env-tag dev" style="margin-bottom:var(--space-sm);display:inline-block;">Development</div>
+          <div style="font:var(--textHeadingLarge);color:var(--colorTextPrimary);">${envBreakdown.types.dev.toLocaleString()}</div>
+          <div style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary);margin-top:var(--space-xxs);">${envPct(envBreakdown.types.dev)}% of deployments</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-Environment Breakdown -->
+    ${envBreakdown.environments.length > 0 ? `
+    <div class="card mb-lg">
+      <div class="card-header"><h3 class="card-title">Per-Environment Breakdown</h3></div>
+      <div class="card-body" style="padding:0;">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Environment</th><th>Type</th><th>Deployments</th><th>Success</th><th>Failed</th><th>Success Rate</th></tr></thead>
+            <tbody>
+              ${envBreakdown.environments.slice(0, 15).map(e => {
+                const rate = e.count > 0 ? Math.round(e.success / e.count * 100) : 0;
+                return `<tr>
+                  <td><span class="env-tag ${e.cls}">${DOMPurify.sanitize(e.name)}</span></td>
+                  <td class="text-secondary">${e.cls.charAt(0).toUpperCase() + e.cls.slice(1)}</td>
+                  <td class="monospace">${e.count}</td>
+                  <td class="text-success monospace">${e.success}</td>
+                  <td class="text-danger monospace">${e.failed}</td>
+                  <td><div class="flex items-center gap-xs"><div class="progress-bar" style="width:60px;"><div class="progress-fill ${rate >= 90 ? 'success' : rate >= 70 ? 'warning' : 'danger'}" style="width:${rate}%;"></div></div><span class="text-secondary">${rate}%</span></div></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>` : ''}
 
     <!-- Success/Failure breakdown + space comparison -->
     <div class="dashboard-grid mb-lg">
@@ -486,27 +614,6 @@ const Views = (() => {
               </tr>`).join('')}
             </tbody>
           </table>
-        </div>
-      </div>
-    </div>
-    </div>
-
-    <!-- Environment spaces modal -->
-    <div class="modal-overlay" id="env-spaces-modal" aria-hidden="true" role="presentation">
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="env-spaces-modal-title">
-        <div class="modal-header">
-          <h3 class="modal-title" id="env-spaces-modal-title">
-            <i class="fa-solid fa-layer-group"></i>
-            Spaces for <span id="env-spaces-modal-envname"></span>
-          </h3>
-          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-close" type="button">
-            <i class="fa-solid fa-times"></i>
-          </button>
-        </div>
-        <div class="modal-body" id="env-spaces-modal-body"></div>
-        <div class="modal-footer">
-          <span class="text-tertiary" id="env-spaces-modal-meta"></span>
-          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-done" type="button">Close</button>
         </div>
       </div>
     </div>`;
@@ -715,6 +822,22 @@ const Views = (() => {
     const monthlyRate = (freq * 30).toFixed(0);
     const answers = Onboarding.getAnswers();
     const value = answers ? Onboarding.calculateValue(summary, answers) : null;
+    const trendChange = DashboardData.computeTrendChange(summary.weeklyTrend);
+    const durationStats = DashboardData.computeDurationPercentiles();
+    const projectVelocity = DashboardData.computeProjectVelocity();
+
+    const fmtSecs = (s) => {
+      if (s == null) return '--';
+      if (s < 60) return `${s}s`;
+      const mins = Math.floor(s / 60);
+      const secs = s % 60;
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    };
+
+    const trendArrow = !trendChange ? { icon: 'fa-minus', cls: 'amber', label: 'insufficient data' }
+      : trendChange.direction === 'up' ? { icon: 'fa-arrow-trend-up', cls: 'green', label: `↑ ${trendChange.pct}% vs prior period` }
+      : trendChange.direction === 'down' ? { icon: 'fa-arrow-trend-down', cls: 'danger', label: `↓ ${trendChange.pct}% vs prior period` }
+      : { icon: 'fa-minus', cls: 'amber', label: 'stable velocity' };
 
     let comparisonHtml = '';
     if (value && value.throughputMultiplier) {
@@ -745,10 +868,13 @@ const Views = (() => {
       </div>`;
     }
 
+    const activeProjects = projectVelocity.filter(p => p.recentDeploys > 0);
+    const staleProjects = projectVelocity.filter(p => p.recentDeploys === 0 && p.totalDeploys > 0);
+
     return `
     <div class="page-header">
       <h1 class="page-title">Release Velocity</h1>
-      <p class="page-subtitle">How fast your team ships &mdash; deployment frequency, cadence improvements, and per-space velocity.</p>
+      <p class="page-subtitle">How fast your team ships &mdash; deployment frequency, duration analysis, and per-project velocity.</p>
     </div>
 
     <!-- Frequency KPIs -->
@@ -785,28 +911,145 @@ const Views = (() => {
         <span class="kpi-value">${summary.kpi.totalReleases.toLocaleString()}</span>
         <span class="kpi-trend neutral"><i class="fa-solid fa-code-branch"></i> <span>across all projects</span></span>
       </div>
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">Velocity Trend</span>
+          <div class="kpi-icon ${trendArrow.cls}"><i class="fa-solid ${trendArrow.icon}"></i></div>
+        </div>
+        <span class="kpi-value" style="${trendChange ? (trendChange.direction === 'up' ? 'color:var(--colorSuccess)' : trendChange.direction === 'down' ? 'color:var(--colorDanger)' : '') : ''}">${trendChange ? (trendChange.direction === 'flat' ? 'Stable' : `${trendChange.pct}%`) : '--'}</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-scale-balanced"></i> <span>${trendArrow.label}</span></span>
+      </div>
     </div>
 
     ${comparisonHtml}
 
-    <!-- Velocity trend -->
+    <!-- Velocity trend chart -->
     <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-chart-area"></i> Velocity Over Time</h2></div>
     <div class="card card--chart-tooltips mb-lg">
       <div class="card-header">
-        <h3 class="card-title"></h3>
-        <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
-          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorSuccess);vertical-align:middle;margin-right:3px;"></span>Success</span>
-          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorDanger);vertical-align:middle;margin-right:3px;"></span>Failed</span>
-          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorBackgroundTertiary);vertical-align:middle;margin-right:3px;"></span>Other</span>
+        <h3 class="card-title">Deployment Volume</h3>
+        <div class="flex items-center gap-md">
+          <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
+            <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorSuccess);vertical-align:middle;margin-right:3px;"></span>Success</span>
+            <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorDanger);vertical-align:middle;margin-right:3px;"></span>Failed</span>
+            <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--colorBackgroundTertiary);vertical-align:middle;margin-right:3px;"></span>Other</span>
+          </div>
+          <div class="flex gap-xs">
+            <button class="btn btn-secondary btn-sm" data-velocity-range="30d">30 days</button>
+            <button class="btn btn-secondary btn-sm" data-velocity-range="90d">90 days</button>
+            <button class="btn btn-secondary btn-sm active-toggle" data-velocity-range="12m">12 months</button>
+          </div>
         </div>
       </div>
       <div class="card-body">
-        <div class="chart-container">${_renderTrendChart(summary, '12m')}</div>
+        <div class="chart-container" id="velocity-chart">${_renderTrendChart(summary, '12m')}</div>
       </div>
     </div>
 
-    <!-- Per-space velocity comparison -->
-    <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-ranking-star"></i> Velocity by Space</h2></div>
+    <!-- Duration Percentiles -->
+    ${durationStats ? `
+    <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-stopwatch"></i> Deployment Duration</h2></div>
+    <div class="kpi-grid mb-lg">
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">Median (p50)</span>
+          <div class="kpi-icon green"><i class="fa-solid fa-gauge"></i></div>
+        </div>
+        <span class="kpi-value">${fmtSecs(durationStats.p50)}</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>50th percentile</span></span>
+      </div>
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">p90</span>
+          <div class="kpi-icon amber"><i class="fa-solid fa-clock"></i></div>
+        </div>
+        <span class="kpi-value">${fmtSecs(durationStats.p90)}</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>90th percentile</span></span>
+      </div>
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">p95</span>
+          <div class="kpi-icon danger"><i class="fa-solid fa-clock"></i></div>
+        </div>
+        <span class="kpi-value">${fmtSecs(durationStats.p95)}</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>95th percentile</span></span>
+      </div>
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">Fastest</span>
+          <div class="kpi-icon blue"><i class="fa-solid fa-forward-fast"></i></div>
+        </div>
+        <span class="kpi-value">${fmtSecs(durationStats.min)}</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-bolt"></i> <span>minimum</span></span>
+      </div>
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">Slowest</span>
+          <div class="kpi-icon purple"><i class="fa-solid fa-hourglass-half"></i></div>
+        </div>
+        <span class="kpi-value">${fmtSecs(durationStats.max)}</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>of ${durationStats.count} measured</span></span>
+      </div>
+    </div>` : ''}
+
+    <!-- Project Velocity -->
+    <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-ranking-star"></i> Project Velocity</h2></div>
+    <div class="dashboard-grid mb-lg">
+      <div class="card col-span-4">
+        <div class="card-body" style="text-align:center;padding:var(--space-lg);">
+          <div style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary);margin-bottom:var(--space-xs);">Active Projects</div>
+          <div style="font:var(--textHeadingLarge);color:var(--colorSuccess);">${activeProjects.length}</div>
+          <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:var(--space-xs);">deployed in last 30 days</div>
+        </div>
+      </div>
+      <div class="card col-span-4">
+        <div class="card-body" style="text-align:center;padding:var(--space-lg);">
+          <div style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary);margin-bottom:var(--space-xs);">Idle Projects</div>
+          <div style="font:var(--textHeadingLarge);color:${staleProjects.length > 0 ? 'var(--colorWarningAccent)' : 'var(--colorTextPrimary)'};">${staleProjects.length}</div>
+          <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:var(--space-xs);">no deploys in 30 days</div>
+        </div>
+      </div>
+      <div class="card col-span-4">
+        <div class="card-body" style="text-align:center;padding:var(--space-lg);">
+          <div style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary);margin-bottom:var(--space-xs);">Total Projects</div>
+          <div style="font:var(--textHeadingLarge);color:var(--colorTextPrimary);">${projectVelocity.length}</div>
+          <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);margin-top:var(--space-xs);">across all spaces</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-lg">
+      <div class="card-header">
+        <h3 class="card-title">All Projects — Last 30 Days</h3>
+        <div class="view-search-wrapper">
+          <i class="fa-solid fa-search text-tertiary"></i>
+          <input type="text" id="velocity-project-search" class="view-search-input" placeholder="Search projects...">
+        </div>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <div class="table-wrapper table-wrapper--recent-scroll">
+          <table>
+            <thead><tr>
+              <th>Project</th><th>Space</th><th>Last 30d</th><th>Deploys/Wk</th><th>To Prod</th><th>Success Rate</th><th>Last Deploy</th>
+            </tr></thead>
+            <tbody id="velocity-projects-tbody">
+              ${projectVelocity.length > 0 ? projectVelocity.map(p => `<tr data-proj-name="${_escapeAttr((p.name || '').toLowerCase())}">
+                <td><div class="flex items-center gap-sm"><i class="fa-solid fa-diagram-project text-tertiary" style="font-size:0.7rem;"></i> ${DOMPurify.sanitize(p.name)}</div></td>
+                <td class="text-secondary">${DOMPurify.sanitize(p.space)}</td>
+                <td class="monospace${p.recentDeploys > 0 ? '' : ' text-tertiary'}">${p.recentDeploys}</td>
+                <td class="monospace">${p.deploysPerWeek}</td>
+                <td class="monospace">${p.prodDeploys}</td>
+                <td>${p.successRate !== null ? `<div class="flex items-center gap-xs"><div class="progress-bar" style="width:60px;"><div class="progress-fill ${p.successRate >= 90 ? 'success' : p.successRate >= 70 ? 'warning' : 'danger'}" style="width:${p.successRate}%;"></div></div><span class="text-secondary">${p.successRate}%</span></div>` : '<span class="text-tertiary">--</span>'}</td>
+                <td class="text-secondary">${p.lastDeploy ? timeAgo(p.lastDeploy) : '--'}</td>
+              </tr>`).join('') : '<tr><td colspan="7" class="text-secondary" style="text-align:center;padding:var(--space-lg);">No project data</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Velocity by Space -->
+    <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-cubes"></i> Velocity by Space</h2></div>
     <div class="card">
       <div class="card-body" style="padding:0;">
         <div class="table-wrapper">
@@ -815,8 +1058,6 @@ const Views = (() => {
             <tbody>
               ${summary.spaceBreakdown.map(s => {
                 const dpr = s.releaseCount > 0 ? (s.deploymentCount / s.releaseCount).toFixed(1) : '--';
-                // Build mini sparkline from recent deployment counts per week
-                const spaceData = DashboardData.getSpaceData(s.id);
                 const weeklyTotals = (summary.weeklyTrend || []).slice(-8).map(w => w.total);
                 return `<tr>
                   <td><div class="flex items-center gap-sm"><div class="space-avatar sm">${s.name.charAt(0).toUpperCase()}</div> ${DOMPurify.sanitize(s.name)}</div></td>
@@ -831,6 +1072,26 @@ const Views = (() => {
         </div>
       </div>
     </div>`;
+  }
+
+  function wireVelocityEvents(summary) {
+    const input = document.getElementById('velocity-project-search');
+    if (input) {
+      input.addEventListener('input', () => {
+        const query = input.value.toLowerCase().trim();
+        document.querySelectorAll('#velocity-projects-tbody tr[data-proj-name]').forEach(row => {
+          row.style.display = !query || row.dataset.projName.includes(query) ? '' : 'none';
+        });
+      });
+    }
+    document.querySelectorAll('[data-velocity-range]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-velocity-range]').forEach(b => b.classList.remove('active-toggle'));
+        btn.classList.add('active-toggle');
+        const el = document.getElementById('velocity-chart');
+        if (el) el.innerHTML = _renderTrendChart(summary, btn.dataset.velocityRange);
+      });
+    });
   }
 
 
@@ -856,9 +1117,19 @@ const Views = (() => {
       .filter(s => s.deploymentCount > 0)
       .sort((a, b) => a.successRate - b.successRate);
 
-    // Failure trend from weekly data
-    const failureTrend = (summary.weeklyTrend || []).slice(-12).map(w => w.failed);
-    const successTrend = (summary.weeklyTrend || []).slice(-12).map(w => w.total > 0 ? Math.round(w.success / w.total * 100) : 100);
+    const totalRated = summary.successCount + summary.failedCount + summary.cancelledCount;
+    const overallFailureRate = totalRated > 0 ? Math.round((summary.failedCount / totalRated) * 100) : 0;
+
+    // Failure rate trend from weekly counts
+    const failureWeeks = (summary.weeklyTrend || []).slice(-12);
+    const failureMax = Math.max(...failureWeeks.map(w => (w.total > 0 ? (w.failed / w.total) * 100 : 0)), 1);
+    const failureTrend = failureWeeks.map(w => {
+      const value = w.total > 0 ? (w.failed / w.total) * 100 : 0;
+      const showYear = !!w.showYear;
+      const label = `W${w.week}${showYear ? '<br>' + w.year : ''}`;
+      const tooltip = `ISO week ${w.week}, ${w.year}: ${w.failed} failed of ${w.total} total deployments (${value.toFixed(1).replace(/\.0$/, '')}%).`;
+      return { value, label, tooltip };
+    });
 
     return `
     <div class="page-header">
@@ -881,7 +1152,7 @@ const Views = (() => {
           <span class="kpi-label">Failure Rate</span>
           <div class="kpi-icon danger"><i class="fa-solid fa-circle-xmark"></i></div>
         </div>
-        <span class="kpi-value">${(100 - summary.kpi.successRate)}%</span>
+        <span class="kpi-value">${overallFailureRate}%</span>
         <span class="kpi-trend neutral"><i class="fa-solid fa-triangle-exclamation"></i> <span>${summary.failedCount} total failures</span></span>
       </div>
       <div class="kpi-card">
@@ -905,23 +1176,40 @@ const Views = (() => {
     <!-- Failure trend + success rate by space -->
     <div class="dashboard-grid mb-lg">
       <div class="card col-span-6">
-        <div class="card-header"><h3 class="card-title">Failure Trend (12 weeks)</h3></div>
+        <div class="card-header"><h3 class="card-title">Failure Rate Trend (12 weeks)</h3></div>
         <div class="card-body">
-          <div class="chart-container">${_renderMiniBarChart(failureTrend, 'var(--colorDanger)')}</div>
+          <div class="reliability-failure-trend-list">
+            ${failureTrend.map(w => {
+              const pct = failureMax > 0 ? (w.value / failureMax) * 100 : 0;
+              const display = `${w.value.toFixed(1).replace(/\.0$/, '')}%`;
+              return `
+                <div class="reliability-failure-trend-row" data-tooltip="${_tooltipAttr(w.tooltip)}">
+                  <div class="reliability-failure-trend-week">${w.label}</div>
+                  <div class="progress-bar reliability-failure-trend-bar" aria-hidden="true">
+                    <div class="progress-fill danger" style="width:${pct}%;"></div>
+                  </div>
+                  <div class="reliability-failure-trend-value">${display}</div>
+                </div>`;
+            }).join('')}
+          </div>
         </div>
       </div>
       <div class="card col-span-6">
         <div class="card-header"><h3 class="card-title">Success Rate by Space</h3></div>
         <div class="card-body">
-          ${spaceRates.length ? spaceRates.map(s => `
-            <div style="margin-bottom:var(--space-sm);">
-              <div class="flex items-center justify-between" style="margin-bottom:2px;">
-                <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary);">${DOMPurify.sanitize(s.name)}</span>
-                <span style="font:var(--textBodyBoldSmall);color:${s.successRate >= 90 ? 'var(--colorSuccess)' : s.successRate >= 70 ? 'var(--colorWarningAccent)' : 'var(--colorDanger)'};">${s.successRate}%</span>
-              </div>
-              <div class="progress-bar" style="width:100%;"><div class="progress-fill ${s.successRate >= 90 ? 'success' : s.successRate >= 70 ? 'warning' : 'danger'}" style="width:${s.successRate}%;"></div></div>
-            </div>
-          `).join('') : '<div class="text-tertiary">No space data</div>'}
+          ${spaceRates.length
+            ? `<div class="reliability-space-rates">
+                ${spaceRates.map(s => `
+                  <div style="margin-bottom:var(--space-sm);">
+                    <div class="flex items-center justify-between" style="margin-bottom:2px;">
+                      <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary);">${DOMPurify.sanitize(s.name)}</span>
+                      <span style="font:var(--textBodyBoldSmall);color:${s.successRate >= 90 ? 'var(--colorSuccess)' : s.successRate >= 70 ? 'var(--colorWarningAccent)' : 'var(--colorDanger)'};">${s.successRate}%</span>
+                    </div>
+                    <div class="progress-bar" style="width:100%;"><div class="progress-fill ${s.successRate >= 90 ? 'success' : s.successRate >= 70 ? 'warning' : 'danger'}" style="width:${s.successRate}%;"></div></div>
+                  </div>
+                `).join('')}
+              </div>`
+            : '<div class="text-tertiary">No space data</div>'}
         </div>
       </div>
     </div>
@@ -949,16 +1237,7 @@ const Views = (() => {
     </div>`;
   }
 
-  function _renderMiniBarChart(data, color) {
-    if (!data || data.length === 0) return '<div class="text-tertiary" style="text-align:center;">No data</div>';
-    const max = Math.max(...data, 1);
-    return `<div style="display:flex;align-items:flex-end;gap:4px;height:120px;padding:var(--space-sm) 0;">
-      ${data.map(v => {
-        const h = Math.max(v / max * 100, 2);
-        return `<div style="flex:1;background:${color};height:${h}%;border-radius:3px 3px 0 0;min-width:8px;" title="${v}"></div>`;
-      }).join('')}
-    </div>`;
-  }
+  // (legacy _renderMiniBarChart removed - replaced by a compact list)
 
 
   // ==================================================================
@@ -1141,6 +1420,7 @@ const Views = (() => {
     // Collect all projects across all spaces
     const allProjects = [];
     const allSpaceData = DashboardData.getAllSpaceData();
+    const root = (typeof OctopusApi?.getInstanceUrl === 'function') ? OctopusApi.getInstanceUrl() : '';
 
     for (const spaceId of Object.keys(allSpaceData)) {
       const sd = allSpaceData[spaceId];
@@ -1154,9 +1434,16 @@ const Views = (() => {
         const rate = projDeploys.length > 0 ? Math.round(successCount / projDeploys.length * 100) : null;
         const lastDeploy = projDeploys.length > 0 ? projDeploys[0].Created : null;
 
+        const octopusProjectUrl = root
+          ? `${root}/app#/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(p.Id)}`
+          : null;
+
         allProjects.push({
           name: p.Name || p.Id,
+          projectId: p.Id,
           space: spaceName,
+          spaceId,
+          octopusProjectUrl,
           deployments: projDeploys.length,
           successRate: rate,
           lastDeploy: lastDeploy,
@@ -1228,7 +1515,12 @@ const Views = (() => {
       return '<tr><td colspan="5" class="text-secondary" style="text-align:center;padding:var(--space-lg);">No projects found</td></tr>';
     }
     return projects.map(p => `<tr data-project-name="${DOMPurify.sanitize(p.name.toLowerCase())}">
-      <td><div class="flex items-center gap-sm"><i class="fa-solid fa-diagram-project text-tertiary" style="font-size:0.8rem;"></i> ${DOMPurify.sanitize(p.name)}</div></td>
+      <td><div class="flex items-center gap-sm">
+        <i class="fa-solid fa-diagram-project text-tertiary" style="font-size:0.8rem;"></i>
+        ${p.octopusProjectUrl
+          ? `<a class="text-tertiary" href="${_escapeAttr(p.octopusProjectUrl)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">${DOMPurify.sanitize(p.name)}</a>`
+          : DOMPurify.sanitize(p.name)}
+      </div></td>
       <td><span class="text-secondary">${DOMPurify.sanitize(p.space)}</span></td>
       <td class="monospace">${p.deployments}</td>
       <td>${p.successRate !== null ? `<div class="flex items-center gap-xs"><div class="progress-bar" style="width:60px;"><div class="progress-fill ${p.successRate >= 90 ? 'success' : p.successRate >= 70 ? 'warning' : 'danger'}" style="width:${p.successRate}%;"></div></div><span class="text-secondary">${p.successRate}%</span></div>` : '<span class="text-tertiary">--</span>'}</td>
@@ -1738,6 +2030,7 @@ const Views = (() => {
     renderTrends,
     wireTrendsEvents,
     renderVelocity,
+    wireVelocityEvents,
     renderReliability,
     // Insight views
     renderSpaces,

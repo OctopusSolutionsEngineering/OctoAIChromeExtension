@@ -546,7 +546,6 @@ const DashboardData = (() => {
         projectCount: projects.length,
         environmentCount: environments.length,
         deploymentCount: totalDeployments,
-        recentDeploymentCount: deployments.length,
         successRate: Math.round(successRate),
         successCount: spaceSuccessful,
         failedCount: spaceFailed,
@@ -851,6 +850,130 @@ const DashboardData = (() => {
     return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
   }
 
+  // ---- Analysis helpers for Trends & Velocity views ----
+
+  function _guessEnvClass(name) {
+    const n = (name || '').toLowerCase();
+    if (n.includes('prod') && !n.includes('pre-prod') && !n.includes('preprod') && !n.includes('non-prod') && !n.includes('nonprod')) return 'production';
+    if (n.includes('stag') || n.includes('uat') || n.includes('pre-prod') || n.includes('preprod') || n.includes('test')) return 'staging';
+    return 'dev';
+  }
+
+  function computeDayOfWeekDistribution() {
+    const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const counts = new Array(7).fill(0);
+    for (const sd of Object.values(_spaceData)) {
+      for (const dep of (sd.deployments || [])) {
+        const d = new Date(dep.Created || dep.QueueTime);
+        if (isNaN(d.getTime())) continue;
+        const jsDay = d.getUTCDay();
+        counts[jsDay === 0 ? 6 : jsDay - 1]++;
+      }
+    }
+    return DAYS.map((name, i) => ({ name, count: counts[i], isWeekend: i >= 5 }));
+  }
+
+  function computeHourOfDayDistribution() {
+    const counts = new Array(24).fill(0);
+    for (const sd of Object.values(_spaceData)) {
+      for (const dep of (sd.deployments || [])) {
+        const d = new Date(dep.Created || dep.QueueTime);
+        if (isNaN(d.getTime())) continue;
+        counts[d.getUTCHours()]++;
+      }
+    }
+    return counts.map((count, hour) => ({ hour, count }));
+  }
+
+  function computePerEnvTypeDeployments() {
+    const types = { production: 0, staging: 0, dev: 0 };
+    const perEnv = {};
+    for (const sd of Object.values(_spaceData)) {
+      const envNames = sd.envNames || {};
+      for (const dep of (sd.deployments || [])) {
+        const envName = envNames[dep.EnvironmentId] || dep.EnvironmentId || 'Unknown';
+        const cls = _guessEnvClass(envName);
+        types[cls] = (types[cls] || 0) + 1;
+        if (!perEnv[envName]) perEnv[envName] = { name: envName, cls, count: 0, success: 0, failed: 0 };
+        perEnv[envName].count++;
+        const state = (dep.State || '').toLowerCase();
+        if (state === 'success') perEnv[envName].success++;
+        else if (state === 'failed') perEnv[envName].failed++;
+      }
+    }
+    return { types, environments: Object.values(perEnv).sort((a, b) => b.count - a.count) };
+  }
+
+  function computeTrendChange(weeklyTrend) {
+    if (!weeklyTrend || weeklyTrend.length < 2) return null;
+    const recent = weeklyTrend.slice(-4);
+    const prior = weeklyTrend.slice(-8, -4);
+    if (prior.length === 0) return null;
+    const recentAvg = recent.reduce((s, w) => s + w.total, 0) / recent.length;
+    const priorAvg = prior.reduce((s, w) => s + w.total, 0) / prior.length;
+    if (priorAvg === 0) return recentAvg > 0 ? { pct: 100, direction: 'up' } : { pct: 0, direction: 'flat' };
+    const pct = Math.round(((recentAvg - priorAvg) / priorAvg) * 100);
+    return {
+      pct: Math.abs(pct),
+      direction: pct > 5 ? 'up' : pct < -5 ? 'down' : 'flat',
+      recentAvg: Math.round(recentAvg * 10) / 10,
+      priorAvg: Math.round(priorAvg * 10) / 10,
+    };
+  }
+
+  function computeProjectVelocity() {
+    const projects = [];
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now - 30 * 86400000);
+    for (const [spaceId, sd] of Object.entries(_spaceData)) {
+      const spaceName = sd.space?.Name || spaceId;
+      for (const proj of (sd.projects || [])) {
+        const projDeps = (sd.deployments || []).filter(d => d.ProjectId === proj.Id);
+        const recentDeps = projDeps.filter(d => new Date(d.Created || d.QueueTime) >= thirtyDaysAgo);
+        const successCount = projDeps.filter(d => (d.State || '').toLowerCase() === 'success').length;
+        const rate = projDeps.length > 0 ? Math.round(successCount / projDeps.length * 100) : null;
+        const prodDeps = projDeps.filter(d => {
+          const envName = (sd.envNames || {})[d.EnvironmentId] || '';
+          return _guessEnvClass(envName) === 'production';
+        });
+        projects.push({
+          name: proj.Name || proj.Id,
+          space: spaceName,
+          spaceId,
+          totalDeploys: projDeps.length,
+          recentDeploys: recentDeps.length,
+          deploysPerWeek: recentDeps.length > 0 ? (recentDeps.length / 4.3).toFixed(1) : '0',
+          successRate: rate,
+          prodDeploys: prodDeps.length,
+          lastDeploy: projDeps.length > 0 ? projDeps[0].Created || projDeps[0].QueueTime : null,
+        });
+      }
+    }
+    projects.sort((a, b) => b.recentDeploys - a.recentDeploys);
+    return projects;
+  }
+
+  function computeDurationPercentiles() {
+    const durations = [];
+    for (const t of (_crossSpaceTasks || [])) {
+      if (!t.StartTime || !t.CompletedTime) continue;
+      const ms = new Date(t.CompletedTime) - new Date(t.StartTime);
+      if (ms > 0 && ms < 3600000) durations.push(ms / 1000);
+    }
+    if (durations.length === 0) return null;
+    durations.sort((a, b) => a - b);
+    const pct = (p) => durations[Math.min(Math.floor(durations.length * p), durations.length - 1)];
+    return {
+      avg: Math.round(durations.reduce((a, b) => a + b, 0) / durations.length),
+      p50: Math.round(pct(0.5)),
+      p90: Math.round(pct(0.9)),
+      p95: Math.round(pct(0.95)),
+      min: Math.round(durations[0]),
+      max: Math.round(durations[durations.length - 1]),
+      count: durations.length,
+    };
+  }
+
   // ---- Public API ----
 
   return {
@@ -864,6 +987,12 @@ const DashboardData = (() => {
     getLastFetch: () => _lastFetch,
     getLicenseUsage: () => _licenseUsage,
     getLicenseStatus: () => _licenseStatus,
+    computeDayOfWeekDistribution,
+    computeHourOfDayDistribution,
+    computePerEnvTypeDeployments,
+    computeTrendChange,
+    computeProjectVelocity,
+    computeDurationPercentiles,
   };
 
 })();
@@ -1010,7 +1139,6 @@ const DashboardUI = (() => {
         <td>${s.environmentCount}</td>
         <td>
           <span class="monospace">${s.deploymentCount}</span>
-          ${s.recentDeploymentCount > 0 ? `<span class="text-tertiary" style="font:var(--textBodyRegularXSmall);"> (${s.recentDeploymentCount} recent)</span>` : ''}
         </td>
         <td>
           <div class="flex items-center gap-xs">
@@ -1044,6 +1172,14 @@ const DashboardUI = (() => {
     return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
+  function _escapeAttr(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   function healthBadge(rate, hasDeployments) {
     if (rate >= 95) {
       return `<span class="badge success" data-tooltip="${_tooltipAttr('Deployment success rate is 95% or higher for this row in the selected time range.')}">Healthy</span>`;
@@ -1069,16 +1205,32 @@ const DashboardUI = (() => {
       return;
     }
 
+    const root = (typeof OctopusApi?.getInstanceUrl === 'function') ? OctopusApi.getInstanceUrl() : '';
+
     tbody.innerHTML = deployments.map(d => {
       const state = (d.State || 'unknown').toLowerCase();
       const statusClass = state === 'success' ? 'success' : state === 'failed' ? 'danger' : state === 'executing' ? 'info' : state === 'queued' ? 'info' : 'neutral';
       const statusLabel = state.charAt(0).toUpperCase() + state.slice(1);
 
+      const spaceId = d._spaceId;
+      const projId = d.ProjectId;
+      const envId = d.EnvironmentId;
+      const projUrl = root && spaceId && projId ? `${root}/app#/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projId)}` : null;
+      const envUrl = root && spaceId && envId ? `${root}/app#/${encodeURIComponent(spaceId)}/infrastructure/environments/${encodeURIComponent(envId)}` : null;
+
       return `
         <tr>
-          <td>${DOMPurify.sanitize(d._projectName || d.ProjectId || '--')}</td>
+          <td>
+            ${projUrl
+              ? `<a class="text-tertiary" href="${_escapeAttr(projUrl)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">${DOMPurify.sanitize(d._projectName || d.ProjectId || '--')}</a>`
+              : DOMPurify.sanitize(d._projectName || d.ProjectId || '--')}
+          </td>
           <td><span class="monospace">${DOMPurify.sanitize(d.ReleaseVersion || '--')}</span></td>
-          <td>${DOMPurify.sanitize(d._envName || d.EnvironmentId || '--')}</td>
+          <td>
+            ${envUrl
+              ? `<a class="text-tertiary" href="${_escapeAttr(envUrl)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">${DOMPurify.sanitize(d._envName || d.EnvironmentId || '--')}</a>`
+              : DOMPurify.sanitize(d._envName || d.EnvironmentId || '--')}
+          </td>
           <td>
             <div class="flex items-center gap-xs">
               <div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${DOMPurify.sanitize((d._spaceName || '?').charAt(0))}</div>
@@ -1100,6 +1252,34 @@ const DashboardUI = (() => {
 
     if (envs.length === 0) return;
 
+    const root = (typeof OctopusApi?.getInstanceUrl === 'function') ? OctopusApi.getInstanceUrl() : '';
+    const allSpaceData = DashboardData.getAllSpaceData ? DashboardData.getAllSpaceData() : {};
+
+    const spaceNameToId = {};
+    for (const [sid, sd] of Object.entries(allSpaceData || {})) {
+      const spaceName = sd?.space?.Name || sid;
+      spaceNameToId[spaceName] = sid;
+    }
+
+    function octopusEnvHref(envName, envSpaces) {
+      if (!root || !envName) return null;
+      const list = Array.isArray(envSpaces) ? envSpaces : [];
+      if (list.length === 0) return null;
+
+      // Choose deterministically so URLs are stable across renders.
+      const chosenSpaceName = String(list.slice().sort((a, b) => String(a).localeCompare(String(b)))[0]);
+      const spaceId = spaceNameToId[chosenSpaceName];
+      if (!spaceId) return null;
+
+      const sd = allSpaceData?.[spaceId];
+      const environments = sd?.environments || [];
+      const env = environments.find(e => e?.Name === envName);
+      const envId = env?.Id;
+      if (!envId) return null;
+
+      return `${root}/app#/${encodeURIComponent(spaceId)}/infrastructure/environments/${encodeURIComponent(envId)}`;
+    }
+
     // Sort: production-like first, then staging, then dev, then others
     const priority = { production: 0, prod: 0, staging: 1, stage: 1, uat: 2, test: 3, development: 4, dev: 4 };
     envs.sort((a, b) => {
@@ -1110,10 +1290,13 @@ const DashboardUI = (() => {
 
     container.innerHTML = envs.map(env => {
       const tagClass = guessEnvClass(env.name);
+      const envUrl = octopusEnvHref(env.name, env.spaces);
       return `
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-sm">
-            <span class="env-tag ${tagClass}">${DOMPurify.sanitize(env.name)}</span>
+            ${envUrl
+              ? `<a class="text-tertiary" href="${_escapeAttr(envUrl)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;"><span class="env-tag ${tagClass}">${DOMPurify.sanitize(env.name)}</span></a>`
+              : `<span class="env-tag ${tagClass}">${DOMPurify.sanitize(env.name)}</span>`}
             <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">${env.spaces.length > 1 ? env.spaces.length + ' spaces' : env.spaces[0] || ''}</span>
           </div>
           <div class="flex items-center gap-xs">
@@ -1516,3 +1699,9 @@ const DashboardUI = (() => {
   };
 
 })();
+
+// Views reference chart utilities on DashboardData — alias from DashboardUI
+DashboardData.formatCompactCount = DashboardUI.formatCompactCount;
+DashboardData.trendBarPixelHeight = DashboardUI.trendBarPixelHeight;
+DashboardData.TREND_BAR_MAX_PX = DashboardUI.TREND_BAR_MAX_PX;
+DashboardData.formatIsoWeekDateRange = DashboardUI.formatIsoWeekDateRange;

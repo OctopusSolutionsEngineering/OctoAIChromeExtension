@@ -706,6 +706,16 @@ a:hover {
   overflow-y: auto;
 }
 
+#reliability-space-rates,
+.reliability-space-rates {
+  --recent-scroll-visible-rows: 12;
+  --recent-scroll-row-est: calc(var(--space-sm) * 2 + 1.25rem + 1px);
+  max-height: calc(var(--recent-scroll-row-est) * var(--recent-scroll-visible-rows) + var(--space-sm) * 2 + 1.35rem + 1px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: var(--space-xs);
+}
+
 #env-health {
   --recent-scroll-visible-rows: 12;
   --recent-scroll-row-est: calc(var(--space-sm) * 2 + 1.25rem + 1px);
@@ -861,6 +871,69 @@ tbody tr:last-child td {
 .chart-container:has(.deployment-trend-chart) {
   align-items: stretch;
   justify-content: stretch;
+}
+
+/* Reliability: compact failure-rate trend */
+.reliability-failure-trend.deployment-trend-chart .deployment-trend-bars {
+  min-height: 4.5rem; /* override the shared 12.5rem minimum */
+  padding-bottom: var(--space-xxs);
+}
+.reliability-failure-trend.deployment-trend-chart .deployment-trend-value,
+.reliability-failure-trend.deployment-trend-chart .deployment-trend-axis-label {
+  display: none;
+}
+.reliability-failure-trend.deployment-trend-chart .deployment-trend-bar-stack {
+  max-width: min(28px, 100%);
+}
+
+/* Reliability: remove generic chart centering/min-height */
+.chart-container.reliability-failure-trend-container {
+  min-height: 0 !important;
+  height: auto !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+}
+.chart-container.reliability-failure-trend-container:has(.deployment-trend-chart) {
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+/* Reliability: Failure Rate Trend compact list */
+.reliability-failure-trend-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  /* Let the 12-week list expand; no scroll for this section. */
+  overflow-x: hidden;
+  padding-right: var(--space-xs);
+}
+
+.reliability-failure-trend-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr 3.5rem;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.reliability-failure-trend-week {
+  font: var(--textBodyRegularSmall);
+  color: var(--colorTextSecondary);
+  white-space: normal;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.reliability-failure-trend-bar {
+  margin: 0;
+  width: 100%;
+  height: 6px;
+}
+
+.reliability-failure-trend-value {
+  font: var(--textBodyBoldSmall);
+  color: var(--colorDanger);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 
@@ -2422,4 +2495,95 @@ tbody tr:last-child td {
 .license-ptm-code {
   font: var(--textCodeRegularXSmall);
   word-break: break-all;
+}
+
+/* --------------------------------------------------------------------------
+   Deployment Trends — Day-of-week chart
+   -------------------------------------------------------------------------- */
+
+.dow-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.dow-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.dow-row--weekend {
+  opacity: 0.6;
+}
+
+.dow-row--peak .dow-label {
+  color: var(--colorTextPrimary);
+  font-weight: 600;
+}
+
+.dow-label {
+  width: 32px;
+  font: var(--textBodyBoldSmall);
+  color: var(--colorTextSecondary);
+  flex-shrink: 0;
+}
+
+.dow-bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.dow-count {
+  width: 40px;
+  text-align: right;
+  font: var(--textBodyRegularSmall);
+  color: var(--colorTextTertiary);
+  flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Deployment Trends — Hour-of-day chart
+   -------------------------------------------------------------------------- */
+
+.hour-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 110px;
+  padding-top: var(--space-xs);
+}
+
+.hour-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.hour-bar-wrap {
+  width: 100%;
+  height: 84px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.hour-bar {
+  width: 100%;
+  background: var(--colorPrimary);
+  border-radius: 2px 2px 0 0;
+  min-height: 0;
+  transition: height var(--transitionFast);
+}
+
+.hour-col--peak .hour-bar {
+  background: var(--colorPrimaryLight);
+}
+
+.hour-label {
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextTertiary);
+  margin-top: 4px;
+  height: 16px;
 }
