@@ -630,6 +630,44 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * If there is no `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to `# TODO: replace with manifest downloaded from <reference>`. Append the same NOTE as for direct GCS stages.
 * **CRITICAL**: A stage that resolves via `manifestArtifactId` to a `gcs/object` expected artifact does **NOT** qualify as deploying a Docker image — it must NOT trigger an external feed trigger, even if a Docker trigger is present in the pipeline.
 
+**ABSOLUTE RULE — `manifestArtifactId` resolving to GCS MUST NEVER produce "Files from a Git repository"**: Regardless of whether the artifact is referenced via `manifestArtifactId` or directly via `manifestArtifact`, a `gcs/object` artifact reference MUST ALWAYS produce an "Inline YAML" step — never a "Files from a Git repository" step. The `gs://` paths are Google Cloud Storage paths, not Git repository URLs, and using them as Repository URLs is incorrect and will cause deployment failures.
+
+**Negative example — `manifestArtifactId` resolving to GCS (COMMON MISTAKE)**:
+
+Given a pipeline with:
+```json
+{
+  "expectedArtifacts": [
+    {
+      "defaultArtifact": {
+        "name": "gs://example-bucket/storage-2091",
+        "reference": "gs://example-bucket/storage-2091",
+        "type": "gcs/object"
+      },
+      "id": "artifact-dev"
+    }
+  ],
+  "stages": [
+    {
+      "account": "<redacted-cluster>",
+      "manifestArtifactId": "artifact-dev",
+      "name": "Deploy Dev",
+      "type": "deployManifest"
+    }
+  ]
+}
+```
+
+The **WRONG** output (uses "Files from a Git repository" with a `gs://` URL — this will fail):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "gs://example-bucket/storage-2091". Set the File Paths to "gs://example-bucket/storage-2091". Set the target tag to Kubernetes.
+```
+
+The **CORRECT** output (resolves via `manifestArtifactId` to GCS → inline YAML):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2091`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2091". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes.
+```
+
 ## Run Job Manifest Stage
 
 Stages with `"type": "runJobManifest"` represent Kubernetes job executions and must be converted using exactly the same rules as `deployManifest` stages. Apply the artifact reference logic identically:
@@ -794,6 +832,52 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 <Kubernetes manifest from Spinnaker stage>
 ```
 ````
+
+**ABSOLUTE RULE — `runJob` stages with a `containers` array MUST ALWAYS use inline YAML**: A `runJob` stage whose manifest is defined by its `containers` array (i.e., it has NO `manifestArtifactId` and NO `manifestArtifact` property) must ALWAYS serialize the `containers` array to a Kubernetes Job manifest and output it as inline YAML in the step prompt. NEVER use "Files from a Git repository" for such a stage. NEVER use the pipeline's trigger `repository` field or any other unrelated source as the YAML source. The Kubernetes manifest must be generated from the `containers` array, wrapped in a `Job` manifest structure (`apiVersion: batch/v1`, `kind: Job`, `metadata`, `spec`).
+
+**Negative example — `runJob` with containers converted to "Files from a Git repository" (FORBIDDEN)**:
+
+Given a `runJob` stage with:
+```json
+{
+  "containers": [
+    {
+      "imageDescription": { "registry": "gcr.io", "repository": "my-org/my-image" },
+      "name": "my-job-container"
+    }
+  ],
+  "name": "Run Job",
+  "namespace": "my-namespace",
+  "account": "my-cluster",
+  "type": "runJob"
+}
+```
+
+The **WRONG** output (uses "Files from a Git repository" — this is forbidden for `runJob` stages):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "my-org/my-image". ...
+```
+
+The **CORRECT** output (converts containers to a Kubernetes Job manifest inline):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job". Only run the step when the previous step has succeeded, with the target tag of my-cluster.
+* Set the step namespace to my-namespace
+* Set the step YAML to:
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-job
+  namespace: my-namespace
+spec:
+  template:
+    spec:
+      containers:
+        - name: my-job-container
+          image: gcr.io/my-org/my-image
+      restartPolicy: Never
+```
+```
 
 ## Run Pipeline Stage
 
@@ -998,9 +1082,9 @@ Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource
 
 * For each parameter in the `parameterConfig` property of the Spinnaker pipeline, add the following prompt to the output.
 * Replace `<parameter name>` with the `name` property of the parameter in the Spinnaker pipeline.
-* Replace `<parameter default>` with the `default` property of the parameter in the Spinnaker pipeline.
-* Replace `<parameter description>` with the `description` property of the parameter in the Spinnaker pipeline.
-* Replace `<parameter label>` with the `label` property of the parameter in the Spinnaker pipeline.
+* Replace `<parameter default>` with the `default` property of the parameter in the Spinnaker pipeline. If the `default` property is absent or null, use an empty string `""` as the default value.
+* Replace `<parameter description>` with the `description` property of the parameter in the Spinnaker pipeline. If the `description` property is absent, use an empty string `""`.
+* Replace `<parameter label>` with the `label` property of the parameter in the Spinnaker pipeline. If the `label` property is absent, use the `name` property as the label.
 
 ```
 * Add a project variable called "<parameter name>", with a default value of "<parameter default>", the description "<parameter description>", and the label "<parameter label>". The variable must be prompted for when creating a release.
@@ -1018,6 +1102,29 @@ The variable must be required.
 The variable must not be required.
 ```
 
+* **CRITICAL — the `required` flag MUST always be applied**: When `required` is `true`, the phrase "The variable must be required." MUST be appended to the variable prompt. Do not omit this phrase even when other fields like `default` or `label` are missing. Both "The variable must be prompted for when creating a release." and "The variable must be required." (or "must not be required.") are ALWAYS required parts of every `parameterConfig` variable prompt.
+
+**Example — `parameterConfig` item with missing `default` and `label`, and `required: true`**:
+
+Given:
+```json
+{
+  "description": "PVC to download the model into",
+  "name": "ModelPVC",
+  "required": true
+}
+```
+
+The **CORRECT** output (uses name as label, empty string as default, AND includes required):
+```
+* Add a project variable called "ModelPVC", with a default value of "", the description "PVC to download the model into", and the label "ModelPVC". The variable must be prompted for when creating a release. The variable must be required.
+```
+
+The **WRONG** output (missing "The variable must be required." — this is a common mistake):
+```
+* Add a project variable called "ModelPVC", with a default value of "", the description "PVC to download the model into", and the label "ModelPVC". The variable must be prompted for when creating a release.
+```
+
 * **IMPORTANT**: Generating `parameterConfig` variable prompts does **not** replace or cancel stage generation. After processing all `parameterConfig` entries, you **must** continue and convert every entry in the `stages` array to its equivalent Octopus step prompt. Do not stop after outputting variables — all deployment stages must be converted even when `parameterConfig` is present.
 
 ## Running steps in parallel
@@ -1033,6 +1140,47 @@ The variable must not be required.
 * When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. **This includes stages that all have an empty `requisiteStageRefIds` array `[]`** — an empty array `[]` is a shared value just like any other. For the second and subsequent stages in such a parallel group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
   * Example: If stages with refIds 1, 2, 4, 15, 16, 17, 18 all have `"requisiteStageRefIds": []`, then the step for refId 1 gets no parallel annotation (it is first), but the steps for refIds 2, 4, 15, 16, 17, and 18 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
   * Similarly, if stages with refIds 8, 9, 11, 12, 13, 14, 19 all have `"requisiteStageRefIds": ["5"]`, then the step for refId 8 gets no parallel annotation (it is first in the group), but the steps for refIds 9, 11, 12, 13, 14, and 19 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
+* **CRITICAL — notification steps (Slack Notification Start/Finish/Complete) are NOT deployment stages and must NEVER influence parallel annotations of deployment stages.** When determining the parallel annotation for the first deployment stage in a parallel group, ignore any preceding notification steps entirely. If the first deployment stage in the root group is preceded only by a Slack Notification - Start step, that deployment stage MUST NOT receive a "Run in parallel with the previous step" annotation — it is the first deployment stage in its group and runs sequentially after the notification.
+* **CRITICAL — the first stage in ANY parallel group NEVER receives a parallel annotation**, regardless of whether it is the root group or a subsequent group. Only the 2nd and later stages within a parallel group get the "Run in parallel" annotation. This applies across all dependency levels: if six stages in the pipeline all depend on stage 5, the first of those six stages in JSON order gets no annotation; only stages 2-6 in that group get the parallel annotation.
+
+**Negative example — first deployment stage after notification incorrectly marked as parallel**:
+
+Given a pipeline where a Slack Notification - Start step appears first, followed by two parallel deployment stages (refIds 1 and 2 both with `"requisiteStageRefIds": []`):
+
+The **WRONG** output (Deploy Dev is the first deployment stage but incorrectly gets parallel annotation relative to the notification):
+```
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ... Set the start trigger to "Run in parallel with the previous step". ← WRONG
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **CORRECT** output (Deploy Dev is first in its deployment group, no annotation; Deploy Staging is second and gets parallel):
+```
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ... ← no annotation
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
+**Negative example — first stage in a non-root dependency group incorrectly marked as parallel**:
+
+Given stages where refIds 6, 7, and 8 all have `"requisiteStageRefIds": ["5"]`:
+
+The **WRONG** output (stage refId 6 is first in the group and must NOT receive a parallel annotation):
+```
+* Add ... "Wait (5min)" ... ← stage 5
+* Add ... "Deploy Prod" ... Set the start trigger to "Run in parallel with the previous step". ← WRONG (refId 6 is FIRST in the {6,7,8} group)
+* Add ... "Deploy Prod (URL Listing)" ... Set the start trigger to "Run in parallel with the previous step".
+* Add ... "Deploy Prod (Asynchronous)" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **CORRECT** output (only stages 7 and 8 get "Run in parallel"):
+```
+* Add ... "Wait (5min)" ... ← stage 5
+* Add ... "Deploy Prod" ... ← refId 6, first in {6,7,8} group — no annotation
+* Add ... "Deploy Prod (URL Listing)" ... Set the start trigger to "Run in parallel with the previous step".
+* Add ... "Deploy Prod (Asynchronous)" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
 * Do not set a notification step to run in parallel with the previous step as the notification steps must run on their own.
 * **IMPORTANT**: When multiple root-level stages (stages with `"requisiteStageRefIds": []`) are present, ALL stages after the first one in the sorted group MUST receive `Set the start trigger to "Run in parallel with the previous step".` appended. This applies even when there are many parallel root stages. Do not omit the parallel annotation for any stage in a parallel group — if 7 stages all have `"requisiteStageRefIds": []`, then stages 2 through 7 must all have the parallel annotation.
 * **CRITICAL — each step must have AT MOST ONE start trigger annotation.** Determine the correct single annotation for each step (none, "Run in parallel", or "Wait for all previous steps") and apply only that one. Never output both "Wait for all previous steps to complete, then start" and "Run in parallel with the previous step" on the same step — that is a contradiction. If a step belongs to a parallel group, use only "Run in parallel". If a step is the convergence point after a parallel group, use only "Wait for all previous steps to complete, then start".
