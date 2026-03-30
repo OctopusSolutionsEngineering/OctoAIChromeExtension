@@ -379,6 +379,19 @@ Example — pipeline WITHOUT `disabled` field: when the pipeline JSON contains n
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
 ```
 
+**Negative example — `disabled: false` (explicitly false) still triggers the disabled line (COMMON MISTAKE)**:
+
+Given a pipeline with `"disabled": false` (the property is present and explicitly set to `false`), the following output is **WRONG**:
+```
+* The project must be disabled.
+```
+← WRONG: `disabled: false` means the pipeline is NOT disabled. The `* The project must be disabled.` line MUST appear ONLY when `disabled` is explicitly `true`. It must NEVER appear for `disabled: false`, even though the key is present.
+
+The **CORRECT** output for `"disabled": false` (the disabled line is absent, just as for the absent case):
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+```
+
 **ABSOLUTE RULE — `disabled: true` on a regular pipeline does NOT skip stage conversion**: Setting `"disabled": true` on a regular pipeline (one that does NOT have `"type": "templatedPipeline"`) means ONLY that the project must be disabled in Octopus (i.e., `* The project must be disabled.` is appended). It does NOT affect stage conversion in any way. ALL stages MUST still be converted to their equivalent Octopus steps regardless of whether `disabled` is `true`. Do NOT omit any stage or use "with no steps" just because the pipeline is disabled.
 
 **Negative example — disabled pipeline's stages silently dropped (COMMON MISTAKE)**:
@@ -1827,6 +1840,28 @@ The **CORRECT** output (stages 12 and 13 get "Run in parallel with the previous 
 * Add a "Deploy Kubernetes YAML" step ... "Deploy CronJobs (Manifest)" ... Set the start trigger to "Wait for all previous steps to complete, then start"
 ```
 
+**Worked example — Slack Notification - Start + multiple parallel root stages (COMMON MISTAKE)**:
+
+When a pipeline has a `pipeline.starting` Slack notification AND multiple root-level stages (all with `"requisiteStageRefIds": []`), the parallel annotations MUST still be applied to the 2nd, 3rd, etc. stages in the root group. The presence of a preceding Start notification step does NOT cancel the parallel annotation requirement — the notification step is never counted as a deployment stage for annotation purposes.
+
+Given a pipeline where: one Slack notification has `when: ["pipeline.starting"]` AND three deployment stages (refIds 1, 2, 3) ALL have `"requisiteStageRefIds": []`:
+
+The **WRONG** output (all three deployment stages treated as sequential — parallel annotations completely absent):
+```
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...       ← refId 1, no annotation (this part is OK)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ...  ← refId 2, MISSING "Run in parallel" annotation
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ...     ← refId 3, MISSING "Run in parallel" annotation
+```
+
+The **CORRECT** output (Start first, then stage 1 with no annotation, then stages 2 and 3 each with "Run in parallel with the previous step"):
+```
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...       ← refId 1, first in root group, no annotation ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... Set the start trigger to "Run in parallel with the previous step".  ← refId 2 ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ... Set the start trigger to "Run in parallel with the previous step".     ← refId 3 ✓
+```
+
 ### Worked example: simplest 2-stage reversed pipeline
 
 The most common case of topological reordering is a 2-stage pipeline where the only deployment stage appears first in the JSON array but depends on the second stage (the root):
@@ -1861,6 +1896,43 @@ The **CORRECT** output (refId 2 promoted to first with `Run this step first.`; r
 ```
 
 **KEY RULE**: When the topological sort changes ANY stage's position relative to its JSON array position, ALL stages that follow the root must receive `Set the start trigger to "Wait for all previous steps to complete, then start"`. Never output a pipeline where stages are in the correct topological order but annotations are absent.
+
+**Worked example — reversed JSON order WITH a Slack Notification - Start step**:
+
+A preceding notification step does NOT cancel the topological reorder annotation requirements. When a pipeline has a `pipeline.starting` Slack notification AND stages that require topological reordering, both rules apply simultaneously: the notification comes first, AND the `Run this step first.` / `Wait for all previous steps to complete, then start` annotations are added to the reordered deployment stages.
+
+Given a pipeline:
+```json
+{
+  "notifications": [
+    { "address": "deploy-feed", "level": "pipeline", "type": "slack", "when": ["pipeline.starting", "pipeline.failed", "pipeline.complete"] }
+  ],
+  "stages": [
+    { "refId": "2", "requisiteStageRefIds": ["3"], "type": "deployManifest", "name": "Deploy _Manifest_" },
+    { "refId": "3", "requisiteStageRefIds": [], "type": "manualJudgment", "name": "Manual Judgment" }
+  ]
+}
+```
+
+JSON order: stage 2 (Deploy, depends on 3) at position 1 → stage 3 (Manual Judgment, root) at position 2. Topological order: stage 3 → stage 2. **Order differs from JSON**, so reorder annotations are required.
+
+The **WRONG** output (stages appear in correct topological order but annotations are absent — COMMON MISTAKE):
+```
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Manual Intervention" step with the name "Manual Judgment" ...               ← MISSING: "Run this step first."
+* Add a "Deploy Kubernetes YAML" step ... "Deploy _Manifest_" ...                    ← MISSING: "Set the start trigger to 'Wait for all previous steps...'"
+* Add a community step template step with the name "Slack Notification - Finish" ...
+* Add a community step template step with the name "Slack Notification - Complete" ...
+```
+
+The **CORRECT** output (correct topological order WITH required annotations):
+```
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Manual Intervention" step with the name "Manual Judgment" ... Run this step first.   ← root stage promoted from JSON pos 2 to topo pos 1
+* Add a "Deploy Kubernetes YAML" step ... "Deploy _Manifest_" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← depends on Manual Judgment
+* Add a community step template step with the name "Slack Notification - Finish" ...
+* Add a community step template step with the name "Slack Notification - Complete" ...
+```
 
 ### Worked example: stage appearing FIRST in JSON depends on stage appearing LATER
 
@@ -2027,6 +2099,22 @@ The **CORRECT** ordering:
 * Add a project variable called "timeout"...                                 ← LAST
 ```
 
+**CRITICAL — Slack Notification - Complete MUST NEVER appear before Slack Notification - Finish**: The generation order is fixed regardless of the order of events in the `when` array. Finish steps (`pipeline.failed`) must always appear before Complete steps (`pipeline.complete`). Even if `pipeline.complete` is listed before `pipeline.failed` in the `when` array, the output must always place Finish before Complete.
+
+**Negative example — Complete placed before Finish (FORBIDDEN)**:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy App" ...
+* Add a community step template step ... "Slack Notification - Complete" ... Always run the step.   ← WRONG: Complete before Finish
+* Add a community step template step ... "Slack Notification - Finish" ... Only run the step when the previous step has failed.   ← WRONG: Finish placed after Complete
+```
+
+The **CORRECT** output (Finish ALWAYS before Complete):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy App" ...
+* Add a community step template step ... "Slack Notification - Finish" ... Only run the step when the previous step has failed.   ← CORRECT: Finish second-to-last
+* Add a community step template step ... "Slack Notification - Complete" ... Always run the step.   ← CORRECT: Complete always last
+```
+
 **CRITICAL: Do NOT group all notification steps together at the start of the output.** The Finish and Complete steps must appear **after** all non-notification stage steps — they must never be listed immediately after the Start step when any non-notification stages are also present. The correct pattern is:
 
 ```
@@ -2158,6 +2246,8 @@ The replacement only fires when producing a `Set the target tag to ...` instruct
 * **Step names**: Step names must be unique. Append a number to the name of steps with the same name to make them unique.
 
 Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` appearing in ANY of these fields are legitimate service/component identifiers — they are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
+
+**CRITICAL — hyphenated compound service names must also NEVER be redacted**: Names that combine two or more of these words with a hyphen (e.g., `api-server`, `auth-service`, `web-backend`, `frontend-api`, `worker-service`, `cache-manager`) are standard Kubernetes microservice naming conventions. The presence of the word `api`, `server`, `service`, or `key` in a hyphenated compound name does NOT make the compound a secret. Every character of the compound name must be preserved verbatim — replacing any portion with `*****` is forbidden.
 
 **WRONG** (redaction of a service name — FORBIDDEN):
 ```
