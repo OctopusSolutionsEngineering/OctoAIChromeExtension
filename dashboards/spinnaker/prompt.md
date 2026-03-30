@@ -210,9 +210,11 @@ Create a project called "My Project" in the "Default Project Group" project grou
 If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a shared template whose stage definitions are stored externally and cannot be read from the JSON directly. The following rules apply:
 
 * Do NOT convert any `stages` from the JSON — stages come from the shared template.
-* DO convert any `notifications` from the JSON — notification steps are project-level and must be preserved.
+* **DO convert any `notifications` from the JSON** — notification steps are project-level and must be preserved. This applies even though stages are skipped. Notifications in a `templatedPipeline` must be converted using exactly the same rules as for a regular pipeline (see the Notifications section). The `when` array and `message` text must be inspected and Slack Notification steps must be generated for all applicable events.
 * DO apply the `disabled` status — add `* The project must be disabled.` when `disabled: true`.
 * DO NOT add feed creation prompts — `templatedPipeline` types have no `expectedArtifacts` in the top-level JSON.
+
+**IMPORTANT — `templatedPipeline` notifications are REQUIRED**: When a `templatedPipeline` has a `notifications` array, you MUST generate Slack notification steps for it. Do NOT skip notifications just because the pipeline `type` is `templatedPipeline`. The Finish and Complete steps must appear in the correct order: all Slack Notification - Start steps first (if `pipeline.starting` is in `when`), followed by the (absent) deployment steps, then Slack Notification - Finish steps (if `pipeline.failed` is in `when`), then Slack Notification - Complete steps (if `pipeline.complete` is in `when`), then the `variables` prompts.
 
 * A `templatedPipeline` entry may contain a `variables` object with deployment configuration. These are added as variables to the project.
 * If the `variables` property is absent or empty, do not output any project variable prompts.
@@ -293,6 +295,7 @@ Add a schedule trigger with the following cron expression: "<cron>". The trigger
 ```
 
 * There is no equivalent of the `runAsUser` or `id` properties in Octopus Deploy, so they are not included in the prompt.
+* **CRITICAL**: A schedule trigger prompt is ONLY generated from a trigger whose `"type"` is `"cron"`. Docker triggers, Pubsub triggers, and Pipeline triggers do NOT generate a schedule trigger prompt. Do NOT fabricate or invent a cron expression — if no `type: "cron"` trigger exists in the pipeline, no schedule trigger prompt is emitted.
 
 ## Docker Triggers
 
@@ -621,6 +624,12 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
 * Replace `<account>` with the value of the `account` property in the stage.
 
+**GCS artifacts via `manifestArtifactId`**: When a stage uses `manifestArtifactId` to reference an entry in `expectedArtifacts`, resolve the artifact by looking up the matching entry by `id`. If the `defaultArtifact.type` of the resolved entry is `"gcs/object"`, apply the **same GCS inline YAML rules** as for a direct `manifestArtifact.type: "gcs/object"` stage:
+* Use `defaultArtifact.reference` as the GCS path.
+* If the stage has a non-empty `manifests` array, serialize those manifests to YAML as the inline YAML content.
+* If there is no `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to `# TODO: replace with manifest downloaded from <reference>`. Append the same NOTE as for direct GCS stages.
+* **CRITICAL**: A stage that resolves via `manifestArtifactId` to a `gcs/object` expected artifact does **NOT** qualify as deploying a Docker image — it must NOT trigger an external feed trigger, even if a Docker trigger is present in the pipeline.
+
 ## Run Job Manifest Stage
 
 Stages with `"type": "runJobManifest"` represent Kubernetes job executions and must be converted using exactly the same rules as `deployManifest` stages. Apply the artifact reference logic identically:
@@ -879,6 +888,8 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * Replace `<stage name>` with the `name` property of the stage.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<code>` with a PowerShell script to call `kubectl` to delete the resource in the `manifestName` field.
+* The `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"job my-job"` → `kubectl delete job my-job`). Parse the kind and name from this field.
+* If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"job job-denpyo-checker"` and `location` is `"app-0251-dev"`, the command is `kubectl delete job job-denpyo-checker -n app-0251-dev`.
 
 ```
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell with the code `<code>`. Set the target tag to <account>.
@@ -1018,6 +1029,7 @@ The variable must not be required.
 * When the topologically-sorted execution order differs from the original JSON array order (i.e., a stage with empty `requisiteStageRefIds` appears later in the JSON than a stage that depends on it):
   * Append `Run this step first.` to the first stage's step prompt (the stage that has no prerequisites and was moved earlier by the topological sort).
   * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent stage's step prompt in the sorted list.
+* **IMPORTANT**: The `Run this step first.` annotation and the `"Wait for all previous steps to complete, then start"` annotation are ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage with `requisiteStageRefIds: []` appears after a stage that depends on it), do NOT add either annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
 * When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. **This includes stages that all have an empty `requisiteStageRefIds` array `[]`** — an empty array `[]` is a shared value just like any other. For the second and subsequent stages in such a parallel group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
   * Example: If stages with refIds 1, 2, 4, 15, 16, 17, 18 all have `"requisiteStageRefIds": []`, then the step for refId 1 gets no parallel annotation (it is first), but the steps for refIds 2, 4, 15, 16, 17, and 18 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
   * Similarly, if stages with refIds 8, 9, 11, 12, 13, 14, 19 all have `"requisiteStageRefIds": ["5"]`, then the step for refId 8 gets no parallel annotation (it is first in the group), but the steps for refIds 9, 11, 12, 13, 14, and 19 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
