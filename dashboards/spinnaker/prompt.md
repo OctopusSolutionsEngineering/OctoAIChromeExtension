@@ -132,7 +132,7 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
 ---
 
 Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
 * The project must be disabled.
 ```
 
@@ -422,7 +422,7 @@ Create a project called "[dev] my-service" in the "Default Project Group" projec
 The **CORRECT** output (stage IS converted AND the project is disabled):
 ```
 Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
 * The project must be disabled.
 ```
 
@@ -714,6 +714,44 @@ The **CORRECT** output (no external feed trigger — GCS manifest and scaleManif
 [no external feed trigger line]
 ```
 
+**Negative example — direct `manifestArtifact.type: "github/file"` + `requiredArtifactIds` pointing to docker/image + docker/image in `expectedArtifacts` (DO NOT add external feed trigger)**:
+
+This is a particularly common mistake when a pipeline has `expectedArtifacts` with a docker/image entry AND a `deployManifest` stage that uses a `github/file` manifest with `requiredArtifactIds` referencing that docker/image. Even though docker/image appears in `expectedArtifacts` AND `requiredArtifactIds`, the stage does NOT qualify because the manifest itself is `github/file`, not `docker/image`.
+
+```json
+{
+  "expectedArtifacts": [
+    {
+      "matchArtifact": { "name": "registry.example.invalid/image-0460", "type": "docker/image" },
+      "id": "docker-artifact-id"
+    }
+  ],
+  "stages": [
+    {
+      "type": "deployManifest",
+      "manifestArtifact": {
+        "name": "spinnaker/microservices/app-0089/production/job.yaml",
+        "reference": "https://example.invalid/url-0462",
+        "type": "github/file"
+      },
+      "requiredArtifactIds": ["docker-artifact-id"],
+      "name": "Deploy (Manifest)"
+    }
+  ],
+  "triggers": [ { "type": "docker", "registry": "gcr.io", "enabled": false } ]
+}
+```
+
+The **WRONG** output (external feed trigger added because `expectedArtifacts` has docker/image and `requiredArtifactIds` references it — FORBIDDEN):
+```
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
+```
+
+The **CORRECT** output (NO external feed trigger — the manifest source is `github/file`, not `docker/image`; `requiredArtifactIds` alone never qualifies a stage):
+```
+[no external feed trigger line]
+```
+
 ## Pubsub Triggers
 
 The following snippet is an example of a Google Pub/Sub trigger in Spinnaker that fires when a Docker image is published:
@@ -877,6 +915,35 @@ The following snippet is an example of a Slack notification in Spinnaker:
 * When the `notifications` array contains multiple pipeline-level entries, each entry independently generates its own set of Start, Finish, and Complete steps. Process every entry in the array — do not stop at the first entry.
 * If the `message` property is absent entirely from the notification object, all notification steps are generated without any `ssn_Message` property.
 
+**CRITICAL — when `message` is absent, ALL steps in `when` are STILL generated (without `ssn_Message`)**. The absence of `message` only removes the `ssn_Message` line — it does NOT reduce the number of steps generated. If `when` contains `pipeline.starting`, `pipeline.failed`, AND `pipeline.complete`, you MUST still generate all three steps (Start, Finish, Complete), just without any `ssn_Message`. Dropping Finish and/or Complete because `message` is absent is a **common mistake** and is strictly forbidden.
+
+**Negative example — Finish and Complete dropped because `message` is absent (COMMON MISTAKE)**:
+
+Given a notification with `"when": ["pipeline.starting", "pipeline.complete", "pipeline.failed"]` but NO `message` property:
+```json
+{
+  "address": "pj-myteam-spinnaker-log",
+  "level": "pipeline",
+  "type": "slack",
+  "when": ["pipeline.starting", "pipeline.complete", "pipeline.failed"]
+}
+```
+
+The **WRONG** output (only Start generated — Finish and Complete silently dropped because message is absent):
+```
+* Add a community step template step with the name "Slack Notification - Start" ... Set the "ssn_Channel" property to "pj-myteam-spinnaker-log".
+[Finish and Complete steps MISSING — wrong because pipeline.failed and pipeline.complete are in the when array]
+```
+
+The **CORRECT** output (all three steps generated WITHOUT `ssn_Message` since message property is absent):
+```
+* Add a community step template step with the name "Slack Notification - Start" ... Set the "ssn_Channel" property to "pj-myteam-spinnaker-log".
+[... deployment stages ...]
+* Add a community step template step with the name "Slack Notification - Finish" ... Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-myteam-spinnaker-log".
+* Add a community step template step with the name "Slack Notification - Complete" ... Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-myteam-spinnaker-log".
+```
+← Note: no `Set the "ssn_Message" property to ...` lines are present (because message is absent), but the steps themselves ARE generated.
+
 * **IMPORTANT — `ssn_Channel` verbatim copy**: The `ssn_Channel` value must be the exact verbatim string from the `address` field of the notification object. Copy it character-for-character with no modification. In particular:
   * If the `address` value begins with `#` (e.g., `"#pj-example-channel"`), the output MUST preserve the `#` prefix.
   * If the `address` value does NOT begin with `#` (e.g., `"ft-architect_jb-productivity"`), the output MUST NOT add a `#` prefix.
@@ -969,7 +1036,9 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 * Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
-* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores or hashes. If the stage name contains parentheses `()` or square brackets `[]`, replace them with underscores `_` (e.g., `Deploy (Manifest)` becomes `Deploy _Manifest_`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores or hashes. If the stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` (e.g., `Deploy (Manifest)` becomes `Deploy -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+
+**CRITICAL — use dashes `-` NOT underscores `_` when replacing parentheses**: Although underscores are technically valid Octopus step name characters, they are also Markdown formatting characters (e.g., `_text_` renders as italic and strips the underscores). Using underscores in step names that are generated as part of Markdown text causes the underscores to be silently stripped. You MUST use dashes `-` instead. For example, `Deploy (Manifest)` MUST become `Deploy -Manifest-` (with dashes), NOT `Deploy _Manifest_` (with underscores).
 
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
@@ -1077,7 +1146,7 @@ Some `deployManifest` stages include a `namespaceOverride` property that overrid
 
 The **CORRECT** output for a stage with `"namespaceOverride": "org-0001-product-catalog-jp-dev"`:
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2053`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2053". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)". Set the step namespace to "org-0001-product-catalog-jp-dev".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2053`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2053". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)". Set the step namespace to "org-0001-product-catalog-jp-dev".
 ```
 
 The **WRONG** output (namespace annotation silently omitted):
@@ -1096,7 +1165,7 @@ Stages with `"type": "runJobManifest"` represent Kubernetes job executions and m
 
 The resulting prompt must follow exactly the same rules as a `deployManifest` stage, including the stage name transformation rules.
 
-**IMPORTANT**: The `<stage name>` placeholder must follow the same rules as `deployManifest` stages: if the stage name contains parentheses `()`, replace them with underscores `-` (e.g., `Run Job (Manifest)` becomes `Run Job _Manifest_`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+**IMPORTANT**: The `<stage name>` placeholder must follow the same rules as `deployManifest` stages: if the stage name contains parentheses `()`, replace them with dashes `-` (e.g., `Run Job (Manifest)` becomes `Run Job -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
 
 **Negative example — `runJobManifest` stage name with parentheses not converted to square brackets (COMMON MISTAKE)**:
 
@@ -1107,7 +1176,7 @@ Given a `runJobManifest` stage with `"name": "Run Job (Manifest)"`, the **WRONG*
 
 The **CORRECT** output converts parentheses to square brackets and adds a step description:
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job _Manifest_". ... Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". ... Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
 ```
 
 ```
@@ -1535,7 +1604,7 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * Replace `<code>` with a PowerShell script to call `kubectl` to delete the resource in the `manifestName` field.
 * The `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"job my-job"` → `kubectl delete job my-job`). Parse the kind and name from this field.
 * If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"job job-denpyo-checker"` and `location` is `"app-0251-dev"`, the command is `kubectl delete job job-denpyo-checker -n app-0251-dev`.
-* **IMPORTANT — step name special character replacement and step description**: The same rules as `deployManifest` stages apply. If the stage `name` contains parentheses `()` or square brackets `[]`, replace them with underscores `_` in the step name (e.g., `Delete (canary)` → `Delete _canary_`). For every `deleteManifest` step where the stage name contained parentheses or other special characters, ALSO set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+* **IMPORTANT — step name special character replacement and step description**: The same rules as `deployManifest` stages apply. If the stage `name` contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the step name (e.g., `Delete (canary)` → `Delete -canary-`). For every `deleteManifest` step where the stage name contained parentheses or other special characters, ALSO set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
 
 **Negative example — `deleteManifest` stage with parentheses and no step description (COMMON MISTAKE)**:
 
@@ -1547,7 +1616,7 @@ Given a `deleteManifest` stage with `"name": "Delete (canary)"`, the **WRONG** o
 
 The **CORRECT** output (step description added to preserve original name with parentheses):
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Delete _canary_". Set the script to inline Powershell with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Delete (canary)".
+* Add a "Run a kubectl script" step to the deployment process and name the step "Delete -canary-". Set the script to inline Powershell with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Delete (canary)".
 ```
 
 ```
@@ -1722,7 +1791,7 @@ Create a project called "My Project" in the "Default Project Group" project grou
 The **CORRECT** output (all variables and steps in ONE project creation block):
 ```
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_" ...
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-" ...
 * Add a project variable called "batch_size", with a default value of "50"...
 * Add a project variable called "timeout", with a default value of "30"...
 ```
@@ -1734,9 +1803,8 @@ Create a project called "My Project" in the "Default Project Group" project grou
 * First, topologically sort all deployment stages by their `requisiteStageRefIds` dependency graph. Treat each `refId` as a node and each entry in `requisiteStageRefIds` as a directed edge from prerequisite to dependent. Stages with an empty or absent `requisiteStageRefIds` array have no prerequisites and must appear first in the sorted order; stages that depend only on those come next; and so on, until all stages are ordered.
 * **CRITICAL: Perform the topological sort based purely on `requisiteStageRefIds` values — NOT on the position of the stage in the JSON array.** A stage that appears late in the JSON array but has `"requisiteStageRefIds": []` must still be placed in the first (root) group, even if the JSON places it after a stage that depends on it.
 * When the topologically-sorted execution order differs from the original JSON array order (i.e., at least one stage must be moved when converting from JSON order to topological order):
-  * Append `Run this step first.` to the first stage's step prompt (the root stage that was promoted to the front of the sorted list because it has no prerequisites).
   * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent NON-PARALLEL stage's step prompt — i.e., every stage that is the FIRST in its dependency group (except the root group which has already been handled). Parallel siblings (2nd, 3rd, etc. stages within the same dependency group) continue to use `"Run in parallel with the previous step"` as before.
-* **IMPORTANT**: The `Run this step first.` annotation and the `"Wait for all previous steps to complete, then start"` annotation are ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved), do NOT add either annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
+* **IMPORTANT**: The `"Wait for all previous steps to complete, then start"` annotation is ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved), do NOT add this annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
 
 **ABSOLUTE RULE — do NOT add "Wait for all previous steps" when stages are already in topological order**: If evaluating the `requisiteStageRefIds` dependency graph results in a topological order that MATCHES the JSON array order exactly (no stage needs to be moved), then ZERO annotations of any kind are added. Only parallel sibling annotations (`"Run in parallel with the previous step"`) apply in that case.
 
@@ -1752,7 +1820,7 @@ Given a pipeline where stages are already in topological order:
 | 4 | 4 | `["3"]` | Deploy |
 | 5 | 5 | `["3"]` | Delete Canary |
 
-Topological order: 1→2→3→{4,5}. This EXACTLY MATCHES the JSON order (no stage is moved). Therefore, **no** `Run this step first.` or `Set the start trigger to "Wait for all previous steps to complete, then start"` annotations are needed.
+Topological order: 1→2→3→{4,5}. This EXACTLY MATCHES the JSON order (no stage is moved). Therefore, **no** `Set the start trigger to "Wait for all previous steps to complete, then start"` annotations are needed.
 
 The **WRONG** output (spurious "Wait for all previous steps" added — FORBIDDEN when stages are in topological order):
 ```
@@ -1771,7 +1839,6 @@ The **CORRECT** output (no "Wait for all previous steps" — sequential pipeline
 * Add a "Deploy Kubernetes YAML" step ... "Deploy" ...
 * Add a "Run a kubectl script" step ... "Delete Canary" ... Set the start trigger to "Run in parallel with the previous step".
 ```
-* **CRITICAL — the `Run this step first.` annotation applies to the ROOT stage even if it is a `manualJudgment` or other non-deployment type.** Any stage that has `requisiteStageRefIds: []` and appears AFTER other stages in the JSON (i.e., it is moved to the front by the topological sort) MUST receive `Run this step first.` appended to its step prompt, regardless of its stage type.
 * When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. **This includes stages that all have an empty `requisiteStageRefIds` array `[]`** — an empty array `[]` is a shared value just like any other. For the second and subsequent stages in such a parallel group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
   * Example: If stages with refIds 1, 2, 4, 15, 16, 17, 18 all have `"requisiteStageRefIds": []`, then the step for refId 1 gets no parallel annotation (it is first), but the steps for refIds 2, 4, 15, 16, 17, and 18 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
   * Similarly, if stages with refIds 8, 9, 11, 12, 13, 14, 19 all have `"requisiteStageRefIds": ["5"]`, then the step for refId 8 gets no parallel annotation (it is first in the group), but the steps for refIds 9, 11, 12, 13, 14, and 19 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
@@ -1889,9 +1956,9 @@ The **WRONG** output (follows JSON order, no annotations — common mistake):
 * Add a "Deploy Kubernetes YAML" step ... "Run Pre-Deploy Job" ...
 ```
 
-The **CORRECT** output (refId 2 promoted to first with `Run this step first.`; refId 1 gets `Wait for all previous steps to complete, then start`):
+The **CORRECT** output (refId 2 promoted to first; refId 1 gets `Wait for all previous steps to complete, then start`):
 ```
-* Add a "Deploy Kubernetes YAML" step ... "Run Pre-Deploy Job" ... Run this step first.
+* Add a "Deploy Kubernetes YAML" step ... "Run Pre-Deploy Job" ...
 * Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ... Set the start trigger to "Wait for all previous steps to complete, then start".
 ```
 
@@ -1899,7 +1966,7 @@ The **CORRECT** output (refId 2 promoted to first with `Run this step first.`; r
 
 **Worked example — reversed JSON order WITH a Slack Notification - Start step**:
 
-A preceding notification step does NOT cancel the topological reorder annotation requirements. When a pipeline has a `pipeline.starting` Slack notification AND stages that require topological reordering, both rules apply simultaneously: the notification comes first, AND the `Run this step first.` / `Wait for all previous steps to complete, then start` annotations are added to the reordered deployment stages.
+A preceding notification step does NOT cancel the topological reorder annotation requirements. When a pipeline has a `pipeline.starting` Slack notification AND stages that require topological reordering, both rules apply simultaneously: the notification comes first, AND the `Wait for all previous steps to complete, then start` annotation is added to the reordered deployment stages.
 
 Given a pipeline:
 ```json
@@ -1908,7 +1975,7 @@ Given a pipeline:
     { "address": "deploy-feed", "level": "pipeline", "type": "slack", "when": ["pipeline.starting", "pipeline.failed", "pipeline.complete"] }
   ],
   "stages": [
-    { "refId": "2", "requisiteStageRefIds": ["3"], "type": "deployManifest", "name": "Deploy _Manifest_" },
+    { "refId": "2", "requisiteStageRefIds": ["3"], "type": "deployManifest", "name": "Deploy (Manifest)" },
     { "refId": "3", "requisiteStageRefIds": [], "type": "manualJudgment", "name": "Manual Judgment" }
   ]
 }
@@ -1916,11 +1983,15 @@ Given a pipeline:
 
 JSON order: stage 2 (Deploy, depends on 3) at position 1 → stage 3 (Manual Judgment, root) at position 2. Topological order: stage 3 → stage 2. **Order differs from JSON**, so reorder annotations are required.
 
+**TWO RULES APPLY SIMULTANEOUSLY** for this pipeline:
+1. Slack Notification - Start comes FIRST (before all non-notification stages)
+2. Deploy step (depends on Manual Judgment) gets `Set the start trigger to "Wait for all previous steps to complete, then start"`
+
 The **WRONG** output (stages appear in correct topological order but annotations are absent — COMMON MISTAKE):
 ```
 * Add a community step template step with the name "Slack Notification - Start" ...
-* Add a "Manual Intervention" step with the name "Manual Judgment" ...               ← MISSING: "Run this step first."
-* Add a "Deploy Kubernetes YAML" step ... "Deploy _Manifest_" ...                    ← MISSING: "Set the start trigger to 'Wait for all previous steps...'"
+* Add a "Manual Intervention" step with the name "Manual Judgment" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -Manifest-" ...                    ← MISSING: "Set the start trigger to 'Wait for all previous steps...'"
 * Add a community step template step with the name "Slack Notification - Finish" ...
 * Add a community step template step with the name "Slack Notification - Complete" ...
 ```
@@ -1928,8 +1999,8 @@ The **WRONG** output (stages appear in correct topological order but annotations
 The **CORRECT** output (correct topological order WITH required annotations):
 ```
 * Add a community step template step with the name "Slack Notification - Start" ...
-* Add a "Manual Intervention" step with the name "Manual Judgment" ... Run this step first.   ← root stage promoted from JSON pos 2 to topo pos 1
-* Add a "Deploy Kubernetes YAML" step ... "Deploy _Manifest_" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← depends on Manual Judgment
+* Add a "Manual Intervention" step with the name "Manual Judgment" ...   ← root stage promoted from JSON pos 2 to topo pos 1
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -Manifest-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← depends on Manual Judgment
 * Add a community step template step with the name "Slack Notification - Finish" ...
 * Add a community step template step with the name "Slack Notification - Complete" ...
 ```
@@ -1976,7 +2047,7 @@ The **WRONG** output (partially correct: root moved first, but the remaining sta
 
 The **CORRECT** output (strictly follows dependency chain — each stage appears only AFTER its prerequisite):
 ```
-* Add a "Manual Intervention" step ... "Migrate Judgment" ... Run this step first.          ← refId 4, ROOT, moved from JSON pos 2 to first
+* Add a "Manual Intervention" step ... "Migrate Judgment" ...          ← refId 4, ROOT, moved from JSON pos 2 to first
 * Add a "Deploy Kubernetes YAML" step ... "Update ConfigMap" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← refId 15, depends on 4
 * Add a "Run a kubectl script" step ... "Cleanup Pod" ... Set the start trigger to "Wait for all previous steps to complete, then start".         ← refId 6, depends on 15
 * Add a "Deploy Kubernetes YAML" step ... "Migrate DB" ... Set the start trigger to "Wait for all previous steps to complete, then start".        ← refId 5, depends on 6
@@ -2065,6 +2136,8 @@ When a project has pipeline-level notification entries, the generated prompt mus
 3. All "Slack Notification - Finish" steps (one per `notifications` array entry that has `pipeline.failed` in its `when` array) must be listed after all deployment stage steps, in `notifications` array order.
 4. All "Slack Notification - Complete" steps (one per `notifications` array entry that has `pipeline.complete` in its `when` array) must be listed last, after all Finish steps, in `notifications` array order.
 5. All `parameterConfig` variable prompts must follow all notification steps (after the Complete steps). When there are NO pipeline-level notification steps, variable prompts must appear BEFORE the deployment stage steps.
+
+**ABSOLUTE RULE — when notifications are present, variables MUST come AFTER the Finish and Complete notification steps**: Even if the Finish and Complete steps seem to be missing or were dropped due to missing `message` text, the variable ordering rule still applies. Variables must be placed as if Finish and Complete steps exist (i.e., at the very end before the external feed trigger and disabled line). Do NOT place variables between the deployment stages and the Finish/Complete steps.
 6. The external feed trigger prompt (if any) must follow all variable prompts and all notification steps, but before `* The project must be disabled.`.
 7. `* The project must be disabled.` must **always** be the very last line in the project's prompt block — it must appear after all step prompts, all variable prompts, and the external feed trigger prompt. No other prompt item may follow it.
 
