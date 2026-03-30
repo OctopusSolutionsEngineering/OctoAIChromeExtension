@@ -231,6 +231,20 @@ Create a project called "my-service deploy to dev" in the "Default Project Group
 
 * **IMPORTANT**: Feed prompts are ONLY generated from `expectedArtifacts[].matchArtifact.type == "docker/image"` entries, from Docker trigger `registry` fields, OR from the registry host embedded in Pubsub trigger `payloadConstraints.tag` values. The `manifestArtifact` property on individual stages (regardless of its `type`) does NOT generate any feed prompt. In particular, `manifestArtifact` entries with `"type": "gcs/object"` or `"type": "github/file"` must NEVER trigger feed creation — those are artifact source types for the Kubernetes manifest itself, not Docker container registries.
 
+**CRITICAL — stage-level `requiredArtifacts` and `requiredArtifactIds` MUST NEVER generate feed prompts**: Stages may have a `requiredArtifacts` property (containing artifact objects directly, distinct from `requiredArtifactIds` which contains ID references) that reference Docker images. These are binding hints telling Spinnaker which images must be available before the stage runs. They are NOT feed sources. Feeding from stage-level `requiredArtifacts` or `requiredArtifactIds` is FORBIDDEN — even if the artifact has `"type": "docker/image"` and a recognisable registry hostname.
+
+**ALGORITHM — exactly three valid feed sources (scan ONLY these, ignore everything else)**:
+1. **`expectedArtifacts[]`** (pipeline-level array): entries where `matchArtifact.type == "docker/image"` → use `matchArtifact.name` to derive the registry host
+2. **Docker trigger `registry` field**: used ONLY when `expectedArtifacts` has NO `docker/image` entries (absent, empty `[]`, or contains only non-docker types)
+3. **Pubsub trigger `payloadConstraints.tag`**: extract the hostname from the tag value
+
+**Everything else is NOT a feed source**, including:
+- `manifestArtifact` on stages
+- `requiredArtifacts` on stages
+- `requiredArtifactIds` on stages
+- `triggers[].expectedArtifactIds`
+- Any artifact reference inside a stage's `manifests` property
+
 **CRITICAL — Google Cloud Storage (GCS) paths MUST NEVER be used as Docker registry feed URLs**: GCS paths begin with `gs://` and have the format `gs://<bucket>/<path>`. The bucket name (e.g., `example-bucket` in `gs://example-bucket/storage-0052`) is a Google Cloud Storage bucket identifier — it is NOT a Docker registry hostname and MUST NEVER be used as a feed URL. If you see a `gs://` path anywhere in the pipeline JSON (`expectedArtifacts`, `manifestArtifact`, `manifestArtifactId`-resolved entries, etc.), treat it purely as a Kubernetes manifest source — never derive a Docker feed URL from it.
 
 **Negative example — GCS bucket name extracted as Docker registry (FORBIDDEN)**:
@@ -1131,6 +1145,33 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 1. Find the `expectedArtifacts` entry whose `id` matches the stage's `manifestArtifactId` value.
 2. Check the `defaultArtifact.type` of that entry.
 3. If `defaultArtifact.type` is `"gcs/object"`, **STOP** — do NOT use "Files from a Git repository". Apply the **GCS inline YAML rules** instead.
+4. If `defaultArtifact.type` is `"github/file"`, use **"Files from a Git repository"** — use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. NEVER use "Inline YAML" for a `github/file` artifact.
+
+**CRITICAL — `github/file` artifacts ALWAYS use "Files from a Git repository"**: Whether the artifact is referenced via `manifestArtifactId` (resolving to an `expectedArtifacts` entry) or directly via `manifestArtifact`, if `type` is `"github/file"`, the step MUST ALWAYS use `YAML Source: "Files from a Git repository"`. NEVER use "Inline YAML" for a `github/file` artifact. The URL `https://...` in a `github/file` reference is a GitHub URL, NOT a Google Cloud Storage path — do NOT treat it as GCS, do NOT generate a GCS TODO placeholder, and do NOT append a "Google Cloud Storage" NOTE.
+
+**Negative example — `manifestArtifactId` resolving to `github/file` incorrectly treated as GCS (COMMON MISTAKE)**:
+
+Given a stage with `manifestArtifactId` resolving to:
+```json
+{
+  "defaultArtifact": {
+    "name": "resource-0018",
+    "reference": "https://example.invalid/url-0034",
+    "type": "github/file"
+  }
+}
+```
+
+The **WRONG** output (treats `github/file` as GCS — FORBIDDEN):
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from https://example.invalid/url-0034`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "https://example.invalid/url-0034". ...
+```
+← WRONG: `https://` URLs are GitHub URLs, not GCS paths. `gcs/object` artifacts use `gs://` paths. NEVER confuse the two.
+
+The **CORRECT** output (`github/file` → "Files from a Git repository"):
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "https://example.invalid/url-0034". Set the File Paths to "resource-0018". ...
+```
 
 If the `defaultArtifact.type` of the resolved entry is `"gcs/object"`, apply the **same GCS inline YAML rules** as for a direct `manifestArtifact.type: "gcs/object"` stage:
 * Use `defaultArtifact.reference` as the GCS path.
@@ -2077,6 +2118,36 @@ The **CORRECT** output (reordered AND annotation added to the dependent stage):
 * Add a "Deploy Kubernetes YAML" step ... "Deploy -Manifest-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
 ```
 
+**Worked example — reversed JSON order WITHOUT notifications (most common pattern)**:
+
+This is the most common occurrence: a 2-stage pipeline where a deployManifest depends on a manualJudgment but appears FIRST in the JSON array. Even with NO Slack notifications, the `Wait for all previous steps to complete, then start` annotation is STILL REQUIRED on the dependent stage.
+
+Given a pipeline:
+```json
+{
+  "stages": [
+    { "refId": "1", "requisiteStageRefIds": ["2"], "type": "deployManifest", "name": "Deploy (Manifest)", "manifestArtifactId": "...", "account": "<redacted-cluster>" },
+    { "refId": "2", "requisiteStageRefIds": [], "type": "manualJudgment", "name": "Manual Judgment" }
+  ]
+}
+```
+
+JSON order: stage 1 (Deploy, depends on 2) at position 1 → stage 2 (Manual Judgment, root) at position 2. Topological order: stage 2 → stage 1. **Order differs from JSON**, so the annotation is REQUIRED.
+
+The **WRONG** output (stages in correct topo order but annotation MISSING — THE MOST COMMON MISTAKE for pipelines without notifications):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -Manifest-" ...   ← MISSING: "Set the start trigger to 'Wait for all previous steps...'"
+```
+
+The **CORRECT** output (reordered AND annotation added):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -Manifest-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+
+**REMEMBER**: The `Wait for all previous steps to complete, then start` annotation is ALWAYS required whenever the topological sort changes a stage's position relative to the JSON array order — regardless of whether the pipeline has Slack notifications or not.
+
 **Worked example — reversed JSON order WITH a Slack Notification - Start step**:
 
 A preceding notification step does NOT cancel the topological reorder annotation requirements. When a pipeline has a `pipeline.starting` Slack notification AND stages that require topological reordering, both rules apply simultaneously: the notification comes first, AND the `Wait for all previous steps to complete, then start` annotation is added to the reordered deployment stages.
@@ -2262,6 +2333,46 @@ When a project has pipeline-level notification entries, the generated prompt mus
 5. `parameterConfig` variable prompts (after ALL notification steps)
 6. External feed trigger (if any)
 7. `* The project must be disabled.` (only if `disabled: true`)
+
+**CRITICAL — when `parameterConfig` is present but NO pipeline-level notifications**: The ordering is different — variables come FIRST:
+1. `parameterConfig` variable prompts (BEFORE all stage steps)
+2. All non-notification stage steps (in topological order)
+3. External feed trigger (if any)
+4. `* The project must be disabled.` (only if `disabled: true`)
+
+**Negative example — variables placed AFTER stages when there are NO notifications (COMMON MISTAKE)**:
+
+Given a pipeline with `parameterConfig` entries but NO `notifications`:
+```json
+{
+  "parameterConfig": [
+    { "name": "tag", "default": "master-", "description": "image tag", "required": true },
+    { "name": "limit", "default": "100", "description": "row limit", "required": false }
+  ],
+  "stages": [
+    { "refId": "2", "type": "manualJudgment", "name": "Manual Judgment", "requisiteStageRefIds": [] },
+    { "refId": "3", "type": "runJobManifest", "name": "Run Job (Manifest)", "requisiteStageRefIds": ["2"] }
+  ]
+}
+```
+
+The **WRONG** output (variables placed AFTER stages — FORBIDDEN when there are no notifications):
+```
+Create a project called "..." in the "Default Project Group" project group with no steps.
+* Add a "Manual Intervention" step ...  ← WRONG: stage appears before variables
+* Add a "Deploy Kubernetes YAML" step ...  ← WRONG: stage appears before variables
+* Add a project variable called "tag" ...  ← WRONG: variables must come FIRST when no notifications
+* Add a project variable called "limit" ...
+```
+
+The **CORRECT** output (variables FIRST, then stages, when there are no notifications):
+```
+Create a project called "..." in the "Default Project Group" project group with no steps.
+* Add a project variable called "tag", with a default value of "master-", the description "image tag", and the label "tag". The variable must be prompted for when creating a release. The variable must be required.
+* Add a project variable called "limit", with a default value of "100", the description "row limit", and the label "limit". The variable must be prompted for when creating a release. The variable must not be required.
+* Add a "Manual Intervention" step ...  ← stages come AFTER variables
+* Add a "Deploy Kubernetes YAML" step ...
+```
 
 **Negative example — variables placed BEFORE notifications (MOST COMMON MISTAKE when both are present)**:
 
