@@ -760,7 +760,7 @@ const Views = (() => {
             <i class="fa-solid fa-layer-group"></i>
             Spaces for <span id="env-spaces-modal-envname"></span>
           </h3>
-          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-close" type="button">
+          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-close" type="button" aria-label="Close modal">
             <i class="fa-solid fa-times"></i>
           </button>
         </div>
