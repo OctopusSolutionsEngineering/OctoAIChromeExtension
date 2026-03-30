@@ -44,10 +44,44 @@ The following snippet is an example of an artifact in Spinnaker that is expected
 Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
 ```
 
-* For other values of `matchArtifact.name`, a feed must be created with the "Google Container Registry" feed type in Octopus, replacing the feed URL with the registry URL extracted from the `matchArtifact.name` property. For example, if the `matchArtifact.name` property is `myregistry.com/myimage`, the feed URL would be `https://myregistry.com`:
+* For other values of `matchArtifact.name` (i.e., when the name does NOT start with `gcr.io/`), a **Docker Feed** must be created. Extract the registry host from the `matchArtifact.name` property (the part before the first `/`) and use it as the feed URL. For example, if the `matchArtifact.name` property is `myregistry.com/myimage`, the feed URL would be `https://myregistry.com`:
 
 ```
 Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "<url>".
+```
+
+* **CRITICAL**: Do NOT use the pipeline's Docker trigger `registry` field to determine the feed type or URL when `expectedArtifacts` has `docker/image` entries. The `matchArtifact.name` field in `expectedArtifacts` is the ONLY source for the feed URL in that case. The trigger `registry` field must be completely ignored.
+
+**Negative example — wrong vs correct feed when expectedArtifacts has a custom registry:**
+
+Given a pipeline with:
+```json
+{
+  "expectedArtifacts": [
+    {
+      "matchArtifact": {
+        "name": "registry.example.invalid/image-0001",
+        "type": "docker/image"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "registry": "gcr.io",
+      "type": "docker"
+    }
+  ]
+}
+```
+
+The **WRONG** output (uses Docker trigger registry instead of expectedArtifacts):
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+```
+
+The **CORRECT** output (uses matchArtifact.name from expectedArtifacts):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
 ```
 
 * Feed prompts must appear before the base project prompt in the output.
@@ -242,7 +276,9 @@ Add a single external feed trigger that creates a new release for each step that
   * If no qualifying Docker-image steps are found, omit the external feed trigger prompt entirely — even if the pipeline has Docker or Pubsub triggers.
 * **IMPORTANT**: Creating a feed from a Docker trigger's `registry` field (because `expectedArtifacts` is absent or empty) does **NOT** imply that an external feed trigger should be generated. The two decisions are independent. Even when a GCR or Docker feed is created solely from the trigger's `registry` field, you must still verify that at least one deployment stage qualifies as deploying a Docker image before emitting the external feed trigger prompt. If all stages use `manifestArtifact.type: "gcs/object"` or `"github/file"`, omit the external feed trigger prompt regardless of how the feed was determined.
 
-**Negative example**: The following pipeline has a Docker trigger but all `deployManifest` stages use `manifestArtifact.type: "gcs/object"`. Because no stage qualifies as deploying a Docker image, the external feed trigger prompt **must NOT** be generated:
+**ABSOLUTE RULE — GCS/GitHub-only deployments never get an external feed trigger**: If every `deployManifest`, `runJobManifest`, and `runJob` stage in the pipeline uses `manifestArtifact.type: "gcs/object"` or `manifestArtifact.type: "github/file"` (and no `runJob` stage has a `containers[].imageDescription`), the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger.
+
+**Negative example**: The following pipeline has a Docker trigger but the only `deployManifest` stage uses `manifestArtifact.type: "gcs/object"`. Because no stage qualifies as deploying a Docker image, the external feed trigger prompt **must NOT** be generated:
 
 ```json
 {
@@ -267,6 +303,17 @@ Add a single external feed trigger that creates a new release for each step that
 ```
 
 The correct output for this pipeline has **no external feed trigger prompt**. Only a GCR feed creation prompt and the project creation prompt are produced.
+
+**WRONG output** (must never appear for this pipeline):
+```
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
+```
+
+**CORRECT output** (no external feed trigger line at all — the project prompt contains only the Kubernetes YAML step):
+```
+Create a project called "Deploy Workers" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Workers". Set the YAML Source to "Inline YAML"...
+```
 
 ## Pubsub Triggers
 
@@ -354,7 +401,9 @@ The following snippet is an example of a Slack notification in Spinnaker:
 ```
 
 * Only process notifications where the `level` property is `"pipeline"`. Notifications with `"level": "stage"` are stage-level and must be completely ignored — do not generate any Slack notification steps from them.
-* **IMPORTANT**: The `message.pipeline.starting.text`, `message.pipeline.failed.text`, and `message.pipeline.complete.text` values must be copied verbatim from the Spinnaker pipeline JSON into the `ssn_Message` property. Do not modify, truncate, redact, summarize, or reword the text in any way. Copy the exact string character-for-character.
+* **IMPORTANT**: The `message.pipeline.starting.text`, `message.pipeline.failed.text`, and `message.pipeline.complete.text` values must be copied verbatim from the Spinnaker pipeline JSON into the `ssn_Message` property. Do not modify, truncate, redact, summarize, or reword the text in any way. Copy the exact string character-for-character. In particular, do NOT add or remove trailing punctuation such as periods (`.`) — if the original text does not end with a period, the output must not end with a period either.
+
+  **Verbatim copy example**: If `message.pipeline.starting.text` is `"deployment started"` (no trailing period), the output MUST be `Set the "ssn_Message" property to "deployment started".` — NOT `Set the "ssn_Message" property to "deployment started.".` (with an added period).
 * A notification step is ONLY generated for an event if that event appears in the `when` array. If `pipeline.starting` is not in `when`, do not generate a Start step. If `pipeline.failed` is not in `when`, do not generate a Finish step. If `pipeline.complete` is not in `when`, do not generate a Complete step.
 * **CRITICAL**: The presence or absence of message text determines ONLY whether the `ssn_Message` property is included inside the step prompt — it does **NOT** determine whether the step itself is generated. If `pipeline.starting` is in `when`, always generate the Start step (with or without `ssn_Message`). If `pipeline.failed` is in `when`, always generate the Finish step. If `pipeline.complete` is in `when`, always generate the Complete step. Do NOT skip a step because its corresponding message text is missing or because only some events have message text defined.
 * When the `notifications` array contains multiple pipeline-level entries, each entry independently generates its own set of Start, Finish, and Complete steps. Process every entry in the array — do not stop at the first entry.
