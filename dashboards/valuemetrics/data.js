@@ -8,6 +8,7 @@
      GET /api                                        → Server info & version
      GET /api/spaces?take=100                        → All spaces
      GET /api/licenses/licenses-current-usage        → Per-space project/tenant/machine counts
+     GET /api/{spaceId}/teams/all                    → Teams (membership & scoping; needs TeamView)
      GET /api/{spaceId}/projects?take=1000           → Projects per space
      GET /api/{spaceId}/environments?take=100        → Environments per space
      GET /api/{spaceId}/environments/summary         → Machine / target health summary
@@ -179,6 +180,21 @@ const DashboardData = (() => {
       safeGet(`/api/${sid}/runbooks?take=0`),
     ]);
 
+    // Teams: use real errors (not safeGet) so we can tell 403 from “no teams”
+    let teams = [];
+    let teamsAccess = 'ok';
+    try {
+      const teamsRaw = await OctopusApi.get(`/api/${sid}/teams/all`);
+      teams = normalizeTeamsList(teamsRaw);
+    } catch (err) {
+      const st = err && err.status;
+      if (st === 401 || st === 403) teamsAccess = 'denied';
+      else {
+        teamsAccess = 'error';
+        log(`${space.Name}: teams fetch failed`, err.message || err);
+      }
+    }
+
     // Build project name lookup
     const projectNames = {};
     for (const p of (projects?.Items || [])) {
@@ -210,6 +226,8 @@ const DashboardData = (() => {
       machineHealth,
       releaseCount: releasesResp?.TotalResults || 0,
       runbookCount: runbooksResp?.TotalResults || 0,
+      teams,
+      teamsAccess,
     };
   }
 
@@ -223,6 +241,14 @@ const DashboardData = (() => {
       if (err.message && err.message.includes('deprecated')) return null;
       throw err;
     }
+  }
+
+  /** Normalize Octopus list responses (some `/all` routes return a raw array, others `{ Items }`). */
+  function normalizeTeamsList(raw) {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw.Items)) return raw.Items;
+    return [];
   }
 
   // ---- Aggregation / Summary ----
@@ -407,6 +433,53 @@ const DashboardData = (() => {
       hostingEnv: _licenseStatus?.HostingEnvironment,
     };
 
+    // Teams (per-space fetch in fetchSpaceData)
+    const teamRows = [];
+    let teamsAnyDenied = false;
+    let teamsAnyOkFetch = false;
+    let teamsAnyError = false;
+    for (const [spaceId, data] of Object.entries(_spaceData)) {
+      const acc = data.teamsAccess || 'ok';
+      if (acc === 'denied') teamsAnyDenied = true;
+      else if (acc === 'error') teamsAnyError = true;
+      else teamsAnyOkFetch = true;
+
+      const spaceName = data.space?.Name || spaceId;
+      for (const t of (data.teams || [])) {
+        const unrestricted = !t.ProjectIds || t.ProjectIds.length === 0;
+        const projSet = unrestricted ? null : new Set(t.ProjectIds);
+        let recentDeploysInScope = 0;
+        for (const d of (data.deployments || [])) {
+          if (unrestricted || projSet.has(d.ProjectId)) recentDeploysInScope++;
+        }
+        const scopedRoles = t.SpaceTeamScopedUserRoles || t.spaceTeamScopedUserRoles || [];
+        const roleN = Array.isArray(scopedRoles) ? scopedRoles.length : 0;
+        teamRows.push({
+          spaceId,
+          spaceName,
+          id: t.Id,
+          name: t.Name || '—',
+          memberCount: (t.MemberUserIds || []).length,
+          projectsLabel: unrestricted ? 'All projects' : String(t.ProjectIds.length),
+          envScopeLabel: (t.EnvironmentIds && t.EnvironmentIds.length) ? String(t.EnvironmentIds.length) : '—',
+          scopedRoles: roleN,
+          recentDeploysInScope,
+        });
+      }
+    }
+    teamRows.sort((a, b) => {
+      const s = (a.spaceName || '').localeCompare(b.spaceName || '');
+      if (s !== 0) return s;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+    const teamsInsight = {
+      rows: teamRows,
+      totalTeams: teamRows.length,
+      anyDenied: teamsAnyDenied,
+      anyOkFetch: teamsAnyOkFetch,
+      anyError: teamsAnyError,
+    };
+
     return {
       serverInfo: _serverInfo,
       lastFetch: _lastFetch,
@@ -451,6 +524,8 @@ const DashboardData = (() => {
       successCount: totalSuccessful,
       failedCount: totalFailed,
       cancelledCount: totalCancelled,
+
+      teamsInsight,
     };
   }
 

@@ -1325,12 +1325,133 @@ const Views = (() => {
   // ==================================================================
 
   function renderTeams(summary) {
-    // Teams data isn't available from the standard Octopus Deploy REST API endpoints
-    // we're using (Spaces, Projects, Deployments, Environments, Machines).
-    // Show a helpful placeholder with available activity data.
-
     const spaces = summary.spaceBreakdown || [];
     const totalDeploys = summary.kpi.totalDeployments;
+    const ti = summary.teamsInsight || {
+      rows: [],
+      totalTeams: 0,
+      anyDenied: false,
+      anyOkFetch: false,
+      anyError: false,
+    };
+
+    const permissionExplainer = `
+    <div class="card mb-lg">
+      <div class="card-body" style="text-align:center;padding:var(--space-xl) var(--space-lg);">
+        <div style="font-size:3rem;margin-bottom:var(--space-md);color:var(--colorTextTertiary);">
+          <i class="fa-solid fa-users"></i>
+        </div>
+        <h3 style="font:var(--textHeadingSmall);color:var(--colorTextPrimary);margin:0 0 var(--space-xs);">Team list blocked for this Octopus session</h3>
+        <div class="text-secondary" style="font:var(--textBodyRegularMedium);max-width:560px;margin:0 auto var(--space-md);line-height:1.55;text-align:left;">
+          <p style="margin:0 0 var(--space-sm);">
+            This dashboard calls <code style="font-size:0.9em;">GET /api/{spaceId}/teams/all</code> using your <strong>browser session</strong> to Octopus (cookies), not a separate API key.
+            If you see this message, Octopus returned 401/403 for team data: the <strong>user you are signed in as</strong> needs <strong>TeamView</strong> (and usually space access) for those spaces.
+          </p>
+          <p style="margin:0 0 var(--space-xs);font-weight:600;color:var(--colorTextPrimary);">Typical permissions</p>
+          <ul style="margin:0 0 var(--space-sm);padding-left:1.25rem;">
+            <li><strong>TeamView</strong> — list teams and membership (system and/or space scope).</li>
+            <li><strong>UserView</strong> — optional, for resolving member IDs to display names in other views.</li>
+            <li><strong>UserRoleView</strong> — optional, for role assignments on teams.</li>
+          </ul>
+          <p style="margin:0;font-size:0.92em;">Tip: open Octopus in the same browser, confirm you are logged in as the user you expect, then reload this dashboard.</p>
+        </div>
+        <div class="flex items-center gap-sm" style="justify-content:center;flex-wrap:wrap;">
+          <a href="https://octopus.com/docs/security/users-and-teams/default-permissions" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
+            <i class="fa-solid fa-external-link-alt"></i>
+            Default permissions (TeamView, etc.)
+          </a>
+          <a href="https://octopus.com/docs/octopus-rest-api" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
+            <i class="fa-solid fa-external-link-alt"></i>
+            REST API overview
+          </a>
+        </div>
+      </div>
+    </div>`;
+
+    let statusBlock = '';
+
+    if (ti.anyError && (ti.anyOkFetch || ti.anyDenied)) {
+      statusBlock += `
+      <div class="card mb-lg" style="border-color:var(--colorWarningBorder, #b8860b);">
+        <div class="card-body text-secondary" style="font:var(--textBodyRegularMedium);">
+          <strong style="color:var(--colorTextPrimary);">Some team requests failed.</strong>
+          Check the debug log (Ctrl+D) for errors; network or server issues can hide teams even when permissions are correct.
+        </div>
+      </div>`;
+    }
+
+    if (ti.totalTeams > 0) {
+      statusBlock += `
+      <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-users"></i> Teams</h2></div>
+      <div class="card mb-lg">
+        <div class="card-body" style="padding:0;">
+          <div class="table-wrapper">
+            <table>
+              <thead><tr>
+                <th>Space</th><th>Team</th><th>Members</th><th>Project scope</th><th>Env scopes</th><th>Role assignments</th>
+                <th data-tooltip="Deployments in the recent sample (200 per space) whose project falls in this team’s scope.">Recent deploys (sample)</th>
+              </tr></thead>
+              <tbody>
+                ${ti.rows.map(r => `<tr>
+                  <td class="text-secondary">${DOMPurify.sanitize(r.spaceName)}</td>
+                  <td>${DOMPurify.sanitize(r.name)}</td>
+                  <td class="monospace">${r.memberCount}</td>
+                  <td class="text-secondary">${DOMPurify.sanitize(r.projectsLabel)}</td>
+                  <td class="monospace">${r.envScopeLabel}</td>
+                  <td class="monospace">${r.scopedRoles}</td>
+                  <td class="monospace">${r.recentDeploysInScope}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    if (ti.anyDenied && ti.totalTeams > 0) {
+      statusBlock += `
+      <div class="card mb-lg">
+        <div class="card-body text-secondary" style="font:var(--textBodyRegularMedium);">
+          <strong style="color:var(--colorTextPrimary);">Partial access:</strong> at least one space returned 403 for teams. The table shows teams only from spaces where the request succeeded.
+        </div>
+      </div>`;
+    }
+
+    if (!ti.anyOkFetch && ti.anyDenied) {
+      statusBlock += permissionExplainer;
+    } else if (ti.anyOkFetch && ti.totalTeams === 0 && !ti.anyDenied) {
+      statusBlock += `
+      <div class="card mb-lg">
+        <div class="card-body text-center text-secondary" style="padding:var(--space-xl);font:var(--textBodyRegularMedium);">
+          <i class="fa-solid fa-users" style="font-size:2rem;display:block;margin-bottom:var(--space-md);color:var(--colorTextTertiary);"></i>
+          <strong style="color:var(--colorTextPrimary);">No teams in the active spaces we loaded.</strong>
+          <p style="margin:var(--space-sm) 0 0;">Spaces without projects or targets may be excluded; add teams in Octopus or widen scope if you expected to see them here.</p>
+        </div>
+      </div>`;
+    } else if (ti.anyOkFetch && ti.totalTeams === 0 && ti.anyDenied) {
+      statusBlock += permissionExplainer;
+      statusBlock += `
+      <div class="card mb-lg">
+        <div class="card-body text-secondary" style="font:var(--textBodyRegularMedium);">
+          Where teams were readable, there were no team records—combined with 403s on other spaces this often means a permission scope issue rather than an empty org.
+        </div>
+      </div>`;
+    } else if (!ti.anyOkFetch && !ti.anyDenied && ti.anyError) {
+      statusBlock += `
+      <div class="card mb-lg">
+        <div class="card-body text-secondary" style="font:var(--textBodyRegularMedium);">
+          <strong style="color:var(--colorTextPrimary);">Could not load teams.</strong>
+          Octopus did not return usable team payloads (non-auth failure). Open the debug log (Ctrl+D), verify connectivity to your Octopus URL, and reload.
+        </div>
+      </div>`;
+    } else if (!ti.anyOkFetch && !ti.anyDenied && !ti.anyError) {
+      statusBlock += `
+      <div class="card mb-lg">
+        <div class="card-body text-center text-secondary" style="padding:var(--space-xl);font:var(--textBodyRegularMedium);">
+          No per-space team requests ran (no active spaces in this summary). Load the dashboard from a connected Octopus instance with at least one active space.
+        </div>
+      </div>`;
+    }
 
     return `
     <div class="page-header">
@@ -1338,24 +1459,9 @@ const Views = (() => {
       <p class="page-subtitle">Team-level deployment activity and ownership insights.</p>
     </div>
 
-    <div class="card mb-lg">
-      <div class="card-body" style="text-align:center;padding:var(--space-xl) var(--space-lg);">
-        <div style="font-size:3rem;margin-bottom:var(--space-md);color:var(--colorTextTertiary);">
-          <i class="fa-solid fa-users"></i>
-        </div>
-        <h3 style="font:var(--textHeadingSmall);color:var(--colorTextPrimary);margin:0 0 var(--space-xs);">Team data requires additional API access</h3>
-        <p class="text-secondary" style="font:var(--textBodyRegularMedium);max-width:500px;margin:0 auto var(--space-md);line-height:1.5;">
-          The Octopus Deploy Teams API requires specific permissions to access team membership and project ownership data.
-          Below is a space-level activity breakdown as a proxy for team activity.
-        </p>
-        <a href="https://octopus.com/docs/octopus-rest-api" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
-          <i class="fa-solid fa-external-link-alt"></i>
-          Octopus REST API Docs
-        </a>
-      </div>
-    </div>
+    ${statusBlock}
 
-    <!-- Space-level activity as team proxy -->
+    <!-- Space-level activity -->
     <div class="section-header"><h2 class="section-title"><i class="fa-solid fa-cubes"></i> Activity by Space</h2></div>
     <div class="card">
       <div class="card-body" style="padding:0;">
