@@ -25,6 +25,14 @@ const Views = (() => {
     return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
+  function _escapeAttr(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   /** Deployment success–rate tier for the selected dashboard period (not target/machine health). */
   function healthBadge(rate, hasDeployments) {
     if (rate >= 95) {
@@ -330,7 +338,8 @@ const Views = (() => {
         <span class="text-tertiary license-card-version" id="server-version"></span>
       </div>
       <div id="license-ptm" class="license-ptm" aria-label="Licensed usage: projects, tenants, machines"></div>
-    </div>`;
+    </div>
+`;
   }
 
   /** Wire up Overview-specific event listeners after HTML is inserted */
@@ -479,6 +488,27 @@ const Views = (() => {
           </table>
         </div>
       </div>
+    </div>
+    </div>
+
+    <!-- Environment spaces modal -->
+    <div class="modal-overlay" id="env-spaces-modal" aria-hidden="true" role="presentation">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="env-spaces-modal-title">
+        <div class="modal-header">
+          <h3 class="modal-title" id="env-spaces-modal-title">
+            <i class="fa-solid fa-layer-group"></i>
+            Spaces for <span id="env-spaces-modal-envname"></span>
+          </h3>
+          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-close" type="button">
+            <i class="fa-solid fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body" id="env-spaces-modal-body"></div>
+        <div class="modal-footer">
+          <span class="text-tertiary" id="env-spaces-modal-meta"></span>
+          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-done" type="button">Close</button>
+        </div>
+      </div>
     </div>`;
   }
 
@@ -606,6 +636,26 @@ const Views = (() => {
             <div class="deployment-trend-axis-label${useDailyBars ? ' deployment-trend-axis-label--dense' : ''}">${b.label}</div>
           </div>`;
         }).join('')}
+      </div>
+    </div>
+
+    <!-- Environment spaces modal -->
+    <div class="modal-overlay" id="env-spaces-modal" aria-hidden="true" role="presentation">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="env-spaces-modal-title">
+        <div class="modal-header">
+          <h3 class="modal-title" id="env-spaces-modal-title">
+            <i class="fa-solid fa-layer-group"></i>
+            Spaces for <span id="env-spaces-modal-envname"></span>
+          </h3>
+          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-close" type="button">
+            <i class="fa-solid fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body" id="env-spaces-modal-body"></div>
+        <div class="modal-footer">
+          <span class="text-tertiary" id="env-spaces-modal-meta"></span>
+          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-done" type="button">Close</button>
+        </div>
       </div>
     </div>`;
   }
@@ -1189,6 +1239,63 @@ const Views = (() => {
     // Build richer environment data with categorisation
     const envGroups = { production: [], staging: [], dev: [] };
 
+    const SPACES_PREVIEW_LIMIT = 4;
+
+    const spaceNameToId = new Map();
+    const envIdBySpaceAndName = new Map(); // `${spaceId}::${envName}` → envId
+
+    // Build environment deep-link ids so we can open environments in Octopus.
+    for (const [spaceId, sd] of Object.entries(allSpaceData || {})) {
+      const spaceName = sd?.space?.Name || spaceId;
+      spaceNameToId.set(spaceName, spaceId);
+
+      for (const env of (sd?.environments || [])) {
+        if (!env?.Id || !env?.Name) continue;
+        envIdBySpaceAndName.set(`${spaceId}::${env.Name}`, env.Id);
+      }
+    }
+
+    function octopusEnvUrl(envName, spaceName) {
+      const spaceId = spaceNameToId.get(spaceName);
+      if (!spaceId) return null;
+      const envId = envIdBySpaceAndName.get(`${spaceId}::${envName}`);
+      if (!envId) return null;
+
+      const root = (typeof OctopusApi?.getInstanceUrl === 'function') ? OctopusApi.getInstanceUrl() : '';
+      if (!root) return null;
+
+      return `${root}/app#/${encodeURIComponent(spaceId)}/infrastructure/environments/${encodeURIComponent(envId)}`;
+    }
+
+    function renderOctopusEnvLink(envName, spaces) {
+      const list = Array.isArray(spaces) ? spaces.slice() : [];
+      if (!list.length) return '';
+
+      // Choose first space deterministically (spaces in envHealth are a Set so order is not stable).
+      list.sort((a, b) => String(a).localeCompare(String(b)));
+      const spaceName = list[0];
+      const url = octopusEnvUrl(envName, spaceName);
+      if (!url) return '';
+
+      return `<a class="env-octopus-link text-tertiary" href="${url}" target="_blank" rel="noopener noreferrer" data-tooltip="${_tooltipAttr('Open this environment in Octopus (in the selected space)')}">
+        <span class="env-octopus-link-label">Open in Octopus</span>
+        <span class="env-octopus-link-arrow" aria-hidden="true">&rarr;</span>
+      </a>`;
+    }
+
+    function renderSpacesPreview(envName, spaces) {
+      const allSpaces = Array.isArray(spaces) ? spaces : [];
+      if (allSpaces.length === 0) return '<span class="text-tertiary">No spaces</span>';
+
+      const preview = allSpaces.slice(0, SPACES_PREVIEW_LIMIT);
+      const remaining = allSpaces.length - preview.length;
+
+      const previewHtml = preview.map(s => DOMPurify.sanitize(String(s))).join(', ');
+      if (remaining <= 0) return previewHtml;
+
+      return `${previewHtml} <button class="env-spaces-more view-env-spaces" data-env-name="${_escapeAttr(envName)}" type="button"><span>+${remaining} more</span><span class="env-spaces-more-arrow" aria-hidden="true">→</span></button>`;
+    }
+
     for (const env of envHealth) {
       const cls = guessEnvClass(env.name);
       const entry = {
@@ -1249,11 +1356,14 @@ const Views = (() => {
               </div>
               <div class="env-detail-footer">
                 <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">
-                  <i class="fa-solid fa-cubes"></i> ${e.spaces.length} space${e.spaces.length !== 1 ? 's' : ''}: ${e.spaces.join(', ')}
+                  <i class="fa-solid fa-cubes"></i> ${e.spaces.length} space${e.spaces.length !== 1 ? 's' : ''}: ${renderSpacesPreview(e.name, e.spaces)}
                 </span>
               </div>
               <div style="margin-top:var(--space-xs);">
                 <div class="progress-bar" style="width:100%;"><div class="progress-fill ${e.successRate >= 90 ? 'success' : e.successRate >= 70 ? 'warning' : 'danger'}" style="width:${e.successRate}%;"></div></div>
+              </div>
+              <div style="margin-top:var(--space-sm);">
+                ${renderOctopusEnvLink(e.name, e.spaces)}
               </div>
             </div>
           `).join('')}
@@ -1264,6 +1374,26 @@ const Views = (() => {
     <div class="page-header">
       <h1 class="page-title">Environments</h1>
       <p class="page-subtitle">Environment health, deployment success rates, and target health grouped by type.</p>
+    </div>
+
+    <!-- Environment spaces modal -->
+    <div class="modal-overlay" id="env-spaces-modal" aria-hidden="true" role="presentation">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="env-spaces-modal-title">
+        <div class="modal-header">
+          <h3 class="modal-title" id="env-spaces-modal-title">
+            <i class="fa-solid fa-layer-group"></i>
+            Spaces for <span id="env-spaces-modal-envname"></span>
+          </h3>
+          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-close" type="button">
+            <i class="fa-solid fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body" id="env-spaces-modal-body"></div>
+        <div class="modal-footer">
+          <span class="text-tertiary" id="env-spaces-modal-meta"></span>
+          <button class="btn btn-secondary btn-sm" id="env-spaces-modal-done" type="button">Close</button>
+        </div>
+      </div>
     </div>
 
     <div class="kpi-grid mb-lg">
@@ -1303,12 +1433,13 @@ const Views = (() => {
       <div class="card-body" style="padding:0;">
         <div class="table-wrapper">
           <table>
-            <thead><tr><th>Environment</th><th>Type</th><th>Spaces</th><th>Deployments</th><th>Success Rate</th><th data-tooltip="Deployment success tier for the selected time range (not target machine health). Hover each badge for Healthy, Attention, Warning, and No data.">Health</th></tr></thead>
+            <thead><tr><th>Environment</th><th>Type</th><th>Spaces</th><th>Octopus</th><th>Deployments</th><th>Success Rate</th><th data-tooltip="Deployment success tier for the selected time range (not target machine health). Hover each badge for Healthy, Attention, Warning, and No data.">Health</th></tr></thead>
             <tbody>
               ${envHealth.map(e => `<tr>
                 <td><span class="env-tag ${guessEnvClass(e.name)}">${DOMPurify.sanitize(e.name)}</span></td>
                 <td class="text-secondary">${guessEnvClass(e.name).charAt(0).toUpperCase() + guessEnvClass(e.name).slice(1)}</td>
-                <td class="text-secondary">${e.spaces.join(', ')}</td>
+                <td class="text-secondary">${renderSpacesPreview(e.name, e.spaces)}</td>
+                <td>${renderOctopusEnvLink(e.name, e.spaces)}</td>
                 <td class="monospace">${e.total}</td>
                 <td><div class="flex items-center gap-xs"><div class="progress-bar" style="width:60px;"><div class="progress-fill ${e.successRate >= 90 ? 'success' : e.successRate >= 70 ? 'warning' : 'danger'}" style="width:${e.successRate}%;"></div></div><span class="text-secondary">${e.successRate}%</span></div></td>
                 <td>${healthBadge(e.successRate, e.total > 0)}</td>
@@ -1318,6 +1449,91 @@ const Views = (() => {
         </div>
       </div>
     </div>`;
+  }
+
+  function wireEnvironmentsEvents(summary) {
+    const overlay = document.getElementById('env-spaces-modal');
+    if (!overlay) return;
+
+    const closeBtn = document.getElementById('env-spaces-modal-close');
+    const doneBtn = document.getElementById('env-spaces-modal-done');
+    const body = document.getElementById('env-spaces-modal-body');
+    const envNameEl = document.getElementById('env-spaces-modal-envname');
+    const metaEl = document.getElementById('env-spaces-modal-meta');
+
+    const envHealth = summary?.envHealth || [];
+    const envSpacesByName = new Map(envHealth.map(e => [e.name, e.spaces || []]));
+
+    function close() {
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+
+    function open(envName) {
+      const spaces = envSpacesByName.get(envName) || [];
+      envNameEl.textContent = envName;
+      metaEl.textContent = `${spaces.length} space${spaces.length !== 1 ? 's' : ''}`;
+
+      body.innerHTML = spaces.length
+        ? `
+          <div style="margin-bottom:var(--space-sm);">
+            <div class="view-search-wrapper" style="max-width:100%;padding:var(--space-xs) var(--space-sm);">
+              <i class="fa-solid fa-search text-tertiary"></i>
+              <input type="text" id="env-spaces-search-input" class="view-search-input" placeholder="Search spaces...">
+            </div>
+          </div>
+          <div class="env-spaces-grid" id="env-spaces-grid">
+            ${spaces
+              .slice()
+              .sort((a, b) => String(a).localeCompare(String(b)))
+              .map(s => {
+                const name = String(s);
+                const needle = name.toLowerCase();
+                return `<span class="badge neutral env-space-pill" data-space-name="${_escapeAttr(needle)}">${DOMPurify.sanitize(name)}</span>`;
+              })
+              .join('')}
+          </div>`
+        : `<div class="text-tertiary">No spaces</div>`;
+
+      overlay.setAttribute('aria-hidden', 'false');
+      closeBtn?.focus?.();
+
+      const input = document.getElementById('env-spaces-search-input');
+      if (input) {
+        input.addEventListener('input', () => {
+          const q = input.value.toLowerCase().trim();
+          const grid = document.getElementById('env-spaces-grid');
+          if (!grid) return;
+
+          grid.querySelectorAll('.env-space-pill').forEach(pill => {
+            const name = pill.dataset.spaceName || '';
+            pill.style.display = !q || name.includes(q) ? '' : 'none';
+          });
+        });
+      }
+    }
+
+    document.querySelectorAll('.view-env-spaces[data-env-name]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        open(btn.dataset.envName || '');
+      });
+    });
+
+    closeBtn?.addEventListener('click', close);
+    doneBtn?.addEventListener('click', close);
+    overlay?.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+
+    if (!wireEnvironmentsEvents._escInstalled) {
+      wireEnvironmentsEvents._escInstalled = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const modal = document.getElementById('env-spaces-modal');
+        if (!modal) return;
+        if (modal.getAttribute('aria-hidden') === 'true') return;
+        document.getElementById('env-spaces-modal-close')?.click?.();
+      });
+    }
   }
 
 
@@ -1509,6 +1725,7 @@ const Views = (() => {
     renderProjects,
     wireProjectsEvents,
     renderEnvironments,
+    wireEnvironmentsEvents,
     renderTeams,
   };
 

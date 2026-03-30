@@ -1045,6 +1045,15 @@ tbody tr:last-child td {
   transform: translateY(12px);
 }
 
+/* Environments modal: avoid any slide/transform animation (backdrop fade only) */
+.modal-overlay#env-spaces-modal .modal {
+  transform: none;
+  transition: none;
+}
+.modal-overlay#env-spaces-modal[aria-hidden="true"] .modal {
+  transform: none;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -1938,6 +1947,74 @@ tbody tr:last-child td {
 
 .env-detail-footer {
   margin-top: var(--space-sm);
+}
+
+/* ---- Environment card links ---- */
+.env-octopus-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  font: var(--textBodyRegularXSmall);
+}
+
+.env-octopus-link-label {
+  white-space: nowrap;
+}
+
+.env-octopus-link-arrow {
+  opacity: 0.9;
+}
+
+/* ---- Environment spaces preview "+N more" ---- */
+.env-spaces-more {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  vertical-align: middle;
+  text-decoration: none;
+}
+
+.env-spaces-more:hover .env-spaces-more-arrow {
+  opacity: 1;
+}
+
+.env-spaces-more-arrow {
+  opacity: 0.85;
+}
+
+.env-spaces-more:focus-visible {
+  outline: 2px solid var(--colorBorderActive);
+  outline-offset: 2px;
+  border-radius: var(--radiusSmall);
+}
+
+/* ---- Environment spaces modal (compact grid + pills) ---- */
+.modal-overlay#env-spaces-modal .view-search-wrapper {
+  background: var(--colorBackgroundPrimaryDefault);
+}
+
+.modal-overlay#env-spaces-modal .env-spaces-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-xxs) var(--space-sm);
+  align-items: start;
+}
+
+.modal-overlay#env-spaces-modal .env-space-pill {
+  justify-self: start;
+}
+
+.modal-overlay#env-spaces-modal .badge {
+  font: var(--textBodyRegularXSmall);
+  padding: 0.1rem 0.45rem;
 }
 
 /* ---- View Search Input (Projects view) ---- */
