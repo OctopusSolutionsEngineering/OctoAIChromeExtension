@@ -260,6 +260,43 @@ The **CORRECT** output (registry host extracted from `payloadConstraints.tag`, N
 Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
 ```
 
+**CRITICAL — when `expectedArtifacts` has BOTH `gcs/object` AND `docker/image` entries, ONLY the `docker/image` entries determine feeds; the Docker trigger's `registry` field is STILL ignored**: Even when `expectedArtifacts` has a MIX of types (both `gcs/object` and `docker/image` entries), the ONLY feed sources are the `docker/image` entries in `expectedArtifacts`. The Docker trigger's `registry` field must still be completely ignored — it is NOT used as a fallback even when `expectedArtifacts` also contains non-docker entries.
+
+**Negative example — GCR feed incorrectly created from Docker trigger when `expectedArtifacts` has mixed `gcs/object` + `docker/image` entries (COMMON MISTAKE)**:
+
+Given a pipeline with:
+```json
+{
+  "expectedArtifacts": [
+    {
+      "defaultArtifact": { "reference": "gs://example-bucket/storage-0113", "type": "gcs/object" },
+      "id": "gcs-artifact-id"
+    },
+    {
+      "matchArtifact": { "name": "registry.example.invalid/image-0037", "type": "docker/image" },
+      "id": "docker-artifact-id"
+    }
+  ],
+  "triggers": [
+    { "registry": "gcr.io", "type": "docker", "enabled": false }
+  ]
+}
+```
+
+The **WRONG** output (GCR feed incorrectly created from Docker trigger — the presence of `gcs/object` entries does NOT activate the Docker trigger's registry fallback):
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+
+---
+
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
+
+The **CORRECT** output (ONE feed ONLY from the `docker/image` entry; GCR feed from the Docker trigger is NOT created):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
+
 # Base Project Prompt
 
 This is an example of a pipeline in Spinnaker:
@@ -343,6 +380,19 @@ If the `disabled` property of the Spinnaker pipeline is `true`, add the followin
 If the `disabled` property is `false`, absent, or `null`, do **NOT** add `* The project must be disabled.` — only add this line when `disabled` is explicitly `true`.
 
 **IMPORTANT**: The `disabled` property must only be read from the top-level pipeline JSON object. Do not infer project disabled status from any other field (e.g., trigger `enabled` state, stage state, or presence of other flags). A pipeline JSON that has no `disabled` key at all must produce a project that is **not** disabled.
+
+**Negative example — `disabled: true` incorrectly inferred from Docker trigger `enabled: false` (COMMON MISTAKE)**:
+
+A pipeline may have one or more triggers with `"enabled": false`. This means those triggers are disabled — NOT the project. Given a pipeline with no top-level `"disabled": true` but with a trigger where `"enabled": false`, the following output is **WRONG**:
+```
+* The project must be disabled.
+```
+← WRONG: The project must NOT be disabled just because a trigger has `"enabled": false`. The disabled flag must come ONLY from `"disabled": true` at the **top level** of the pipeline JSON object.
+
+The **CORRECT** output for a pipeline with `"triggers": [{"type": "docker", "enabled": false}]` but no top-level `"disabled": true` (the disabled line is simply absent):
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+```
 
 **CRITICAL — do NOT infer disabled status from `parameterConfig` variable names or values**: A pipeline may contain `parameterConfig` entries with names like `cronjob_suspend` or values of `"false"`. These are deployment parameters — they have NOTHING to do with whether the Octopus project itself is disabled. The only source of truth for project disabled status is presence of `"disabled": true` at the **top level** of the pipeline JSON object.
 
@@ -1565,6 +1615,45 @@ The following stage types represent Spinnaker-internal operations or metadata lo
 
 **IMPORTANT**: If a pipeline has only ignored stages (e.g., only `findArtifactFromExecution` and `checkPreconditions` stages), the project creation prompt must still be generated with no steps (use `"with no steps"` in the project prompt). Do not omit the project creation prompt just because all stages are of ignored types.
 
+**CRITICAL — stages depending on an ignored stage use that ignored stage's predecessors as their effective dependency**: When performing topological sort, ignored stages are removed from the dependency graph entirely. Any stage that directly depends on an ignored stage must be treated as if that ignored stage's own `requisiteStageRefIds` are its dependencies instead. This preserves the full dependency chain through the removed stage.
+
+**Example**: If stage 5 (`checkPreconditions`, ignored) has `requisiteStageRefIds: ["4"]`, then any stage with `requisiteStageRefIds: ["5"]` should be treated as having `requisiteStageRefIds: ["4"]` for ordering purposes — as though stage 5 never existed.
+
+**ABSOLUTE RULE — every non-ignored stage MUST appear in the output exactly once**: Before finalizing the output, verify that every stage in the pipeline's `stages` array that is NOT an ignored type is represented by exactly one step. Silently omitting a non-ignored stage is a critical error, even when that stage is deep in a dependency chain that passes through an ignored stage.
+
+**Negative example — non-ignored stages dropped when dependency chain passes through an ignored stage (COMMON MISTAKE)**:
+
+Given a pipeline where `checkPreconditions` (refId 5, ignored) sits in the chain between stages 4 and 7:
+
+| refId | type | requisiteStageRefIds |
+|---|---|---|
+| 2 | manualJudgment | `["9"]` |
+| 3 | deployManifest | `["2"]` |
+| 4 | manualJudgment | `["3"]` |
+| 5 | checkPreconditions **(SKIP)** | `["4"]` |
+| 6 | deleteManifest | `["4"]` |
+| 7 | manualJudgment | `["5"]` → effectively `["4"]` since 5 is skipped |
+| 8 | deployManifest | `["7"]` |
+
+The **WRONG** output (stages 3 and 4 silently dropped — FORBIDDEN):
+```
+* Add a "Manual Intervention" step ... (refId 2) ✓
+* Add a "Run a kubectl script" step ... (refId 6) ✗ WRONG: placed before stages 3 and 4 appear
+* Add a "Manual Intervention" step ... (refId 7) ✗
+* Add a "Deploy Kubernetes YAML" step ... (refId 8) ✗
+[stages 3 and 4 are MISSING — they were silently dropped]
+```
+
+The **CORRECT** output (ALL non-ignored stages included in proper dependency order):
+```
+* Add a "Manual Intervention" step ... (refId 2)
+* Add a "Deploy Kubernetes YAML" step ... (refId 3) ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Manual Intervention" step ... (refId 4) ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Run a kubectl script" step ... (refId 6) ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Manual Intervention" step ... (refId 7) ... Set the start trigger to "Run in parallel with the previous step".  ← effectively depends on 4 (since 5 is ignored); parallel with 6
+* Add a "Deploy Kubernetes YAML" step ... (refId 8) ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+
 ## Unknown Stage Types
 
 If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
@@ -1964,6 +2053,30 @@ The **CORRECT** output (refId 2 promoted to first; refId 1 gets `Wait for all pr
 
 **KEY RULE**: When the topological sort changes ANY stage's position relative to its JSON array position, ALL stages that follow the root must receive `Set the start trigger to "Wait for all previous steps to complete, then start"`. Never output a pipeline where stages are in the correct topological order but annotations are absent.
 
+**Negative example — correct topological order but annotation missing on dependent stage (VERY COMMON MISTAKE)**:
+
+Given a 2-stage pipeline where JSON order is reversed from execution order:
+
+| JSON position | refId | requisiteStageRefIds | type |
+|---|---|---|---|
+| 1 | 1 | `["2"]` | deployManifest |
+| 2 | 2 | `[]` | deleteManifest |
+
+Topological order: refId 2 (root, `[]`) → refId 1 (depends on 2). This DIFFERS from JSON order (refId 1 appears first in JSON but must execute second).
+
+The **WRONG** output (correct order, but annotation is MISSING on the dependent stage — FORBIDDEN):
+```
+* Add a "Run a kubectl script" step ... "Delete -Manifest-" ...    ← refId 2, root ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -Manifest-" ...  ← refId 1, WRONG: no annotation
+```
+← WRONG: refId 1 depends on refId 2 AND its position changed relative to JSON order, so `Set the start trigger to "Wait for all previous steps to complete, then start"` MUST be appended.
+
+The **CORRECT** output (reordered AND annotation added to the dependent stage):
+```
+* Add a "Run a kubectl script" step ... "Delete -Manifest-" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -Manifest-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+
 **Worked example — reversed JSON order WITH a Slack Notification - Start step**:
 
 A preceding notification step does NOT cancel the topological reorder annotation requirements. When a pipeline has a `pipeline.starting` Slack notification AND stages that require topological reordering, both rules apply simultaneously: the notification comes first, AND the `Wait for all previous steps to complete, then start` annotation is added to the reordered deployment stages.
@@ -2317,6 +2430,23 @@ The replacement only fires when producing a `Set the target tag to ...` instruct
 * **Variable values**: Every value copied into `Add a project variable called "<name>" with the value "<value>"` must be the literal string from the pipeline JSON — never replaced with `*****` or any other placeholder.
 * **Parameter defaults and descriptions**: The `default`, `description`, and `label` fields copied from `parameterConfig` entries must be verbatim — do not redact or modify them.
 * **Step names**: Step names must be unique. Append a number to the name of steps with the same name to make them unique.
+
+**CRITICAL — duplicate step names arise when multiple Spinnaker stages have the same `name` value**: After the name transformation rules are applied (replacing special characters with dashes), if two or more steps would result in the same name, the FIRST occurrence keeps the base name; the SECOND gets suffix ` 2`; the THIRD gets suffix ` 3`; and so on. You MUST check all step names for uniqueness before finalizing the output.
+
+**Negative example — duplicate step names not made unique (COMMON MISTAKE)**:
+
+Given two `deployManifest` stages that both have `"name": "Deploy (Manifest)"`, the following output is **WRONG**:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". ...
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". ...
+```
+← WRONG: Both steps share the same name `"Deploy -Manifest-"` — duplicate names are not allowed.
+
+The **CORRECT** output (second occurrence gets a numeric suffix):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". ...
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest- 2". ...
+```
 
 Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` appearing in ANY of these fields are legitimate service/component identifiers — they are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
 
