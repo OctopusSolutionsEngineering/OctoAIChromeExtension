@@ -178,7 +178,36 @@ Create a project called "my-service deploy to dev" in the "Default Project Group
 * Add a "Deploy Kubernetes YAML" step...
 ```
 
-* **IMPORTANT**: Feed prompts are ONLY generated from `expectedArtifacts[].matchArtifact.type == "docker/image"` entries or from Docker/Pubsub trigger `registry` fields. The `manifestArtifact` property on individual stages (regardless of its `type`) does NOT generate any feed prompt. In particular, `manifestArtifact` entries with `"type": "gcs/object"` or `"type": "github/file"` must NEVER trigger feed creation — those are artifact source types for the Kubernetes manifest itself, not Docker container registries.
+* **IMPORTANT**: Feed prompts are ONLY generated from `expectedArtifacts[].matchArtifact.type == "docker/image"` entries, from Docker trigger `registry` fields, OR from the registry host embedded in Pubsub trigger `payloadConstraints.tag` values. The `manifestArtifact` property on individual stages (regardless of its `type`) does NOT generate any feed prompt. In particular, `manifestArtifact` entries with `"type": "gcs/object"` or `"type": "github/file"` must NEVER trigger feed creation — those are artifact source types for the Kubernetes manifest itself, not Docker container registries.
+
+**CRITICAL — Google Cloud Storage (GCS) paths MUST NEVER be used as Docker registry feed URLs**: GCS paths begin with `gs://` and have the format `gs://<bucket>/<path>`. The bucket name (e.g., `example-bucket` in `gs://example-bucket/storage-0052`) is a Google Cloud Storage bucket identifier — it is NOT a Docker registry hostname and MUST NEVER be used as a feed URL. If you see a `gs://` path anywhere in the pipeline JSON (`expectedArtifacts`, `manifestArtifact`, `manifestArtifactId`-resolved entries, etc.), treat it purely as a Kubernetes manifest source — never derive a Docker feed URL from it.
+
+**Negative example — GCS bucket name extracted as Docker registry (FORBIDDEN)**:
+
+Given a pipeline with `expectedArtifacts` containing only `gcs/object` entries and a Pubsub trigger:
+```json
+{
+  "expectedArtifacts": [
+    {
+      "defaultArtifact": { "reference": "gs://example-bucket/storage-0052", "type": "gcs/object" },
+      "matchArtifact": { "reference": "gs://example-bucket/storage-0052", "type": "gcs/object" }
+    }
+  ],
+  "triggers": [
+    { "type": "pubsub", "payloadConstraints": { "tag": "registry.example.invalid/image-0022" } }
+  ]
+}
+```
+
+The **WRONG** output (bucket name incorrectly used as feed URL — FORBIDDEN):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://example-bucket".
+```
+
+The **CORRECT** output (registry host extracted from `payloadConstraints.tag`, NOT from the GCS path):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
 
 # Base Project Prompt
 
@@ -507,6 +536,51 @@ The following snippet is an example of a Google Pub/Sub trigger in Spinnaker tha
 ```
 
 * When a `pubsub` trigger has a `payloadConstraints.tag` value that references a Docker image, treat it as equivalent to a Docker trigger.
+
+**CRITICAL — Pubsub feed URL MUST be extracted from `payloadConstraints.tag`, NOT from any `registry` field**: Unlike Docker triggers, Pubsub triggers have NO `registry` field. The Docker registry for a Pubsub trigger is derived from `payloadConstraints.tag`, which is a full Docker image reference in the format `<registry-host>/<image-path>`. Extract ONLY the hostname (the part before the first `/`) to form the feed URL. For example:
+* `payloadConstraints.tag: "registry.example.invalid/image-0022"` → registry host: `registry.example.invalid` → feed URL: `https://registry.example.invalid` → `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".`
+* `payloadConstraints.tag: "gcr.io/my-project/my-image"` → registry host: `gcr.io` → GCR feed: `Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".`
+
+**CRITICAL — when Docker and Pubsub triggers reference DIFFERENT registries, create SEPARATE feed sections**: If a pipeline has both a Docker trigger (`registry: "gcr.io"`) AND a Pubsub trigger (`payloadConstraints.tag: "registry.example.invalid/image-0022"`), these are TWO different registries and each requires its own feed section separated by `---`.
+
+**Worked example — Docker trigger (gcr.io) AND Pubsub trigger (registry.example.invalid) with gcs/object-only expectedArtifacts**:
+
+```json
+{
+  "expectedArtifacts": [
+    {
+      "defaultArtifact": { "reference": "gs://example-bucket/storage-0052", "type": "gcs/object" },
+      "matchArtifact": { "type": "gcs/object" }
+    }
+  ],
+  "triggers": [
+    { "type": "docker", "registry": "gcr.io", "enabled": false },
+    { "type": "pubsub", "payloadConstraints": { "tag": "registry.example.invalid/image-0022" }, "enabled": true }
+  ],
+  "stages": [
+    { "type": "deployManifest", "manifestArtifact": { "type": "gcs/object", "reference": "gs://example-bucket/storage-0052" }, "name": "Deploy to dev" }
+  ]
+}
+```
+
+The **CORRECT** output (two feed sections — one per unique registry, GCS path is NEVER a feed URL):
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+
+---
+
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+
+---
+
+Create a project called "<pipeline name>" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step...
+```
+
+The **WRONG** output (single feed with GCS bucket as URL — FORBIDDEN):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://example-bucket".
+```
 * If a pipeline already has a Docker trigger that produces an external feed trigger prompt, do not add a second external feed trigger prompt for the pubsub trigger — they combine into a single prompt:
 
 ```
@@ -679,9 +753,16 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 
 **CRITICAL — parentheses in stage names MUST NOT be converted to underscores**: A stage named `"Deploy (Manifest)"` in Spinnaker MUST produce a step named exactly `"Deploy (Manifest)"` in the output prompt. It MUST NOT produce `"Deploy _Manifest_"` or `"Deploy Manifest"` or any other modified form. The Octopus AI assistant that receives the generated prompt may convert parentheses to underscores when creating steps — to prevent this, after the step name in the output prompt, append the following literal note: ` (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets)`.
 
+**ABSOLUTE RULE — underscores may NEVER substitute for parentheses in step names**: `(` and `)` must appear as `(` and `)` in the step name. They must NEVER be replaced with `_`, `__`, or removed. This is true for ALL stage types (`deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`).
+
 **WRONG** output (parentheses converted to underscores — this is a COMMON mistake):
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_".
+```
+
+**ALSO WRONG** (parentheses stripped entirely):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Manifest".
 ```
 
 **CORRECT** output (parentheses preserved, with explicit note):
@@ -812,6 +893,20 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 
 * Replace `<stage name>` with the `name` property of the stage.
 * Replace `<instructions>` with the `instructions` property of the stage. If the `instructions` property is absent or empty, use `"Please review and approve."` as the default instructions text.
+
+**IMPORTANT — Spinnaker SpEL expressions in `instructions`**: Spinnaker's pipeline expression language uses the syntax `${ ... }` (e.g., `${ trigger['tag'] }`, `${ parameters['key'] }`, `${execution.name}`). These expressions are Spinnaker-specific and do NOT evaluate in Octopus Deploy. When the `instructions` property contains such patterns, copy the text verbatim AND append a parenthetical note so the operator knows to convert them. For example:
+
+**Original Spinnaker instructions**: `"Image: ${ trigger['tag'] }"`
+
+**WRONG** (copied verbatim with no warning — the expression will not evaluate in Octopus):
+```
+Set the instructions to "Image: ${ trigger['tag'] }".
+```
+
+**CORRECT** (verbatim copy with conversion notice appended):
+```
+Set the instructions to "Image: ${ trigger['tag'] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)".
+```
 
 ## Kubernetes Run Job Stage
 
@@ -1423,5 +1518,26 @@ NOT:
 The replacement only fires when producing a `Set the target tag to ...` instruction from a stage's `account` property.
 
 # Final Instructions
+
+**CRITICAL — do NOT redact or anonymize ANY property value copied from the Spinnaker pipeline JSON.** This rule applies globally to every part of the generated prompt. Specifically:
+
+* **Project names**: The project name in `Create a project called "<name>"...` must be the exact verbatim value of the pipeline `name` property — including any component/service names like `api-server`, `auth-service`, `worker`, `backend`, etc.
+* **Variable values**: Every value copied into `Add a project variable called "<name>" with the value "<value>"` must be the literal string from the pipeline JSON — never replaced with `*****` or any other placeholder.
+* **Parameter defaults and descriptions**: The `default`, `description`, and `label` fields copied from `parameterConfig` entries must be verbatim — do not redact or modify them.
+* **Stage names and step names**: A stage `name` field like `"Deploy api-server (Manifest)"` must appear character-for-character in the output — no substitution.
+
+Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` appearing in ANY of these fields are legitimate service/component identifiers — they are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
+
+**WRONG** (redaction of a service name — FORBIDDEN):
+```
+Create a project called "Deploy ***** to org-0003-2g-prod-tokyo-01" in the "Default Project Group" project group with no steps.
+* Add a project variable called "dockerImageName" with the value "*****".
+```
+
+**CORRECT** (service name copied verbatim):
+```
+Create a project called "Deploy api-server to org-0003-2g-prod-tokyo-01" in the "Default Project Group" project group with no steps.
+* Add a project variable called "dockerImageName" with the value "api-server".
+```
 
 Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy.
