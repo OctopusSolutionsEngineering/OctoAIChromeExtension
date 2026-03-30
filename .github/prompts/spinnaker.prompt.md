@@ -17,7 +17,7 @@ We want to select a random pipeline from the array with each iteration.
 
 Generate a random number using the `$RANDOM` bash variable between 0 and the array size minus 1, e.g. `echo $(( RANDOM % 100 ))` to generate a number between 0 and 99.
 
-Select a random pipeline from the array with `jq`,  and process the item using the instructions in the next sections. Then select a new random pipeline and repeat the process.
+Select a random pipeline from the array with `jq`, and process the item using the instructions in the next sections. Then select a new random pipeline and repeat the process.
 
 Finish when you have found 5 significant improvements to the `prompt.md` file. You do not have to process every item in the array.
 
@@ -35,7 +35,7 @@ Create a temporary file using bash in the `/Users/matthewcasperson/Scratchpad` d
 <pipelines.json array item>
 ```
 
-Run the temporary file with the AI Assistant - the filename can be passed directly to the `send_prompt_from_file` tool, so you do not need to read the contents of the file.
+Run the temporary file with the AI Assistant, passing the filename directly to the `send_prompt_from_file` tool.
 
 The response from the AI Assistant is another prompt describing how to recreate the Spinnaker pipeline as Octopus resources. There is not a strict one-to-one relationship between Spinnaker and Octopus resources.
 
@@ -48,8 +48,6 @@ Append `The current space is "Scratchpad"` to the end of each individual prompt.
 You must pass the original prompt exactly as it was returned with the addition of the space context.
 
 It is **CRITICAL** that you DO NOT fix the returned prompt! Any errors with the returned prompt must be addressed by improving the `prompt.md` file. You MUST pass through the prompt unaltered with the addition of the space context.
-
-Display the prompt being send in the chat.
 
 The default timeout of 60 seconds is often not enough for call to `send_prompt` or `send_prompt_from_file`, which means they time out. If the `send_prompt` or `send_prompt_from_file` tools time out, sleep for 180 seconds, and try again. You can retry calls to the `send_prompt` or `send_prompt_from_file` tools up to 5 times.
 
