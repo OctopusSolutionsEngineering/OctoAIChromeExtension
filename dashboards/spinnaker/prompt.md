@@ -44,6 +44,8 @@ The following snippet is an example of an artifact in Spinnaker that is expected
 Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
 ```
 
+**CRITICAL — "Google Container Registry" is NOT "GitHub Container Registry"**: When you see `Create a feed called "Google Container Registry"`, this refers to **Google's** container registry at `https://gcr.io/v2/` — NOT GitHub's container registry at `https://ghcr.io`. Do NOT create a feed with the URL `https://ghcr.io` or name it "GitHub Container Registry". The correct feed URL is always `https://gcr.io/v2/` and the correct feed name is always `"Google Container Registry"` for gcr.io registries.
+
 * For other values of `matchArtifact.name` (i.e., when the name does NOT start with `gcr.io/`), a **Docker Feed** must be created. Extract the registry host from the `matchArtifact.name` property (the part before the first `/`) and use it as the feed URL. For example, if the `matchArtifact.name` property is `myregistry.com/myimage`, the feed URL would be `https://myregistry.com`:
 
 ```
@@ -316,6 +318,37 @@ Create a project called "My Project" in the "Default Project Group" project grou
 If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a shared template whose stage definitions are stored externally and cannot be read from the JSON directly. The following rules apply:
 
 * Do NOT convert any `stages` from the JSON — stages come from the shared template.
+
+  **ABSOLUTE RULE — `stages` in `templatedPipeline` are ALWAYS ignored**: Even when the `stages` array is non-empty (for example, because `_resolvedFrom: "execution"` indicates stages were captured from a previous run, or `_originalSchema: "v2"` is present), you MUST NOT convert those stages. The presence of `_resolvedFrom`, `_templateRef`, `_originalSchema`, or any other metadata fields does NOT change this rule. The `stages` array in a `templatedPipeline` MUST be completely ignored regardless of whether it is empty or contains stage definitions.
+
+  **Negative example — converting stages from a `templatedPipeline` (FORBIDDEN)**:
+  ```json
+  {
+    "name": "Deploy Service",
+    "type": "templatedPipeline",
+    "_resolvedFrom": "execution",
+    "stages": [
+      { "type": "deployManifest", "name": "Deploy", "refId": "1", "requisiteStageRefIds": ["2"] },
+      { "type": "manualJudgment", "name": "Manual Judgment", "refId": "2", "requisiteStageRefIds": [] }
+    ],
+    "variables": { "manifestURL": "gs://bucket/file.yaml" }
+  }
+  ```
+
+  The **WRONG** output (generates steps from stages — FORBIDDEN for `templatedPipeline`):
+  ```
+  Create a project called "Deploy Service" in the "Default Project Group" project group with no steps.
+  * Add a "Manual Intervention" step ... "Manual Judgment" ...
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy" ...
+  * Add a project variable called "manifestURL" with the value "gs://bucket/file.yaml".
+  ```
+
+  The **CORRECT** output (no steps from stages — only variables are converted):
+  ```
+  Create a project called "Deploy Service" in the "Default Project Group" project group with no steps.
+  * Add a project variable called "manifestURL" with the value "gs://bucket/file.yaml".
+  ```
+
 * **DO convert any `notifications` from the JSON** — notification steps are project-level and must be preserved. This applies even though stages are skipped. Notifications in a `templatedPipeline` must be converted using exactly the same rules as for a regular pipeline (see the Notifications section). The `when` array and `message` text must be inspected and Slack Notification steps must be generated for all applicable events.
 * DO apply the `disabled` status — add `* The project must be disabled.` when `disabled: true`.
 * DO NOT add feed creation prompts — `templatedPipeline` types have no `expectedArtifacts` in the top-level JSON.
@@ -534,6 +567,40 @@ The correct output for this pipeline has **no external feed trigger prompt**. On
 ```
 Create a project called "Deploy Workers" in the "Default Project Group" project group with no steps.
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Workers". Set the YAML Source to "Inline YAML"...
+```
+
+**Negative example — Docker trigger enabled + `requiredArtifactIds` referencing Docker image + GCS/GitHub-file manifest stages (DO NOT add external feed trigger)**:
+
+A pipeline may have a Docker trigger with `enabled: true` AND deployment stages that have `requiredArtifactIds` pointing to a Docker image artifact, while the manifest itself comes from `gcs/object` or `github/file`. In this case, the external feed trigger MUST NOT be generated because the manifest source type determines eligibility, not `requiredArtifactIds` or trigger `enabled` state.
+
+```json
+{
+  "triggers": [ { "type": "docker", "registry": "gcr.io", "enabled": true } ],
+  "stages": [
+    {
+      "type": "deployManifest",
+      "manifestArtifactId": "gcs-artifact-id",
+      "requiredArtifactIds": ["docker-image-artifact-id"],
+      "name": "Deploy Canary"
+    },
+    {
+      "type": "scaleManifest",
+      "manifestName": "deployment/my-service-canary",
+      "replicas": 0,
+      "name": "Scale Down Canary"
+    }
+  ]
+}
+```
+
+The **WRONG** output (external feed trigger added because Docker trigger is enabled — FORBIDDEN):
+```
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be enabled.
+```
+
+The **CORRECT** output (no external feed trigger — GCS manifest and scaleManifest do not qualify):
+```
+[no external feed trigger line]
 ```
 
 ## Pubsub Triggers
@@ -772,7 +839,7 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 * Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
-* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores, brackets, or hashes.
+* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores, brackets, or hashes. If the stage name contains parentheses `()`, replace them with square brackets `[]` (e.g., `Deploy (Manifest)` becomes `Deploy [Manifest]`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
 
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
@@ -1710,6 +1777,42 @@ This ordering is **incorrect** and must never appear:
 * Add ... "Slack Notification - Finish" ...   ← WRONG: Finish before deployment steps
 * Add ... "Slack Notification - Complete" ...  ← WRONG: Complete before deployment steps
 * Add ... [deployment steps] ...
+```
+
+**Negative example — ONLY a Finish step (no Start step) placed BEFORE deployment stages (COMMON MISTAKE)**:
+
+When `when` contains only `"pipeline.failed"` (no `"pipeline.starting"`), there is no Start step — only a Finish step. Even in this case, the Finish step MUST appear AFTER all deployment stages. Do NOT place the Finish step before deployment stages just because there is no Start step.
+
+Given a pipeline with `when: ["pipeline.failed"]` (Finish step only) and one deployment stage:
+
+The **WRONG** output (Finish step placed before deployment stage):
+```
+* Add a community step template step with the name "Slack Notification - Finish" ...  ← WRONG: before deployment
+* Add a "Deploy Kubernetes YAML" step ... "Deploy my-service" ...
+```
+
+The **CORRECT** output (Finish step placed AFTER deployment stage):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy my-service" ...
+* Add a community step template step with the name "Slack Notification - Finish" ... to the end of the deployment process. Only run the step when the previous step has failed.  ← CORRECT: after deployment
+```
+
+**CRITICAL — when a pipeline has `"disabled": true`, the `* The project must be disabled.` line MUST still be the last line even when notifications are present**: Do not omit the `* The project must be disabled.` line when the pipeline has both `notifications` and `"disabled": true`. The correct ordering for a pipeline with both is: deployment stages → Finish/Complete notification steps → `* The project must be disabled.` (last).
+
+**Negative example — `disabled: true` flag missing when notifications are present (COMMON MISTAKE)**:
+
+Given a pipeline with `disabled: true` and a Finish notification, the **WRONG** output omits the disabled line:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy my-service" ...
+* Add a community step template step with the name "Slack Notification - Finish" ...
+[Missing: * The project must be disabled.]
+```
+
+The **CORRECT** output always includes `* The project must be disabled.` as the last line:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy my-service" ...
+* Add a community step template step with the name "Slack Notification - Finish" ...
+* The project must be disabled.  ← ALWAYS LAST
 ```
 
 **Negative example — ALL notifications grouped before deployment stages (THE MOST COMMON MISTAKE with multiple notifications)**:
