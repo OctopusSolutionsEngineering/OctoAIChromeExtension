@@ -2587,3 +2587,98 @@ tbody tr:last-child td {
   margin-top: 4px;
   height: 16px;
 }
+
+/* ---- Lookback period selector ---- */
+
+.lookback-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--colorTextTertiary);
+  font: var(--textBodyRegularSmall);
+}
+
+.lookback-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--colorBackgroundSecondaryDefault);
+  border: 1px solid var(--colorBorderDefault);
+  border-radius: var(--radiusSmall);
+  color: var(--colorTextSecondary);
+  font: var(--textBodyRegularSmall);
+  padding: 4px 24px 4px 8px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color var(--transitionFast);
+}
+
+.lookback-select:hover {
+  border-color: var(--colorBorderHover);
+}
+
+.lookback-select:focus {
+  outline: none;
+  border-color: var(--colorPrimary);
+  box-shadow: 0 0 0 2px rgba(var(--colorPrimaryRGB, 59, 130, 246), 0.15);
+}
+
+/* ---- Enrichment progress banner ---- */
+
+.enrichment-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+  border-radius: var(--radiusMedium);
+  background: var(--colorBackgroundSecondaryDefault);
+  border: 1px solid var(--colorBorderDefault);
+  font: var(--textBodyRegularSmall);
+  color: var(--colorTextSecondary);
+  min-height: 36px;
+}
+
+.enrichment-banner--hidden {
+  display: none;
+}
+
+.enrichment-banner--complete {
+  background: color-mix(in srgb, var(--colorSuccess) 6%, var(--colorBackgroundSecondaryDefault));
+  border-color: color-mix(in srgb, var(--colorSuccess) 20%, var(--colorBorderDefault));
+}
+
+.enrichment-banner--error {
+  background: color-mix(in srgb, var(--colorDanger) 6%, var(--colorBackgroundSecondaryDefault));
+  border-color: color-mix(in srgb, var(--colorDanger) 20%, var(--colorBorderDefault));
+}
+
+.enrichment-progress-track {
+  flex: 1;
+  height: 4px;
+  background: var(--colorBackgroundTertiary);
+  border-radius: 2px;
+  overflow: hidden;
+  max-width: 200px;
+}
+
+.enrichment-progress-bar {
+  height: 100%;
+  background: var(--colorPrimary);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.enrichment-text {
+  white-space: nowrap;
+}
+
+.enrichment-spinner {
+  animation: spin 1s linear infinite;
+  color: var(--colorPrimary);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

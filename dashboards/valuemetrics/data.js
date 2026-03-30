@@ -32,11 +32,12 @@ const DashboardData = (() => {
 
   // ---- State ----
   let _spaces = [];
-  let _spaceData = {};       // keyed by space Id
+  let _spaceData = {};
   let _serverInfo = null;
   let _licenseUsage = null;
   let _licenseStatus = null;
   let _crossSpaceTasks = [];
+  let _activeSpaceIds = [];
   let _lastFetch = null;
 
   const log = (...args) => (window._debug || console.log)(...args);
@@ -102,6 +103,7 @@ const DashboardData = (() => {
     // Phase 3: Cross-space deployment tasks (may require multiple calls for many spaces)
     report('Loading deployment task history...');
     const activeSpaceIds = activeSpaces.map(s => s.Id);
+    _activeSpaceIds = activeSpaceIds;
 
     // Avoid building an excessively long query string by chunking space IDs
     const SPACE_ID_CHUNK_SIZE = 25;
@@ -974,6 +976,327 @@ const DashboardData = (() => {
     };
   }
 
+  // ---- Historical Enrichment Engine ----
+  // Pages through older deploy tasks in the background, building approximate
+  // aggregate histograms for duration percentiles and trend buckets.
+  // Aggregates are cached in localStorage so subsequent loads are near-instant.
+
+  const ENRICH_PAGE = 200;
+  const ENRICH_CAP = 10000;
+  const INITIAL_TAKE = 200;
+  const CACHE_PFX = 'vdash_hist_';
+  const CACHE_MAX_AGE = 4 * 3600 * 1000; // 4 hours
+
+  let _enrichment = { state: 'idle', lookbackMonths: 3, tasksFetched: 0, oldestDate: null, progress: 0, error: null };
+  let _enrichCancelled = false;
+  let _histAgg = null;
+
+  function _histKey() {
+    const url = OctopusApi.getInstanceUrl() || '';
+    let h = 0;
+    for (let i = 0; i < url.length; i++) { h = ((h << 5) - h) + url.charCodeAt(i); h |= 0; }
+    return CACHE_PFX + Math.abs(h).toString(36);
+  }
+
+  function _loadHistCache() {
+    try {
+      const raw = localStorage.getItem(_histKey());
+      if (!raw) return null;
+      const c = JSON.parse(raw);
+      if (c.version !== 1 || c.serverUrl !== OctopusApi.getInstanceUrl()) return null;
+      if (Date.now() - new Date(c.updatedAt).getTime() > CACHE_MAX_AGE) return null;
+      return c;
+    } catch { return null; }
+  }
+
+  function _saveHistCache(agg) {
+    try {
+      localStorage.setItem(_histKey(), JSON.stringify({
+        version: 1,
+        serverUrl: OctopusApi.getInstanceUrl(),
+        updatedAt: new Date().toISOString(),
+        lookbackMonths: agg.lookbackMonths,
+        durationBucketWidth: agg.durationBucketWidth,
+        durationBuckets: agg.durationBuckets,
+        durationStats: agg.durationStats,
+        weeklyBuckets: agg.weeklyBuckets,
+        dowCounts: agg.dowCounts,
+        hodCounts: agg.hodCounts,
+        spaceTotals: agg.spaceTotals,
+        totalTasksFetched: agg.totalTasksFetched,
+        oldestTaskDate: agg.oldestTaskDate,
+      }));
+    } catch (e) { log('History cache save failed', e.message); }
+  }
+
+  function _emptyAgg(lookbackMonths) {
+    return {
+      lookbackMonths,
+      durationBucketWidth: 30,
+      durationBuckets: new Array(120).fill(0), // 0–3600s in 30s bins
+      durationStats: { count: 0, sum: 0, min: Infinity, max: 0 },
+      weeklyBuckets: {},
+      dowCounts: new Array(7).fill(0),
+      hodCounts: new Array(24).fill(0),
+      spaceTotals: {},
+      totalTasksFetched: 0,
+      oldestTaskDate: null,
+    };
+  }
+
+  function _accTask(agg, task) {
+    if (task.StartTime && task.CompletedTime) {
+      const secs = (new Date(task.CompletedTime) - new Date(task.StartTime)) / 1000;
+      if (secs > 0 && secs < 3600) {
+        const bi = Math.min(Math.floor(secs / agg.durationBucketWidth), agg.durationBuckets.length - 1);
+        agg.durationBuckets[bi]++;
+        agg.durationStats.count++;
+        agg.durationStats.sum += secs;
+        agg.durationStats.min = Math.min(agg.durationStats.min, secs);
+        agg.durationStats.max = Math.max(agg.durationStats.max, secs);
+      }
+    }
+    const ts = task.CompletedTime || task.QueueTime;
+    if (ts) {
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) {
+        const { year, week } = getISOWeek(d);
+        const wk = `${year}-W${String(week).padStart(2, '0')}`;
+        if (!agg.weeklyBuckets[wk]) agg.weeklyBuckets[wk] = { year, week, success: 0, failed: 0, total: 0 };
+        agg.weeklyBuckets[wk].total++;
+        const st = (task.State || '').toLowerCase();
+        if (st === 'success') agg.weeklyBuckets[wk].success++;
+        else if (st === 'failed') agg.weeklyBuckets[wk].failed++;
+        agg.dowCounts[d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1]++;
+        agg.hodCounts[d.getUTCHours()]++;
+      }
+    }
+    if (task.SpaceId) {
+      if (!agg.spaceTotals[task.SpaceId]) agg.spaceTotals[task.SpaceId] = { success: 0, failed: 0, total: 0 };
+      agg.spaceTotals[task.SpaceId].total++;
+      const st = (task.State || '').toLowerCase();
+      if (st === 'success') agg.spaceTotals[task.SpaceId].success++;
+      else if (st === 'failed') agg.spaceTotals[task.SpaceId].failed++;
+    }
+    agg.totalTasksFetched++;
+    const td = task.CompletedTime || task.QueueTime || task.StartTime;
+    if (td && (!agg.oldestTaskDate || new Date(td) < new Date(agg.oldestTaskDate))) {
+      agg.oldestTaskDate = td;
+    }
+  }
+
+  function _percFromHist(agg) {
+    const { durationBuckets, durationBucketWidth, durationStats } = agg;
+    if (!durationStats || durationStats.count === 0) return null;
+    const total = durationStats.count;
+    const thr = { p50: Math.floor(total * 0.5), p90: Math.floor(total * 0.9), p95: Math.floor(total * 0.95) };
+    let cum = 0;
+    const r = { p50: null, p90: null, p95: null };
+    for (let i = 0; i < durationBuckets.length; i++) {
+      cum += durationBuckets[i];
+      const mid = Math.round((i + 0.5) * durationBucketWidth);
+      for (const [k, v] of Object.entries(thr)) { if (r[k] === null && cum >= v) r[k] = mid; }
+    }
+    return {
+      avg: Math.round(durationStats.sum / durationStats.count),
+      p50: r.p50 || 0, p90: r.p90 || 0, p95: r.p95 || 0,
+      min: Math.round(durationStats.min === Infinity ? 0 : durationStats.min),
+      max: Math.round(durationStats.max),
+      count: durationStats.count,
+    };
+  }
+
+  /**
+   * Start background enrichment: pages through task history for the given
+   * lookback period, calling onProgress with state updates.
+   * Re-renders the active view on completion via the callback.
+   */
+  async function startHistoricalEnrichment(lookbackMonths, onProgress) {
+    _enrichCancelled = true;
+    await new Promise(r => setTimeout(r, 50));
+    _enrichCancelled = false;
+
+    const allTime = lookbackMonths === 0;
+    _enrichment = { state: 'loading', lookbackMonths, tasksFetched: 0, oldestDate: null, progress: 0, error: null };
+    const notify = () => { if (onProgress) onProgress({ ..._enrichment }); };
+    notify();
+
+    try {
+      const cached = _loadHistCache();
+      const cacheValid = cached && cached.totalTasksFetched > 0 &&
+        (allTime ? cached.lookbackMonths === 0 : cached.lookbackMonths >= lookbackMonths);
+      if (cacheValid) {
+        _histAgg = cached;
+        Object.assign(_enrichment, { state: 'complete', progress: 100, tasksFetched: cached.totalTasksFetched, oldestDate: cached.oldestTaskDate });
+        notify();
+        log('History from cache', { tasks: cached.totalTasksFetched, oldest: cached.oldestTaskDate });
+        return;
+      }
+
+      const agg = _emptyAgg(lookbackMonths);
+      for (const task of _crossSpaceTasks) _accTask(agg, task);
+      _histAgg = agg;
+
+      const useCutoff = !allTime;
+      let cutoff = null;
+      if (useCutoff) {
+        cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - lookbackMonths);
+      }
+
+      // Early-out: check if initial load already reaches the cutoff
+      if (useCutoff && _crossSpaceTasks.length > 0) {
+        const oldest = _crossSpaceTasks.reduce((min, t) => {
+          const d = new Date(t.CompletedTime || t.QueueTime || t.StartTime || 0);
+          return !isNaN(d.getTime()) && d < min ? d : min;
+        }, new Date());
+        if (oldest <= cutoff) {
+          Object.assign(_enrichment, { state: 'complete', progress: 100, tasksFetched: agg.totalTasksFetched, oldestDate: agg.oldestTaskDate });
+          _saveHistCache(agg);
+          notify();
+          log('Initial load covers lookback');
+          return;
+        }
+      }
+
+      if (_activeSpaceIds.length === 0) {
+        Object.assign(_enrichment, { state: 'complete', progress: 100 });
+        notify();
+        return;
+      }
+
+      const CHUNK = 25;
+      let estimatedTotal = null;
+
+      for (let c = 0; c < _activeSpaceIds.length; c += CHUNK) {
+        const ids = _activeSpaceIds.slice(c, c + CHUNK).join(',');
+        let skip = INITIAL_TAKE;
+        let chunkDone = false;
+
+        while (!chunkDone && agg.totalTasksFetched < ENRICH_CAP) {
+          if (_enrichCancelled) return;
+
+          const resp = await safeGet(
+            `/api/tasks?spaces=${encodeURIComponent(ids)}&name=Deploy&states=Success,Failed&take=${ENRICH_PAGE}&skip=${skip}`
+          );
+
+          if (!resp?.Items?.length) { chunkDone = true; break; }
+          if (!estimatedTotal && resp.TotalResults) estimatedTotal = resp.TotalResults;
+
+          for (const task of resp.Items) {
+            if (useCutoff) {
+              const td = new Date(task.CompletedTime || task.QueueTime || task.StartTime || 0);
+              if (td < cutoff) { chunkDone = true; break; }
+            }
+            _accTask(agg, task);
+          }
+
+          skip += ENRICH_PAGE;
+          _histAgg = agg;
+
+          const pct = estimatedTotal
+            ? Math.min(95, Math.round((agg.totalTasksFetched / Math.min(estimatedTotal, ENRICH_CAP)) * 100))
+            : Math.min(95, Math.round((skip / 2000) * 100));
+          Object.assign(_enrichment, { progress: pct, tasksFetched: agg.totalTasksFetched, oldestDate: agg.oldestTaskDate });
+          notify();
+
+          log(`Enrichment: ${agg.totalTasksFetched} tasks, oldest ${agg.oldestTaskDate}`);
+        }
+      }
+
+      _saveHistCache(agg);
+      Object.assign(_enrichment, { state: 'complete', progress: 100, tasksFetched: agg.totalTasksFetched, oldestDate: agg.oldestTaskDate });
+      notify();
+      log('Enrichment complete', { tasks: agg.totalTasksFetched, oldest: agg.oldestTaskDate });
+
+    } catch (err) {
+      if (_enrichCancelled) return;
+      Object.assign(_enrichment, { state: 'error', error: err.message });
+      notify();
+      log('Enrichment failed', err.message);
+    }
+  }
+
+  function getEnrichmentState() { return { ..._enrichment }; }
+
+  function getHistoricalDurationPercentiles() {
+    if (_histAgg) return _percFromHist(_histAgg);
+    return computeDurationPercentiles();
+  }
+
+  function getHistoricalWeeklyTrend() {
+    if (!_histAgg?.weeklyBuckets) return null;
+    const entries = Object.values(_histAgg.weeklyBuckets);
+    if (entries.length === 0) return null;
+    const sorted = entries.sort((a, b) => a.year !== b.year ? a.year - b.year : a.week - b.week).slice(-52);
+    for (let i = 0; i < sorted.length; i++) {
+      sorted[i].showYear = i === 0 || sorted[i].year !== sorted[i - 1].year;
+    }
+    return sorted;
+  }
+
+  function getHistoricalAggregates() { return _histAgg; }
+
+  function cancelEnrichment() { _enrichCancelled = true; _enrichment.state = 'idle'; }
+
+  function clearHistoryCache() {
+    try { localStorage.removeItem(_histKey()); } catch {}
+    _histAgg = null;
+  }
+
+  function _lookbackLabel(months) {
+    if (months === 0) return 'all time';
+    if (months < 12) return `last ${months} months`;
+    const y = months / 12;
+    if (Number.isInteger(y)) return y === 1 ? 'last year' : `last ${y} years`;
+    return `last ${months} months`;
+  }
+
+  /**
+   * Time-filtered KPIs from enriched aggregates. Returns null if no
+   * enriched data is available yet. Structural KPIs (spaces, projects,
+   * targets, releases) are not included — they don't vary by period.
+   */
+  function computeEnrichedKPIs() {
+    if (!_histAgg) return null;
+    const agg = _histAgg;
+    let total = 0, success = 0, failed = 0;
+    for (const w of Object.values(agg.weeklyBuckets)) {
+      total += w.total;
+      success += w.success;
+      failed += w.failed;
+    }
+    const rated = success + failed;
+    const successRate = rated > 0 ? Math.round(success / rated * 100) : 0;
+
+    // For all-time (0), compute actual days from oldest task to now
+    let days;
+    if (agg.lookbackMonths === 0 && agg.oldestTaskDate) {
+      days = Math.max(1, Math.ceil((Date.now() - new Date(agg.oldestTaskDate).getTime()) / 86400000));
+    } else {
+      days = Math.max(1, agg.lookbackMonths * 30);
+    }
+    const deployFrequency = total > 0 ? (total / days).toFixed(1) : '0';
+
+    let avgDuration = '--';
+    if (agg.durationStats.count > 0) {
+      const s = Math.round(agg.durationStats.sum / agg.durationStats.count);
+      if (s < 60) avgDuration = `${s}s`;
+      else { const m = Math.floor(s / 60); const r = s % 60; avgDuration = r > 0 ? `${m}m ${r}s` : `${m}m`; }
+    }
+    return {
+      totalDeployments: total,
+      successRate,
+      deployFrequency,
+      avgDuration,
+      lookbackMonths: agg.lookbackMonths,
+      periodLabel: _lookbackLabel(agg.lookbackMonths),
+      totalSuccess: success,
+      totalFailed: failed,
+      durationCount: agg.durationStats.count,
+    };
+  }
+
   // ---- Public API ----
 
   return {
@@ -993,6 +1316,14 @@ const DashboardData = (() => {
     computeTrendChange,
     computeProjectVelocity,
     computeDurationPercentiles,
+    startHistoricalEnrichment,
+    getEnrichmentState,
+    getHistoricalDurationPercentiles,
+    getHistoricalWeeklyTrend,
+    getHistoricalAggregates,
+    cancelEnrichment,
+    clearHistoryCache,
+    computeEnrichedKPIs,
   };
 
 })();
@@ -1092,20 +1423,38 @@ const DashboardUI = (() => {
   // ---- KPIs ----
 
   function renderKPIs(kpi) {
-    setText('kpi-deployments', kpi.totalDeployments.toLocaleString());
-    setText('kpi-success-rate', kpi.successRate + '%');
+
+    // Structural KPIs (don't change with lookback period)
     setText('kpi-projects', kpi.activeProjects.toLocaleString());
-    setText('kpi-frequency', kpi.deployFrequency + '/day');
     setText('kpi-targets', kpi.totalTargets.toLocaleString());
     setText('kpi-target-health', kpi.healthyTargetsPct + '%');
     setText('kpi-active-spaces', kpi.activeSpaces + '/' + kpi.totalSpaces);
-    setText('kpi-avg-duration', kpi.avgDuration);
     setText('kpi-releases', kpi.totalReleases.toLocaleString());
-
-    // Update trend indicators
-    setTrendLabel('kpi-frequency-label', `last 30 days`);
     setTrendLabel('kpi-targets-label', `${kpi.healthyTargets} healthy`);
     setTrendLabel('kpi-spaces-label', `${kpi.totalSpaces} total`);
+
+    // Time-sensitive KPIs — use enriched data when available
+    const enriched = DashboardData.computeEnrichedKPIs();
+    if (enriched) {
+      const label = enriched.periodLabel;
+      setText('kpi-deployments', enriched.totalDeployments.toLocaleString());
+      setText('kpi-success-rate', enriched.successRate + '%');
+      setText('kpi-frequency', enriched.deployFrequency + '/day');
+      setText('kpi-avg-duration', enriched.avgDuration);
+      setTrendLabel('kpi-deployments-label', label);
+      setTrendLabel('kpi-success-rate-label', label);
+      setTrendLabel('kpi-frequency-label', label);
+      setTrendLabel('kpi-avg-duration-label', `${enriched.durationCount.toLocaleString()} tasks measured`);
+    } else {
+      setText('kpi-deployments', kpi.totalDeployments.toLocaleString());
+      setText('kpi-success-rate', kpi.successRate + '%');
+      setText('kpi-frequency', kpi.deployFrequency + '/day');
+      setText('kpi-avg-duration', kpi.avgDuration);
+      setTrendLabel('kpi-deployments-label', 'all time, all spaces');
+      setTrendLabel('kpi-success-rate-label', 'across recent deploys');
+      setTrendLabel('kpi-frequency-label', 'last 30 days');
+      setTrendLabel('kpi-avg-duration-label', 'per deployment');
+    }
   }
 
   function setTrendLabel(id, text) {
@@ -1679,8 +2028,28 @@ const DashboardUI = (() => {
     renderSpaceBreakdown(summary.spaceBreakdown);
     renderRecentDeployments(summary.recentDeployments);
     renderEnvHealth(summary.envHealth);
-    renderSuccessFailureChart(summary);
-    renderWeeklyTrend(summary.weeklyTrend, summary.dailyTrend);
+
+    // Use enriched counts for the donut chart when available
+    const enriched = DashboardData.computeEnrichedKPIs();
+    if (enriched) {
+      renderSuccessFailureChart({
+        ...summary,
+        successCount: enriched.totalSuccess,
+        failedCount: enriched.totalFailed,
+        cancelledCount: Math.max(0, enriched.totalDeployments - enriched.totalSuccess - enriched.totalFailed),
+      });
+    } else {
+      renderSuccessFailureChart(summary);
+    }
+
+    // Use enriched weekly trend for the chart when available
+    const enrichedWeekly = DashboardData.getHistoricalWeeklyTrend();
+    if (enrichedWeekly && enrichedWeekly.length > 0) {
+      renderWeeklyTrend(enrichedWeekly, summary.dailyTrend);
+    } else {
+      renderWeeklyTrend(summary.weeklyTrend, summary.dailyTrend);
+    }
+
     renderLicenseInfo(summary.licenseInfo);
   }
 

@@ -85,6 +85,18 @@
             <span id="header-text">Platform Dashboard</span>
         </div>
         <div class="header-actions">
+            <div class="lookback-wrapper" id="lookback-wrapper">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <select id="lookback-select" class="lookback-select" title="Historical data lookback period">
+                    <option value="3" selected>3 months</option>
+                    <option value="6">6 months</option>
+                    <option value="12">1 year</option>
+                    <option value="24">2 years</option>
+                    <option value="36">3 years</option>
+                    <option value="60">5 years</option>
+                    <option value="0">All time</option>
+                </select>
+            </div>
             <span class="text-secondary" style="font: var(--textBodyRegularSmall);">
                 <i class="fa-regular fa-clock"></i>
                 Last refreshed: <span id="last-refresh">--</span>

@@ -121,6 +121,8 @@ const Views = (() => {
       </div>
     </div>
 
+    ${_enrichBannerHtml()}
+
     <!-- KPI Section Header -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-gauge-high"></i> Platform Metrics</h2>
@@ -134,7 +136,7 @@ const Views = (() => {
           <div class="kpi-icon blue"><i class="fa-solid fa-rocket"></i></div>
         </div>
         <span class="kpi-value" id="kpi-deployments">--</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-database"></i> <span>all time, all spaces</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-database"></i> <span id="kpi-deployments-label">all time, all spaces</span></span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -142,7 +144,7 @@ const Views = (() => {
           <div class="kpi-icon green"><i class="fa-solid fa-circle-check"></i></div>
         </div>
         <span class="kpi-value" id="kpi-success-rate">--</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>across recent deploys</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span id="kpi-success-rate-label">across recent deploys</span></span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -158,7 +160,7 @@ const Views = (() => {
           <div class="kpi-icon purple"><i class="fa-solid fa-stopwatch"></i></div>
         </div>
         <span class="kpi-value" id="kpi-avg-duration">--</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-clock"></i> <span>per deployment</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-clock"></i> <span id="kpi-avg-duration-label">per deployment</span></span>
       </div>
     </div>
 
@@ -367,9 +369,11 @@ const Views = (() => {
   // ==================================================================
 
   function renderTrends(summary) {
-    const totalDeploys = summary.kpi.totalDeployments;
-    const successRate = summary.kpi.successRate;
-    const frequency = summary.kpi.deployFrequency;
+    const enriched = DashboardData.computeEnrichedKPIs();
+    const totalDeploys = enriched ? enriched.totalDeployments : summary.kpi.totalDeployments;
+    const successRate = enriched ? enriched.successRate : summary.kpi.successRate;
+    const frequency = enriched ? enriched.deployFrequency : summary.kpi.deployFrequency;
+    const periodLabel = enriched ? enriched.periodLabel : null;
     const trendChange = DashboardData.computeTrendChange(summary.weeklyTrend);
     const dayOfWeek = DashboardData.computeDayOfWeekDistribution();
     const hourOfDay = DashboardData.computeHourOfDayDistribution();
@@ -406,6 +410,8 @@ const Views = (() => {
       <p class="page-subtitle">Deployment activity over time &mdash; track patterns, compare spaces, and spot trends.</p>
     </div>
 
+    ${_enrichBannerHtml()}
+
     <!-- KPI strip -->
     <div class="kpi-grid mb-lg">
       <div class="kpi-card">
@@ -414,7 +420,7 @@ const Views = (() => {
           <div class="kpi-icon blue"><i class="fa-solid fa-rocket"></i></div>
         </div>
         <span class="kpi-value">${totalDeploys.toLocaleString()}</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-database"></i> <span>all time</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-database"></i> <span>${periodLabel || 'all time'}</span></span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -430,7 +436,7 @@ const Views = (() => {
           <div class="kpi-icon green"><i class="fa-solid fa-circle-check"></i></div>
         </div>
         <span class="kpi-value">${successRate}%</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>across all deploys</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>${periodLabel || 'across all deploys'}</span></span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -438,7 +444,7 @@ const Views = (() => {
           <div class="kpi-icon amber"><i class="fa-solid fa-bolt"></i></div>
         </div>
         <span class="kpi-value">${frequency}/day</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-calendar-days"></i> <span>last 30 days</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-calendar-days"></i> <span>${periodLabel || 'last 30 days'}</span></span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -816,14 +822,45 @@ const Views = (() => {
   // RELEASE VELOCITY view
   // ==================================================================
 
+  function _enrichBannerHtml() {
+    const es = DashboardData.getEnrichmentState();
+    if (es.state === 'idle') return '';
+    if (es.state === 'loading') {
+      return `<div id="enrichment-banner" class="enrichment-banner">
+        <i class="fa-solid fa-spinner enrichment-spinner"></i>
+        <div class="enrichment-progress-track"><div class="enrichment-progress-bar" style="width:${es.progress}%"></div></div>
+        <span class="enrichment-text">Loading historical data&hellip; ${(es.tasksFetched || 0).toLocaleString()} tasks</span>
+      </div>`;
+    }
+    if (es.state === 'complete') {
+      const m = es.lookbackMonths;
+      const periodLabel = m === 0 ? 'All time' : m < 12 ? `${m} months` : (m % 12 === 0 ? `${m / 12} year${m / 12 === 1 ? '' : 's'}` : `${m} months`);
+      const oldest = es.oldestDate ? new Date(es.oldestDate) : null;
+      const ageLabel = oldest ? ` (since ${oldest.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })})` : '';
+      return `<div id="enrichment-banner" class="enrichment-banner enrichment-banner--complete">
+        <i class="fa-solid fa-circle-check text-success"></i>
+        <span class="enrichment-text">${periodLabel} of data &bull; ${(es.tasksFetched || 0).toLocaleString()} tasks${ageLabel}</span>
+      </div>`;
+    }
+    if (es.state === 'error') {
+      return `<div id="enrichment-banner" class="enrichment-banner enrichment-banner--error">
+        <i class="fa-solid fa-triangle-exclamation text-danger"></i>
+        <span class="enrichment-text">Historical data load failed</span>
+      </div>`;
+    }
+    return '';
+  }
+
   function renderVelocity(summary) {
-    const freq = summary.kpi.deployFrequency;
+    const enriched = DashboardData.computeEnrichedKPIs();
+    const freq = enriched ? enriched.deployFrequency : summary.kpi.deployFrequency;
     const weeklyRate = (freq * 7).toFixed(1);
     const monthlyRate = (freq * 30).toFixed(0);
+    const periodLabel = enriched ? enriched.periodLabel : null;
     const answers = Onboarding.getAnswers();
     const value = answers ? Onboarding.calculateValue(summary, answers) : null;
     const trendChange = DashboardData.computeTrendChange(summary.weeklyTrend);
-    const durationStats = DashboardData.computeDurationPercentiles();
+    const durationStats = DashboardData.getHistoricalDurationPercentiles();
     const projectVelocity = DashboardData.computeProjectVelocity();
 
     const fmtSecs = (s) => {
@@ -877,6 +914,8 @@ const Views = (() => {
       <p class="page-subtitle">How fast your team ships &mdash; deployment frequency, duration analysis, and per-project velocity.</p>
     </div>
 
+    ${_enrichBannerHtml()}
+
     <!-- Frequency KPIs -->
     <div class="kpi-grid mb-lg">
       <div class="kpi-card">
@@ -885,7 +924,7 @@ const Views = (() => {
           <div class="kpi-icon blue"><i class="fa-solid fa-bolt"></i></div>
         </div>
         <span class="kpi-value">${freq}</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-calendar-day"></i> <span>deploys/day average</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-calendar-day"></i> <span>${periodLabel ? periodLabel + ' avg' : 'deploys/day average'}</span></span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -893,7 +932,7 @@ const Views = (() => {
           <div class="kpi-icon purple"><i class="fa-solid fa-calendar-week"></i></div>
         </div>
         <span class="kpi-value">${weeklyRate}</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-line"></i> <span>deploys/week</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-line"></i> <span>${periodLabel ? periodLabel + ' avg' : 'deploys/week'}</span></span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -901,7 +940,7 @@ const Views = (() => {
           <div class="kpi-icon amber"><i class="fa-solid fa-calendar"></i></div>
         </div>
         <span class="kpi-value">${monthlyRate}</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-calendar-days"></i> <span>deploys/month</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-calendar-days"></i> <span>${periodLabel ? periodLabel + ' avg' : 'deploys/month'}</span></span>
       </div>
       <div class="kpi-card">
         <div class="flex items-center justify-between">
@@ -988,7 +1027,7 @@ const Views = (() => {
           <div class="kpi-icon purple"><i class="fa-solid fa-hourglass-half"></i></div>
         </div>
         <span class="kpi-value">${fmtSecs(durationStats.max)}</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>of ${durationStats.count} measured</span></span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-chart-simple"></i> <span>${durationStats.count.toLocaleString()} measured</span></span>
       </div>
     </div>` : ''}
 

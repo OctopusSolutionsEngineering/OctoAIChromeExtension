@@ -232,6 +232,56 @@ document.getElementById('nav-reset-onboarding').addEventListener('click', (e) =>
 });
 
 // ================================================================
+// Historical enrichment wiring
+// ================================================================
+function getSelectedLookback() {
+    const sel = document.getElementById('lookback-select');
+    if (!sel) return 3;
+    const val = parseInt(sel.value, 10);
+    return Number.isFinite(val) ? val : 3;
+}
+
+function onEnrichmentProgress(state) {
+    const banner = document.getElementById('enrichment-banner');
+    if (banner && state.state === 'loading') {
+        const bar = banner.querySelector('.enrichment-progress-bar');
+        const text = banner.querySelector('.enrichment-text');
+        if (bar) bar.style.width = state.progress + '%';
+        if (text) text.innerHTML = `Loading historical data&hellip; ${(state.tasksFetched || 0).toLocaleString()} tasks`;
+    }
+
+    if (state.state === 'complete' || state.state === 'error') {
+        const view = Router.getCurrentView();
+        if (view === 'overview' || view === 'trends' || view === 'velocity') {
+            Router.refresh();
+            if (view === 'overview' && _lastSummary) {
+                renderValueImpact(_lastSummary);
+            }
+        }
+    }
+}
+
+function startEnrichment() {
+    const months = getSelectedLookback();
+    debug('Starting historical enrichment', { lookbackMonths: months });
+    DashboardData.startHistoricalEnrichment(months, onEnrichmentProgress);
+}
+
+// Wire lookback dropdown
+document.getElementById('lookback-select').addEventListener('change', () => {
+    const months = getSelectedLookback();
+    if (months > 12 || months === 0) {
+        const label = months === 0 ? 'all time' : `${months / 12} years`;
+        if (!confirm(`Fetching ${label} of data may take a while and could be heavy on large Octopus instances.\n\nContinue?`)) {
+            document.getElementById('lookback-select').value = '12';
+            return;
+        }
+    }
+    DashboardData.clearHistoryCache();
+    startEnrichment();
+});
+
+// ================================================================
 // Override DashboardUI.loadDashboard to also render value impact
 // and refresh the current view after data loads
 // ================================================================
@@ -247,6 +297,8 @@ DashboardUI.loadDashboard = async function() {
     } else {
         Router.refresh();
     }
+
+    startEnrichment();
 };
 
 // ================================================================
@@ -295,6 +347,8 @@ updateRefreshTime();
 
 document.getElementById('btn-refresh').addEventListener('click', () => {
     updateRefreshTime();
+    DashboardData.cancelEnrichment();
+    DashboardData.clearHistoryCache();
     DashboardUI.loadDashboard();
 });
 
