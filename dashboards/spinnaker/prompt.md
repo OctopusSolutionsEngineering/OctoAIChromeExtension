@@ -278,6 +278,29 @@ If the `disabled` property is `false`, absent, or `null`, do **NOT** add `* The 
 
 **IMPORTANT**: The `disabled` property must only be read from the top-level pipeline JSON object. Do not infer project disabled status from any other field (e.g., trigger `enabled` state, stage state, or presence of other flags). A pipeline JSON that has no `disabled` key at all must produce a project that is **not** disabled.
 
+**CRITICAL — do NOT infer disabled status from `parameterConfig` variable names or values**: A pipeline may contain `parameterConfig` entries with names like `cronjob_suspend` or values of `"false"`. These are deployment parameters — they have NOTHING to do with whether the Octopus project itself is disabled. The only source of truth for project disabled status is presence of `"disabled": true` at the **top level** of the pipeline JSON object.
+
+**Negative example — `parameterConfig` with `suspend` values should NEVER trigger the disabled line**:
+Given a pipeline with no top-level `disabled` key but with `parameterConfig` entries like:
+```json
+{
+  "name": "deploy-to-prod",
+  "parameterConfig": [
+    { "name": "cronjob_suspend", "default": "false" },
+    { "name": "feature_suspend", "default": "false" }
+  ]
+}
+```
+The **WRONG** output (inferring disabled from parameter names — FORBIDDEN):
+```
+* The project must be disabled.
+```
+The **CORRECT** output (no disabled line because `"disabled": true` is absent):
+```
+Create a project called "deploy-to-prod" in the "Default Project Group" project group with no steps.
+* Add a project variable called "cronjob_suspend"...
+```
+
 Example — pipeline WITHOUT `disabled` field: when the pipeline JSON contains no `disabled` key (e.g., `{"name": "My Project", "stages": [...], "triggers": [...]}`), the output must NOT include `* The project must be disabled.`
 
 **WRONG output** (this line must NEVER appear when `disabled` is absent or `false` from the JSON):
@@ -1450,10 +1473,11 @@ The **WRONG** output (missing "The variable must be required." — this is a com
 
 * First, topologically sort all deployment stages by their `requisiteStageRefIds` dependency graph. Treat each `refId` as a node and each entry in `requisiteStageRefIds` as a directed edge from prerequisite to dependent. Stages with an empty or absent `requisiteStageRefIds` array have no prerequisites and must appear first in the sorted order; stages that depend only on those come next; and so on, until all stages are ordered.
 * **CRITICAL: Perform the topological sort based purely on `requisiteStageRefIds` values — NOT on the position of the stage in the JSON array.** A stage that appears late in the JSON array but has `"requisiteStageRefIds": []` must still be placed in the first (root) group, even if the JSON places it after a stage that depends on it.
-* When the topologically-sorted execution order differs from the original JSON array order (i.e., a stage with empty `requisiteStageRefIds` appears later in the JSON than a stage that depends on it):
-  * Append `Run this step first.` to the first stage's step prompt (the stage that has no prerequisites and was moved earlier by the topological sort).
-  * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent stage's step prompt in the sorted list.
-* **IMPORTANT**: The `Run this step first.` annotation and the `"Wait for all previous steps to complete, then start"` annotation are ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage with `requisiteStageRefIds: []` appears after a stage that depends on it), do NOT add either annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
+* When the topologically-sorted execution order differs from the original JSON array order (i.e., at least one stage must be moved when converting from JSON order to topological order):
+  * Append `Run this step first.` to the first stage's step prompt (the root stage that was promoted to the front of the sorted list because it has no prerequisites).
+  * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent NON-PARALLEL stage's step prompt — i.e., every stage that is the FIRST in its dependency group (except the root group which has already been handled). Parallel siblings (2nd, 3rd, etc. stages within the same dependency group) continue to use `"Run in parallel with the previous step"` as before.
+* **IMPORTANT**: The `Run this step first.` annotation and the `"Wait for all previous steps to complete, then start"` annotation are ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved), do NOT add either annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
+* **CRITICAL — the `Run this step first.` annotation applies to the ROOT stage even if it is a `manualJudgment` or other non-deployment type.** Any stage that has `requisiteStageRefIds: []` and appears AFTER other stages in the JSON (i.e., it is moved to the front by the topological sort) MUST receive `Run this step first.` appended to its step prompt, regardless of its stage type.
 * When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. **This includes stages that all have an empty `requisiteStageRefIds` array `[]`** — an empty array `[]` is a shared value just like any other. For the second and subsequent stages in such a parallel group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
   * Example: If stages with refIds 1, 2, 4, 15, 16, 17, 18 all have `"requisiteStageRefIds": []`, then the step for refId 1 gets no parallel annotation (it is first), but the steps for refIds 2, 4, 15, 16, 17, and 18 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
   * Similarly, if stages with refIds 8, 9, 11, 12, 13, 14, 19 all have `"requisiteStageRefIds": ["5"]`, then the step for refId 8 gets no parallel annotation (it is first in the group), but the steps for refIds 9, 11, 12, 13, 14, and 19 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
@@ -1535,6 +1559,51 @@ Consider this pipeline:
 | 3 | 3 | `["2"]` | Manual Judgment |
 | 4 | 4 | `["3"]` | Scale Down Canary |
 
+### Worked example: deep chain where MULTIPLE early JSON stages all depend on LATER stages
+
+**CRITICAL — In deep chains, EVERY stage must be verified: a stage can only be output AFTER ALL of its dependencies have already appeared.** This applies at every level of the chain, not just for the root stage.
+
+Consider this 6-stage pipeline (a common pattern where the chain flows from the middle of the JSON backward to the start):
+
+| JSON position | refId | requisiteStageRefIds | stage name |
+|---|---|---|---|
+| 1 | 2 | `["5"]` | Deploy Judgment |
+| 2 | 4 | `[]` | Migrate Judgment |
+| 3 | 5 | `["6"]` | Migrate DB |
+| 4 | 6 | `["15"]` | Cleanup Pod |
+| 5 | 8 | `["2"]` | Deploy Pod |
+| 6 | 15 | `["4"]` | Update ConfigMap |
+
+**Key observation**: Tracing the full chain: stage 4 (ROOT) → stage 15 (pos 6) → stage 6 (pos 4) → stage 5 (pos 3) → stage 2 (pos 1) → stage 8 (pos 5).
+
+The **WRONG** output (partially correct: root moved first, but the remaining stages follow a wrong order because the AI failed to verify each stage's dependency before placing it):
+```
+* Add a "Manual Intervention" step ... "Migrate Judgment" ...  ← refId 4, root, CORRECT
+* Add a "Manual Intervention" step ... "Deploy Judgment" ...   ← refId 2, WRONG (depends on refId 5 not yet placed)
+* Add a "Deploy Kubernetes YAML" step ... "Migrate DB" ...     ← refId 5, WRONG (depends on refId 6 not yet placed)
+* Add a "Deploy Kubernetes YAML" step ... "Update ConfigMap" ... ← refId 15, WRONG (should be second after root)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Pod" ...     ← refId 8, WRONG (depends on refId 2)
+* Add a "Run a kubectl script" step ... "Cleanup Pod" ...      ← refId 6, WRONG (placed last, should be third)
+```
+
+The **CORRECT** output (strictly follows dependency chain — each stage appears only AFTER its prerequisite):
+```
+* Add a "Manual Intervention" step ... "Migrate Judgment" ... Run this step first.          ← refId 4, ROOT, moved from JSON pos 2 to first
+* Add a "Deploy Kubernetes YAML" step ... "Update ConfigMap" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← refId 15, depends on 4
+* Add a "Run a kubectl script" step ... "Cleanup Pod" ... Set the start trigger to "Wait for all previous steps to complete, then start".         ← refId 6, depends on 15
+* Add a "Deploy Kubernetes YAML" step ... "Migrate DB" ... Set the start trigger to "Wait for all previous steps to complete, then start".        ← refId 5, depends on 6
+* Add a "Manual Intervention" step ... "Deploy Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".      ← refId 2, depends on 5
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Pod" ... Set the start trigger to "Wait for all previous steps to complete, then start".        ← refId 8, depends on 2
+```
+
+**ALGORITHM — always use Kahn's algorithm (BFS) to determine output order**: Process stages in waves:
+1. Wave 0 (root): all stages with `requisiteStageRefIds: []`
+2. Wave 1: all stages whose EVERY prerequisite has already been placed into waves 0
+3. Wave 2: all stages whose EVERY prerequisite appears in waves 0–1
+4. Continue until all stages are placed
+
+Before emitting any step, verify that ALL its `requisiteStageRefIds` entries have already appeared in the output. If any prerequisite is still unplaced, the stage is NOT ready and must wait.
+
 **Key observation**: Stage 1 (first in JSON) depends on stage 3. Stage 2 (second in JSON) is a root stage. The topological order is:
 1. Stage 2 (Deploy Prod Canary) — root, no prerequisites, runs FIRST
 2. Stage 3 (Manual Judgment) — depends on stage 2
@@ -1611,6 +1680,37 @@ When a project has pipeline-level notification entries, the generated prompt mus
 6. The external feed trigger prompt (if any) must follow all variable prompts and all notification steps, but before `* The project must be disabled.`.
 7. `* The project must be disabled.` must **always** be the very last line in the project's prompt block — it must appear after all step prompts, all variable prompts, and the external feed trigger prompt. No other prompt item may follow it.
 
+**CRITICAL — when BOTH `notifications` and `parameterConfig` are present**: The complete correct ordering is:
+1. Slack Notification - Start steps (before deployment stages)
+2. All deployment stage steps (in topological order)
+3. Slack Notification - Finish steps (after deployment stages)
+4. Slack Notification - Complete steps (after Finish steps)
+5. `parameterConfig` variable prompts (after ALL notification steps)
+6. External feed trigger (if any)
+7. `* The project must be disabled.` (only if `disabled: true`)
+
+**Negative example — variables placed BEFORE notifications (MOST COMMON MISTAKE when both are present)**:
+
+Given a pipeline with 2 notification entries and 3 `parameterConfig` entries, the following ordering is completely **WRONG**:
+```
+* Add a project variable called "batch_size"...          ← WRONG: variables must NOT appear first
+* Add a project variable called "timeout"...             ← WRONG
+* Add a community step template step ... "Slack Notification - Finish" ...   ← WRONG: Finish before Start
+* Add a community step template step ... "Slack Notification - Start" ...    ← WRONG: Start out of position
+* Add a community step template step ... "Slack Notification - Complete" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy App" ...
+```
+
+The **CORRECT** ordering:
+```
+* Add a community step template step ... "Slack Notification - Start" ...    ← FIRST
+* Add a "Deploy Kubernetes YAML" step ... "Deploy App" ...                   ← deployment stages
+* Add a community step template step ... "Slack Notification - Finish" ...   ← after deployment
+* Add a community step template step ... "Slack Notification - Complete" ... ← after Finish
+* Add a project variable called "batch_size"...                              ← LAST (after all notifications)
+* Add a project variable called "timeout"...                                 ← LAST
+```
+
 **CRITICAL: Do NOT group all notification steps together at the start of the output.** The Finish and Complete steps must appear **after** all deployment stage steps — they must never be listed immediately after the Start step when deployment stages are also present. The correct pattern is:
 
 ```
@@ -1629,6 +1729,28 @@ This ordering is **incorrect** and must never appear:
 * Add ... "Slack Notification - Finish" ...   ← WRONG: Finish before deployment steps
 * Add ... "Slack Notification - Complete" ...  ← WRONG: Complete before deployment steps
 * Add ... [deployment steps] ...
+```
+
+**Negative example — ALL notifications grouped before deployment stages (THE MOST COMMON MISTAKE with multiple notifications)**:
+
+Given a pipeline with 2 `notifications` entries: one with `when: ["pipeline.failed"]` (address `dev-feed`) and one with `when: ["pipeline.starting", "pipeline.complete", "pipeline.failed"]` (address `service-release`), plus several deployment stages, the following ordering is **COMPLETELY WRONG**:
+```
+* Add ... "Slack Notification - Finish" ... "dev-feed"       ← WRONG: Finish as first step
+* Add ... "Slack Notification - Start" ... "service-release"  ← WRONG: Start out of order
+* Add ... "Slack Notification - Finish" ... "service-release" ← WRONG: all notifications together before stages
+* Add ... "Slack Notification - Complete" ... "service-release"
+* Add a "Manual Intervention" step ... "Approve" ...         ← deployment stages AFTER all notifications
+* Add a "Deploy Kubernetes YAML" step ...
+```
+
+The **CORRECT** ordering (Start first, deployment stages next, Finish/Complete last — in notifications array order):
+```
+* Add ... "Slack Notification - Start" ... "service-release"  ← FIRST: only entry with pipeline.starting
+* Add a "Manual Intervention" step ... "Approve" ...           ← deployment stages
+* Add a "Deploy Kubernetes YAML" step ...
+* Add ... "Slack Notification - Finish" ... "dev-feed"        ← AFTER stages, in array order (dev-feed is notifications[0])
+* Add ... "Slack Notification - Finish" ... "service-release" ← AFTER stages, in array order (service-release is notifications[1])
+* Add ... "Slack Notification - Complete" ... "service-release"
 ```
 
 # Replacing placeholder values
