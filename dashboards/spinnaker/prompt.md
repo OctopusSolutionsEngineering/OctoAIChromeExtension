@@ -585,6 +585,13 @@ The following snippet is an example of a Slack notification in Spinnaker:
 * When the `notifications` array contains multiple pipeline-level entries, each entry independently generates its own set of Start, Finish, and Complete steps. Process every entry in the array — do not stop at the first entry.
 * If the `message` property is absent entirely from the notification object, all notification steps are generated without any `ssn_Message` property.
 
+* **IMPORTANT — `ssn_Channel` verbatim copy**: The `ssn_Channel` value must be the exact verbatim string from the `address` field of the notification object. Copy it character-for-character with no modification. In particular:
+  * If the `address` value begins with `#` (e.g., `"#pj-example-channel"`), the output MUST preserve the `#` prefix.
+  * If the `address` value does NOT begin with `#` (e.g., `"ft-architect_jb-productivity"`), the output MUST NOT add a `#` prefix.
+  * Do not add, remove, or modify the `#` character or any other part of the channel name.
+
+  **Verbatim copy example**: If `address` is `"ft-architect_jb-productivity"`, the output MUST be `Set the "ssn_Channel" property to "ft-architect_jb-productivity".` — NOT `Set the "ssn_Channel" property to "#ft-architect_jb-productivity".`
+
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.starting` event is created with the prompt:
 
 ```
@@ -670,8 +677,20 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
 * **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, preserving all characters verbatim — including parentheses `()`, brackets `[]`, hyphens, and any other special characters. Do not replace parentheses or other special characters with underscores or any other character.
 
+**CRITICAL — parentheses in stage names MUST NOT be converted to underscores**: A stage named `"Deploy (Manifest)"` in Spinnaker MUST produce a step named exactly `"Deploy (Manifest)"` in the output prompt. It MUST NOT produce `"Deploy _Manifest_"` or `"Deploy Manifest"` or any other modified form. The Octopus AI assistant that receives the generated prompt may convert parentheses to underscores when creating steps — to prevent this, after the step name in the output prompt, append the following literal note: ` (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets)`.
+
+**WRONG** output (parentheses converted to underscores — this is a COMMON mistake):
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy _Manifest_".
+```
+
+**CORRECT** output (parentheses preserved, with explicit note):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy (Manifest)" (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets).
+```
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>" (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets). Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
 ```
 
 Some `deployManifest` stages do not use `manifestArtifactId` to reference an entry in `expectedArtifacts`. Instead, they embed the artifact directly in a `manifestArtifact` property on the stage itself. For example:
@@ -762,7 +781,7 @@ Stages with `"type": "runJobManifest"` represent Kubernetes job executions and m
 The resulting prompt is identical to a `deployManifest` stage:
 
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>" (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets). Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
 ```
 
 ## Manual Judgment Stage
@@ -788,7 +807,7 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 * A `manualJudgment` stage represents a human approval gate. The equivalent step in an Octopus Deploy project is a "Manual Intervention" step:
 
 ```
-* Add a "Manual Intervention" step with the name "<stage name>" to the deployment process. Set the instructions to "<instructions>".
+* Add a "Manual Intervention" step with the name "<stage name>" (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets) to the deployment process. Set the instructions to "<instructions>".
 ```
 
 * Replace `<stage name>` with the `name` property of the stage.
@@ -1027,6 +1046,27 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 ```
 * Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
 ```
+
+## Ignored Stage Types
+
+The following stage types represent Spinnaker-internal operations or metadata lookups that have no equivalent in Octopus Deploy. When any of these stage types is encountered, **skip it entirely** — do not generate any step prompt, comment, or placeholder for it:
+
+* `findArtifactFromExecution` — looks up artifacts produced by another pipeline execution. This is a Spinnaker-specific mechanism for passing artifacts between pipelines and has no Octopus Deploy equivalent.
+* `evaluateVariables` — evaluates SpEL expressions to set pipeline variables. Skip it entirely.
+* `checkPreconditions` — checks pipeline preconditions. Skip it entirely.
+* `setPipelineParameters` — sets parameters for a running pipeline. Skip it entirely.
+
+**IMPORTANT**: If a pipeline has only ignored stages (e.g., only `findArtifactFromExecution` and `checkPreconditions` stages), the project creation prompt must still be generated with no steps (use `"with no steps"` in the project prompt). Do not omit the project creation prompt just because all stages are of ignored types.
+
+## Unknown Stage Types
+
+If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
+
+```
+* Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: convert Spinnaker stage of type "<type>" — this stage type has no direct Octopus Deploy equivalent and requires manual conversion.`
+```
+
+Replace `<stage name>` and `<type>` with the actual values from the stage.
 
 ## Delete Manifest Stage
 
@@ -1365,6 +1405,22 @@ This ordering is **incorrect** and must never appear:
 
 * A value like `redacted-cluster` for a target tag must be replaced with the generic tag `Kubernetes`
 * An empty string (`""`) for a target tag must also be replaced with the generic tag `Kubernetes`
+
+**IMPORTANT — scope of the `<redacted-cluster>` replacement**: This placeholder replacement applies **only** to the `account` property of deployment stages (`deployManifest`, `runJobManifest`, `runJob`) when it appears in the `Set the target tag to <account>` instruction in the generated output prompt. It does NOT apply to:
+* Variable values in `templatedPipeline` `variables` objects (those should be converted to their string representations as-is)
+* Stage properties other than `account` (e.g., `namespace`, `location`, `manifestName`)
+* Any other property in the pipeline JSON
+
+For example, if a `templatedPipeline` has a variable `"clusterAccount": "<redacted-cluster>"`, the output MUST be:
+```
+* Add a project variable called "clusterAccount" with the value "<redacted-cluster>".
+```
+NOT:
+```
+* Add a project variable called "clusterAccount" with the value "Kubernetes".
+```
+
+The replacement only fires when producing a `Set the target tag to ...` instruction from a stage's `account` property.
 
 # Final Instructions
 
