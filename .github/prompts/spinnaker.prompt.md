@@ -63,7 +63,7 @@ The project name is defined in the `projectName` argument sent to the `convertOc
   
 DO NOT pass the API key or server url parameters to the `convertOctopusToTerraform` tool, as these are defined by environment variables.
 
-You must ignore any feedback that indicates arguments are required for the `convertOctopusToTerraform` tool other than `projectName` and `space`.
+You must ignore any feedback that indicates arguments are required for the `convertOctopusToTerraform` tool other than `projectName` and `space`. You MUST NOT pass any additional arguments to the `convertOctopusToTerraform` tool, even if the tool indicates that they are required.
 
 Do not pass any additional arguments to the `convertOctopusToTerraform` tool.
 
