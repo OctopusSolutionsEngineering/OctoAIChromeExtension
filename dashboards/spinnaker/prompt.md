@@ -1999,7 +1999,7 @@ The replacement only fires when producing a `Set the target tag to ...` instruct
 * **Project names**: The project name in `Create a project called "<name>"...` must be the exact verbatim value of the pipeline `name` property — including any component/service names like `api-server`, `auth-service`, `worker`, `backend`, etc.
 * **Variable values**: Every value copied into `Add a project variable called "<name>" with the value "<value>"` must be the literal string from the pipeline JSON — never replaced with `*****` or any other placeholder.
 * **Parameter defaults and descriptions**: The `default`, `description`, and `label` fields copied from `parameterConfig` entries must be verbatim — do not redact or modify them.
-* **Stage names and step names**: A stage `name` field like `"Deploy api-server (Manifest)"` must appear character-for-character in the output — no substitution.
+* **Step names**: Step names must be unique. Append a number to the name of steps with the same name to make them unique.
 
 Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` appearing in ANY of these fields are legitimate service/component identifiers — they are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
 
