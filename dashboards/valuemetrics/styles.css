@@ -698,6 +698,22 @@ a:hover {
   overflow-x: auto;
 }
 
+/* Dense tables (Space Breakdown, Recent Deployments): ~12 rows visible, then scroll */
+.table-wrapper--recent-scroll {
+  --recent-scroll-visible-rows: 12;
+  --recent-scroll-row-est: calc(var(--space-sm) * 2 + 1.25rem + 1px);
+  max-height: calc(var(--recent-scroll-row-est) * var(--recent-scroll-visible-rows) + var(--space-sm) * 2 + 1.35rem + 1px);
+  overflow-y: auto;
+}
+
+.table-wrapper--recent-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--colorBackgroundCard);
+  box-shadow: 0 1px 0 var(--colorBorderDefault);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

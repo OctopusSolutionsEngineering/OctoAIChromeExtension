@@ -254,7 +254,7 @@ const Views = (() => {
     <div class="dashboard-grid mb-lg">
       <div class="card col-span-12">
         <div class="card-body" style="padding:0;">
-          <div class="table-wrapper">
+          <div class="table-wrapper table-wrapper--recent-scroll">
             <table>
               <thead>
                 <tr>
@@ -287,7 +287,7 @@ const Views = (() => {
           <a href="#" class="text-secondary" style="font:var(--textBodyRegularSmall);">View all <i class="fa-solid fa-arrow-right"></i></a>
         </div>
         <div class="card-body" style="padding:0;">
-          <div class="table-wrapper">
+          <div class="table-wrapper table-wrapper--recent-scroll">
             <table>
               <thead>
                 <tr>
