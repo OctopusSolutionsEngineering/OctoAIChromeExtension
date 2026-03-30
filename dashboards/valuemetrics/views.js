@@ -1265,8 +1265,8 @@ const Views = (() => {
                 <td>${DOMPurify.sanitize(d._projectName || d.ProjectId || '--')}</td>
                 <td class="monospace">${DOMPurify.sanitize(d.ReleaseVersion || '--')}</td>
                 <td>${DOMPurify.sanitize(d._envName || d.EnvironmentId || '--')}</td>
-                <td><div class="flex items-center gap-xs"><div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${(d._spaceName || '?').charAt(0)}</div> <span class="text-secondary">${DOMPurify.sanitize(d._spaceName || '--')}</span></div></td>
-                <td class="text-secondary monospace">${d.Duration || '--'}</td>
+                <td><div class="flex items-center gap-xs"><div class="space-avatar sm" style="width:20px;height:20px;font-size:0.5rem;">${DOMPurify.sanitize((d._spaceName || '?').charAt(0))}</div> <span class="text-secondary">${DOMPurify.sanitize(d._spaceName || '--')}</span></div></td>
+                <td class="text-secondary monospace">${DOMPurify.sanitize(d.Duration || '--')}</td>
                 <td class="text-secondary">${d.Created ? timeAgo(d.Created) : '--'}</td>
               </tr>`).join('') : '<tr><td colspan="6" class="text-secondary" style="text-align:center;padding:var(--space-lg);"><i class="fa-solid fa-check-circle text-success" style="margin-right:var(--space-xs);"></i> No failed deployments — nice!</td></tr>'}
             </tbody>
@@ -1390,13 +1390,13 @@ const Views = (() => {
           <div class="card mt-lg">
             <div class="card-header">
               <h3 class="card-title">
-                <div class="space-avatar sm" style="display:inline-flex;vertical-align:middle;margin-right:var(--space-xs);">${spaceInfo.name.charAt(0).toUpperCase()}</div>
+                <div class="space-avatar sm" style="display:inline-flex;vertical-align:middle;margin-right:var(--space-xs);">${DOMPurify.sanitize(spaceInfo.name.charAt(0).toUpperCase())}</div>
                 ${DOMPurify.sanitize(spaceInfo.name)} — Detail
               </h3>
               ${octopusSpaceUrl ? `
                 <a
                   class="text-tertiary"
-                  href="${octopusSpaceUrl}"
+                  href="${_escapeAttr(octopusSpaceUrl)}"
                   target="_blank"
                   rel="noopener noreferrer"
                   style="font:var(--textBodyRegularSmall);display:inline-flex;align-items:center;gap:var(--space-xxs);text-decoration:none;"
@@ -1430,7 +1430,7 @@ const Views = (() => {
                       return `<tr>
                         <td>${DOMPurify.sanitize(d._projectName || d.ProjectId || '--')}</td>
                         <td>${DOMPurify.sanitize(d._envName || d.EnvironmentId || '--')}</td>
-                        <td><span class="badge ${cls}">${state.charAt(0).toUpperCase() + state.slice(1)}</span></td>
+                        <td><span class="badge ${cls}">${DOMPurify.sanitize(state.charAt(0).toUpperCase() + state.slice(1))}</span></td>
                         <td class="text-secondary">${d.Created ? timeAgo(d.Created) : '--'}</td>
                       </tr>`;
                     }).join('')}

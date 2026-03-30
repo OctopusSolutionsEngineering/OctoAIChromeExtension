@@ -1586,8 +1586,8 @@ const DashboardUI = (() => {
               <span class="text-secondary">${DOMPurify.sanitize(d._spaceName || '--')}</span>
             </div>
           </td>
-          <td><span class="badge ${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span></td>
-          <td class="text-secondary monospace">${d.Duration || '--'}</td>
+          <td><span class="badge ${statusClass}"><span class="status-dot ${statusClass}"></span> ${DOMPurify.sanitize(statusLabel)}</span></td>
+          <td class="text-secondary monospace">${DOMPurify.sanitize(d.Duration || '--')}</td>
           <td class="text-secondary">${d.Created ? timeAgo(d.Created) : '--'}</td>
         </tr>`;
     }).join('');
@@ -1646,7 +1646,7 @@ const DashboardUI = (() => {
             ${envUrl
               ? `<a class="text-tertiary" href="${_escapeAttr(envUrl)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;"><span class="env-tag ${tagClass}">${DOMPurify.sanitize(env.name)}</span></a>`
               : `<span class="env-tag ${tagClass}">${DOMPurify.sanitize(env.name)}</span>`}
-            <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">${env.spaces.length > 1 ? env.spaces.length + ' spaces' : env.spaces[0] || ''}</span>
+            <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">${env.spaces.length > 1 ? env.spaces.length + ' spaces' : DOMPurify.sanitize(env.spaces[0] || '')}</span>
           </div>
           <div class="flex items-center gap-xs">
             <span class="text-secondary" style="font:var(--textBodyRegularSmall);">${env.success}/${env.total}</span>
@@ -1935,7 +1935,7 @@ const DashboardUI = (() => {
       <div class="flex items-center gap-sm flex-wrap">
         <span class="badge ${badgeClass}">${badgeLabel}</span>
         <span class="text-secondary" style="font:var(--textBodyRegularSmall);">
-          ${info.hostingEnv || 'Self-Hosted'} &mdash; ${daysFragment}
+          ${DOMPurify.sanitize(info.hostingEnv || 'Self-Hosted')} &mdash; ${daysFragment}
         </span>
       </div>`;
 
