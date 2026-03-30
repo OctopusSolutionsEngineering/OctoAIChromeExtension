@@ -77,6 +77,19 @@ function deduplicateSections(text) {
     return unique.join(SECTION_SEPARATOR);
 }
 
+async function fetchDefaultPrompt() {
+    const remoteUrl = 'https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/refs/heads/main/dashboards/spinnaker/prompt.md';
+    try {
+        const remoteResponse = await fetch(remoteUrl);
+        if (remoteResponse.ok) {
+            return remoteResponse.text();
+        }
+    } catch {
+        // Remote fetch failed; fall through to local file
+    }
+    return fetch('prompt.md').then(r => r.text());
+}
+
 async function onResetPrompt() {
     if (!confirm('Are you sure you want to reset the migration prompt to its default? Any changes you have made will be lost.')) {
         return;
@@ -84,7 +97,7 @@ async function onResetPrompt() {
 
     const migrationPrompt = document.getElementById('migrationPrompt');
     try {
-        migrationPrompt.value = await fetch('prompt.md').then(r => r.text());
+        migrationPrompt.value = await fetchDefaultPrompt();
         localStorage.removeItem(SPINNAKER_MIGRATION_PROMPT_KEY);
     } catch (e) {
         console.error('Failed to reset prompt:', e);
@@ -99,7 +112,7 @@ async function initMigrationPrompt() {
         if (savedPrompt) {
             migrationPrompt.value = savedPrompt;
         } else {
-            migrationPrompt.value = await fetch('prompt.md').then(r => r.text());
+            migrationPrompt.value = await fetchDefaultPrompt();
         }
     } catch (e) {
         console.error('Failed to load prompt.md:', e);
