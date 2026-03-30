@@ -11,7 +11,7 @@
      GET /api/licenses/licenses-current-status       → Compliance, expiry, hosting; Limits[] caps / unlimited
      GET /api/{spaceId}/teams/all                    → Teams (membership & scoping; needs TeamView)
      GET /api/{spaceId}/projects?take=1000           → Projects per space
-     GET /api/{spaceId}/environments?take=100        → Environments per space
+     GET /api/{spaceId}/environments/all           → All environments per space (includes disabled/deleted)
      GET /api/{spaceId}/environments/summary         → Machine / target health summary
      GET /api/{spaceId}/deployments?take=200         → Recent deployments per space
      GET /api/{spaceId}/dashboard                    → Dashboard overview (latest per project/env)
@@ -172,7 +172,7 @@ const DashboardData = (() => {
     // Fetch everything in parallel
     const [projects, environments, envSummary, dashboard, deployments, machines, releasesResp, runbooksResp] = await Promise.all([
       safeGet(`/api/${sid}/projects?take=1000`),
-      safeGet(`/api/${sid}/environments?take=100`),
+      safeGet(`/api/${sid}/environments/all`),
       safeGet(`/api/${sid}/environments/summary`),
       safeGet(`/api/${sid}/dashboard`),
       safeGet(`/api/${sid}/deployments?take=200`),
@@ -202,9 +202,19 @@ const DashboardData = (() => {
       projectNames[p.Id] = p.Name;
     }
 
+    // /environments/all may return either a raw array or an { Items } list
+    const normalizeEnvironmentsList = (raw) => {
+      if (raw == null) return [];
+      if (Array.isArray(raw)) return raw;
+      if (Array.isArray(raw.Items)) return raw.Items;
+      return [];
+    };
+
+    const environmentsList = normalizeEnvironmentsList(environments);
+
     // Build environment name lookup
     const envNames = {};
-    for (const e of (environments?.Items || [])) {
+    for (const e of environmentsList) {
       envNames[e.Id] = e.Name;
     }
 
@@ -216,7 +226,7 @@ const DashboardData = (() => {
       space,
       projects: projects?.Items || [],
       projectNames,
-      environments: environments?.Items || [],
+      environments: environmentsList,
       envNames,
       envSummary,
       dashboard,
@@ -446,6 +456,19 @@ const DashboardData = (() => {
       totalRunbooks += runbookCount;
       totalTargets += targetCount;
       healthyTargets += (machineHealth.Healthy || 0);
+
+      // Seed envHealthMap from the full environment list so environments with no
+      // dashboard items (e.g. disabled/deleted, or never-deployed) still show up
+      // with "No data" instead of disappearing entirely.
+      for (const env of (environments || [])) {
+        const envId = env?.Id;
+        if (!envId) continue;
+        const envName = (envNames && envNames[envId]) || env?.Name || envId;
+        if (!envHealthMap[envName]) {
+          envHealthMap[envName] = { success: 0, failed: 0, total: 0, spaces: new Set() };
+        }
+        envHealthMap[envName].spaces.add(space.Name);
+      }
 
       // Count deployment states
       let spaceSuccessful = 0;

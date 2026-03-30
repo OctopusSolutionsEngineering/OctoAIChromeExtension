@@ -706,6 +706,23 @@ a:hover {
   overflow-y: auto;
 }
 
+#env-health {
+  --recent-scroll-visible-rows: 12;
+  --recent-scroll-row-est: calc(var(--space-sm) * 2 + 1.25rem + 1px);
+  max-height: calc(var(--recent-scroll-row-est) * var(--recent-scroll-visible-rows) + var(--space-sm) * 2 + 1.35rem + 1px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: var(--space-xs);
+}
+
+#env-health .env-tag {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .table-wrapper--recent-scroll thead th {
   position: sticky;
   top: 0;
