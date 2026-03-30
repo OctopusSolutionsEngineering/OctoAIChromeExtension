@@ -320,15 +320,16 @@ const Views = (() => {
     </div>
 
     <!-- License Info -->
-    <div class="card mt-lg" style="padding:var(--space-sm) var(--space-md);">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-sm">
-          <i class="fa-solid fa-id-badge text-tertiary"></i>
-          <span class="text-secondary" style="font:var(--textBodyRegularSmall);">License</span>
-          <span id="license-info">--</span>
+    <div class="card license-card mt-lg">
+      <div class="license-card-header">
+        <div class="license-card-main">
+          <i class="fa-solid fa-id-badge text-tertiary" aria-hidden="true"></i>
+          <span class="license-card-heading text-secondary">License</span>
+          <div id="license-info" class="license-card-status">--</div>
         </div>
-        <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);" id="server-version"></span>
+        <span class="text-tertiary license-card-version" id="server-version"></span>
       </div>
+      <div id="license-ptm" class="license-ptm" aria-label="Licensed usage: projects, tenants, machines"></div>
     </div>`;
   }
 

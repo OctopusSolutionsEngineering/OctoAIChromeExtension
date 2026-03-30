@@ -7,7 +7,8 @@
    Key endpoints used (confirmed working 2026-02):
      GET /api                                        → Server info & version
      GET /api/spaces?take=100                        → All spaces
-     GET /api/licenses/licenses-current-usage        → Per-space project/tenant/machine counts
+     GET /api/licenses/licenses-current-usage        → SpacesUsage + Limits[] (CurrentUsage, EffectiveLimit, IsUnlimited)
+     GET /api/licenses/licenses-current-status       → Compliance, expiry, hosting; Limits[] caps / unlimited
      GET /api/{spaceId}/teams/all                    → Teams (membership & scoping; needs TeamView)
      GET /api/{spaceId}/projects?take=1000           → Projects per space
      GET /api/{spaceId}/environments?take=100        → Environments per space
@@ -251,6 +252,174 @@ const DashboardData = (() => {
     return [];
   }
 
+  /**
+   * PTM totals from GET /api/licenses/licenses-current-usage (authoritative for licensing).
+   * Sums per-space ProjectsCount, TenantsCount, MachinesCount; uses root totals if present.
+   */
+  function aggregatePtmFromLicenseUsage(licenseUsage) {
+    if (!licenseUsage || typeof licenseUsage !== 'object') return null;
+
+    const n = (v) => {
+      if (v === undefined || v === null) return null;
+      const x = Number(v);
+      return Number.isFinite(x) ? x : null;
+    };
+
+    const tp = n(licenseUsage.TotalProjectsCount ?? licenseUsage.totalProjectsCount
+      ?? licenseUsage.TotalProjects ?? licenseUsage.totalProjects);
+    const tt = n(licenseUsage.TotalTenantsCount ?? licenseUsage.totalTenantsCount
+      ?? licenseUsage.TotalTenants ?? licenseUsage.totalTenants);
+    const tm = n(licenseUsage.TotalMachinesCount ?? licenseUsage.totalMachinesCount
+      ?? licenseUsage.TotalMachines ?? licenseUsage.totalMachines);
+    if (tp != null && tt != null && tm != null) {
+      return { projects: tp, tenants: tt, machines: tm };
+    }
+
+    const spaces = licenseUsage.SpacesUsage || licenseUsage.spacesUsage;
+    if (!Array.isArray(spaces) || spaces.length === 0) return null;
+
+    let projects = 0;
+    let tenants = 0;
+    let machines = 0;
+    for (const su of spaces) {
+      projects += n(su.ProjectsCount ?? su.projectsCount) ?? 0;
+      tenants += n(su.TenantsCount ?? su.tenantsCount) ?? 0;
+      machines += n(su.MachinesCount ?? su.machinesCount) ?? 0;
+    }
+    return { projects, tenants, machines };
+  }
+
+  /**
+   * Map Octopus `Limits` row name → PTM bucket. Matches LicenseLimitUsageResource rows on
+   * /api/licenses/licenses-current-usage and licenses-current-status (Octopus.Server.Client).
+   */
+  function classifyPtmLimitName(name) {
+    if (!name || typeof name !== 'string') return null;
+    const n = name.toLowerCase().trim();
+    if (n.includes('tenant')) return 'tenants';
+    if (n.includes('project')) return 'projects';
+    if (n.includes('worker') && !n.includes('deployment')) return null;
+    // Octopus Cloud/API uses "Targets" for licensed deployment targets (PTM machines).
+    if (n === 'targets' || n.includes('machine') || n.includes('deployment target')) return 'machines';
+    return null;
+  }
+
+  /**
+   * Parse `Limits` array → PTM cells.
+   * Display cap uses LicensedLimit (entitlement); EffectiveLimit is the grace/overage ceiling (e.g. ~10% over).
+   */
+  function mapLimitsArrayToPtmCells(limitsArray) {
+    const out = { projects: null, tenants: null, machines: null };
+    if (!Array.isArray(limitsArray)) return out;
+    const n = (v) => {
+      if (v === undefined || v === null) return null;
+      const x = Number(v);
+      return Number.isFinite(x) ? x : null;
+    };
+    const POSITIVE_INT_MAX = 2147483647;
+    for (const lim of limitsArray) {
+      const key = classifyPtmLimitName(lim.Name ?? lim.name);
+      if (!key || out[key]) continue;
+      const used = n(lim.CurrentUsage ?? lim.currentUsage);
+      const eff = n(lim.EffectiveLimit ?? lim.effectiveLimit);
+      const lic = n(lim.LicensedLimit ?? lim.licensedLimit);
+      const flagUnlimited = lim.IsUnlimited === true || lim.isUnlimited === true;
+      const maxIntUnlimited = eff === POSITIVE_INT_MAX && (lic === POSITIVE_INT_MAX || lic == null);
+      const isUnlimited = flagUnlimited || maxIntUnlimited;
+      let limit = null;
+      let effectiveLimit = null;
+      if (!isUnlimited) {
+        limit = lic ?? eff;
+        if (eff != null && lic != null && eff > lic) effectiveLimit = eff;
+      }
+      out[key] = { used, limit, effectiveLimit, unlimited: isUnlimited };
+    }
+    return out;
+  }
+
+  function normalizePtmCell(cell) {
+    if (!cell) return { used: null, limit: null, effectiveLimit: null, unlimited: false };
+    const unlimited = cell.unlimited === true;
+    return {
+      used: cell.used != null ? cell.used : null,
+      limit: unlimited ? null : (cell.limit != null ? cell.limit : null),
+      effectiveLimit: unlimited ? null : (cell.effectiveLimit != null ? cell.effectiveLimit : null),
+      unlimited,
+    };
+  }
+
+  function mergePtmCells(a, b) {
+    return normalizePtmCell({
+      used: a?.used ?? b?.used,
+      limit: a?.limit ?? b?.limit,
+      effectiveLimit: a?.effectiveLimit ?? b?.effectiveLimit,
+      unlimited: !!(a && a.unlimited) || !!(b && b.unlimited),
+    });
+  }
+
+  /** Prefer usage Limits, then status Limits; fill used from SpacesUsage sum or space fallback; legacy scalar limits last. */
+  function buildLicensePtmSummary(licenseUsage, licenseStatus, spaceFallback) {
+    const keys = ['projects', 'tenants', 'machines'];
+    const usageLim = mapLimitsArrayToPtmCells(licenseUsage?.Limits || licenseUsage?.limits);
+    const statusLim = mapLimitsArrayToPtmCells(licenseStatus?.Limits || licenseStatus?.limits);
+    const fromAgg = aggregatePtmFromLicenseUsage(licenseUsage);
+    const legacyLimits = extractPtmLegacyScalarLimits(licenseStatus);
+
+    const ptm = {};
+    for (const key of keys) {
+      let cell = mergePtmCells(usageLim[key], statusLim[key]);
+      let used = cell.used;
+      if (used == null && fromAgg) used = fromAgg[key];
+      if (used == null && spaceFallback) used = spaceFallback[key];
+
+      let { limit, effectiveLimit, unlimited } = cell;
+      if (!unlimited && limit == null && legacyLimits[key] != null) limit = legacyLimits[key];
+
+      ptm[key] = { used: used ?? null, limit, effectiveLimit: unlimited ? null : effectiveLimit, unlimited };
+    }
+
+    const hasLimitsArray = (Array.isArray(licenseUsage?.Limits) && licenseUsage.Limits.length > 0)
+      || (Array.isArray(licenseUsage?.limits) && licenseUsage.limits.length > 0)
+      || (Array.isArray(licenseStatus?.Limits) && licenseStatus.Limits.length > 0)
+      || (Array.isArray(licenseStatus?.limits) && licenseStatus.limits.length > 0);
+
+    const source = hasLimitsArray ? 'license-limits' : fromAgg ? 'license-usage-spaces' : 'spaces-aggregate';
+    return { ptm, source };
+  }
+
+  /** Legacy flat limit fields on status (not the Limits[] resource). */
+  function extractPtmLegacyScalarLimits(licenseStatus) {
+    const out = { projects: null, tenants: null, machines: null };
+    if (!licenseStatus || typeof licenseStatus !== 'object') return out;
+
+    const tryKeys = (obj, keys) => {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+      for (const k of keys) {
+        const v = obj[k];
+        if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+      }
+      return null;
+    };
+
+    const buckets = [
+      licenseStatus,
+      licenseStatus.License,
+      licenseStatus.license,
+      licenseStatus.LicenseDetails,
+    ];
+
+    const projectKeys = ['MaximumProjects', 'MaximumLicensedProjects', 'LicensedProjectMaximum', 'ProjectLimit'];
+    const tenantKeys = ['MaximumTenants', 'LicensedTenantMaximum', 'TenantLimit'];
+    const machineKeys = ['MaximumMachines', 'MaximumDeploymentTargets', 'MachineLimit', 'DeploymentTargetLimit', 'LicensedMachineLimit'];
+
+    for (const o of buckets) {
+      if (out.projects == null) out.projects = tryKeys(o, projectKeys);
+      if (out.tenants == null) out.tenants = tryKeys(o, tenantKeys);
+      if (out.machines == null) out.machines = tryKeys(o, machineKeys);
+    }
+    return out;
+  }
+
   // ---- Aggregation / Summary ----
 
   function getSummary(usageByName) {
@@ -425,12 +594,25 @@ const DashboardData = (() => {
     // Target health percentage
     const healthyPct = totalTargets > 0 ? Math.round(healthyTargets / totalTargets * 100) : 0;
 
-    // License info
+    // License: PTM from Limits[] on usage/status (used + cap / unlimited), else SpacesUsage, else loaded spaces
+    const { ptm: ptmCells, source: ptmSource } = buildLicensePtmSummary(
+      _licenseUsage,
+      _licenseStatus,
+      { projects: totalProjects, tenants: null, machines: totalTargets },
+    );
+
     const licenseInfo = {
       isCompliant: _licenseStatus?.IsCompliant,
       daysToExpiry: _licenseStatus?.DaysToEffectiveExpiryDate,
       expiryDate: _licenseStatus?.EffectiveExpiryDate,
       hostingEnv: _licenseStatus?.HostingEnvironment,
+      complianceSummary: _licenseStatus?.ComplianceSummary || null,
+      ptm: {
+        projects: ptmCells.projects,
+        tenants: ptmCells.tenants,
+        machines: ptmCells.machines,
+        source: ptmSource,
+      },
     };
 
     // Teams (per-space fetch in fetchSpaceData)
@@ -1167,19 +1349,100 @@ const DashboardUI = (() => {
 
   // ---- License Info ----
 
+  function formatPtmPair(used, limit, unlimited) {
+    if (unlimited) {
+      if (used == null) return 'Unlimited';
+      return `${used} / Unlimited`;
+    }
+    if (used == null && limit == null) return '—';
+    if (used == null) return limit == null ? '—' : `— / ${limit}`;
+    if (limit == null) return String(used);
+    return `${used} / ${limit}`;
+  }
+
   function renderLicenseInfo(info) {
     const el = document.getElementById('license-info');
+    const ptmEl = document.getElementById('license-ptm');
     if (!el || !info) return;
 
-    const daysClass = info.daysToExpiry > 60 ? 'success' : info.daysToExpiry > 30 ? 'warning' : 'danger';
+    const compliant = info.isCompliant === true;
+    const nonCompliant = info.isCompliant === false;
+    const badgeClass = compliant ? 'success' : nonCompliant ? 'danger' : 'neutral';
+    const badgeLabel = compliant ? 'Compliant' : nonCompliant ? 'Non-Compliant' : 'Unknown';
+
+    const days = info.daysToExpiry;
+    const daysClass = days == null ? 'secondary' : days > 60 ? 'success' : days > 30 ? 'warning' : 'danger';
+    const daysFragment = days == null
+      ? '<span class="text-secondary">Renewal date unavailable</span>'
+      : `<span class="text-${daysClass}">${days} days</span> until renewal`;
+
     el.innerHTML = `
-      <div class="flex items-center gap-sm">
-        <span class="badge ${info.isCompliant ? 'success' : 'danger'}">${info.isCompliant ? 'Compliant' : 'Non-Compliant'}</span>
+      <div class="flex items-center gap-sm flex-wrap">
+        <span class="badge ${badgeClass}">${badgeLabel}</span>
         <span class="text-secondary" style="font:var(--textBodyRegularSmall);">
-          ${info.hostingEnv || 'Self-Hosted'} &mdash; 
-          <span class="text-${daysClass}">${info.daysToExpiry} days</span> until renewal
+          ${info.hostingEnv || 'Self-Hosted'} &mdash; ${daysFragment}
         </span>
       </div>`;
+
+    if (!ptmEl) return;
+    const ptm = info.ptm;
+    if (!ptm) {
+      ptmEl.innerHTML = '';
+      return;
+    }
+
+    const metric = (label, key) => {
+      const cell = ptm[key] || {};
+      const used = cell.used;
+      const limit = cell.limit;
+      const effCap = cell.effectiveLimit;
+      const unlimited = cell.unlimited === true;
+      const text = formatPtmPair(used, limit, unlimited);
+      const overLicensed = !unlimited && typeof used === 'number' && typeof limit === 'number' && limit > 0 && used > limit;
+      const overEffective = !unlimited && typeof used === 'number' && typeof effCap === 'number' && effCap > 0 && used > effCap;
+      const inGraceZone = overLicensed && !overEffective && effCap != null && effCap > limit;
+      let valClass = 'license-ptm-metric-value';
+      if (overEffective) valClass += ' license-ptm-metric-value--over';
+      else if (inGraceZone) valClass += ' license-ptm-metric-value--grace';
+      else if (overLicensed) valClass += ' license-ptm-metric-value--over';
+      return `
+        <div class="license-ptm-metric">
+          <span class="license-ptm-metric-label">${label}</span>
+          <span class="${valClass}">${text}</span>
+        </div>`;
+    };
+
+    const capsMissing = ['projects', 'tenants', 'machines'].every((key) => {
+      const c = ptm[key] || {};
+      return !c.unlimited && (c.limit == null || c.limit === undefined);
+    });
+
+    let note = '';
+    if (ptm.source === 'spaces-aggregate') {
+      note = '<p class="license-ptm-note text-tertiary"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> PTM uses loaded spaces only; grant access to read <code class="license-ptm-code">/api/licenses/licenses-current-usage</code> for exact counts and caps.</p>';
+    } else if (ptm.source === 'license-usage-spaces' && capsMissing) {
+      note = '<p class="license-ptm-note text-tertiary"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Usage totals are from per-space data; numeric caps are in the <code class="license-ptm-code">Limits</code> array on the license endpoints. Open Configuration → License in Octopus to see your full entitlement.</p>';
+    }
+
+    const summaryLine = info.complianceSummary
+      ? `<p class="license-compliance-summary text-tertiary">${String(info.complianceSummary)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+      : '';
+
+    const ptmHint = (ptm.source === 'license-limits' || ptm.source === 'license-usage-spaces')
+      ? `<p class="license-ptm-hint text-tertiary">Compared to your <span class="license-ptm-hint-em">licensed</span> entitlement; Octopus also exposes a higher effective cap as a short overage allowance.</p>`
+      : '';
+
+    ptmEl.innerHTML = `
+      <div class="license-ptm-label text-tertiary">License usage (PTM)</div>
+      ${ptmHint}
+      <div class="license-ptm-grid">
+        ${metric('Projects', 'projects')}
+        ${metric('Tenants', 'tenants')}
+        ${metric('Machines', 'machines')}
+      </div>
+      ${summaryLine}
+      ${note}`;
   }
 
   // ---- Helpers ----
