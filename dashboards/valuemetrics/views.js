@@ -356,7 +356,6 @@ const Views = (() => {
   // ==================================================================
 
   function renderTrends(summary) {
-    const trend = summary.weeklyTrend || [];
     const totalDeploys = summary.kpi.totalDeployments;
     const successRate = summary.kpi.successRate;
     const frequency = summary.kpi.deployFrequency;
@@ -432,7 +431,7 @@ const Views = (() => {
         </div>
       </div>
       <div class="card-body">
-        <div class="chart-container" id="trends-chart">${_renderTrendChart(trend, '30d')}</div>
+        <div class="chart-container" id="trends-chart">${_renderTrendChart(summary, '30d')}</div>
       </div>
     </div>
 
@@ -483,13 +482,12 @@ const Views = (() => {
   }
 
   function wireTrendsEvents(summary) {
-    const trend = summary.weeklyTrend || [];
     document.querySelectorAll('[data-trends-range]').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('[data-trends-range]').forEach(b => b.classList.remove('active-toggle'));
         btn.classList.add('active-toggle');
         const el = document.getElementById('trends-chart');
-        if (el) el.innerHTML = _renderTrendChart(trend, btn.dataset.trendsRange);
+        if (el) el.innerHTML = _renderTrendChart(summary, btn.dataset.trendsRange);
       });
     });
   }
@@ -518,8 +516,27 @@ const Views = (() => {
     return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
-  function _renderTrendChart(weeklyTrend, range) {
+  function _dailyAxisLabel(d, prev) {
+    const M = MONTH_NAMES;
+    if (!prev) return `${d.day}<br>${M[d.month]}<br>${d.year}`;
+    if (d.year !== prev.year) return `${d.day}<br>${M[d.month]}<br>${d.year}`;
+    if (d.month !== prev.month) return `${d.day}<br>${M[d.month]}`;
+    return String(d.day);
+  }
+
+  function _dailyUtcTip(dateKey) {
+    const [y, mo, da] = dateKey.split('-').map(Number);
+    return `${da} ${MONTH_NAMES[mo - 1]} ${y} (UTC)`;
+  }
+
+  function _renderTrendChart(summary, range) {
+    if (!summary) {
+      return '<div class="text-tertiary" style="text-align:center;padding:var(--space-lg);">No trend data available</div>';
+    }
+    const weeklyTrend = summary.weeklyTrend || [];
+    const dailyTrend = summary.dailyTrend || [];
     let bars;
+    let useDailyBars = false;
     if (range === '12m') {
       const monthly = _aggregateMonthly(weeklyTrend);
       bars = monthly.map(m => ({
@@ -527,6 +544,18 @@ const Views = (() => {
         label: MONTH_NAMES[m.month] + (m.month === 0 ? '<br>' + m.year : ''),
         tooltip: _trendTipAttr(`${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed, ${m.total - m.success - m.failed} other)`),
       }));
+    } else if (range === '30d' && dailyTrend.length > 0) {
+      useDailyBars = true;
+      bars = dailyTrend.map((d, i) => {
+        const prev = i > 0 ? dailyTrend[i - 1] : null;
+        const counts = `${d.total} deployments (${d.success} success, ${d.failed} failed, ${d.total - d.success - d.failed} other)`;
+        const tip = `${_dailyUtcTip(d.dateKey)}. ${counts}`;
+        return {
+          total: d.total, success: d.success, failed: d.failed,
+          label: _dailyAxisLabel(d, prev),
+          tooltip: _trendTipAttr(tip),
+        };
+      });
     } else {
       const weeks = range === '90d' ? 13 : 5;
       const sliced = weeklyTrend.slice(-weeks);
@@ -546,10 +575,11 @@ const Views = (() => {
       return '<div class="text-tertiary" style="text-align:center;padding:var(--space-lg);">No trend data available</div>';
     }
     const maxTotal = Math.max(...bars.map(b => b.total), 1);
-    const gap = range === '12m' ? 8 : range === '90d' ? 6 : 12;
+    const gap = range === '12m' ? 8 : (useDailyBars ? 2 : (range === '90d' ? 6 : 12));
+    const chartExtra = useDailyBars ? ' deployment-trend-chart--daily' : '';
     const maxBar = DashboardData.TREND_BAR_MAX_PX;
     const fmt = (n) => DashboardData.formatCompactCount(n);
-    return `<div class="deployment-trend-chart">
+    return `<div class="deployment-trend-chart${chartExtra}">
       <div class="deployment-trend-bars" style="gap:${gap}px;padding:var(--space-sm) 0;">
         ${bars.map(b => {
           const t = b.total;
@@ -572,7 +602,7 @@ const Views = (() => {
                 ${succH > 0 ? `<div class="deployment-trend-seg deployment-trend-seg--success" style="height:${succH}px;border-radius:0 0 3px 3px;"></div>` : ''}
               </div>
             </div>
-            <div class="deployment-trend-axis-label">${b.label}</div>
+            <div class="deployment-trend-axis-label${useDailyBars ? ' deployment-trend-axis-label--dense' : ''}">${b.label}</div>
           </div>`;
         }).join('')}
       </div>
@@ -720,7 +750,7 @@ const Views = (() => {
         </div>
       </div>
       <div class="card-body">
-        <div class="chart-container">${_renderTrendChart(summary.weeklyTrend || [], '12m')}</div>
+        <div class="chart-container">${_renderTrendChart(summary, '12m')}</div>
       </div>
     </div>
 

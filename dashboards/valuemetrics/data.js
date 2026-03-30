@@ -385,6 +385,7 @@ const DashboardData = (() => {
 
     // Build weekly trend from deployment timestamps (since the weekly report endpoint is deprecated)
     const weeklyTrend = computeWeeklyTrend(enrichedDeployments);
+    const dailyTrend = computeDailyTrend(enrichedDeployments, 30);
 
     // Deployment frequency (per day over last 30 days)
     const now = new Date();
@@ -444,6 +445,7 @@ const DashboardData = (() => {
 
       // Trends
       weeklyTrend,
+      dailyTrend,
 
       // Counts for donut
       successCount: totalSuccessful,
@@ -488,6 +490,42 @@ const DashboardData = (() => {
     }
 
     return sorted;
+  }
+
+  /**
+   * Last `numDays` UTC calendar days (today inclusive), including days with zero deployments.
+   */
+  function computeDailyTrend(deployments, numDays = 30) {
+    const dayMap = {};
+    const today = new Date();
+    const endUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+
+    for (let i = numDays - 1; i >= 0; i--) {
+      const d = new Date(endUtc - i * 86400000);
+      const key = d.toISOString().slice(0, 10);
+      dayMap[key] = {
+        dateKey: key,
+        year: d.getUTCFullYear(),
+        month: d.getUTCMonth(),
+        day: d.getUTCDate(),
+        success: 0,
+        failed: 0,
+        total: 0,
+      };
+    }
+
+    for (const dep of deployments) {
+      const created = dep.Created || dep.QueueTime;
+      if (!created) continue;
+      const key = new Date(created).toISOString().slice(0, 10);
+      if (!dayMap[key]) continue;
+      dayMap[key].total++;
+      const state = (dep.State || '').toLowerCase();
+      if (state === 'success') dayMap[key].success++;
+      else if (state === 'failed') dayMap[key].failed++;
+    }
+
+    return Object.keys(dayMap).sort().map(k => dayMap[k]);
   }
 
   /**
@@ -576,7 +614,7 @@ const DashboardUI = (() => {
       renderRecentDeployments(summary.recentDeployments);
       renderEnvHealth(summary.envHealth);
       renderSuccessFailureChart(summary);
-      renderWeeklyTrend(summary.weeklyTrend);
+      renderWeeklyTrend(summary.weeklyTrend, summary.dailyTrend);
       renderLicenseInfo(summary.licenseInfo);
       updateRefreshTime();
       updateConnectionStatus();
@@ -853,8 +891,25 @@ const DashboardUI = (() => {
 
   // ---- Trend chart state ----
   let _fullWeeklyTrend = [];
+  let _fullDailyTrend = [];
   let _currentRange = '30d';
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function formatDailyAxisLabel(d, prev) {
+    const M = MONTH_NAMES;
+    if (!prev) return `${d.day}<br>${M[d.month]}<br>${d.year}`;
+    if (d.year !== prev.year) return `${d.day}<br>${M[d.month]}<br>${d.year}`;
+    if (d.month !== prev.month) return `${d.day}<br>${M[d.month]}`;
+    return String(d.day);
+  }
+
+  function formatUtcDayTip(dateKey) {
+    const parts = dateKey.split('-').map(Number);
+    const y = parts[0];
+    const mo = parts[1];
+    const da = parts[2];
+    return `${da} ${MONTH_NAMES[mo - 1]} ${y} (UTC)`;
+  }
 
   /**
    * Aggregate weekly buckets into monthly buckets for the 12-month view.
@@ -933,15 +988,17 @@ const DashboardUI = (() => {
     return `${d1} ${M[m1]} ${y1} – ${d2} ${M[m2]} ${y2}`;
   }
 
-  function renderWeeklyTrend(weeklyTrend, range) {
-    if (weeklyTrend) _fullWeeklyTrend = weeklyTrend;
-    if (range) _currentRange = range;
+  function renderWeeklyTrend(weeklyTrend, dailyTrend, range) {
+    if (weeklyTrend != null) _fullWeeklyTrend = weeklyTrend;
+    if (dailyTrend != null) _fullDailyTrend = dailyTrend;
+    if (range != null) _currentRange = range;
 
     const el = document.getElementById('chart-deployment-trends');
     if (!el) return;
 
     // Decide what to show based on range
     let bars;      // array of { total, success, failed, label, tooltip }
+    let useDailyBars = false;
     if (_currentRange === '12m') {
       const monthly = _aggregateMonthly(_fullWeeklyTrend);
       bars = monthly.map(m => ({
@@ -951,6 +1008,20 @@ const DashboardUI = (() => {
         label: MONTH_NAMES[m.month] + (m.month === 0 ? '<br>' + m.year : ''),
         tooltip: _tooltipAttr(`${MONTH_NAMES[m.month]} ${m.year}: ${m.total} deployments (${m.success} success, ${m.failed} failed, ${m.total - m.success - m.failed} other)`),
       }));
+    } else if (_currentRange === '30d' && _fullDailyTrend && _fullDailyTrend.length > 0) {
+      useDailyBars = true;
+      bars = _fullDailyTrend.map((d, i) => {
+        const prev = i > 0 ? _fullDailyTrend[i - 1] : null;
+        const counts = `${d.total} deployments (${d.success} success, ${d.failed} failed, ${d.total - d.success - d.failed} other)`;
+        const tip = `${formatUtcDayTip(d.dateKey)}. ${counts}`;
+        return {
+          total: d.total,
+          success: d.success,
+          failed: d.failed,
+          label: formatDailyAxisLabel(d, prev),
+          tooltip: _tooltipAttr(tip),
+        };
+      });
     } else {
       const weeksToShow = _currentRange === '90d' ? 13 : 5;
       const sliced = _fullWeeklyTrend.slice(-weeksToShow);
@@ -969,6 +1040,9 @@ const DashboardUI = (() => {
       });
     }
 
+    const gapPx = _currentRange === '12m' ? 8 : (useDailyBars ? 2 : (_currentRange === '90d' ? 6 : 12));
+    const chartExtra = useDailyBars ? ' deployment-trend-chart--daily' : '';
+
     if (!bars || bars.length === 0) {
       el.innerHTML = `<div class="text-tertiary" style="text-align:center;padding:var(--space-lg);">
         <i class="fa-solid fa-chart-area" style="font-size:2rem;display:block;margin-bottom:var(--space-sm);"></i>
@@ -981,8 +1055,8 @@ const DashboardUI = (() => {
     const maxTotal = Math.max(...bars.map(b => b.total), 1);
 
     el.innerHTML = `
-      <div class="deployment-trend-chart">
-        <div class="deployment-trend-bars" style="gap:6px;padding:0 var(--space-xs);">
+      <div class="deployment-trend-chart${chartExtra}">
+        <div class="deployment-trend-bars" style="gap:${gapPx}px;padding:0 var(--space-xs);">
           ${bars.map(b => {
             const t = b.total;
             const hPx = trendBarPixelHeight(t, maxTotal);
@@ -1005,7 +1079,7 @@ const DashboardUI = (() => {
                     ${succH > 0 ? `<div class="deployment-trend-seg deployment-trend-seg--success" style="height:${succH}px;border-radius:0 0 3px 3px;"></div>` : ''}
                   </div>
                 </div>
-                <div class="deployment-trend-axis-label">${b.label}</div>
+                <div class="deployment-trend-axis-label${useDailyBars ? ' deployment-trend-axis-label--dense' : ''}">${b.label}</div>
               </div>`;
           }).join('')}
         </div>
@@ -1013,7 +1087,7 @@ const DashboardUI = (() => {
   }
 
   function setTrendRange(range) {
-    renderWeeklyTrend(null, range);
+    renderWeeklyTrend(null, null, range);
   }
 
   // ---- License Info ----
@@ -1062,7 +1136,7 @@ const DashboardUI = (() => {
     renderRecentDeployments(summary.recentDeployments);
     renderEnvHealth(summary.envHealth);
     renderSuccessFailureChart(summary);
-    renderWeeklyTrend(summary.weeklyTrend);
+    renderWeeklyTrend(summary.weeklyTrend, summary.dailyTrend);
     renderLicenseInfo(summary.licenseInfo);
   }
 

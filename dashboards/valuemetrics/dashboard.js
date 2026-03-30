@@ -371,6 +371,7 @@ function assembleExportData() {
             spaces: e.spaces,
         })),
         weeklyTrend: summary.weeklyTrend,
+        dailyTrend: summary.dailyTrend,
         licenseInfo: summary.licenseInfo,
     };
 }
@@ -449,6 +450,13 @@ function formatCSV(data) {
     row('Environment', 'Success', 'Failed', 'Total', 'Success Rate', 'Spaces');
     for (const e of data.envHealth) {
         row(e.environment, e.success, e.failed, e.total, e.successRate, e.spaces.join('; '));
+    }
+    lines.push('');
+
+    lines.push('# Daily Deployment Trend (last 30 UTC days)');
+    row('Date (UTC)', 'Total', 'Success', 'Failed');
+    for (const d of (data.dailyTrend || [])) {
+        row(d.dateKey, d.total, d.success, d.failed);
     }
     lines.push('');
 

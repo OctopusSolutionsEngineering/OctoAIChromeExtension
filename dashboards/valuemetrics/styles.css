@@ -645,7 +645,24 @@ a:hover {
   word-break: break-word;
   text-align: center;
   line-height: 1.25;
-  min-height: 2.5em;
+  min-height: 4.25em;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+.deployment-trend-chart--daily .deployment-trend-bar-stack {
+  max-width: min(28px, 100%);
+}
+.deployment-trend-chart--daily .deployment-trend-value {
+  font-size: 0.68rem;
+}
+.deployment-trend-axis-label--dense {
+  font-size: 0.62rem;
+  line-height: 1.15;
+  min-height: 3.6em;
 }
 
 .deployment-trend-bars > [data-tooltip]:first-child:not(:last-child)::after {
