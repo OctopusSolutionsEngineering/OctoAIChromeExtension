@@ -85,6 +85,18 @@
             <span id="header-text">Platform Dashboard</span>
         </div>
         <div class="header-actions">
+            <div class="lookback-wrapper" id="lookback-wrapper">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <select id="lookback-select" class="lookback-select" title="Historical data lookback period">
+                    <option value="3" selected>3 months</option>
+                    <option value="6">6 months</option>
+                    <option value="12">1 year</option>
+                    <option value="24">2 years</option>
+                    <option value="36">3 years</option>
+                    <option value="60">5 years</option>
+                    <option value="0">All time</option>
+                </select>
+            </div>
             <span class="text-secondary" style="font: var(--textBodyRegularSmall);">
                 <i class="fa-regular fa-clock"></i>
                 Last refreshed: <span id="last-refresh">--</span>
@@ -121,6 +133,22 @@
         </div>
     </main>
 
+</div>
+
+<!-- Full-screen metrics load -->
+<div id="metrics-loading-overlay" class="onboarding-overlay metrics-loading-overlay" aria-hidden="true" hidden>
+    <div class="onboarding-card metrics-loading-card" role="status" aria-live="polite" id="metrics-loading-card">
+        <div class="onboarding-body metrics-loading-body">
+            <div class="metrics-loading-spinner-wrap" aria-hidden="true">
+                <i class="fa-solid fa-spinner fa-spin metrics-loading-spinner"></i>
+            </div>
+            <h2 class="onboarding-title metrics-loading-title">Loading metrics</h2>
+            <p class="onboarding-text metrics-loading-text" id="metrics-loading-detail"
+               data-default-text="Pulling deployment data and KPIs from your Octopus instance. This can take a moment on larger systems.">
+                Pulling deployment data and KPIs from your Octopus instance. This can take a moment on larger systems.
+            </p>
+        </div>
+    </div>
 </div>
 
 <!-- Load shared extension helper (provides getDashboardConfig) -->

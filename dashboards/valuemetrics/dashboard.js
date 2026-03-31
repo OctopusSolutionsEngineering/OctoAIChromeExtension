@@ -232,6 +232,75 @@ document.getElementById('nav-reset-onboarding').addEventListener('click', (e) =>
 });
 
 // ================================================================
+// Historical enrichment wiring
+// ================================================================
+function getSelectedLookback() {
+    const sel = document.getElementById('lookback-select');
+    if (!sel) return 3;
+    const val = parseInt(sel.value, 10);
+    return Number.isFinite(val) ? val : 3;
+}
+
+function onEnrichmentProgress(state) {
+    // Ensure the enrichment banner exists when we first enter "loading"
+    if (state.state === 'loading') {
+        const view = Router.getCurrentView();
+        const shouldShowBanner = (view === 'overview' || view === 'trends' || view === 'velocity');
+        let banner = document.getElementById('enrichment-banner');
+
+        // On first load the banner may not yet be in the DOM; force a refresh so
+        // the view re-renders with the banner, then rely on subsequent progress events.
+        if (shouldShowBanner && !banner) {
+            Router.refresh();
+            return;
+        }
+
+        if (banner) {
+            const bar = banner.querySelector('.enrichment-progress-bar');
+            const text = banner.querySelector('.enrichment-text');
+            if (bar) bar.style.width = state.progress + '%';
+            if (text) text.innerHTML = `Loading historical data&hellip; ${(state.tasksFetched || 0).toLocaleString()} tasks`;
+        }
+    }
+
+    if (state.state === 'complete' || state.state === 'error') {
+        const view = Router.getCurrentView();
+        if (view === 'overview' || view === 'trends' || view === 'velocity') {
+            Router.refresh();
+            if (view === 'overview' && _lastSummary) {
+                renderValueImpact(_lastSummary);
+            }
+        }
+    }
+}
+
+function startEnrichment() {
+    const months = getSelectedLookback();
+    debug('Starting historical enrichment', { lookbackMonths: months });
+    DashboardData.startHistoricalEnrichment(months, onEnrichmentProgress);
+}
+
+// Track last confirmed lookback so we can restore it on cancel
+let lastConfirmedLookbackMonths = getSelectedLookback();
+
+// Wire lookback dropdown
+document.getElementById('lookback-select').addEventListener('change', () => {
+    const previousMonths = lastConfirmedLookbackMonths;
+    const months = getSelectedLookback();
+    if (months > 12 || months === 0) {
+        const label = months === 0 ? 'all time' : `${months / 12} years`;
+        if (!confirm(`Fetching ${label} of data may take a while and could be heavy on large Octopus instances.\n\nContinue?`)) {
+            document.getElementById('lookback-select').value = String(previousMonths);
+            return;
+        }
+    }
+    DashboardData.clearHistoryCache();
+    startEnrichment();
+    lastConfirmedLookbackMonths = months;
+    lastConfirmedLookbackMonths = months;
+});
+
+// ================================================================
 // Override DashboardUI.loadDashboard to also render value impact
 // and refresh the current view after data loads
 // ================================================================
@@ -247,6 +316,8 @@ DashboardUI.loadDashboard = async function() {
     } else {
         Router.refresh();
     }
+
+    startEnrichment();
 };
 
 // ================================================================
@@ -295,6 +366,8 @@ updateRefreshTime();
 
 document.getElementById('btn-refresh').addEventListener('click', () => {
     updateRefreshTime();
+    DashboardData.cancelEnrichment();
+    DashboardData.clearHistoryCache();
     DashboardUI.loadDashboard();
 });
 
@@ -371,6 +444,7 @@ function assembleExportData() {
             spaces: e.spaces,
         })),
         weeklyTrend: summary.weeklyTrend,
+        dailyTrend: summary.dailyTrend,
         licenseInfo: summary.licenseInfo,
     };
 }
@@ -404,7 +478,6 @@ function formatCSV(data) {
     row('Total Targets', data.kpi.totalTargets);
     row('Healthy Targets', data.kpi.healthyTargetsPct + '%');
     row('Total Releases', data.kpi.totalReleases);
-    row('Time Saved (est. hrs)', data.kpi.timeSavedHours);
     lines.push('');
 
     if (data.valueImpact) {
@@ -450,6 +523,13 @@ function formatCSV(data) {
     row('Environment', 'Success', 'Failed', 'Total', 'Success Rate', 'Spaces');
     for (const e of data.envHealth) {
         row(e.environment, e.success, e.failed, e.total, e.successRate, e.spaces.join('; '));
+    }
+    lines.push('');
+
+    lines.push('# Daily Deployment Trend (last 30 UTC days)');
+    row('Date (UTC)', 'Total', 'Success', 'Failed');
+    for (const d of (data.dailyTrend || [])) {
+        row(d.dateKey, d.total, d.success, d.failed);
     }
     lines.push('');
 
