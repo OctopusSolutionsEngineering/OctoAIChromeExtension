@@ -158,7 +158,7 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
 ---
 
 Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source."
 * The project must be disabled.
 ```
 
@@ -246,7 +246,7 @@ Create a feed called "Google Container Registry" in Octopus Deploy with a feed U
 ---
 
 Create a project called "my-service deploy to dev" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy (Manifest)". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/manifest.yaml`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/manifest.yaml". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy (Manifest)". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/manifest.yaml`. Set the target tag to Kubernetes. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/manifest.yaml". The manifest must be inlined or the step must be reconfigured to read from a supported source."
 ```
 
 **WRONG output** (no GCR feed section — this is a common mistake when `expectedArtifacts` is absent):
@@ -512,7 +512,7 @@ Create a project called "[dev] my-service" in the "Default Project Group" projec
 The **CORRECT** output (stage IS converted AND the project is disabled):
 ```
 Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source."
 * The project must be disabled.
 ```
 
@@ -545,14 +545,14 @@ Given a pipeline with `"disabled": true` and one `runJobManifest` stage:
 The **WRONG** output (disabled line missing even though stage is correctly converted):
 ```
 Create a project called "app-0368-job" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-0042". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-0042". The manifest must be inlined or the step must be reconfigured to read from a supported source."
 ```
 ← WRONG: `* The project must be disabled.` is missing despite `"disabled": true` in the pipeline JSON.
 
 The **CORRECT** output (stage IS converted AND the project is disabled):
 ```
 Create a project called "app-0368-job" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-0042". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-0042". The manifest must be inlined or the step must be reconfigured to read from a supported source."
 * The project must be disabled.
 ```
 
@@ -1202,7 +1202,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths.
 * **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Use the following logic:
   * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest. The manifest YAML content must be serialized verbatim — do NOT redact, anonymize, or replace any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders. Service names, namespaces, and deployment names that appear in the manifest are Kubernetes resource identifiers, not secrets.
-  * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Append a note: `NOTE: This step originally loaded its manifest from Google Cloud Storage at "<reference>". The manifest must be inlined or the step must be reconfigured to read from a supported source.`
+  * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at \"<reference>\". The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space.
 * Do NOT generate a feed prompt from `manifestArtifact` GCS references.
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
 * Replace `<account>` with the value of the `account` property in the stage.
@@ -1230,7 +1230,7 @@ Given a stage with `manifestArtifactId` resolving to:
 
 The **WRONG** output (treats `github/file` as GCS — FORBIDDEN):
 ```
-* Add a "Deploy Kubernetes YAML" step ... Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from https://example.invalid/url-0034`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "https://example.invalid/url-0034". ...
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from https://example.invalid/url-0034`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at "https://example.invalid/url-0034". ...
 ```
 ← WRONG: `https://` URLs are GitHub URLs, not GCS paths. `gcs/object` artifacts use `gs://` paths. NEVER confuse the two.
 
@@ -1242,7 +1242,7 @@ The **CORRECT** output (`github/file` → "Files from a Git repository"):
 If the `defaultArtifact.type` of the resolved entry is `"gcs/object"`, apply the **same GCS inline YAML rules** as for a direct `manifestArtifact.type: "gcs/object"` stage:
 * Use `defaultArtifact.reference` as the GCS path.
 * If the stage has a non-empty `manifests` array, serialize those manifests to YAML as the inline YAML content.
-* If there is no `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to `# TODO: replace with manifest downloaded from <reference>`. Append the same NOTE as for direct GCS stages.
+* If there is no `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to `# TODO: replace with manifest downloaded from <reference>`. Set the step description using the same GCS note as for direct GCS stages.
 * **CRITICAL**: A stage that resolves via `manifestArtifactId` to a `gcs/object` expected artifact does **NOT** qualify as deploying a Docker image — it must NOT trigger an external feed trigger, even if a Docker trigger is present in the pipeline.
 
 **ABSOLUTE RULE — `manifestArtifactId` resolving to GCS MUST NEVER produce "Files from a Git repository"**: Regardless of whether the artifact is referenced via `manifestArtifactId` or directly via `manifestArtifact`, a `gcs/object` artifact reference MUST ALWAYS produce an "Inline YAML" step — never a "Files from a Git repository" step. The `gs://` paths are Google Cloud Storage paths, not Git repository URLs, and using them as Repository URLs is incorrect and will cause deployment failures.
@@ -1280,7 +1280,7 @@ The **WRONG** output (uses "Files from a Git repository" with a `gs://` URL — 
 
 The **CORRECT** output (resolves via `manifestArtifactId` to GCS → inline YAML):
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2091`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2091". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2091`. Set the target tag to Kubernetes. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2091". The manifest must be inlined or the step must be reconfigured to read from a supported source."
 ```
 
 ## Namespace Override for Deploy Manifest Stages
@@ -1303,7 +1303,7 @@ Some `deployManifest` stages include a `namespaceOverride` property that overrid
 
 The **CORRECT** output for a stage with `"namespaceOverride": "org-0001-product-catalog-jp-dev"`:
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2053`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2053". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)". Set the step namespace to "org-0001-product-catalog-jp-dev".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2053`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2053". The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the step namespace to "org-0001-product-catalog-jp-dev".
 ```
 
 The **WRONG** output (namespace annotation silently omitted):
