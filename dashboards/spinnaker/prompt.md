@@ -1074,6 +1074,34 @@ The **CORRECT** output (all three steps generated WITHOUT `ssn_Message` since me
 ```
 ← Note: no `Set the "ssn_Message" property to ...` lines are present (because message is absent), but the steps themselves ARE generated.
 
+**CRITICAL — when `pipeline.starting` is NOT in `when`, no Start step is generated, but Finish and/or Complete steps ARE generated if those events appear in `when`**: A common mistake is to skip ALL notification steps when `pipeline.starting` is absent. Only the Start step is skipped — Finish and Complete steps are still generated based on their presence in `when`.
+
+**Negative example — Finish and Complete silently skipped because `pipeline.starting` is absent (COMMON MISTAKE)**:
+
+Given a notification with `"when": ["pipeline.failed", "pipeline.complete"]` (no `pipeline.starting`) and no `message` property:
+```json
+{
+  "address": "us-sre-alert",
+  "level": "pipeline",
+  "type": "slack",
+  "when": ["pipeline.complete", "pipeline.failed"]
+}
+```
+
+The **WRONG** output (ALL notification steps skipped because `pipeline.starting` is not in `when`):
+```
+[no notification steps at all — FORBIDDEN]
+```
+← WRONG: `pipeline.failed` and `pipeline.complete` ARE in `when`, so Finish and Complete steps MUST be generated.
+
+The **CORRECT** output (NO Start step, but Finish AND Complete ARE generated after deployment stages):
+```
+[... deployment stages ...]
+* Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "us-sre-alert".
+* Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "us-sre-alert".
+```
+← Note: No Start step (correct — `pipeline.starting` is not in `when`). Finish and Complete steps ARE present (correct — `pipeline.failed` and `pipeline.complete` are in `when`).
+
 * **IMPORTANT — `ssn_Channel` verbatim copy**: The `ssn_Channel` value must be the exact verbatim string from the `address` field of the notification object. Copy it character-for-character with no modification. In particular:
   * If the `address` value begins with `#` (e.g., `"#pj-example-channel"`), the output MUST preserve the `#` prefix.
   * If the `address` value does NOT begin with `#` (e.g., `"ft-architect_jb-productivity"`), the output MUST NOT add a `#` prefix.
@@ -1573,6 +1601,50 @@ spec:
 ```
 ```
 
+**CRITICAL — runJob YAML MUST be properly indented**: The Kubernetes manifest generated from a `runJob` stage's `containers` array MUST use correct YAML indentation (2 spaces per level). Malformed or flat YAML (where all keys appear at column 0 without proper nesting) is INVALID and will cause deployment failures. The following rules apply:
+
+* `apiVersion`, `kind`, `metadata`, and `spec` are top-level keys (0 indent)
+* `metadata.name` and `metadata.namespace` are indented 2 spaces
+* `spec.template` is indented 2 spaces
+* `spec.template.spec` is indented 4 spaces  
+* `spec.template.spec.containers` is indented 6 spaces
+* Each container entry starts with `- name:` at 8 spaces
+* Container properties (`image`, `env`, etc.) are at 10 spaces
+* `spec.template.spec.restartPolicy` is at 8 spaces
+
+**Negative example — runJob YAML with malformed (flat) indentation (FORBIDDEN)**:
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+name: my-job
+namespace: my-namespace
+spec:
+template:
+spec:
+containers:
+- name: my-container
+image: registry.example.com/my-image:latest
+restartPolicy: Never
+```
+← WRONG: All keys are at the same indentation level. This is invalid YAML.
+
+The **CORRECT** output (proper 2-space indentation at every level):
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: my-job
+  namespace: my-namespace
+spec:
+  template:
+    spec:
+      containers:
+        - name: my-container
+          image: registry.example.com/my-image:latest
+      restartPolicy: Never
+```
+
 ## Run Pipeline Stage
 
 * The following snippet is an example of a "Run Pipeline" stage in Spinnaker:
@@ -1679,6 +1751,52 @@ The **CORRECT** output appends the conditional NOTE:
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Prod". Add the following description: `This step has a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent: stageEnabled.expression = "${ #judgment(\"Manual Judgment\").equals(\"Continue\")}". Manually review whether this step should be conditionally disabled or use an Octopus run condition.`
 ```
+
+**CRITICAL — `stageEnabled` only applies to the SPECIFIC stage that contains it**: Each stage's `stageEnabled` property must be read EXCLUSIVELY from that stage's own JSON object. You MUST NOT carry forward, copy, or infer a `stageEnabled` condition from a neighbouring stage (or any other stage) to a stage that has no `stageEnabled` property. A stage that does NOT have a `stageEnabled` key in its JSON must NEVER receive a stageEnabled description note.
+
+**Negative example — `stageEnabled` from stage A incorrectly applied to stage B (COMMON MISTAKE)**:
+
+Given a pipeline with two stages where only stage A (refId 6) has `stageEnabled` but stage B (refId 2) does NOT:
+
+```json
+{
+  "stages": [
+    {
+      "name": "Canary: manual judgment",
+      "refId": "2",
+      "requisiteStageRefIds": ["6"],
+      "type": "manualJudgment"
+    },
+    {
+      "name": "Deploy Canary",
+      "refId": "6",
+      "requisiteStageRefIds": ["4"],
+      "stageEnabled": {
+        "expression": "${ #judgment(\"Start: manual judgment\").equals(\"Continue\")}",
+        "type": "expression"
+      },
+      "type": "deployManifest"
+    }
+  ]
+}
+```
+
+The **WRONG** output (stageEnabled from refId 6 incorrectly applied to refId 2 — FORBIDDEN):
+```
+* Add a "Manual Intervention" step with the name "Canary: manual judgment" ... Add the following description: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${ #judgment(\"Start: manual judgment\").equals(\"Continue\")}"...`
+← WRONG: refId 2 has NO stageEnabled. This description was copied from refId 6 and must not appear here.
+```
+
+The **CORRECT** output (stageEnabled note only on refId 6, not on refId 2):
+```
+* Add a "Manual Intervention" step with the name "Canary: manual judgment" ...
+[No stageEnabled note — the manualJudgment stage has no stageEnabled property]
+...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ... Add the following description: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${ #judgment(\"Start: manual judgment\").equals(\"Continue\")}"...`
+[stageEnabled note appears here because refId 6 IS the stage with stageEnabled]
+```
+
+**VERIFICATION RULE — before outputting any step with a stageEnabled note, confirm that the stage JSON object for that step actually contains a `stageEnabled` property.** If you cannot find `"stageEnabled"` in the specific stage's JSON object, do NOT add the note. The note only belongs to the stage whose JSON object contains the `stageEnabled` key.
 
 ## Time Window Restrictions (`restrictedExecutionWindow`)
 
@@ -1992,6 +2110,35 @@ Create a project called "My Project" in the "Default Project Group" project grou
 * Add a project variable called "timeout", with a default value of "30"...
 ```
 
+**ABSOLUTE RULE — `parameterConfig` variable prompts MUST appear AFTER all deployment step prompts**: The correct ordering within a project creation block is:
+1. Slack Notification - Start steps (if `pipeline.starting` is in `when`)
+2. Deployment steps (in topological dependency order)  
+3. Slack Notification - Finish steps (if `pipeline.failed` is in `when`)
+4. Slack Notification - Complete steps (if `pipeline.complete` is in `when`)
+5. External feed trigger prompt (if applicable)
+6. `parameterConfig` project variable prompts (LAST — before the disabled line)
+7. `* The project must be disabled.` (if `disabled: true`)
+
+**Negative example — `parameterConfig` variables placed BEFORE deployment stages (COMMON MISTAKE)**:
+
+Given a pipeline with both `parameterConfig` entries AND `stages`, the following output has the WRONG ordering with variables before stages:
+```
+Create a project called "Check SSL dev" in the "Default Project Group" project group with no steps.
+* Add a project variable called "AlertDays", with a default value of "3"...
+* Add a project variable called "WarnDays", with a default value of "5"...
+* Add a "Deploy Kubernetes YAML" step to the deployment process ...
+← WRONG: Variables appear BEFORE stages. They must appear AFTER all deployment steps.
+```
+
+The **CORRECT** output has deployment steps FIRST, then variables:
+```
+Create a project called "Check SSL dev" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process ...
+[... all other deployment stages ...]
+* Add a project variable called "AlertDays", with a default value of "3"...
+* Add a project variable called "WarnDays", with a default value of "5"...
+```
+
 ## Running steps in parallel
 
 > **ABSOLUTE RULE — JSON position is irrelevant to execution order.** A stage's topological group is determined **exclusively** by its `requisiteStageRefIds` value. A stage with `"requisiteStageRefIds": []` is **always** in the root group, even if it appears as the last item in the JSON array. Never use the position of a stage in the JSON array to decide its topological group or whether it runs before or after another stage. When you identify the root group, scan the **entire** `stages` array and collect ALL stages whose `requisiteStageRefIds` is empty or absent regardless of where they appear in the JSON.
@@ -2001,6 +2148,40 @@ Create a project called "My Project" in the "Default Project Group" project grou
 * When the topologically-sorted execution order differs from the original JSON array order (i.e., at least one stage must be moved when converting from JSON order to topological order):
   * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent NON-PARALLEL stage's step prompt — i.e., every stage that is the FIRST in its dependency group (except the root group which has already been handled). Parallel siblings (2nd, 3rd, etc. stages within the same dependency group) continue to use `"Run in parallel with the previous step"` as before.
 * **IMPORTANT**: The `"Wait for all previous steps to complete, then start"` annotation is ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved), do NOT add this annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
+
+**CRITICAL — when the topological order differs from JSON order, EVERY non-root, non-parallel stage in the ENTIRE chain MUST receive the "Wait for all previous steps" annotation**: It is NOT sufficient to annotate only the last sequential stage before a parallel group. EVERY stage that is the first (or only) stage in its dependency group must receive the annotation — from the second topological level onward, throughout the entire depth of the chain.
+
+**Negative example — partially annotated chain (annotation missing on intermediate stage — VERY COMMON MISTAKE)**:
+
+Given a pipeline where JSON order is [1, 2, 3, 4] but topological order is [2 (root), 3 (depends on 2), 1 (depends on 3), 4 (depends on 3, parallel with 1)]:
+
+| JSON position | refId | requisiteStageRefIds | stage name |
+|---|---|---|---|
+| 1 | 1 | `["3"]` | Deploy Prod |
+| 2 | 2 | `[]` | Deploy Prod Canary (ROOT) |
+| 3 | 3 | `["2"]` | Manual Judgment |
+| 4 | 4 | `["3"]` | Scale Down Canary |
+
+The topological order changes from JSON order (stage 2 moves from JSON position 2 to topological position 1). Therefore annotations ARE required for ALL non-root, non-parallel stages.
+
+The **WRONG** output (annotation missing on Manual Judgment at topological position 2 — FORBIDDEN):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod Canary" ...   ← root, no annotation ✓
+* Add a "Manual Intervention" step ... "Manual Judgment" ...          ← WRONG: Missing "Wait for all previous steps"!
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← correct for position 3
+* Add a "Run a kubectl script" step ... "Scale Down Canary" ... Set the start trigger to "Run in parallel with the previous step".           ← correct
+```
+← WRONG: "Manual Judgment" is the first stage in its dependency group {depends on 2}, so it MUST receive the annotation. Annotating only "Deploy Prod" but skipping "Manual Judgment" is incorrect.
+
+The **CORRECT** output (annotation on EVERY non-root, non-parallel stage — annotate Manual Judgment too):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod Canary" ...                                                                              ← root, no annotation
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".   ← stage 3, first in its group
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ... Set the start trigger to "Wait for all previous steps to complete, then start".     ← stage 1, first in its group
+* Add a "Run a kubectl script" step ... "Scale Down Canary" ... Set the start trigger to "Run in parallel with the previous step".              ← stage 4, parallel with stage 1
+```
+
+**KEY RULE**: For every non-root sequential stage (stages that are the first or only stage in their dependency group, at ANY depth in the chain), the annotation MUST be present if the topological sort changed ANY stage's position relative to JSON order. Check EACH non-root, non-parallel stage individually — do not stop annotating after the first annotated stage.
 
 **ABSOLUTE RULE — do NOT add "Wait for all previous steps" when stages are already in topological order**: If evaluating the `requisiteStageRefIds` dependency graph results in a topological order that MATCHES the JSON array order exactly (no stage needs to be moved), then ZERO annotations of any kind are added. Only parallel sibling annotations (`"Run in parallel with the previous step"`) apply in that case.
 
