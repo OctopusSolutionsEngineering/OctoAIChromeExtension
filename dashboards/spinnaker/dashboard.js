@@ -1,5 +1,6 @@
 let dashboardConfig = null;
 let spaceName = 'Unknown';
+let defaultPromptText = null;
 const SPINNAKER_JSON_KEY = 'spinnaker_pipelineJson';
 const SPINNAKER_MIGRATION_PROMPT_KEY = 'spinnaker_migrationPrompt';
 const SPINNAKER_AUTO_APPROVE_KEY = 'spinnaker_autoApprove';
@@ -32,7 +33,17 @@ function setFieldsLocked(locked) {
     executeButton.disabled = locked;
     copyProjectPromptButton.disabled = locked;
     autoApproveCheckbox.disabled = locked;
-    resetPromptButton.disabled = locked;
+    if (locked) {
+        resetPromptButton.disabled = true;
+    } else {
+        syncResetButtonState();
+    }
+}
+
+function syncResetButtonState() {
+    const migrationPrompt = document.getElementById('migrationPrompt');
+    const resetPromptButton = document.getElementById('resetPromptButton');
+    resetPromptButton.disabled = (defaultPromptText === null || migrationPrompt.value === defaultPromptText);
 }
 
 function updateSectionCount(text) {
@@ -99,6 +110,7 @@ async function onResetPrompt() {
     try {
         migrationPrompt.value = await fetchDefaultPrompt();
         localStorage.removeItem(SPINNAKER_MIGRATION_PROMPT_KEY);
+        syncResetButtonState();
     } catch (e) {
         console.error('Failed to reset prompt:', e);
     }
@@ -108,18 +120,21 @@ async function initMigrationPrompt() {
     const migrationPrompt = document.getElementById('migrationPrompt');
 
     try {
+        defaultPromptText = await fetchDefaultPrompt();
         const savedPrompt = localStorage.getItem(SPINNAKER_MIGRATION_PROMPT_KEY);
         if (savedPrompt) {
             migrationPrompt.value = savedPrompt;
         } else {
-            migrationPrompt.value = await fetchDefaultPrompt();
+            migrationPrompt.value = defaultPromptText;
         }
+        syncResetButtonState();
     } catch (e) {
         console.error('Failed to load prompt.md:', e);
     }
 
     migrationPrompt.addEventListener('input', () => {
         localStorage.setItem(SPINNAKER_MIGRATION_PROMPT_KEY, migrationPrompt.value);
+        syncResetButtonState();
     });
 }
 
