@@ -3,8 +3,29 @@
     "name":"Dashboard.NoProjects",
     "prompts" : [
       {
-        "dashboardName": "Octopus Easy Mode",
-        "dashboardFile": "easymode/index.html"
+        "name": "Community dashboards...",
+        "prompts": [
+          {
+            "dashboardName": "Octopus Easy Mode",
+            "dashboardFile": "easymode/index.html"
+          },
+          {
+            "dashboardName": "Value Metrics",
+            "dashboardFile": "valuemetrics/index.html"
+          },
+          {
+            "dashboardName": "AWS Well-Architected Framework Dashboard",
+            "dashboardFile": "awswellarchitected/index.html"
+          },
+          {
+            "dashboardName": "Change Request Compliance Dashboard",
+            "dashboardFile": "changemanagement/index.html"
+          },
+          {
+            "dashboardName": "Spinnaker Migration (Alpha)",
+            "dashboardFile": "spinnaker/index.html"
+          }
+        ]
       },
       "Create a Kubernetes project called \"Kubernetes Web App\".",
       "Create an Azure Web App project called \"Azure Web App\".",
