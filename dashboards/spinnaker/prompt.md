@@ -89,7 +89,33 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
 * Feed prompts must appear before the base project prompt in the output.
 * You must separate the prompts for feeds with a blank line, three dashes (`---`), and a new blank line.
 * Each unique feed URL must only be created once in the output, even if multiple pipelines reference the same registry. Do not emit duplicate feed creation prompts for the same feed URL.
-* When a pipeline has `expectedArtifacts` entries with `matchArtifact.type` set to `docker/image`, create feeds from those entries and do NOT also create a feed from the pipeline's Docker trigger `registry` field.
+
+**CRITICAL — deduplication applies ACROSS ALL three feed sources within a single pipeline**: When scanning the three feed sources (1. `expectedArtifacts` docker/image entries, 2. Docker trigger registry fallback, 3. Pubsub trigger `payloadConstraints.tag`), all three sources may produce registry URLs. If two or more sources produce the SAME registry URL for a single pipeline, only ONE feed section must be generated for that URL. Track which URLs have already been emitted and skip any source that would produce a duplicate.
+
+**Worked example — `expectedArtifacts` docker/image AND Pubsub trigger both pointing to the same registry**:
+
+Given a pipeline with:
+- `expectedArtifacts` containing `{ "matchArtifact": { "name": "registry.example.invalid/image-0559", "type": "docker/image" } }`
+- A Pubsub trigger with `{ "payloadConstraints": { "tag": "registry.example.invalid/image-0562" }, "type": "pubsub" }`
+
+Source 1 produces `https://registry.example.invalid`. Source 3 also produces `https://registry.example.invalid`. Both resolve to the same URL — only ONE feed section must be emitted.
+
+The **WRONG** output (duplicate feed section — FORBIDDEN):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+
+---
+
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
+← WRONG: The same feed URL was emitted twice from two different sources.
+
+The **CORRECT** output (only ONE feed section):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
+
+
 * When a pipeline has NO `expectedArtifacts` entries of `type: "docker/image"` but does have a Docker trigger with a `registry` property, create a feed from that trigger's `registry` value:
   * If `registry` is `gcr.io`, create the "Google Container Registry" feed: `Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".`
   * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
@@ -487,6 +513,46 @@ The **CORRECT** output (stage IS converted AND the project is disabled):
 ```
 Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest)".
+* The project must be disabled.
+```
+
+**CRITICAL — `* The project must be disabled.` must appear regardless of stage type**: The `disabled: true` flag applies to the project itself. It MUST appear as the very last line regardless of which stage types the pipeline contains (`deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, etc.) or how many stages there are. A common mistake is to correctly convert all stages but then silently omit the disabled line.
+
+**Negative example — `disabled: true` flag missing when pipeline contains `runJobManifest` stages (CRITICAL MISTAKE)**:
+
+Given a pipeline with `"disabled": true` and one `runJobManifest` stage:
+```json
+{
+  "name": "app-0368-job",
+  "disabled": true,
+  "expectedArtifacts": [],
+  "stages": [
+    {
+      "account": "<redacted-cluster>",
+      "name": "Run Job (Manifest)",
+      "refId": "1",
+      "requisiteStageRefIds": [],
+      "manifestArtifact": {
+        "reference": "gs://example-bucket/storage-0042",
+        "type": "gcs/object"
+      },
+      "type": "runJobManifest"
+    }
+  ]
+}
+```
+
+The **WRONG** output (disabled line missing even though stage is correctly converted):
+```
+Create a project called "app-0368-job" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-0042". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
+```
+← WRONG: `* The project must be disabled.` is missing despite `"disabled": true` in the pipeline JSON.
+
+The **CORRECT** output (stage IS converted AND the project is disabled):
+```
+Create a project called "app-0368-job" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. NOTE: This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-0042". The manifest must be inlined or the step must be reconfigured to read from a supported source. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
 * The project must be disabled.
 ```
 
@@ -2247,7 +2313,44 @@ The **CORRECT** output (strictly follows dependency chain — each stage appears
 
 Before emitting any step, verify that ALL its `requisiteStageRefIds` entries have already appeared in the output. If any prerequisite is still unplaced, the stage is NOT ready and must wait.
 
-**Key observation**: Stage 1 (first in JSON) depends on stage 3. Stage 2 (second in JSON) is a root stage. The topological order is:
+### Worked example: root stage at JSON position 4 of 5 (linear chain reversed)
+
+**CRITICAL — when a pipeline's root stage appears late in the JSON array, ALL earlier JSON stages must be deferred until their prerequisites are placed.** This is the most common pattern where the entire pipeline chain is stored in reversed or shuffled order.
+
+Consider this 5-stage pipeline:
+
+| JSON position | refId | requisiteStageRefIds | stage name |
+|---|---|---|---|
+| 1 | 1 | `["5"]` | Deploy CronJob |
+| 2 | 2 | `["4"]` | Run Migrate DB |
+| 3 | 3 | `["1"]` | Deploy |
+| 4 | 4 | `[]` | **Manual Judgment** ← ROOT |
+| 5 | 5 | `["2"]` | Manual Judgment 2 |
+
+**Full chain**: refId 4 (ROOT) → refId 2 → refId 5 → refId 1 → refId 3. Note that stages at JSON positions 1, 2, 3 and 5 ALL depend on a stage that appears LATER in the JSON, and the root is the FOURTH of five stages.
+
+The **WRONG** output (AI follows JSON order or only moves the root but misses intermediate dependencies):
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...   ← refId 4, root ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy CronJob" ...  ← refId 1, WRONG (depends on refId 5, not yet placed)
+* Add a "Manual Intervention" step ... "Manual Judgment 2" ...  ← refId 5, WRONG (depends on refId 2, not yet placed)
+* Add a "Deploy Kubernetes YAML" step ... "Run Migrate DB" ...  ← refId 2, WRONG (should be second after root)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ...          ← refId 3, WRONG (depends on refId 1)
+```
+← WRONG: Stages placed in wrong order. The AI correctly moved the root first but then failed to apply BFS to the remaining stages.
+
+The **CORRECT** output (strict BFS — each stage only placed after ALL its dependencies):
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...           ← refId 4, ROOT
+* Add a "Deploy Kubernetes YAML" step ... "Run Migrate DB" ... Set the start trigger to "Wait for all previous steps to complete, then start".     ← refId 2, depends on 4
+* Add a "Manual Intervention" step ... "Manual Judgment 2" ... Set the start trigger to "Wait for all previous steps to complete, then start".     ← refId 5, depends on 2
+* Add a "Deploy Kubernetes YAML" step ... "Deploy CronJob" ... Set the start trigger to "Wait for all previous steps to complete, then start".     ← refId 1, depends on 5
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ... Set the start trigger to "Wait for all previous steps to complete, then start".             ← refId 3, depends on 1
+```
+
+**KEY RULE**: After placing the root, you MUST apply BFS rigorously to ALL remaining stages. Do not try to use the original JSON order at any point — every stage's position must be determined solely by its dependencies. After placing wave N, scan the ENTIRE remaining unplaced stage list to find stages whose ALL prerequisites are now placed (wave N+1 candidates).
+
+ Stage 2 (second in JSON) is a root stage. The topological order is:
 1. Stage 2 (Deploy Prod Canary) — root, no prerequisites, runs FIRST
 2. Stage 3 (Manual Judgment) — depends on stage 2
 3. Stage 1 (Deploy Prod) AND Stage 4 (Scale Down Canary) — both depend on stage 3, run IN PARALLEL
@@ -2394,6 +2497,41 @@ The **CORRECT** ordering:
 * Add a community step template step ... "Slack Notification - Complete" ... ← after Finish
 * Add a project variable called "batch_size"...                              ← LAST (after all notifications)
 * Add a project variable called "timeout"...                                 ← LAST
+```
+
+**CRITICAL — when the pipeline has MULTIPLE notification entries, variables must come AFTER ALL notification steps from ALL entries**: When there are 2 or more notifications entries, each generates its own Start, Finish, and/or Complete step. ALL of these notification steps (from all entries combined) must appear before any `parameterConfig` variable prompts.
+
+**Negative example — variable placed between notification steps from different entries (COMMON MISTAKE)**:
+
+Given a pipeline with 2 `notifications` entries (both with `pipeline.starting`, `pipeline.failed`, `pipeline.complete`) and 1 `parameterConfig` entry (`log_level`), the following ordering is **WRONG**:
+```
+* Add a community step template step ... "Slack Notification - Start" ...    ← notifications[0]
+* Add a community step template step ... "Slack Notification - Start 2" ...  ← notifications[1]
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod Canary" ...
+* Add a "Manual Intervention" step ... "Manual Judgment" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ...
+* Add a "Run a kubectl script" step ... "Scale Down Canary" ...
+* Add a community step template step ... "Slack Notification - Finish" ...   ← notifications[0]
+* Add a community step template step ... "Slack Notification - Finish 2" ... ← notifications[1]
+* Add a community step template step ... "Slack Notification - Complete" ... ← notifications[0]
+* Add a project variable called "log_level" ...                              ← CORRECT position
+* Add a community step template step ... "Slack Notification - Complete 2" ... ← WRONG: Complete from notifications[1] placed AFTER variable
+```
+← WRONG: The variable prompt must come AFTER ALL notification steps, including the Complete steps from ALL entries.
+
+The **CORRECT** output (variable comes AFTER all notification steps from all entries):
+```
+* Add a community step template step ... "Slack Notification - Start" ...    ← notifications[0]
+* Add a community step template step ... "Slack Notification - Start 2" ...  ← notifications[1]
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod Canary" ...
+* Add a "Manual Intervention" step ... "Manual Judgment" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ...
+* Add a "Run a kubectl script" step ... "Scale Down Canary" ...
+* Add a community step template step ... "Slack Notification - Finish" ...   ← notifications[0]
+* Add a community step template step ... "Slack Notification - Finish 2" ... ← notifications[1]
+* Add a community step template step ... "Slack Notification - Complete" ... ← notifications[0]
+* Add a community step template step ... "Slack Notification - Complete 2" ... ← notifications[1]
+* Add a project variable called "log_level", with a default value of "INFO", the description "log_level", and the label "log_level". The variable must be prompted for when creating a release. The variable must not be required.   ← LAST
 ```
 
 **CRITICAL — Slack Notification - Complete MUST NEVER appear before Slack Notification - Finish**: The generation order is fixed regardless of the order of events in the `when` array. Finish steps (`pipeline.failed`) must always appear before Complete steps (`pipeline.complete`). Even if `pipeline.complete` is listed before `pipeline.failed` in the `when` array, the output must always place Finish before Complete.
@@ -2559,7 +2697,35 @@ The **CORRECT** output (second occurrence gets a numeric suffix):
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest- 2". ...
 ```
 
-Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` appearing in ANY of these fields are legitimate service/component identifiers — they are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
+**CRITICAL — duplicate step name deduplication applies to ALL step combinations, including parallel stages**: Even when two stages with the same name appear in a PARALLEL group (same `requisiteStageRefIds` values), the second occurrence MUST still receive a numeric suffix. Sharing the same dependency does NOT exempt stages from the uniqueness requirement.
+
+**Negative example — parallel stages with same name not deduplicated (COMMON MISTAKE)**:
+
+Given two `manualJudgment` stages that both have `"name": "Manual Judgment"` and identical `requisiteStageRefIds`:
+
+```json
+{
+  "stages": [
+    { "refId": "4", "name": "Manual Judgment", "requisiteStageRefIds": [], "type": "manualJudgment" },
+    { "refId": "5", "name": "Manual Judgment", "requisiteStageRefIds": ["2"], "type": "manualJudgment" }
+  ]
+}
+```
+
+The **WRONG** output (both steps use the same name — FORBIDDEN even though they run in different phases):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment" ...
+* Add a "Manual Intervention" step with the name "Manual Judgment" ...   ← WRONG: duplicate name
+```
+
+The **CORRECT** output (the second occurrence gets suffix ` 2`):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment" ...
+* Add a "Manual Intervention" step with the name "Manual Judgment 2" ... 
+```
+← NOTE: The suffix is added based on the OUTPUT ORDER (topological), not by JSON position. The first step to appear in the output keeps the base name; subsequent steps with the same name get ` 2`, ` 3`, etc.
+
+, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` appearing in ANY of these fields are legitimate service/component identifiers — they are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
 
 **CRITICAL — hyphenated compound service names must also NEVER be redacted**: Names that combine two or more of these words with a hyphen (e.g., `api-server`, `auth-service`, `web-backend`, `frontend-api`, `worker-service`, `cache-manager`) are standard Kubernetes microservice naming conventions. The presence of the word `api`, `server`, `service`, or `key` in a hyphenated compound name does NOT make the compound a secret. Every character of the compound name must be preserved verbatim — replacing any portion with `*****` is forbidden.
 
