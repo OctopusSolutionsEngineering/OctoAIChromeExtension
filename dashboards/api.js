@@ -37,6 +37,12 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                 })
             )
             .then(result => _dashboardConvertFromSseResponse(result))
+            .then(result => {
+                // Retry on errors
+                if (result.state === "Error") {
+                    throw new Error(result.response);
+                }
+            })
             .catch(error => {
                 console.log("Error approving confirmation in dashboard: ", error);
 
@@ -60,6 +66,12 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                 serverUrl: serverUrl
             }))
             .then(result => _dashboardConvertFromSseResponse(result))
+            .then(result => {
+                // Retry on errors
+                if (result.state === "Error") {
+                    throw new Error(result.response);
+                }
+            })
             .catch(error => {
                 console.log("Error sending prompt to dashboard: ", error);
 
