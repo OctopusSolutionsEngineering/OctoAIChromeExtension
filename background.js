@@ -228,6 +228,7 @@ function callOctoAIAPI(request, sendResponse) {
             return response.text()
         })
         .then(text => {
+            console.log("OctoAI API recieved response: " + text)
             sendResponse({response: text, prompt: request.prompt})
         })
         .catch(error => {
