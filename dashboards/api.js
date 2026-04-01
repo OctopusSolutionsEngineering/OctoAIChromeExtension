@@ -19,11 +19,14 @@ function dashboardGetConfig(callback) {
 
 const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
 
+    const STATE_ERROR = "Error";
+    const STATE_SUCCESS = "Success";
+
     function dashboardApprovePrompt(id, serverUrl, retryCount = 0) {
         if (!_isValidUrl(serverUrl)) {
             return Promise.resolve({
                 response: "The server URL is not valid. Please check the URL and try again.",
-                state: "Error"
+                state: STATE_ERROR
             })
         }
 
@@ -39,7 +42,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             .then(result => _dashboardConvertFromSseResponse(result))
             .then(result => {
                 // Retry on errors
-                if (result.state === "Error") {
+                if (result.state === STATE_ERROR) {
                     throw new Error(result.response);
                 }
             })
@@ -54,7 +57,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
         if (!_isValidUrl(serverUrl)) {
             return Promise.resolve({
                 response: "The server URL is not valid. Please check the URL and try again.",
-                state: "Error"
+                state: STATE_ERROR
             })
         }
 
@@ -68,7 +71,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             .then(result => _dashboardConvertFromSseResponse(result))
             .then(result => {
                 // Retry on errors
-                if (result.state === "Error") {
+                if (result.state === STATE_ERROR) {
                     throw new Error(result.response);
                 }
             })
@@ -110,7 +113,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
         // Final error after retry
         return Promise.resolve({
             response: "An error occurred while processing your request. Please sign in to Octopus and try again.",
-            state: "Error"
+            state: STATE_ERROR
         });
     }
 
@@ -175,7 +178,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                 && Object.keys(sseResponse.error).length === 0;
             return {
                 response: isEmptyObject ? 'The backend returned an error' : sseResponse.error,
-                state: "Error"
+                state: STATE_ERROR
             };
         }
 
@@ -185,7 +188,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
 
         return {
             response: _dashboardConvertFromSuccessSseResponse(sseResponse.response),
-            state: "Success"
+            state: STATE_SUCCESS
         };
     }
 
