@@ -4,84 +4,34 @@
 * The prompts to create a project and the prompts to create steps must appear in the same section.
 * The prompts to create feeds must appear in a separate section before the prompts to create the project and steps.
 
-# YAML Indentation
-
-**ABSOLUTE RULE — ALL inline YAML output MUST use correct 2-space indentation at every nesting level.** This rule applies globally to every stage type that produces a `* Set the step YAML to:` block, including `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `runJob`, and any `deployManifest`/`runJobManifest` stage with inline manifests.
-
-**Flat YAML — where all keys appear at column 0 with no nesting — is INVALID YAML and will cause deployment failures.** This is the single most common mistake made when generating inline manifests. Never output flat YAML.
-
 **ABSOLUTE RULE — you MUST convert ALL stages in the pipeline before stopping.** Do not output just one stage's YAML and stop. Every stage in the `stages` array must appear in the output as a step prompt. After producing the last step, continue with notification steps, variable prompts, and the disabled line (if applicable).
 
-**Negative example — flat (unindented) YAML (FORBIDDEN for ALL stage types)**:
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-generateName: derive-baseline-
-namespace: org-0001-spinnaker-cj-prod
-spec:
-backoffLimit: 0
-template:
-spec:
-containers:
-- command:
-- derive-baseline
-- -n
-- $(NAMESPACE)
-- $(DEPLOYMENT_NAME)
-env:
-- name: DEPLOYMENT_NAME
-value: server
-- name: NAMESPACE
-value: app-0203-prod
-image: registry.example.invalid/image-0434
-name: derive-baseline
-imagePullSecrets:
-- name: <redacted-secret-name>
-restartPolicy: Never
-serviceAccountName: spinnaker-custom-job
-```
-← WRONG: All keys at column 0 with no nesting. This is invalid YAML.
+**ABSOLUTE RULE — the output MUST be a complete prompt describing how to build Octopus Deploy projects. Raw YAML alone is NEVER a valid output.** Every response must begin with a `Create a project called "..."` sentence (or a feed creation sentence followed by `---` and then a project sentence). YAML content may only appear embedded inside a `* Set the step YAML to:` block that is itself part of a step bullet inside a project prompt. Outputting a bare YAML block — with no surrounding `Create a project...` sentence and step bullets — is strictly forbidden regardless of the pipeline content.
 
-**CORRECT** (2-space indentation at every level):
+**Negative example — raw YAML as the entire output (FORBIDDEN)**:
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
   generateName: derive-baseline-
-  namespace: org-0001-spinnaker-cj-prod
-spec:
-  backoffLimit: 0
-  template:
-    spec:
-      containers:
-        - command:
-            - derive-baseline
-            - -n
-            - $(NAMESPACE)
-            - $(DEPLOYMENT_NAME)
-          env:
-            - name: DEPLOYMENT_NAME
-              value: server
-            - name: NAMESPACE
-              value: app-0203-prod
-          image: registry.example.invalid/image-0434
-          name: derive-baseline
-      imagePullSecrets:
-        - name: <redacted-secret-name>
-      restartPolicy: Never
-      serviceAccountName: spinnaker-custom-job
+  ...
 ```
+← WRONG: This is raw YAML with no enclosing project prompt. It is never a valid response.
 
-Indentation levels for a Kubernetes Job manifest:
-* `apiVersion`, `kind`, `metadata`, `spec` — top-level keys (0 spaces)
-* `metadata.name`, `metadata.namespace`, `metadata.generateName` — 2 spaces
-* `spec.backoffLimit`, `spec.template` — 2 spaces
-* `spec.template.spec` — 4 spaces
-* `spec.template.spec.containers`, `spec.template.spec.imagePullSecrets`, `spec.template.spec.restartPolicy`, `spec.template.spec.serviceAccountName` — 6 spaces
-* Each container entry starts with `- ` at 8 spaces (e.g., `        - command:`)
-* Container properties (`command`, `env`, `image`, `name`) — 10 spaces
-* Each `env` entry starts with `- ` at 12 spaces; `name` and `value` within it — 14 spaces
+**CORRECT** — YAML must always appear inside a complete step prompt:
+```
+Create a project called "my-service" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Derive baseline deployment from main Deployment". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to Kubernetes. Set the step namespace to org-0001-spinnaker-cj-prod. Set the step description to "Original Spinnaker stage type: deriveBaselineProd. This step derives a baseline state from the main deployment by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: derive-baseline-
+  ...
+```
+```
 
 # Feeds
 
@@ -2000,7 +1950,6 @@ Convert a `shiftTrafficProd` (or `shiftTrafficStaging`) stage to a "Deploy Kuber
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). Copy the manifest exactly — do **not** replace `generateName` with `name` or alter any field values.
 * Add a step description that identifies the original Spinnaker stage type and describes the traffic-shifting purpose of the step.
 
-**CRITICAL — the manifest YAML MUST be properly indented**: See the global YAML Indentation section at the top of this document. Do NOT output flat YAML with all keys at column 0 — that is invalid YAML and will cause deployment failures.
 
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>. Set the step description to "Original Spinnaker stage type: shiftTrafficProd. This step shifts canary traffic by running a Kubernetes Job."
@@ -2129,7 +2078,6 @@ Convert a `restoreProd` stage to a "Deploy Kubernetes YAML" step as follows:
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). Copy the manifest exactly — do **not** replace `generateName` with `name` or alter any field values.
 * Add a step description that identifies the original Spinnaker stage type and describes the restore purpose of the step.
 
-**CRITICAL — the manifest YAML MUST be properly indented**: See the global YAML Indentation section at the top of this document. Do NOT output flat YAML with all keys at column 0 — that is invalid YAML and will cause deployment failures.
 
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>. Set the step description to "Original Spinnaker stage type: restoreProd. This step restores a Kubernetes deployment by running a Kubernetes Job."
@@ -2255,68 +2203,6 @@ Convert a `deriveBaselineProd` stage to a "Deploy Kubernetes YAML" step as follo
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). Copy the manifest exactly — do **not** replace `generateName` with `name` or alter any field values.
 * Add a step description that identifies the original Spinnaker stage type and describes the derive-baseline purpose of the step.
 
-**CRITICAL — the manifest YAML MUST be properly indented**: See the global YAML Indentation section at the top of this document. Do NOT output flat YAML with all keys at column 0 — that is invalid YAML and will cause deployment failures.
-
-**Negative example — flat YAML for `deriveBaselineProd` (COMMON MISTAKE)**:
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-generateName: derive-baseline-
-namespace: org-0001-spinnaker-cj-prod
-spec:
-backoffLimit: 0
-template:
-spec:
-containers:
-- command:
-- derive-baseline
-- -n
-- $(NAMESPACE)
-- $(DEPLOYMENT_NAME)
-env:
-- name: DEPLOYMENT_NAME
-value: server
-- name: NAMESPACE
-value: app-0203-prod
-image: registry.example.invalid/image-0434
-name: derive-baseline
-imagePullSecrets:
-- name: <redacted-secret-name>
-restartPolicy: Never
-serviceAccountName: spinnaker-custom-job
-```
-← WRONG: All keys at column 0. This is invalid YAML and will not deploy.
-
-**CORRECT output for the same manifest** (proper 2-space indentation):
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  generateName: derive-baseline-
-  namespace: org-0001-spinnaker-cj-prod
-spec:
-  backoffLimit: 0
-  template:
-    spec:
-      containers:
-        - command:
-            - derive-baseline
-            - -n
-            - $(NAMESPACE)
-            - $(DEPLOYMENT_NAME)
-          env:
-            - name: DEPLOYMENT_NAME
-              value: server
-            - name: NAMESPACE
-              value: app-0203-prod
-          image: registry.example.invalid/image-0434
-          name: derive-baseline
-      imagePullSecrets:
-        - name: <redacted-secret-name>
-      restartPolicy: Never
-      serviceAccountName: spinnaker-custom-job
-```
 
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>. Set the step description to "Original Spinnaker stage type: deriveBaselineProd. This step derives a baseline state from the main deployment by running a Kubernetes Job."
@@ -2445,7 +2331,6 @@ Convert a `deriveCanaryProd` stage to a "Deploy Kubernetes YAML" step as follows
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). Copy the manifest exactly — do **not** replace `generateName` with `name` or alter any field values.
 * Add a step description that identifies the original Spinnaker stage type and describes the derive-canary purpose of the step.
 
-**CRITICAL — the manifest YAML MUST be properly indented**: See the global YAML Indentation section at the top of this document. Do NOT output flat YAML with all keys at column 0 — that is invalid YAML and will cause deployment failures.
 
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>. Set the step description to "Original Spinnaker stage type: deriveCanaryProd. This step derives a canary deployment from manifests by running a Kubernetes Job."

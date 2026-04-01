@@ -4,7 +4,6 @@ let defaultPromptText = null;
 const SPINNAKER_JSON_KEY = 'spinnaker_pipelineJson';
 const SPINNAKER_MIGRATION_PROMPT_KEY = 'spinnaker_migrationPrompt';
 const SPINNAKER_AUTO_APPROVE_KEY = 'spinnaker_autoApprove';
-const SPINNAKER_SKIP_LONG_KEY = 'spinnaker_skipLongPipelines';
 const STATE_ERROR = 'Error';
 const SECTION_SEPARATOR = '\n\n---\n\n';
 
@@ -24,7 +23,6 @@ function setFieldsLocked(locked) {
     const copyProjectPromptButton = document.getElementById('copyProjectPromptButton');
     const autoApproveCheckbox = document.getElementById('autoApproveCheckbox');
     const resetPromptButton = document.getElementById('resetPromptButton');
-    const skipLongPipelinesCheckbox = document.getElementById('skipLongPipelinesCheckbox');
 
     migrationPrompt.disabled = locked;
     migrationPrompt.readOnly = locked;
@@ -36,7 +34,6 @@ function setFieldsLocked(locked) {
     executeButton.disabled = locked;
     copyProjectPromptButton.disabled = locked;
     autoApproveCheckbox.disabled = locked;
-    skipLongPipelinesCheckbox.disabled = locked;
     if (locked) {
         resetPromptButton.disabled = true;
     } else {
@@ -328,12 +325,6 @@ async function processSections(sections, index, serverUrl) {
         return;
     }
 
-    const skipLong = localStorage.getItem(SPINNAKER_SKIP_LONG_KEY) !== 'false';
-    if (skipLong && section.split('\n').length > 20) {
-        await processSections(sections, index + 1, serverUrl);
-        return;
-    }
-
     document.getElementById('loadingText').textContent =
         `Processing section ${index + 1} of ${sections.length}. This can take a few minutes, as the AI is generating many Octopus resources...`;
     showView('loadingView');
@@ -436,12 +427,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     autoApproveCheckbox.checked = localStorage.getItem(SPINNAKER_AUTO_APPROVE_KEY) === 'true';
     autoApproveCheckbox.addEventListener('change', () => {
         localStorage.setItem(SPINNAKER_AUTO_APPROVE_KEY, autoApproveCheckbox.checked);
-    });
-
-    const skipLongPipelinesCheckbox = document.getElementById('skipLongPipelinesCheckbox');
-    skipLongPipelinesCheckbox.checked = localStorage.getItem(SPINNAKER_SKIP_LONG_KEY) !== 'false';
-    skipLongPipelinesCheckbox.addEventListener('change', () => {
-        localStorage.setItem(SPINNAKER_SKIP_LONG_KEY, skipLongPipelinesCheckbox.checked);
     });
 
     copyPromptButton.addEventListener('click', onCopyPrompt);
