@@ -45,6 +45,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                 if (result.state === STATE_ERROR) {
                     throw new Error(result.response);
                 }
+                return result;
             })
             .catch(error => {
                 console.log("Error approving confirmation in dashboard: ", error);
@@ -74,6 +75,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
                 if (result.state === STATE_ERROR) {
                     throw new Error(result.response);
                 }
+                return result;
             })
             .catch(error => {
                 console.log("Error sending prompt to dashboard: ", error);
