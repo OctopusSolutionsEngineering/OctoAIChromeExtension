@@ -200,6 +200,8 @@ function callOctoAIAPI(request, sendResponse) {
     const startTime = Date.now();
     let progressInterval = null;
 
+    console.log("OctoAI API sending prompt: " + request.prompt)
+
     // Log progress every 10 seconds
     progressInterval = setInterval(() => {
         const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
