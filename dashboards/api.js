@@ -240,7 +240,7 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
             .filter(response => 'content' in response.choices[0].delta);
 
         return contentResponses
-            .map(line => line.choices[0].delta.content.trim())
+            .map(line => line.choices[0].delta.content)
             .join('\n');
     }
 
