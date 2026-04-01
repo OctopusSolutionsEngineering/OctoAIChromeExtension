@@ -1879,9 +1879,511 @@ The **CORRECT** output (ALL non-ignored stages included in proper dependency ord
 * Add a "Deploy Kubernetes YAML" step ... (refId 8) ... Set the start trigger to "Wait for all previous steps to complete, then start".
 ```
 
+## Shift Traffic Stage
+
+Stages with `"type": "shiftTrafficProd"` (and the analogous `"type": "shiftTrafficStaging"`) represent canary traffic-shifting operations that run a Kubernetes Job to redistribute traffic between service versions. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
+
+The following snippet is an example of a `shiftTrafficProd` stage in Spinnaker:
+
+```json
+{
+  "type": "shiftTrafficProd",
+  "name": "Canary stage 1",
+  "refId": "10",
+  "requisiteStageRefIds": ["4"],
+  "account": "<redacted-cluster>",
+  "cloudProvider": "kubernetes",
+  "manifest": {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {
+      "generateName": "shift-traffic-",
+      "namespace": "org-0001-spinnaker-cj-prod"
+    },
+    "spec": {
+      "backoffLimit": 0,
+      "template": {
+        "spec": {
+          "containers": [
+            {
+              "command": [
+                "shift-traffic",
+                "-n",
+                "$(NAMESPACE)",
+                "$(VIRTUALSERVICE_NAME)",
+                "$(DEPLOYMENT_NAME)",
+                "$(CANARY_WEIGHT)",
+                "$(EXECUTION_ID)"
+              ],
+              "env": [
+                {"name": "VIRTUALSERVICE_NAME", "value": "server"},
+                {"name": "DEPLOYMENT_NAME", "value": "server"},
+                {"name": "NAMESPACE", "value": "app-0203-prod"},
+                {"name": "CANARY_WEIGHT", "value": "5%"},
+                {"name": "EXECUTION_ID", "value": "01K98X5GWZP388E72WV19DQARE"},
+                {
+                  "name": "CJ_NAMESPACE",
+                  "valueFrom": {
+                    "fieldRef": {
+                      "fieldPath": "metadata.namespace"
+                    }
+                  }
+                }
+              ],
+              "image": "registry.example.invalid/image-0434",
+              "name": "shift-traffic"
+            }
+          ],
+          "imagePullSecrets": [{"name": "<redacted-secret-name>"}],
+          "restartPolicy": "Never",
+          "serviceAccountName": "spinnaker-custom-job"
+        }
+      }
+    }
+  }
+}
+```
+
+Convert a `shiftTrafficProd` (or `shiftTrafficStaging`) stage to a "Deploy Kubernetes YAML" step as follows:
+
+* Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages (replace `()` and `[]` with dashes `-`; add a step description when the original name contained those characters).
+* Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
+* Replace `<namespace>` with `manifest.metadata.namespace`.
+* Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). Copy the manifest exactly — do **not** replace `generateName` with `name` or alter any field values.
+* Add a step description that identifies the original Spinnaker stage type and describes the traffic-shifting purpose of the step.
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>. Set the step description to "Original Spinnaker stage type: shiftTrafficProd. This step shifts canary traffic by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+<manifest yaml>
+```
+```
+
+**Example** — converting the stage above produces:
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Canary stage 1". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to Kubernetes. Set the step namespace to org-0001-spinnaker-cj-prod. Set the step description to "Original Spinnaker stage type: shiftTrafficProd. This step shifts canary traffic by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: shift-traffic-
+  namespace: org-0001-spinnaker-cj-prod
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - command:
+            - shift-traffic
+            - -n
+            - $(NAMESPACE)
+            - $(VIRTUALSERVICE_NAME)
+            - $(DEPLOYMENT_NAME)
+            - $(CANARY_WEIGHT)
+            - $(EXECUTION_ID)
+          env:
+            - name: VIRTUALSERVICE_NAME
+              value: server
+            - name: DEPLOYMENT_NAME
+              value: server
+            - name: NAMESPACE
+              value: app-0203-prod
+            - name: CANARY_WEIGHT
+              value: 5%
+            - name: EXECUTION_ID
+              value: 01K98X5GWZP388E72WV19DQARE
+            - name: CJ_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          image: registry.example.invalid/image-0434
+          name: shift-traffic
+      imagePullSecrets:
+        - name: <redacted-secret-name>
+      restartPolicy: Never
+      serviceAccountName: spinnaker-custom-job
+```
+```
+
+## Restore Stage
+
+Stages with `"type": "restoreProd"` represent restore operations that run a Kubernetes Job to restore a named deployment to a prior state. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
+
+The following snippet is an example of a `restoreProd` stage in Spinnaker:
+
+```json
+{
+  "type": "restoreProd",
+  "name": "Restore",
+  "refId": "14",
+  "requisiteStageRefIds": ["9"],
+  "account": "<redacted-cluster>",
+  "cloudProvider": "kubernetes",
+  "manifest": {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {
+      "generateName": "restore-",
+      "namespace": "org-0001-spinnaker-cj-prod"
+    },
+    "spec": {
+      "backoffLimit": 0,
+      "template": {
+        "spec": {
+          "containers": [
+            {
+              "command": [
+                "restore",
+                "-n",
+                "$(NAMESPACE)",
+                "$(DEPLOYMENT_NAME)",
+                "$(EXECUTION_ID)"
+              ],
+              "env": [
+                {"name": "DEPLOYMENT_NAME", "value": "server"},
+                {"name": "NAMESPACE", "value": "app-0203-prod"},
+                {"name": "EXECUTION_ID", "value": "01K98X5GWZP388E72WV19DQARE"},
+                {
+                  "name": "CJ_NAMESPACE",
+                  "valueFrom": {
+                    "fieldRef": {
+                      "fieldPath": "metadata.namespace"
+                    }
+                  }
+                }
+              ],
+              "image": "registry.example.invalid/image-0434",
+              "name": "restore"
+            }
+          ],
+          "imagePullSecrets": [{"name": "<redacted-secret-name>"}],
+          "restartPolicy": "Never",
+          "serviceAccountName": "spinnaker-custom-job"
+        }
+      }
+    }
+  }
+}
+```
+
+Convert a `restoreProd` stage to a "Deploy Kubernetes YAML" step as follows:
+
+* Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages (replace `()` and `[]` with dashes `-`; add a step description when the original name contained those characters).
+* Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
+* Replace `<namespace>` with `manifest.metadata.namespace`.
+* Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). Copy the manifest exactly — do **not** replace `generateName` with `name` or alter any field values.
+* Add a step description that identifies the original Spinnaker stage type and describes the restore purpose of the step.
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>. Set the step description to "Original Spinnaker stage type: restoreProd. This step restores a Kubernetes deployment by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+<manifest yaml>
+```
+```
+
+**Example** — converting the stage above produces:
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Restore". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to Kubernetes. Set the step namespace to org-0001-spinnaker-cj-prod. Set the step description to "Original Spinnaker stage type: restoreProd. This step restores a Kubernetes deployment by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: restore-
+  namespace: org-0001-spinnaker-cj-prod
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - command:
+            - restore
+            - -n
+            - $(NAMESPACE)
+            - $(DEPLOYMENT_NAME)
+            - $(EXECUTION_ID)
+          env:
+            - name: DEPLOYMENT_NAME
+              value: server
+            - name: NAMESPACE
+              value: app-0203-prod
+            - name: EXECUTION_ID
+              value: 01K98X5GWZP388E72WV19DQARE
+            - name: CJ_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          image: registry.example.invalid/image-0434
+          name: restore
+      imagePullSecrets:
+        - name: <redacted-secret-name>
+      restartPolicy: Never
+      serviceAccountName: spinnaker-custom-job
+```
+```
+
+## Derive Baseline Stage
+
+Stages with `"type": "deriveBaselineProd"` represent derive-baseline operations that run a Kubernetes Job to derive a baseline state from the main deployment. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
+
+The following snippet is an example of a `deriveBaselineProd` stage in Spinnaker:
+
+```json
+{
+  "type": "deriveBaselineProd",
+  "name": "Derive baseline deployment from main Deployment",
+  "refId": "2",
+  "requisiteStageRefIds": [],
+  "account": "<redacted-cluster>",
+  "cloudProvider": "kubernetes",
+  "manifest": {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {
+      "generateName": "derive-baseline-",
+      "namespace": "org-0001-spinnaker-cj-prod"
+    },
+    "spec": {
+      "backoffLimit": 0,
+      "template": {
+        "spec": {
+          "containers": [
+            {
+              "command": [
+                "derive-baseline",
+                "-n",
+                "$(NAMESPACE)",
+                "$(DEPLOYMENT_NAME)"
+              ],
+              "env": [
+                {
+                  "name": "DEPLOYMENT_NAME",
+                  "value": "server"
+                },
+                {
+                  "name": "NAMESPACE",
+                  "value": "app-0203-prod"
+                }
+              ],
+              "image": "registry.example.invalid/image-0434",
+              "name": "derive-baseline"
+            }
+          ],
+          "imagePullSecrets": [
+            {
+              "name": "<redacted-secret-name>"
+            }
+          ],
+          "restartPolicy": "Never",
+          "serviceAccountName": "spinnaker-custom-job"
+        }
+      }
+    }
+  },
+  "failPipeline": true,
+  "continuePipeline": false,
+  "completeOtherBranchesThenFail": false
+}
+```
+
+Convert a `deriveBaselineProd` stage to a "Deploy Kubernetes YAML" step as follows:
+
+* Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages (replace `()` and `[]` with dashes `-`; add a step description when the original name contained those characters).
+* Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
+* Replace `<namespace>` with `manifest.metadata.namespace`.
+* Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). Copy the manifest exactly — do **not** replace `generateName` with `name` or alter any field values.
+* Add a step description that identifies the original Spinnaker stage type and describes the derive-baseline purpose of the step.
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>. Set the step description to "Original Spinnaker stage type: deriveBaselineProd. This step derives a baseline state from the main deployment by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+<manifest yaml>
+```
+```
+
+**Example** — converting the stage above produces:
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Derive baseline deployment from main Deployment". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to Kubernetes. Set the step namespace to org-0001-spinnaker-cj-prod. Set the step description to "Original Spinnaker stage type: deriveBaselineProd. This step derives a baseline state from the main deployment by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: derive-baseline-
+  namespace: org-0001-spinnaker-cj-prod
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - command:
+            - derive-baseline
+            - -n
+            - $(NAMESPACE)
+            - $(DEPLOYMENT_NAME)
+          env:
+            - name: DEPLOYMENT_NAME
+              value: server
+            - name: NAMESPACE
+              value: app-0203-prod
+          image: registry.example.invalid/image-0434
+          name: derive-baseline
+      imagePullSecrets:
+        - name: <redacted-secret-name>
+      restartPolicy: Never
+      serviceAccountName: spinnaker-custom-job
+```
+```
+
+## Derive Canary Stage
+
+Stages with `"type": "deriveCanaryProd"` represent derive-canary operations that run a Kubernetes Job to derive a canary deployment from manifests. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
+
+The following snippet is an example of a `deriveCanaryProd` stage in Spinnaker:
+
+```json
+{
+  "type": "deriveCanaryProd",
+  "name": "Derive canary deployment from manifests",
+  "refId": "3",
+  "requisiteStageRefIds": [],
+  "account": "<redacted-cluster>",
+  "cloudProvider": "kubernetes",
+  "manifest": {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {
+      "generateName": "derive-canary-",
+      "namespace": "org-0001-spinnaker-cj-prod"
+    },
+    "spec": {
+      "backoffLimit": 0,
+      "template": {
+        "spec": {
+          "containers": [
+            {
+              "command": [
+                "derive-canary",
+                "-n",
+                "$(NAMESPACE)",
+                "$(MANIFEST_URL)",
+                "$(DEPLOYMENT_NAME)",
+                "$(IMAGE)"
+              ],
+              "env": [
+                {
+                  "name": "DEPLOYMENT_NAME",
+                  "value": "server"
+                },
+                {
+                  "name": "NAMESPACE",
+                  "value": "app-0203-prod"
+                },
+                {
+                  "name": "MANIFEST_URL",
+                  "value": "gs://example-bucket/storage-2356"
+                },
+                {
+                  "name": "IMAGE",
+                  "value": "registry.example.invalid/image-0980"
+                }
+              ],
+              "image": "registry.example.invalid/image-0434",
+              "name": "derive-canary"
+            }
+          ],
+          "imagePullSecrets": [
+            {
+              "name": "<redacted-secret-name>"
+            }
+          ],
+          "restartPolicy": "Never",
+          "serviceAccountName": "spinnaker-custom-job"
+        }
+      }
+    }
+  },
+  "failPipeline": true,
+  "continuePipeline": false,
+  "completeOtherBranchesThenFail": false
+}
+```
+
+Convert a `deriveCanaryProd` stage to a "Deploy Kubernetes YAML" step as follows:
+
+* Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages (replace `()` and `[]` with dashes `-`; add a step description when the original name contained those characters).
+* Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
+* Replace `<namespace>` with `manifest.metadata.namespace`.
+* Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). Copy the manifest exactly — do **not** replace `generateName` with `name` or alter any field values.
+* Add a step description that identifies the original Spinnaker stage type and describes the derive-canary purpose of the step.
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>. Set the step description to "Original Spinnaker stage type: deriveCanaryProd. This step derives a canary deployment from manifests by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+<manifest yaml>
+```
+```
+
+**Example** — converting the stage above produces:
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Derive canary deployment from manifests". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to Kubernetes. Set the step namespace to org-0001-spinnaker-cj-prod. Set the step description to "Original Spinnaker stage type: deriveCanaryProd. This step derives a canary deployment from manifests by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: derive-canary-
+  namespace: org-0001-spinnaker-cj-prod
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - command:
+            - derive-canary
+            - -n
+            - $(NAMESPACE)
+            - $(MANIFEST_URL)
+            - $(DEPLOYMENT_NAME)
+            - $(IMAGE)
+          env:
+            - name: DEPLOYMENT_NAME
+              value: server
+            - name: NAMESPACE
+              value: app-0203-prod
+            - name: MANIFEST_URL
+              value: gs://example-bucket/storage-2356
+            - name: IMAGE
+              value: registry.example.invalid/image-0980
+          image: registry.example.invalid/image-0434
+          name: derive-canary
+      imagePullSecrets:
+        - name: <redacted-secret-name>
+      restartPolicy: Never
+      serviceAccountName: spinnaker-custom-job
+```
+```
+
 ## Unknown Stage Types
 
-If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
+If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
 
 ```
 * Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: convert Spinnaker stage of type "<type>" — this stage type has no direct Octopus Deploy equivalent and requires manual conversion.`
@@ -2600,7 +3102,7 @@ The generated output for the deployment stages would include:
 When a project has pipeline-level notification entries, the generated prompt must list all steps in the following order:
 
 1. All "Slack Notification - Start" steps (one per `notifications` array entry that has `pipeline.starting` in its `when` array) must be listed first, before any non-notification stage steps, in `notifications` array order.
-2. All non-notification stage steps must be listed next (this includes ALL stage types: `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, `pipeline`, and any unknown stage types), in topological execution order as described in the "Running steps in parallel" section above. When multiple stages share the same dependency level, preserve their relative order from the original JSON array. **CRITICAL**: `wait` stages, `manualJudgment` stages, and ALL other non-notification stage types MUST appear AFTER the Start step — do NOT place them before the Start step even if they appear earlier in the pipeline JSON.
+2. All non-notification stage steps must be listed next (this includes ALL stage types: `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `pipeline`, and any unknown stage types), in topological execution order as described in the "Running steps in parallel" section above. When multiple stages share the same dependency level, preserve their relative order from the original JSON array. **CRITICAL**: `wait` stages, `manualJudgment` stages, and ALL other non-notification stage types MUST appear AFTER the Start step — do NOT place them before the Start step even if they appear earlier in the pipeline JSON.
 3. All "Slack Notification - Finish" steps (one per `notifications` array entry that has `pipeline.failed` in its `when` array) must be listed after all deployment stage steps, in `notifications` array order.
 4. All "Slack Notification - Complete" steps (one per `notifications` array entry that has `pipeline.complete` in its `when` array) must be listed last, after all Finish steps, in `notifications` array order.
 5. All `parameterConfig` variable prompts must follow all notification steps (after the Complete steps). When there are NO pipeline-level notification steps, variable prompts must appear BEFORE the deployment stage steps.
@@ -2836,7 +3338,7 @@ The **CORRECT** ordering (Start first, deployment stages next, Finish/Complete l
 * A value like `redacted-cluster` for a target tag must be replaced with the generic tag `Kubernetes`
 * An empty string (`""`) for a target tag must also be replaced with the generic tag `Kubernetes`
 
-**IMPORTANT — scope of the `<redacted-cluster>` replacement**: This placeholder replacement applies **only** to the `account` property of deployment stages (`deployManifest`, `runJobManifest`, `runJob`) when it appears in the `Set the target tag to <account>` instruction in the generated output prompt. It does NOT apply to:
+**IMPORTANT — scope of the `<redacted-cluster>` replacement**: This placeholder replacement applies **only** to the `account` property of deployment stages (`deployManifest`, `runJobManifest`, `runJob`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`) when it appears in the `Set the target tag to <account>` instruction in the generated output prompt. It does NOT apply to:
 * Variable values in `templatedPipeline` `variables` objects (those should be converted to their string representations as-is)
 * Stage properties other than `account` (e.g., `namespace`, `location`, `manifestName`)
 * Any other property in the pipeline JSON
