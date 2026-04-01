@@ -5,6 +5,7 @@ const SPINNAKER_JSON_KEY = 'spinnaker_pipelineJson';
 const SPINNAKER_MIGRATION_PROMPT_KEY = 'spinnaker_migrationPrompt';
 const SPINNAKER_AUTO_APPROVE_KEY = 'spinnaker_autoApprove';
 const SPINNAKER_SKIP_LONG_KEY = 'spinnaker_skipLongPipelines';
+const STATE_ERROR = 'Error';
 const SECTION_SEPARATOR = '\n\n---\n\n';
 
 
@@ -189,7 +190,7 @@ async function onCopyPrompt() {
 async function convertSingle(spinnakerJson, serverUrl) {
     const fullPrompt = buildFullPrompt(spinnakerJson);
     const result = await dashboardSendPrompt(fullPrompt, serverUrl);
-    if (result.state === 'Error') {
+    if (result.state === STATE_ERROR) {
         throw new Error(result.response);
     }
     return postProcessing(extractMarkdownCodeBlock(result.response));
@@ -272,7 +273,7 @@ function showConfirmation(result, serverUrl, onApprove, onReject) {
         showView('loadingView');
         dashboardApprovePrompt(result.id, serverUrl)
             .then(approvalResult => {
-                if (approvalResult.state === 'Error') {
+                if (approvalResult.state === STATE_ERROR) {
                     showFailure(approvalResult.response);
                 } else {
                     onApprove();
@@ -298,7 +299,7 @@ function showConfirmation(result, serverUrl, onApprove, onReject) {
 
         try {
             const approvalResult = await dashboardApprovePrompt(result.id, serverUrl);
-            if (approvalResult.state === 'Error') {
+            if (approvalResult.state === STATE_ERROR) {
                 showFailure(approvalResult.response);
             } else {
                 onApprove();
@@ -340,7 +341,7 @@ async function processSections(sections, index, serverUrl) {
     try {
         const result = await dashboardSendPrompt(section, serverUrl);
 
-        if (result.state === 'Error') {
+        if (result.state === STATE_ERROR) {
             showFailure(result.response);
             return;
         }
