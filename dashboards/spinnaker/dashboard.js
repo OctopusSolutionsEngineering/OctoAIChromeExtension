@@ -4,6 +4,7 @@ let defaultPromptText = null;
 const SPINNAKER_JSON_KEY = 'spinnaker_pipelineJson';
 const SPINNAKER_MIGRATION_PROMPT_KEY = 'spinnaker_migrationPrompt';
 const SPINNAKER_AUTO_APPROVE_KEY = 'spinnaker_autoApprove';
+const SPINNAKER_SKIP_LONG_KEY = 'spinnaker_skipLongPipelines';
 const SECTION_SEPARATOR = '\n\n---\n\n';
 
 
@@ -22,6 +23,7 @@ function setFieldsLocked(locked) {
     const copyProjectPromptButton = document.getElementById('copyProjectPromptButton');
     const autoApproveCheckbox = document.getElementById('autoApproveCheckbox');
     const resetPromptButton = document.getElementById('resetPromptButton');
+    const skipLongPipelinesCheckbox = document.getElementById('skipLongPipelinesCheckbox');
 
     migrationPrompt.disabled = locked;
     migrationPrompt.readOnly = locked;
@@ -33,6 +35,7 @@ function setFieldsLocked(locked) {
     executeButton.disabled = locked;
     copyProjectPromptButton.disabled = locked;
     autoApproveCheckbox.disabled = locked;
+    skipLongPipelinesCheckbox.disabled = locked;
     if (locked) {
         resetPromptButton.disabled = true;
     } else {
@@ -249,7 +252,12 @@ function showView(id) {
 }
 
 function showFailure(message) {
-    document.getElementById('failureText').value = message;
+    const text = typeof message === 'string'
+        ? message
+        : message instanceof Error
+            ? message.message
+            : JSON.stringify(message);
+    document.getElementById('failureText').value = text;
     document.getElementById('failureOkButton').onclick = () => {
         showView('inputSection');
         setFieldsLocked(false);
@@ -315,6 +323,12 @@ async function processSections(sections, index, serverUrl) {
 
     const section = sections[index].trim();
     if (!section) {
+        await processSections(sections, index + 1, serverUrl);
+        return;
+    }
+
+    const skipLong = localStorage.getItem(SPINNAKER_SKIP_LONG_KEY) !== 'false';
+    if (skipLong && section.split('\n').length > 20) {
         await processSections(sections, index + 1, serverUrl);
         return;
     }
@@ -421,6 +435,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     autoApproveCheckbox.checked = localStorage.getItem(SPINNAKER_AUTO_APPROVE_KEY) === 'true';
     autoApproveCheckbox.addEventListener('change', () => {
         localStorage.setItem(SPINNAKER_AUTO_APPROVE_KEY, autoApproveCheckbox.checked);
+    });
+
+    const skipLongPipelinesCheckbox = document.getElementById('skipLongPipelinesCheckbox');
+    skipLongPipelinesCheckbox.checked = localStorage.getItem(SPINNAKER_SKIP_LONG_KEY) !== 'false';
+    skipLongPipelinesCheckbox.addEventListener('change', () => {
+        localStorage.setItem(SPINNAKER_SKIP_LONG_KEY, skipLongPipelinesCheckbox.checked);
     });
 
     copyPromptButton.addEventListener('click', onCopyPrompt);
