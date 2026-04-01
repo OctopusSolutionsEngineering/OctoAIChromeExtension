@@ -4,6 +4,33 @@
 * The prompts to create a project and the prompts to create steps must appear in the same section.
 * The prompts to create feeds must appear in a separate section before the prompts to create the project and steps.
 
+**ABSOLUTE RULE — the output MUST be a complete prompt describing how to build Octopus Deploy projects. Raw YAML alone is NEVER a valid output.** Every response must begin with a `Create a project called "..."` sentence (or a feed creation sentence followed by `---` and then a project sentence). YAML content may only appear embedded inside a `* Set the step YAML to:` block that is itself part of a step bullet inside a project prompt. Outputting a bare YAML block — with no surrounding `Create a project...` sentence and step bullets — is strictly forbidden regardless of the pipeline content.
+
+**Negative example — raw YAML as the entire output (FORBIDDEN)**:
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: derive-baseline-
+  ...
+```
+← WRONG: This is raw YAML with no enclosing project prompt. It is never a valid response.
+
+**CORRECT** — YAML must always appear inside a complete step prompt:
+````
+Create a project called "my-service" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Derive baseline deployment from main Deployment". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to Kubernetes. Set the step namespace to org-0001-spinnaker-cj-prod. Set the step description to "Original Spinnaker stage type: deriveBaselineProd. This step derives a baseline state from the main deployment by running a Kubernetes Job."
+* Set the step YAML to:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: derive-baseline-
+  ...
+```
+````
+
 # YAML Indentation
 
 **ABSOLUTE RULE — ALL inline YAML output MUST use correct 2-space indentation at every nesting level.** This rule applies globally to every stage type that produces a `* Set the step YAML to:` block, including `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `runJob`, and any `deployManifest`/`runJobManifest` stage with inline manifests.
@@ -11,6 +38,8 @@
 **Flat YAML — where all keys appear at column 0 with no nesting — is INVALID YAML and will cause deployment failures.** This is the single most common mistake made when generating inline manifests. Never output flat YAML.
 
 **ABSOLUTE RULE — you MUST convert ALL stages in the pipeline before stopping.** Do not output just one stage's YAML and stop. Every stage in the `stages` array must appear in the output as a step prompt. After producing the last step, continue with notification steps, variable prompts, and the disabled line (if applicable).
+
+**ABSOLUTE RULE — YAML must never appear as the sole output.** YAML content is only valid when it is embedded inside a `* Set the step YAML to:` block that is itself part of a complete `Create a project called "..."` prompt. If you find yourself about to output only a YAML block, stop and produce the full project prompt first.
 
 **Negative example — flat (unindented) YAML (FORBIDDEN for ALL stage types)**:
 ```yaml
