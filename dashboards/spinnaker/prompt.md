@@ -482,7 +482,7 @@ The **CORRECT** output for `"disabled": false` (the disabled line is absent, jus
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
 ```
 
-**ABSOLUTE RULE — `disabled: true` on a regular pipeline does NOT skip stage conversion**: Setting `"disabled": true` on a regular pipeline (one that does NOT have `"type": "templatedPipeline"`) means ONLY that the project must be disabled in Octopus (i.e., `* The project must be disabled.` is appended). It does NOT affect stage conversion in any way. ALL stages MUST still be converted to their equivalent Octopus steps regardless of whether `disabled` is `true`. Do NOT omit any stage or use "with no steps" just because the pipeline is disabled.
+**ABSOLUTE RULE — `disabled: true` does NOT skip stage conversion**: Setting `"disabled": true` on a pipeline means ONLY that the project must be disabled in Octopus (i.e., `* The project must be disabled.` is appended). It does NOT affect stage conversion in any way. ALL stages MUST still be converted to their equivalent Octopus steps regardless of whether `disabled` is `true`. Do NOT omit any stage or use "with no steps" just because the pipeline is disabled.
 
 **Negative example — disabled pipeline's stages silently dropped (COMMON MISTAKE)**:
 
@@ -556,45 +556,14 @@ Create a project called "app-0368-job" in the "Default Project Group" project gr
 * The project must be disabled.
 ```
 
-If the pipeline has `"type": "templatedPipeline"`, it is a pipeline backed by a shared template whose stage definitions are stored externally and cannot be read from the JSON directly. The following rules apply:
+If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 
-* Do NOT convert any `stages` from the JSON — stages come from the shared template.
-
-  **ABSOLUTE RULE — `stages` in `templatedPipeline` are ALWAYS ignored**: Even when the `stages` array is non-empty (for example, because `_resolvedFrom: "execution"` indicates stages were captured from a previous run, or `_originalSchema: "v2"` is present), you MUST NOT convert those stages. The presence of `_resolvedFrom`, `_templateRef`, `_originalSchema`, or any other metadata fields does NOT change this rule. The `stages` array in a `templatedPipeline` MUST be completely ignored regardless of whether it is empty or contains stage definitions.
-
-  **Negative example — converting stages from a `templatedPipeline` (FORBIDDEN)**:
-  ```json
-  {
-    "name": "Deploy Service",
-    "type": "templatedPipeline",
-    "_resolvedFrom": "execution",
-    "stages": [
-      { "type": "deployManifest", "name": "Deploy", "refId": "1", "requisiteStageRefIds": ["2"] },
-      { "type": "manualJudgment", "name": "Manual Judgment", "refId": "2", "requisiteStageRefIds": [] }
-    ],
-    "variables": { "manifestURL": "gs://bucket/file.yaml" }
-  }
-  ```
-
-  The **WRONG** output (generates steps from stages — FORBIDDEN for `templatedPipeline`):
-  ```
-  Create a project called "Deploy Service" in the "Default Project Group" project group with no steps.
-  * Add a "Manual Intervention" step ... "Manual Judgment" ...
-  * Add a "Deploy Kubernetes YAML" step ... "Deploy" ...
-  * Add a project variable called "manifestURL" with the value "gs://bucket/file.yaml".
-  ```
-
-  The **CORRECT** output (no steps from stages — only variables are converted):
-  ```
-  Create a project called "Deploy Service" in the "Default Project Group" project group with no steps.
-  * Add a project variable called "manifestURL" with the value "gs://bucket/file.yaml".
-  ```
-
-* **DO convert any `notifications` from the JSON** — notification steps are project-level and must be preserved. This applies even though stages are skipped. Notifications in a `templatedPipeline` must be converted using exactly the same rules as for a regular pipeline (see the Notifications section). The `when` array and `message` text must be inspected and Slack Notification steps must be generated for all applicable events.
+* **DO convert any `stages` from the JSON** — convert all stages using exactly the same rules as for a regular pipeline.
+* **DO convert any `notifications` from the JSON** — notification steps are project-level and must be preserved. Notifications in a `templatedPipeline` must be converted using exactly the same rules as for a regular pipeline (see the Notifications section). The `when` array and `message` text must be inspected and Slack Notification steps must be generated for all applicable events.
 * DO apply the `disabled` status — add `* The project must be disabled.` when `disabled: true`.
 * DO NOT add feed creation prompts — `templatedPipeline` types have no `expectedArtifacts` in the top-level JSON.
 
-**IMPORTANT — `templatedPipeline` notifications are REQUIRED**: When a `templatedPipeline` has a `notifications` array, you MUST generate Slack notification steps for it. Do NOT skip notifications just because the pipeline `type` is `templatedPipeline`. The Finish and Complete steps must appear in the correct order: all Slack Notification - Start steps first (if `pipeline.starting` is in `when`), followed by the (absent) deployment steps, then Slack Notification - Finish steps (if `pipeline.failed` is in `when`), then Slack Notification - Complete steps (if `pipeline.complete` is in `when`), then the `variables` prompts.
+**IMPORTANT — `templatedPipeline` notifications are REQUIRED**: When a `templatedPipeline` has a `notifications` array, you MUST generate Slack notification steps for it. Do NOT skip notifications just because the pipeline `type` is `templatedPipeline`. The Finish and Complete steps must appear in the correct order: all Slack Notification - Start steps first (if `pipeline.starting` is in `when`), followed by the deployment steps, then Slack Notification - Finish steps (if `pipeline.failed` is in `when`), then Slack Notification - Complete steps (if `pipeline.complete` is in `when`), then the `variables` prompts.
 
 * A `templatedPipeline` entry may contain a `variables` object with deployment configuration. These are added as variables to the project.
 * If the `variables` property is absent or empty, do not output any project variable prompts.
