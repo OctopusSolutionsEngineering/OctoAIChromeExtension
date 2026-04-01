@@ -159,8 +159,10 @@ const [dashboardSendPrompt, dashboardApprovePrompt] = function () {
      */
     function _dashboardConvertFromSseResponse(sseResponse) {
         if (sseResponse.error) {
+            const isEmptyObject = typeof sseResponse.error === 'object'
+                && Object.keys(sseResponse.error).length === 0;
             return {
-                response: sseResponse.error,
+                response: isEmptyObject ? 'The backend returned an error' : sseResponse.error,
                 state: "Error"
             };
         }
