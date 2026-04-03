@@ -1225,7 +1225,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 }
 ```
 
-* When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths.
+* When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths. If `manifestArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
 * **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Use the following logic:
   * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest. The manifest YAML content must be serialized verbatim — do NOT redact, anonymize, or replace any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders. Service names, namespaces, and deployment names that appear in the manifest are Kubernetes resource identifiers, not secrets.
   * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at \"<reference>\". The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space.
@@ -1237,7 +1237,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 1. Find the `expectedArtifacts` entry whose `id` matches the stage's `manifestArtifactId` value.
 2. Check the `defaultArtifact.type` of that entry.
 3. If `defaultArtifact.type` is `"gcs/object"`, **STOP** — do NOT use "Files from a Git repository". Apply the **GCS inline YAML rules** instead.
-4. If `defaultArtifact.type` is `"github/file"`, use **"Files from a Git repository"** — use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. NEVER use "Inline YAML" for a `github/file` artifact.
+4. If `defaultArtifact.type` is `"github/file"`, use **"Files from a Git repository"** — use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. If `defaultArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value. NEVER use "Inline YAML" for a `github/file` artifact.
 
 **CRITICAL — `github/file` artifacts ALWAYS use "Files from a Git repository"**: Whether the artifact is referenced via `manifestArtifactId` (resolving to an `expectedArtifacts` entry) or directly via `manifestArtifact`, if `type` is `"github/file"`, the step MUST ALWAYS use `YAML Source: "Files from a Git repository"`. NEVER use "Inline YAML" for a `github/file` artifact. The URL `https://...` in a `github/file` reference is a GitHub URL, NOT a Google Cloud Storage path — do NOT treat it as GCS, do NOT generate a GCS TODO placeholder, and do NOT append a "Google Cloud Storage" NOTE.
 
@@ -1342,8 +1342,8 @@ The **WRONG** output (namespace annotation silently omitted):
 
 Stages with `"type": "runJobManifest"` represent Kubernetes job executions and must be converted using exactly the same rules as `deployManifest` stages. Apply the artifact reference logic identically:
 
-* If the stage has a `manifestArtifactId` property, look up the matching entry in `expectedArtifacts` by `id` and use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths.
-* If the stage has a direct `manifestArtifact` property, use `manifestArtifact.reference` as the Repository URL and `manifestArtifact.name` as the File Paths.
+* If the stage has a `manifestArtifactId` property, look up the matching entry in `expectedArtifacts` by `id` and use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. If `defaultArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
+* If the stage has a direct `manifestArtifact` property, use `manifestArtifact.reference` as the Repository URL and `manifestArtifact.name` as the File Paths. If `manifestArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 
 The resulting prompt must follow exactly the same rules as a `deployManifest` stage, including the stage name transformation rules.
