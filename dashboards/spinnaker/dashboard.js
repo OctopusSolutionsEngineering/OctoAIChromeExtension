@@ -7,6 +7,28 @@ const SPINNAKER_AUTO_APPROVE_KEY = 'spinnaker_autoApprove';
 const STATE_ERROR = 'Error';
 const SECTION_SEPARATOR = '\n\n---\n\n';
 
+function generateSecureString(len = 32) {
+    const array = new Uint8Array(len / 2);
+    window.crypto.getRandomValues(array);
+    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function splitPrompts(prompt) {
+    var fixedPrompt = prompt
+
+    // Get a marker that we know won't appear in the prompt
+    const replacement = generateSecureString();
+
+    // Replace --- within code blocks with a secure random string to avoid splitting on those
+    const codeBlockMatches = prompt.matchAll(/`{3,}.*?\1/gs);
+    for (let match in codeBlockMatches) {
+        fixedPrompt = fixedPrompt.replace(match, match.replace("---", replacement));
+    }
+
+    // Split on ---, and then replace any of the secure strings with --- again
+    return fixedPrompt.split(SECTION_SEPARATOR)
+        .map(section => section.replace(new RegExp(replacement, 'g'), '---'));
+}
 
 function buildFullPrompt(spinnakerJson) {
     const promptTemplate = document.getElementById('migrationPrompt').value;
@@ -49,7 +71,7 @@ function syncResetButtonState() {
 
 function updateSectionCount(text) {
     const count = text.trim()
-        ? text.trim().split(SECTION_SEPARATOR).length
+        ? splitPrompts(text.trim()).length
         : 0;
     const label = count === 1 ? 'section' : 'sections';
     document.getElementById('sectionCount').textContent =
@@ -78,7 +100,7 @@ function extractMarkdownCodeBlock(text) {
 }
 
 function deduplicateSections(text) {
-    const sections = text.split(SECTION_SEPARATOR);
+    const sections = splitPrompts(text.split)
     const seen = new Set();
     const unique = sections.filter(section => {
         const key = section.trim();
@@ -362,8 +384,7 @@ async function onExecute() {
 
     setFieldsLocked(true);
 
-    const sections = prompt
-        .split(SECTION_SEPARATOR)
+    const sections = splitPrompts(prompt)
         .map(section => `${section.trimEnd()}\n\nThe current space is "${spaceName}"`);
     const serverUrl = dashboardConfig?.lastServerUrl;
 
