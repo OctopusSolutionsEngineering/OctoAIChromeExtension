@@ -1115,17 +1115,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     });
                 }
-
-                // Auto-continue after 2 seconds if callback is provided
-                setTimeout(function() {
-                    console.log('Auto-continuing to next section after 2 seconds');
-                    if (typeof onComplete === 'function') {
-                        onComplete();
-                    } else {
-                        console.error('onComplete is not a function in timeout:', onComplete);
-                        location.reload();
-                    }
-                }, 2000);
             } else {
                 const okBtn = document.getElementById('okBtn');
                 if (okBtn) {
