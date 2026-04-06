@@ -125,6 +125,41 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedProjectGroups = [];
     let selectedIntentionalErrors = [];
 
+    // Helper function to clear all selections below the tenant row (state, UI, and localStorage)
+    function clearSubSelections() {
+        selectedSteps = [];
+        selectedRunbooks = [];
+        selectedChannels = [];
+        selectedReleaseNotes = [];
+        selectedTriggers = [];
+        selectedFreezes = [];
+        selectedCommunityTemplates = [];
+        selectedProjectGroups = [];
+        selectedIntentionalErrors = [];
+
+        [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
+            cards.forEach(card => card.classList.remove('selected'));
+        });
+
+        localStorage.removeItem('easymode.selectedSteps');
+        localStorage.removeItem('easymode.selectedRunbooks');
+        localStorage.removeItem('easymode.selectedChannels');
+        localStorage.removeItem('easymode.selectedReleaseNotes');
+        localStorage.removeItem('easymode.selectedTriggers');
+        localStorage.removeItem('easymode.selectedFreezes');
+        localStorage.removeItem('easymode.selectedCommunityTemplates');
+        localStorage.removeItem('easymode.selectedProjectGroups');
+        localStorage.removeItem('easymode.selectedIntentionalErrors');
+    }
+
+    // Helper function to clear all non-platform selections (state, UI, and localStorage)
+    function clearAllSelections() {
+        selectedTenant = null;
+        tenantCards.forEach(c => c.classList.remove('selected'));
+        localStorage.removeItem('easymode.selectedTenant');
+        clearSubSelections();
+    }
+
     // Helper function to count total selected items (excluding platform)
     function getTotalSelectedItems() {
         let count = 0;
@@ -325,45 +360,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // If AWS Lambda or Kubernetes Microservices is selected, clear all selections (they don't allow any additional selections)
             if (selectedPlatform === 'awslambda' || selectedPlatform === 'kubernetesmicroservices') {
-                // Clear all selections
-                selectedTenant = null;
-                selectedSteps = [];
-                selectedRunbooks = [];
-                selectedChannels = [];
-                selectedReleaseNotes = [];
-                selectedTriggers = [];
-                selectedFreezes = [];
-                selectedCommunityTemplates = [];
-                selectedProjectGroups = [];
-                selectedIntentionalErrors = [];
-
-                // Remove selected class from all cards
-                tenantCards.forEach(c => c.classList.remove('selected'));
-                stepCards.forEach(c => c.classList.remove('selected'));
-                runbookCards.forEach(c => c.classList.remove('selected'));
-                channelCards.forEach(c => c.classList.remove('selected'));
-                releaseNoteCards.forEach(c => c.classList.remove('selected'));
-                triggerCards.forEach(c => c.classList.remove('selected'));
-                freezeCards.forEach(c => c.classList.remove('selected'));
-                communityTemplateCards.forEach(c => c.classList.remove('selected'));
-                projectGroupCards.forEach(c => c.classList.remove('selected'));
-                intentionalErrorCards.forEach(c => c.classList.remove('selected'));
-
-                // Clear localStorage
-                localStorage.removeItem('easymode.selectedTenant');
-                localStorage.removeItem('easymode.selectedSteps');
-                localStorage.removeItem('easymode.selectedRunbooks');
-                localStorage.removeItem('easymode.selectedChannels');
-                localStorage.removeItem('easymode.selectedReleaseNotes');
-                localStorage.removeItem('easymode.selectedTriggers');
-                localStorage.removeItem('easymode.selectedFreezes');
-                localStorage.removeItem('easymode.selectedCommunityTemplates');
-                localStorage.removeItem('easymode.selectedProjectGroups');
-                localStorage.removeItem('easymode.selectedIntentionalErrors');
+                clearAllSelections();
             }
-
-
-
+            
             // Update disabled states for limited platforms
             updateCardDisabledStates();
 
@@ -412,33 +411,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.setItem('easymode.selectedTenant', tenant);
 
                 // Clear all selections below tenants row
-                selectedSteps = [];
-                selectedRunbooks = [];
-                selectedChannels = [];
-                selectedReleaseNotes = [];
-                selectedTriggers = [];
-                selectedFreezes = [];
-                selectedCommunityTemplates = [];
-                selectedProjectGroups = [];
-                selectedIntentionalErrors = [];
+                clearSubSelections();
 
-                // Clear localStorage for items below tenants row
-                localStorage.removeItem('easymode.selectedSteps');
-                localStorage.removeItem('easymode.selectedRunbooks');
-                localStorage.removeItem('easymode.selectedChannels');
-                localStorage.removeItem('easymode.selectedReleaseNotes');
-                localStorage.removeItem('easymode.selectedTriggers');
-                localStorage.removeItem('easymode.selectedFreezes');
-                localStorage.removeItem('easymode.selectedCommunityTemplates');
-                localStorage.removeItem('easymode.selectedProjectGroups');
-                localStorage.removeItem('easymode.selectedIntentionalErrors');
-
-                // Remove selected class from all cards below tenants row
+                // Disable all cards below tenants row
                 [stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
-                    cards.forEach(card => {
-                        card.classList.remove('selected');
-                        card.classList.add('disabled-card');
-                    });
+                    cards.forEach(card => card.classList.add('disabled-card'));
                 });
             }
 
@@ -1046,6 +1023,61 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Function to display the Section Complete page and wire up Continue / OK buttons
+    function showSectionComplete(mainContent, sanitizedHtml, onComplete) {
+        mainContent.innerHTML = `
+            <div class="response-container">
+                <h2>Section Complete</h2>
+                <div class="response-text">${sanitizedHtml}</div>
+                <div class="response-actions">
+                    ${onComplete ? '<button id="continueBtn" class="approve-button">Continue to Next Section</button>' : '<button id="okBtn" class="approve-button">OK</button>'}
+                </div>
+            </div>
+        `;
+
+        if (onComplete) {
+            const continueBtn = document.getElementById('continueBtn');
+            if (continueBtn) {
+                continueBtn.addEventListener('click', function() {
+                    console.log('Continue button clicked - calling onComplete callback');
+                    if (typeof onComplete === 'function') {
+                        onComplete();
+                    } else {
+                        console.error('onComplete is not a function:', onComplete);
+                        location.reload();
+                    }
+                });
+            }
+        } else {
+            const okBtn = document.getElementById('okBtn');
+            if (okBtn) {
+                okBtn.addEventListener('click', function() {
+                    location.reload();
+                });
+            }
+        }
+    }
+
+    // Function to display an error response and wire up the Reload Dashboard button
+    function showErrorResult(mainContent, sanitizedHtml) {
+        mainContent.innerHTML = `
+            <div class="response-container error">
+                <h2>Error</h2>
+                <div class="response-text">${sanitizedHtml}</div>
+                <div class="response-actions">
+                    <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
+                </div>
+            </div>
+        `;
+
+        const reloadBtn = document.getElementById('reloadBtn');
+        if (reloadBtn) {
+            reloadBtn.addEventListener('click', function() {
+                location.reload();
+            });
+        }
+    }
+
     // Function to display final result with optional continuation
     function displayFinalResult(result, onComplete) {
         const mainContent = document.querySelector('.main-content');
@@ -1059,24 +1091,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const sanitizedHtml = DOMPurify.sanitize(htmlContent);
 
         if (result.state === 'Error') {
-            // Always show error page
-            const responseHtml = `
-                <div class="response-container error">
-                    <h2>Error</h2>
-                    <div class="response-text">${sanitizedHtml}</div>
-                    <div class="response-actions">
-                        <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
-                    </div>
-                </div>
-            `;
-            mainContent.innerHTML = responseHtml;
-
-            const reloadBtn = document.getElementById('reloadBtn');
-            if (reloadBtn) {
-                reloadBtn.addEventListener('click', function() {
-                    location.reload();
-                });
-            }
+            showErrorResult(mainContent, sanitizedHtml);
         } else if (autoApplyEnabled) {
             // Auto-Apply is enabled - skip the Section Complete page
             if (onComplete) {
@@ -1089,40 +1104,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 location.reload();
             }
         } else {
-            // Auto-Apply is disabled - show the Section Complete page
-            let responseHtml = '';
-            responseHtml = `
-                <div class="response-container">
-                    <h2>Section Complete</h2>
-                    <div class="response-text">${sanitizedHtml}</div>
-                    <div class="response-actions">
-                        ${onComplete ? '<button id="continueBtn" class="approve-button">Continue to Next Section</button>' : '<button id="okBtn" class="approve-button">OK</button>'}
-                    </div>
-                </div>
-            `;
-            mainContent.innerHTML = responseHtml;
-
-            if (onComplete) {
-                const continueBtn = document.getElementById('continueBtn');
-                if (continueBtn) {
-                    continueBtn.addEventListener('click', function() {
-                        console.log('Continue button clicked - calling onComplete callback');
-                        if (typeof onComplete === 'function') {
-                            onComplete();
-                        } else {
-                            console.error('onComplete is not a function:', onComplete);
-                            location.reload();
-                        }
-                    });
-                }
-            } else {
-                const okBtn = document.getElementById('okBtn');
-                if (okBtn) {
-                    okBtn.addEventListener('click', function() {
-                        location.reload();
-                    });
-                }
-            }
+            showSectionComplete(mainContent, sanitizedHtml, onComplete);
         }
     }
 
@@ -1471,36 +1453,15 @@ function displayResponse(result, serverUrl) {
     const mainContent = document.querySelector('.main-content');
     if (!mainContent) return;
 
-    let responseHtml = '';
-
     // Convert markdown to HTML using marked library
     const htmlContent = marked.parse(result.response);
     const sanitizedHtml = DOMPurify.sanitize(htmlContent);
 
     if (result.state === 'Error') {
-        responseHtml = `
-            <div class="response-container error">
-                <h2>Error</h2>
-                <div class="response-text">${sanitizedHtml}</div>
-                <div class="response-actions">
-                    <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
-                </div>
-            </div>
-        `;
+        mainContent.innerHTML = buildErrorResponseHtml(sanitizedHtml);
     } else {
-        responseHtml = `
-            <div class="response-container">
-                <h2>Response</h2>
-                <div class="response-text">${sanitizedHtml}</div>
-                <div class="response-actions">
-                    <button class="approve-button" id="approveBtn">Approve</button>
-                    <button class="reject-button" id="rejectBtn">Reject</button>
-                </div>
-            </div>
-        `;
+        mainContent.innerHTML = buildResponseHtml(sanitizedHtml);
     }
-
-    mainContent.innerHTML = responseHtml;
 
     // Set a timeout to return to main page after 4 minutes (240000 ms)
     const approvalTimeout = setTimeout(() => {
@@ -1560,6 +1521,48 @@ function displayResponse(result, serverUrl) {
     }
 }
 
+// Builds the response HTML string with Approve and Reject buttons
+function buildResponseHtml(sanitizedHtml) {
+    return `
+        <div class="response-container">
+            <h2>Response</h2>
+            <div class="response-text">${sanitizedHtml}</div>
+            <div class="response-actions">
+                <button class="approve-button" id="approveBtn">Approve</button>
+                <button class="reject-button" id="rejectBtn">Reject</button>
+            </div>
+        </div>
+    `;
+}
+
+// Builds the approval response HTML string for a given response message
+function buildApprovalResponseHtml(response) {
+    const htmlContent = marked.parse(response);
+    const sanitizedHtml = DOMPurify.sanitize(htmlContent);
+    return `
+        <div class="response-container">
+            <h2>Approval Response</h2>
+            <div class="response-text">${sanitizedHtml}</div>
+            <div class="response-actions">
+                <button class="ok-button" id="okBtn">OK</button>
+            </div>
+        </div>
+    `;
+}
+
+// Builds the error response HTML string for a given sanitized HTML message
+function buildErrorResponseHtml(sanitizedHtml) {
+    return `
+        <div class="response-container error">
+            <h2>Error</h2>
+            <div class="response-text">${sanitizedHtml}</div>
+            <div class="response-actions">
+                <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
+            </div>
+        </div>
+    `;
+}
+
 // Helper function to display the approval response with OK button
 function displayApprovalResponse(result) {
     // Check if Auto-Apply is enabled
@@ -1574,37 +1577,18 @@ function displayApprovalResponse(result) {
 
     const mainContent = document.querySelector('.main-content');
     if (!mainContent) return;
-
-    let responseHtml = '';
-
+    
     if (result.state === 'Error') {
-        responseHtml = `
-            <div class="response-container error">
-                <h2>Error</h2>
-                <div class="response-text">${DOMPurify.sanitize(result.response)}</div>
-                <div class="response-actions">
-                    <button id="reloadBtn" class="reload-button">Reload Dashboard</button>
-                </div>
-            </div>
-        `;
+        mainContent.innerHTML = buildErrorResponseHtml(DOMPurify.sanitize(result.response));
     } else {
-        // Convert markdown to HTML using marked library if needed
-        const htmlContent = marked.parse(result.response);
-        const sanitizedHtml = DOMPurify.sanitize(htmlContent);
-
-        responseHtml = `
-            <div class="response-container">
-                <h2>Approval Response</h2>
-                <div class="response-text">${sanitizedHtml}</div>
-                <div class="response-actions">
-                    <button class="ok-button" id="okBtn">OK</button>
-                </div>
-            </div>
-        `;
+        mainContent.innerHTML = buildApprovalResponseHtml(result.response);
     }
 
-    mainContent.innerHTML = responseHtml;
+    bindApprovalResponseButtons();
+}
 
+// Binds click handlers for the OK and Reload Dashboard buttons on the approval response page
+function bindApprovalResponseButtons() {
     // Add event listener for OK button
     const okBtn = document.getElementById('okBtn');
     const reloadBtn = document.getElementById('reloadBtn');
