@@ -100,7 +100,7 @@ function extractMarkdownCodeBlock(text) {
 }
 
 function deduplicateSections(text) {
-    const sections = splitPrompts(text.split)
+    const sections = splitPrompts(text)
     const seen = new Set();
     const unique = sections.filter(section => {
         const key = section.trim();
