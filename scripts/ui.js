@@ -206,8 +206,6 @@ function displayExamples(prompts, parentPrompts, theme) {
             // System prompts are those defined in a library variable set
             const button = createButton("TEAM: " + prompt.prompt, theme);
 
-            button.textContent = "TEAM: " + prompt.prompt;
-
             // Add click event
             button.addEventListener('click', () => {
                 submitPrompt(prompt.systemPrompt, prompt.systemPromptOnly, prompt.prompt);
