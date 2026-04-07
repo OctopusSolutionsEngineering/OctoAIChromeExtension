@@ -126,29 +126,45 @@ async function displayPrompts() {
     displayExamples(prompts, null, getColors());
 }
 
+function createPrompt(text, theme) {
+    const button = createButton(text, theme);
+
+    const goButton = document.createElement('span');
+    goButton.style.width = '20px';
+    goButton.style.height = '20px';
+    goButton.style.display = 'inline-block';
+    goButton.style.marginLeft = 'auto';
+    button.appendChild(goButton);
+    addSvgFromFile('img/go.svg', goButton);
+
+    goButton.addEventListener('mouseover', function () {
+
+    })
+
+    return {button, goButton};
+}
+
 function createButton(text, theme, id, icon) {
     const button = document.createElement('div');
 
     if (icon) {
         const iconContainer = document.createElement('span');
-        iconContainer.style.width = '16px'
-        iconContainer.style.height = '16px'
+        iconContainer.style.width = '16px';
+        iconContainer.style.height = '16px';
         button.appendChild(iconContainer);
         addSvgFromFile('img/' + icon, iconContainer);
-
-        const textContainer = document.createElement('span');
-        button.appendChild(textContainer);
-        textContainer.textContent = text;
-    } else {
-        button.textContent = text;
     }
+
+    const textContainer = document.createElement('span');
+    button.appendChild(textContainer);
+    textContainer.textContent = text;
 
     if (id) {
         button.id = id;
     }
 
     button.title = text;
-    button.style.display = 'block';
+    button.style.display = 'flex';
     button.style.width = '100%';
     button.style.padding = '10px';
     button.style.marginBottom = '10px';
@@ -186,12 +202,9 @@ function displayExamples(prompts, parentPrompts, theme) {
 
     // Function to create a button
     function createExampleButton(prompt, theme) {
-        const buttonName = prompt.prompt || prompt.dashboardName
-        const button = createButton(buttonName, theme);
-
-
         if (prompt.systemPrompt || prompt.systemPromptOnly) {
             // System prompts are those defined in a library variable set
+            const button = createButton("TEAM: " + prompt.prompt, theme);
 
             button.textContent = "TEAM: " + prompt.prompt;
 
@@ -200,9 +213,11 @@ function displayExamples(prompts, parentPrompts, theme) {
                 submitPrompt(prompt.systemPrompt, prompt.systemPromptOnly, prompt.prompt);
             });
 
+            return button;
         }
         else if (prompt.fullPrompt) {
             // Prompts can have a shorthand description in the menu and a full prompt to insert
+            const {button, goButton } = createPrompt(prompt.prompt, theme);
 
             // Add click event
             button.addEventListener('click', () => {
@@ -212,13 +227,25 @@ function displayExamples(prompts, parentPrompts, theme) {
                     input.focus();
                 }
             });
+
+            // Add quick run event
+            goButton.addEventListener('click', () => {
+                submitPrompt('', false, prompt.fullPrompt);
+            });
+
+            return button;
         } else if (prompt.dashboardName) {
+            const button = createButton(prompt.dashboardName, theme);
+
             // Dashboard prompts are those that link to a dashboard in the extension
             button.addEventListener('click', () => {
                 displayDashboard(prompt.dashboardFile);
             });
+
+            return button;
         } else {
             // Regular prompts display the sample prompt they execute
+            const {button, goButton } = createPrompt(prompt.prompt, theme);
 
             // Add click event
             button.addEventListener('click', () => {
@@ -228,9 +255,14 @@ function displayExamples(prompts, parentPrompts, theme) {
                     input.focus();
                 }
             });
-        }
 
-        return button;
+            // Add quick run event
+            goButton.addEventListener('click', () => {
+                submitPrompt('', false, prompt.prompt);
+            });
+
+            return button;
+        }
     }
 
     function createExampleFolderButton(childPrompts, theme) {
@@ -488,12 +520,12 @@ function displayPromptUIV2(theme) {
     const submitButton = document.createElement('button');
     submitButton.id = 'octoai-submit';
     submitButton.type = 'submit';
-    submitButton.innerHTML = '&#8594;'; // Unicode for the right arrow
     submitButton.style.border = 'none';
     submitButton.style.backgroundColor = 'transparent';
     submitButton.style.cursor = 'pointer';
     submitButton.style.color = theme.text;
     submitButton.style.fontSize = '16px';
+    addSvgFromFile('img/go.svg', submitButton);
 
     // Append the input and button to the form
     form.appendChild(input);
