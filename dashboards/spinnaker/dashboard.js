@@ -14,20 +14,19 @@ function generateSecureString(len = 32) {
 }
 
 function splitPrompts(prompt) {
-    var fixedPrompt = prompt
-
     // Get a marker that we know won't appear in the prompt
     const replacement = generateSecureString();
 
-    // Replace --- within code blocks with a secure random string to avoid splitting on those
-    const codeBlockMatches = prompt.matchAll(/`{3,}.*?\1/gs);
-    for (let match in codeBlockMatches) {
-        fixedPrompt = fixedPrompt.replace(match, match.replace("---", replacement));
-    }
+    // Replace --- within code blocks with a secure random string to avoid splitting on those.
+    // regex only matches properly closed blocks.
+    const fixedPrompt = prompt.replace(
+        /(`{3,}|~{3,}).*?\1/gs,
+        codeBlock => codeBlock.replaceAll('---', replacement)
+    );
 
-    // Split on ---, and then replace any of the secure strings with --- again
+    // Split on SECTION_SEPARATOR, then restore any replaced --- markers
     return fixedPrompt.split(SECTION_SEPARATOR)
-        .map(section => section.replace(new RegExp(replacement, 'g'), '---'));
+        .map(section => section.replaceAll(replacement, '---'));
 }
 
 function buildFullPrompt(spinnakerJson) {
@@ -460,3 +459,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateSectionCount(e.target.value);
     });
 });
+
+// Exported for testing — has no effect in a browser where `module` is undefined
+if (typeof module !== 'undefined') {
+    module.exports = { splitPrompts, SECTION_SEPARATOR };
+}
+
