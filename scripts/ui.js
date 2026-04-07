@@ -138,10 +138,6 @@ function createPrompt(text, theme) {
     button.appendChild(goButton);
     addSvgFromFile('img/go.svg', goButton);
 
-    goButton.addEventListener('mouseover', function () {
-
-    })
-
     return {button, goButton};
 }
 
