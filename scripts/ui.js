@@ -134,6 +134,7 @@ function createPrompt(text, theme) {
     goButton.style.height = '20px';
     goButton.style.display = 'inline-block';
     goButton.style.marginLeft = 'auto';
+    goButton.title = "Quick run"
     button.appendChild(goButton);
     addSvgFromFile('img/go.svg', goButton);
 
