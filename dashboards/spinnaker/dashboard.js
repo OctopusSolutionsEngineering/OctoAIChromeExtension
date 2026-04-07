@@ -110,12 +110,6 @@ function deduplicateSections(text) {
     return unique.join(SECTION_SEPARATOR);
 }
 
-// The issue at https://github.com/OctopusDeploy/terraform-provider-octopusdeploy/issues/190?reload=1 means we can't set details on
-// step run conditions. This can be removed when the issue is fixed.
-function postProcessing(text) {
-    return text.replace(/Set the start trigger .*?\./g, '').replace(/\n{3,}/g, '\n\n').trim();
-}
-
 async function fetchDefaultPrompt() {
     const remoteUrl = 'https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/refs/heads/main/dashboards/spinnaker/prompt.md';
     try {
@@ -211,7 +205,7 @@ async function convertSingle(spinnakerJson, serverUrl) {
     if (result.state === STATE_ERROR) {
         throw new Error(result.response);
     }
-    return postProcessing(extractMarkdownCodeBlock(result.response));
+    return extractMarkdownCodeBlock(result.response);
 }
 
 async function onConvert() {
