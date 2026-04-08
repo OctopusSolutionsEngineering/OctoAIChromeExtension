@@ -17,7 +17,8 @@ To create a custom dashboard, follow these steps:
    * `lastServerUrl`, which is the URL of the instance that the user last opened a dashboard for.
    * `context`, a map containing details about the page from which the dashboard was opened. See the `getUIContext()` function in [scripts/dashboard.js](../scripts/dashboard.js) for more details about the context object.
 7. Requests to the Octopus API must include credentials, which will pass the cookies associated with the current session.
-8. See the [Copilot Instructions](../.github/copilot-instructions.md) for the best practices for writing the code for your dashboard.
+8. Call the `dashboardSendPrompt()` function to send a prompt to the AI Assistant. Note that you will likely need to indicate the current space and project in the prompt e.g. appending `The current space is "My Space" and the current project is "My Project"` to the end of the prompt, using the context information returned by the `dashboardGetConfig()` function.
+9. See the [Copilot Instructions](../.github/copilot-instructions.md) for the best practices for writing the code for your dashboard.
 
 This is an example of the JSON entry to include in the `promptsv#.json` file to reference a custom dashboard:
 
