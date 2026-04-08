@@ -118,9 +118,9 @@ const intentionalErrorInstructions = {
 
 // Terraform option instructions configuration
 const terraformOptionInstructions = {
-    s3bucket: '* Create an AWS OIDC account\n* Configure the Terraform to deploy an AWS S3 Bucket\n* Configure the step to use the AWS OIDC account',
-    azurestorageaccount: '* Create an Azure OIDC account\n* Configure the Terraform to deploy an Azure Storage Account\n* Configure the step to use the Azure OIDC account',
-    gcpcloudstoragebucket: '* Create an Google Cloud account\n* Configure the Terraform to deploy a GCP Cloud Storage Bucket\n* Configure the step to use the Google Cloud account'
+    s3bucket: 'Create a Terraform project called "My AWS Terraform Infrastructure", and then:\n* Create an AWS OIDC account\n* Configure the Terraform to deploy an AWS S3 Bucket\n* Configure the step to use the AWS OIDC account',
+    azurestorageaccount: 'Create a Terraform project called "My Azure Terraform Infrastructure", and then:\n* Create an Azure OIDC account\n* Configure the Terraform to deploy an Azure Storage Account\n* Configure the step to use the Azure OIDC account',
+    gcpcloudstoragebucket: 'Create a Terraform project called "My GCP Terraform Infrastructure", and then:\n* Create an Google Cloud account\n* Configure the Terraform to deploy a GCP Cloud Storage Bucket\n* Configure the step to use the Google Cloud account'
 };
 
 // Initialize the dashboard
@@ -825,15 +825,11 @@ document.addEventListener('DOMContentLoaded', function() {
             prompt = platformPrompts[selectedPlatform];
         }
 
-        // Add terraform option instructions if selected (platform-specific)
+        // Override with the terraform option instructions if selected (platform-specific)
         if (selectedTerraformOptions.length > 0) {
             selectedTerraformOptions.forEach(option => {
                 if (terraformOptionInstructions[option]) {
-                    if (prompt) {
-                        prompt += '\n' + terraformOptionInstructions[option];
-                    } else {
-                        prompt = terraformOptionInstructions[option];
-                    }
+                    prompt = terraformOptionInstructions[option];
                 }
             });
         }
