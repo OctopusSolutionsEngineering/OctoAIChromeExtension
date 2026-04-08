@@ -364,6 +364,72 @@ body {
 .platform-card.selected .platform-icon {
     color: #0d80d8;
 }
+/* Terraform Options Section */
+.terraform-options-section {
+    margin-bottom: 32px;
+}
+.terraform-options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-top: 24px;
+}
+.terraformoption-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    border: 3px double transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(31, 242, 255), rgb(13, 129, 216)) border-box rgb(27, 36, 45);
+}
+.terraformoption-card:hover {
+    border-color: #0d80d8;
+    box-shadow: 0 4px 12px rgba(13, 128, 216, 0.15);
+    transform: translateY(-2px);
+}
+.terraformoption-card:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(13, 128, 216, 0.2);
+}
+.terraformoption-icon {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0d80d8;
+}
+.terraformoption-icon svg {
+    width: 100%;
+    height: 100%;
+}
+.terraformoption-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: #2d3e50;
+    word-wrap: break-word;
+    max-width: 100%;
+}
+.terraformoption-card.selected {
+    border: 0 solid transparent;
+    background: linear-gradient(rgb(13, 129, 216), rgb(31, 242, 255)) border-box padding-box;
+    box-shadow: 0 4px 12px rgba(13, 128, 216, 0.3);
+}
+.terraformoption-card.selected .terraformoption-icon {
+    color: #ffffff;
+}
+.terraformoption-card.selected .terraformoption-name {
+    color: #ffffff;
+    font-weight: 600;
+}
+.s3bucket-icon { color: #3F8624; }
+.azurestorageaccount-icon { color: #0078D4; }
+.gcpcloudstoragebucket-icon { color: #4285F4; }
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .platform-grid {

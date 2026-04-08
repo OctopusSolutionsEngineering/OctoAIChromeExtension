@@ -112,6 +112,57 @@
                 </div>
             </section>
 
+            <section class="terraform-options-section" id="terraform-options-section" style="display: none;">
+                <h2 class="section-header">Terraform</h2>
+                <div class="terraform-options-grid">
+                    <div class="terraformoption-card" data-terraformoption="s3bucket">
+                        <div class="terraformoption-icon s3bucket-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+                                 aria-label="Amazon Simple Storage Service" role="img"
+                                 viewBox="0 0 512 512">
+
+                                <rect
+                                        width="512" height="512"
+                                        rx="15%"
+                                        fill="#ffffff"/>
+
+                                <path fill="#e05243" d="M260 348l-137 33V131l137 32z"/>
+
+                                <path fill="#8c3123" d="M256 349l133 32V131l-133 32v186"/>
+
+                                <g fill="#e05243">
+
+                                    <path id="a" d="M256 64v97l58 14V93zm133 67v250l26-13V143zm-133 77v97l58-8v-82zm58 129l-58 14v97l58-29z"/>
+
+                                </g>
+
+                                <use fill="#8c3123" transform="rotate(180 256 256)" xlink:href="#a"/>
+
+                                <path fill="#5e1f18" d="M314 175l-58 11-58-11 58-15 58 15"/>
+
+                                <path fill="#f2b0a9" d="M314 337l-58-11-58 11 58 16 58-16"/>
+
+                            </svg>
+                        </div>
+                        <span class="terraformoption-name">Create S3 Bucket</span>
+                    </div>
+
+                    <div class="terraformoption-card" data-terraformoption="azurestorageaccount">
+                        <div class="terraformoption-icon azurestorageaccount-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 91 81" fill="#fff" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round"><use xlink:href="#A" x=".5" y=".5"/><symbol id="A" overflow="visible"><path d="M56.284 19.519H28.276c-1.427 0-2.364 1.237-2.364 2.428v35.83c0 1.466 1.204 2.703 2.364 2.703h33.003c1.427 0 2.363-1.237 2.363-2.703v-30.24H56.06v-8.064l.223.046h0zm-.937 30.974h-21.14v-4.124h21.14v4.124zm0-7.56h-21.14v-4.124h21.14v4.124zm0-7.789h-21.14V31.02h21.14v4.124zM67.433 0H22.567L0 40l22.567 40h44.867L90 40 67.433 0zm-5.932 64.376H28.498c-3.568 0-6.422-2.932-6.422-6.598v-35.83c0-3.666 2.854-6.598 6.422-6.598h29.926l9.5 9.76v32.669c0 3.666-2.854 6.598-6.422 6.598z" fill="#0078d7" stroke="none"/></symbol></svg>
+                        </div>
+                        <span class="terraformoption-name">Create Azure Storage Account</span>
+                    </div>
+
+                    <div class="terraformoption-card" data-terraformoption="gcpcloudstoragebucket">
+                        <div class="terraformoption-icon gcpcloudstoragebucket-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg"  viewBox="0 0 48 48" width="96px" height="96px"><path fill="#1976d2" d="M38.193,18.359c-0.771-2.753-2.319-5.177-4.397-7.03l-4.598,4.598	c1.677,1.365,2.808,3.374,3.014,5.648v1.508c0.026,0,0.05-0.008,0.076-0.008c2.322,0,4.212,1.89,4.212,4.212S34.61,31.5,32.288,31.5	c-0.026,0-0.05-0.007-0.076-0.008V31.5h-6.666H24V38h8.212v-0.004c0.026,0,0.05,0.004,0.076,0.004C38.195,38,43,33.194,43,27.288	C43,23.563,41.086,20.279,38.193,18.359z"/><path fill="#ffe082" d="M19.56,25.59l4.72-4.72c-0.004-0.005-0.008-0.009-0.011-0.013l-4.717,4.717	C19.554,25.579,19.557,25.584,19.56,25.59z" opacity=".5"/><path fill="#90caf9" d="M19.56,25.59l4.72-4.72c-0.004-0.005-0.008-0.009-0.011-0.013l-4.717,4.717	C19.554,25.579,19.557,25.584,19.56,25.59z" opacity=".5"/><path fill="#ff3d00" d="M24,7.576c-8.133,0-14.75,6.617-14.75,14.75c0,0.233,0.024,0.46,0.035,0.69h6.5	c-0.019-0.228-0.035-0.457-0.035-0.69c0-4.549,3.701-8.25,8.25-8.25c1.969,0,3.778,0.696,5.198,1.851l4.598-4.598	C31.188,9.003,27.761,7.576,24,7.576z"/><path fill="#90caf9" d="M15.712,31.5L15.712,31.5c-0.001,0-0.001,0-0.002,0c-0.611,0-1.188-0.137-1.712-0.373	l-4.71,4.71C11.081,37.188,13.301,38,15.71,38c0.001,0,0.001,0,0.002,0v0H24v-6.5H15.712z" opacity=".5"/><path fill="#4caf50" d="M15.712,31.5L15.712,31.5c-0.001,0-0.001,0-0.002,0c-0.611,0-1.188-0.137-1.712-0.373l-4.71,4.71	C11.081,37.188,13.301,38,15.71,38c0.001,0,0.001,0,0.002,0v0H24v-6.5H15.712z"/><path fill="#ffc107" d="M11.5,27.29c0-2.32,1.89-4.21,4.21-4.21c1.703,0,3.178,1.023,3.841,2.494l4.717-4.717	c-1.961-2.602-5.065-4.277-8.559-4.277C9.81,16.58,5,21.38,5,27.29c0,3.491,1.691,6.59,4.288,8.547l4.71-4.71	C12.53,30.469,11.5,28.999,11.5,27.29z"/></svg>
+                        </div>
+                        <span class="terraformoption-name">Create GCP Cloud Storage Bucket</span>
+                    </div>
+                </div>
+            </section>
+
             <section class="tenants-section">
                 <h2 class="section-header">Tenants</h2>
                 <div class="tenants-grid">

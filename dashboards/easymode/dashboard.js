@@ -116,6 +116,13 @@ const intentionalErrorInstructions = {
     scriptexitcode1: '* Add a script step as the first step with the code "exit 1" to simulate an error'
 };
 
+// Terraform option instructions configuration
+const terraformOptionInstructions = {
+    s3bucket: 'Configure the Terraform to deploy an AWS S3 Bucket',
+    azurestorageaccount: 'Configure the Terraform to deploy an Azure Storage Account',
+    gcpcloudstoragebucket: 'Configure the Terraform to deploy a GCP Cloud Storage Bucket'
+};
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     const platformCards = document.querySelectorAll('.platform-card');
@@ -129,6 +136,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const communityTemplateCards = document.querySelectorAll('.communitytemplate-card');
     const projectGroupCards = document.querySelectorAll('.projectgroup-card');
     const intentionalErrorCards = document.querySelectorAll('.intentionalerror-card');
+    const terraformOptionCards = document.querySelectorAll('.terraformoption-card');
+    const terraformOptionsSection = document.getElementById('terraform-options-section');
     const promptTextarea = document.getElementById('promptText');
     const executeButton = document.getElementById('executeButton');
 
@@ -143,6 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedCommunityTemplates = [];
     let selectedProjectGroups = [];
     let selectedIntentionalErrors = [];
+    let selectedTerraformOptions = [];
 
     // Helper function to clear all selections below the tenant row (state, UI, and localStorage)
     function clearSubSelections() {
@@ -192,10 +202,18 @@ document.addEventListener('DOMContentLoaded', function() {
         count += selectedCommunityTemplates.length;
         count += selectedProjectGroups.length;
         count += selectedIntentionalErrors.length;
+        count += selectedTerraformOptions.length;
         return count;
     }
 
 
+
+    // Helper function to show/hide the terraform options section
+    function updateTerraformSectionVisibility() {
+        if (terraformOptionsSection) {
+            terraformOptionsSection.style.display = selectedPlatform === 'terraform' ? '' : 'none';
+        }
+    }
 
     // Helper function to update disabled state for all cards
     function updateCardDisabledStates() {
@@ -228,7 +246,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 textarea.classList.remove('warning-displayed');
             }
 
-                return; // Exit early since kubernetesmicroservices or platformhub is selected
+            updateTerraformSectionVisibility();
+            return; // Exit early since kubernetesmicroservices or platformhub is selected
         }
 
         // If a tenant is selected, disable all items below the tenant row
@@ -254,6 +273,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 textarea.classList.add('warning-displayed');
             }
 
+            updateTerraformSectionVisibility();
             return; // Exit early since tenant is selected
         }
 
@@ -297,6 +317,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Update step card states based on platform selection
         updateStepCardStates();
+
+        // Show/hide terraform section based on platform
+        updateTerraformSectionVisibility();
     }
 
     // Helper function to disable/enable specific step cards based on platform
@@ -376,6 +399,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Update selected platform
             selectedPlatform = platform;
+
+            // Clear terraform options when switching away from terraform
+            if (selectedPlatform !== 'terraform') {
+                selectedTerraformOptions = [];
+                terraformOptionCards.forEach(card => card.classList.remove('selected'));
+                localStorage.removeItem('easymode.selectedTerraformOptions');
+            }
 
             // If AWS Lambda, Kubernetes Microservices, or Platform Hub is selected, clear all selections (they don't allow any additional selections)
             if (selectedPlatform === 'awslambda' || selectedPlatform === 'kubernetesmicroservices' || selectedPlatform === 'platformhub') {
@@ -743,6 +773,43 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle terraform option card selection (only one can be selected at a time)
+    terraformOptionCards.forEach(card => {
+        card.addEventListener('click', function() {
+            // Only allow clicks when terraform platform is selected
+            if (selectedPlatform !== 'terraform') {
+                return;
+            }
+
+            const option = this.getAttribute('data-terraformoption');
+
+            if (this.classList.contains('selected')) {
+                // Deselect the current card
+                this.classList.remove('selected');
+                selectedTerraformOptions = [];
+            } else {
+                // Deselect all other terraform option cards first
+                terraformOptionCards.forEach(c => c.classList.remove('selected'));
+                // Select this card
+                this.classList.add('selected');
+                selectedTerraformOptions = [option];
+            }
+
+            // Update disabled states
+            updateCardDisabledStates();
+
+            // Update textarea
+            updatePromptTextarea();
+
+            // Save selection to localStorage
+            if (selectedTerraformOptions.length > 0) {
+                localStorage.setItem('easymode.selectedTerraformOptions', JSON.stringify(selectedTerraformOptions));
+            } else {
+                localStorage.removeItem('easymode.selectedTerraformOptions');
+            }
+        });
+    });
+
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
@@ -756,6 +823,19 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add platform prompt if selected
         if (selectedPlatform && platformPrompts[selectedPlatform]) {
             prompt = platformPrompts[selectedPlatform];
+        }
+
+        // Add terraform option instructions if selected (platform-specific)
+        if (selectedTerraformOptions.length > 0) {
+            selectedTerraformOptions.forEach(option => {
+                if (terraformOptionInstructions[option]) {
+                    if (prompt) {
+                        prompt += '\n' + terraformOptionInstructions[option];
+                    } else {
+                        prompt = terraformOptionInstructions[option];
+                    }
+                }
+            });
         }
 
         // Add tenant instruction if selected
@@ -1198,6 +1278,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedCommunityTemplates = localStorage.getItem('easymode.selectedCommunityTemplates');
     const savedProjectGroups = localStorage.getItem('easymode.selectedProjectGroups');
     const savedIntentionalErrors = localStorage.getItem('easymode.selectedIntentionalErrors');
+    const savedTerraformOptions = localStorage.getItem('easymode.selectedTerraformOptions');
 
     // Restore platform selection or default to kubernetes
     if (savedPlatform) {
@@ -1389,6 +1470,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 localStorage.removeItem('easymode.selectedTriggers');
             }
         }
+    }
+
+    // Restore terraform options (only valid when terraform platform is saved)
+    if (savedTerraformOptions && savedPlatform === 'terraform') {
+        try {
+            const options = JSON.parse(savedTerraformOptions);
+            const validOptions = [];
+            for (const option of options) {
+                const card = document.querySelector(`[data-terraformoption="${option}"]`);
+                if (card) {
+                    card.classList.add('selected');
+                    selectedTerraformOptions.push(option);
+                    validOptions.push(option);
+                }
+            }
+            if (validOptions.length > 0) {
+                localStorage.setItem('easymode.selectedTerraformOptions', JSON.stringify(validOptions));
+            } else {
+                localStorage.removeItem('easymode.selectedTerraformOptions');
+            }
+            // Re-run prompt update to include restored terraform options
+            updatePromptTextarea();
+        } catch (e) {
+            console.error('Error parsing saved terraform options:', e);
+            localStorage.removeItem('easymode.selectedTerraformOptions');
+        }
+    } else if (savedPlatform !== 'terraform') {
+        localStorage.removeItem('easymode.selectedTerraformOptions');
     }
 
     // Auto-Apply checkbox handling
