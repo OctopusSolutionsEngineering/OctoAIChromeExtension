@@ -118,9 +118,9 @@ const intentionalErrorInstructions = {
 
 // Terraform option instructions configuration
 const terraformOptionInstructions = {
-    s3bucket: 'Configure the Terraform to deploy an AWS S3 Bucket',
-    azurestorageaccount: 'Configure the Terraform to deploy an Azure Storage Account',
-    gcpcloudstoragebucket: 'Configure the Terraform to deploy a GCP Cloud Storage Bucket'
+    s3bucket: '* Configure the Terraform to deploy an AWS S3 Bucket',
+    azurestorageaccount: '* Configure the Terraform to deploy an Azure Storage Account',
+    gcpcloudstoragebucket: '* Configure the Terraform to deploy a GCP Cloud Storage Bucket'
 };
 
 // Initialize the dashboard
