@@ -10,7 +10,8 @@ const platformPrompts = {
     azurefunction: 'Create an Azure Function project called "My Azure Function App"',
     azurewebapp: 'Create an Azure Web App project called "My Azure Web App"',
     terraform: 'Create a Terraform project called "My Terraform Infrastructure"',
-    tomcat: 'Create a Tomcat project called "My Tomcat WebApp"'
+    tomcat: 'Create a Tomcat project called "My Tomcat WebApp"',
+    platformhub: 'Configure the Platform Hub git repo to point to https://mockgit.octopus.com/repo/platformhubrepo using the ".octopus" base path.'
 };
 
 // Kubernetes + tenant combined prompts (used when the kubernetes platform and a tenant are both selected)
@@ -203,8 +204,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const complexityWarning = document.getElementById('complexity-warning');
         const textarea = document.getElementById('promptText');
 
-        // If kubernetesmicroservices platform is selected, disable all items
-        if (selectedPlatform === 'kubernetesmicroservices') {
+        // If kubernetesmicroservices or platformhub platform is selected, disable all items
+        if (selectedPlatform === 'kubernetesmicroservices' || selectedPlatform === 'platformhub') {
             [tenantCards, stepCards, runbookCards, channelCards, releaseNoteCards, triggerCards, freezeCards, communityTemplateCards, projectGroupCards, intentionalErrorCards].forEach(cards => {
                 cards.forEach(card => {
                     card.classList.add('disabled-card');
@@ -227,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 textarea.classList.remove('warning-displayed');
             }
 
-            return; // Exit early since kubernetesmicroservices is selected
+                return; // Exit early since kubernetesmicroservices or platformhub is selected
         }
 
         // If a tenant is selected, disable all items below the tenant row
@@ -376,8 +377,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update selected platform
             selectedPlatform = platform;
 
-            // If AWS Lambda or Kubernetes Microservices is selected, clear all selections (they don't allow any additional selections)
-            if (selectedPlatform === 'awslambda' || selectedPlatform === 'kubernetesmicroservices') {
+            // If AWS Lambda, Kubernetes Microservices, or Platform Hub is selected, clear all selections (they don't allow any additional selections)
+            if (selectedPlatform === 'awslambda' || selectedPlatform === 'kubernetesmicroservices' || selectedPlatform === 'platformhub') {
                 clearAllSelections();
             }
             
@@ -1217,6 +1218,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const platformsDisablingCreateRelease = ['scriptstep', 'bluegreen'];
     const isAwsLambda = savedPlatform === 'awslambda';
     const isKubernetesMicroservices = savedPlatform === 'kubernetesmicroservices';
+    const isPlatformHub = savedPlatform === 'platformhub';
     const isLimitedPlatform = limitedPlatforms.includes(savedPlatform);
 
     // Helper function to validate and click on a card if it's allowed
@@ -1241,8 +1243,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const items = JSON.parse(savedData);
             const validItems = [];
             
-            // For AWS Lambda or Kubernetes Microservices, clear all selections as nothing is allowed
-            if (isAwsLambda || isKubernetesMicroservices) {
+            // For AWS Lambda, Kubernetes Microservices, or Platform Hub, clear all selections as nothing is allowed
+            if (isAwsLambda || isKubernetesMicroservices || isPlatformHub) {
                 localStorage.removeItem(storageKey);
                 return 0;
             }
@@ -1279,8 +1281,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Restore tenant selection (if allowed)
     if (savedTenant) {
-        // AWS Lambda and Kubernetes Microservices don't allow tenant selection
-        if (isAwsLambda || isKubernetesMicroservices) {
+        // AWS Lambda, Kubernetes Microservices, and Platform Hub don't allow tenant selection
+        if (isAwsLambda || isKubernetesMicroservices || isPlatformHub) {
             localStorage.removeItem('easymode.selectedTenant');
         } else {
             const tenantCard = document.querySelector(`[data-tenant="${savedTenant}"]`);
