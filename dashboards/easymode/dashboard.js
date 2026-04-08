@@ -13,6 +13,24 @@ const platformPrompts = {
     tomcat: 'Create a Tomcat project called "My Tomcat WebApp"'
 };
 
+// Kubernetes + tenant combined prompts (used when the kubernetes platform and a tenant are both selected)
+const kubernetesTenantBasePrompt = (tenantDescription) =>
+    `Create a Kubernetes project called "My Tenanted K8s WebApp", and then:\n` +
+    `* Create 5 tenants based on ${tenantDescription}\n` +
+    `* Create 5 token accounts named "Mock Token <tenant>" linked to the tenant\n` +
+    `* Link the tenants to the project for all the environments\n` +
+    `* Require tenants for project deployments\n` +
+    `* Add a target called "Mock K8s <tenant>", with the tag "Kubernetes", using the token account "Mock Token <tenant>", pointing to "https://mockk8s.octopus.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu", and linked to the tenant.\n` +
+    `* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n` +
+    `* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).`;
+
+const kubernetesTenantPrompts = {
+    regional:     kubernetesTenantBasePrompt('geographical regions'),
+    physical:     kubernetesTenantBasePrompt('fictional brick and mortar store names'),
+    businessunit: kubernetesTenantBasePrompt('fictional business unit names'),
+    company:      kubernetesTenantBasePrompt('fictional company names')
+};
+
 // Tenant instructions configuration
 const tenantInstructions = {
     regional: '* Add 5 tenants based on geographical regions, link the tenants to the project, and require tenants to deploy the project.',
@@ -727,6 +745,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to update the prompt textarea based on selections
     function updatePromptTextarea() {
         let prompt = '';
+
+        // Special case: kubernetes + tenant uses a dedicated combined prompt
+        if (selectedPlatform === 'kubernetes' && selectedTenant && kubernetesTenantPrompts[selectedTenant]) {
+            promptTextarea.value = kubernetesTenantPrompts[selectedTenant];
+            return;
+        }
 
         // Add platform prompt if selected
         if (selectedPlatform && platformPrompts[selectedPlatform]) {

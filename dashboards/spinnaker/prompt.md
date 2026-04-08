@@ -450,6 +450,13 @@ If the `disabled` property is `false`, absent, or `null`, do **NOT** add `* The 
 
 **IMPORTANT**: The `disabled` property must only be read from the top-level pipeline JSON object. Do not infer project disabled status from any other field (e.g., trigger `enabled` state, stage state, or presence of other flags). A pipeline JSON that has no `disabled` key at all must produce a project that is **not** disabled.
 
+**ABSOLUTE RULE — before writing `* The project must be disabled.`, verify the literal text `"disabled": true` exists as a direct top-level key of the pipeline JSON object**: You must be able to point to `"disabled": true` at the root JSON object level. If you cannot directly locate it, do NOT write the disabled line. None of the following are sufficient substitutes:
+* A trigger with `"enabled": false` — this only disables the trigger, not the project
+* A stage condition or boolean expression evaluating to false
+* A parameter named `suspend`, `disabled`, or similar
+* The pipeline name containing words like "disabled" or "inactive"
+* The absence of triggers or stages
+
 **Negative example — `disabled: true` incorrectly inferred from Docker trigger `enabled: false` (COMMON MISTAKE)**:
 
 A pipeline may have one or more triggers with `"enabled": false`. This means those triggers are disabled — NOT the project. Given a pipeline with no top-level `"disabled": true` but with a trigger where `"enabled": false`, the following output is **WRONG**:
@@ -1431,6 +1438,48 @@ Set the instructions to "Image: ${ trigger['tag'] }".
 Set the instructions to "Image: ${ trigger['tag'] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)".
 ```
 
+**CRITICAL — `judgmentInputs` are strictly stage-specific — never copy options from one `manualJudgment` stage to another**: When generating the instructions text for a `manualJudgment` step, read `judgmentInputs` EXCLUSIVELY from that stage's own JSON object. A stage with `"judgmentInputs": []` (empty array) or without a `judgmentInputs` key MUST receive NO "Available options:" suffix in its instructions — even if another `manualJudgment` stage in the SAME pipeline has non-empty `judgmentInputs`.
+
+**Negative example — judgment options from stage B incorrectly applied to stage A (COMMON MISTAKE)**:
+
+Given a pipeline with two `manualJudgment` stages where only refId 4 has judgment options:
+
+```json
+{
+  "stages": [
+    {
+      "name": "Manual Judgment",
+      "refId": "2",
+      "judgmentInputs": [],
+      "requisiteStageRefIds": [],
+      "type": "manualJudgment"
+    },
+    {
+      "name": "Manual Judgment (Deploy All)",
+      "refId": "4",
+      "judgmentInputs": [{"value": "Deploy all"}, {"value": "Delete canary deployment"}],
+      "requisiteStageRefIds": ["3"],
+      "type": "manualJudgment"
+    }
+  ]
+}
+```
+
+The **WRONG** output (refId 2's step incorrectly shows the options from refId 4):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment" ... Set the instructions to "Please review and approve. Available options: Deploy all, Delete canary deployment."
+← WRONG: refId 2 has judgmentInputs: [] — it must NOT show any "Available options:" text
+```
+
+The **CORRECT** output (each stage uses only its own `judgmentInputs`):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment" ... Set the instructions to "Please review and approve."
+← CORRECT: refId 2 has empty judgmentInputs — no options text
+...
+* Add a "Manual Intervention" step with the name "Manual Judgment -Deploy All-" ... Set the instructions to "Please review and approve. Available options: Deploy all, Delete canary deployment."
+← CORRECT: refId 4 has non-empty judgmentInputs — options listed only here
+```
+
 ## Kubernetes Run Job Stage
 
 * The following snippet is an example of a Kubernetes (defined by the `cloudProvider` setting set to `kubernetes`) "Run Job" stage in Spinnaker:
@@ -1795,6 +1844,52 @@ The **CORRECT** output (stageEnabled note only on refId 6, not on refId 2):
 ```
 
 **VERIFICATION RULE — before outputting any step with a stageEnabled note, confirm that the stage JSON object for that step actually contains a `stageEnabled` property.** If you cannot find `"stageEnabled"` in the specific stage's JSON object, do NOT add the note. The note only belongs to the stage whose JSON object contains the `stageEnabled` key.
+
+**Negative example — `stageEnabled` from the second of two similar-type stages incorrectly applied to the first (COMMON MISTAKE when stages of the same type appear in sequence)**:
+
+This mistake arises when a pipeline contains two stages of the SAME type (e.g., two `deployManifest` stages): the one that outputs EARLIER has NO `stageEnabled` but the one that outputs LATER DOES. The AI may swap the note — applying the `stageEnabled` description to the FIRST stage and omitting it from the SECOND.
+
+Given a pipeline with two `deployManifest` stages where only refId 5 has `stageEnabled`:
+
+```json
+{
+  "stages": [
+    {
+      "name": "Deploy (canary)",
+      "refId": "3",
+      "requisiteStageRefIds": ["1"],
+      "type": "deployManifest"
+    },
+    {
+      "name": "Deploy",
+      "refId": "5",
+      "requisiteStageRefIds": ["4"],
+      "stageEnabled": {
+        "expression": "${#judgment(\"Manual Judgment (Deploy All)\").equals(\"Deploy all\")}",
+        "type": "expression"
+      },
+      "type": "deployManifest"
+    }
+  ]
+}
+```
+
+The **WRONG** output (stageEnabled from refId 5 incorrectly applied to refId 3; refId 5 missing its note):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Add the following description: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${#judgment(\"Manual Judgment (Deploy All)\").equals(\"Deploy all\")}"...`
+← WRONG: refId 3 has NO stageEnabled — this note must NOT appear here
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ...
+← WRONG: refId 5 HAS stageEnabled but the note is missing
+```
+
+The **CORRECT** output (`stageEnabled` note only on refId 5, which actually has it):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ...
+← CORRECT: no stageEnabled note (refId 3 has no stageEnabled property)
+...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ... Add the following description: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${#judgment(\"Manual Judgment (Deploy All)\").equals(\"Deploy all\")}"...`
+← CORRECT: stageEnabled note here only, because refId 5 is the stage with stageEnabled
+```
 
 ## Time Window Restrictions (`restrictedExecutionWindow`)
 
@@ -2810,6 +2905,43 @@ The **CORRECT** output (Start first, then stage 1 with no annotation, then stage
 * Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ... Set the start trigger to "Run in parallel with the previous step".     ← refId 3 ✓
 ```
 
+**Negative example — parallel pair at the end of a sequential chain where NO stages are reordered (COMMON MISTAKE)**:
+
+A pipeline may consist of a completely sequential chain (all stages already in topological order in the JSON) EXCEPT for the LAST two stages which share the same `requisiteStageRefIds` and must run in parallel. The AI commonly outputs the last stage as `"Wait for all previous steps to complete, then start"` instead of the correct `"Run in parallel with the previous step"`.
+
+Given a pipeline where every stage is already in topological order:
+
+| JSON position | refId | requisiteStageRefIds | stage name |
+|---|---|---|---|
+| 1 | 1 | `[]` | Manual Judgment |
+| 2 | 2 | `["1"]` | DB Migration |
+| 3 | 3 | `["2"]` | Deploy -canary- |
+| 4 | 4 | `["3"]` | Manual Judgment -Deploy All- |
+| 5 | 5 | `["4"]` | Deploy |
+| 6 | 6 | `["4"]` | Delete -canary- |
+
+Stages 5 and 6 BOTH have `"requisiteStageRefIds": ["4"]` — they form a parallel pair. Stage 5 is first in the group (no annotation); stage 6 is second and MUST receive `Set the start trigger to "Run in parallel with the previous step"`.
+
+The **WRONG** output (stage 6 receives "Wait for all previous steps to complete, then start" — **FORBIDDEN** when it shares a prerequisite with stage 5):
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...             ← refId 1, root, no annotation ✓
+* Add a "Deploy Kubernetes YAML" step ... "DB Migration" ...             ← refId 2
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ...          ← refId 3
+* Add a "Manual Intervention" step ... "Manual Judgment -Deploy All-" ...← refId 4
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ...                   ← refId 5, first in {5,6}, no annotation ✓
+* Add a "Run a kubectl script" step ... "Delete -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start". ← WRONG: shares ["4"] with refId 5 — must be "Run in parallel"
+```
+
+The **CORRECT** output (stage 6 gets "Run in parallel with the previous step"):
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...             ← refId 1, root, no annotation ✓
+* Add a "Deploy Kubernetes YAML" step ... "DB Migration" ...             ← refId 2
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ...          ← refId 3
+* Add a "Manual Intervention" step ... "Manual Judgment -Deploy All-" ...← refId 4
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ...                   ← refId 5, first in {5,6} parallel group, no annotation ✓
+* Add a "Run a kubectl script" step ... "Delete -canary-" ... Set the start trigger to "Run in parallel with the previous step". ← refId 6, SECOND in {5,6} parallel group ✓
+```
+
 ### Worked example: simplest 2-stage reversed pipeline
 
 The most common case of topological reordering is a 2-stage pipeline where the only deployment stage appears first in the JSON array but depends on the second stage (the root):
@@ -2844,6 +2976,38 @@ The **CORRECT** output (refId 2 promoted to first; refId 1 gets `Wait for all pr
 ```
 
 **KEY RULE**: When the topological sort changes ANY stage's position relative to its JSON array position, ALL stages that follow the root must receive `Set the start trigger to "Wait for all previous steps to complete, then start"`. Never output a pipeline where stages are in the correct topological order but annotations are absent.
+
+**Negative example — second topo-position stage missing "Wait for all previous steps" when promoted from a late JSON position (CRITICAL MISTAKE)**:
+
+This mistake arises when a stage that depends DIRECTLY on the root also appears LATE in the JSON array (e.g., at JSON position 4 in a 4-stage pipeline). BFS promotes it to the SECOND topo position (immediately after the root). The AI may correctly place it second but OMIT the mandatory annotation, treating it as though it were part of the root group.
+
+Given a pipeline where refId 5 is at JSON position 4 but depends directly on the root (refId 1 at position 1):
+
+| JSON position | refId | requisiteStageRefIds | stage name |
+|---|---|---|---|
+| 1 | 1 | `[]` | Manual Judgment ← ROOT |
+| 2 | 2 | `["5"]` | Deploy Canary |
+| 3 | 3 | `["2"]` | Manual Judgment 2 |
+| 4 | 5 | `["1"]` | Run Job ← depends on ROOT; promoted to topo pos 2 |
+
+Topological order: 1 → 5 → 2 → 3. refId 5 jumps from JSON pos 4 to topo pos 2.
+
+The **WRONG** output (refId 5 placed correctly at topo pos 2 but annotation MISSING — FORBIDDEN):
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...   ← refId 1, root, no annotation ✓
+* Add a "Run a kubectl script" step ... "Run Job" ...          ← refId 5 at topo pos 2, MISSING "Wait for all previous steps" ← WRONG
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Manual Intervention" step ... "Manual Judgment 2" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+← WRONG: refId 5 was promoted from JSON pos 4 to topo pos 2. Its position changed, so it MUST receive `"Wait for all previous steps to complete, then start"`.
+
+The **CORRECT** output (ALL stages after the root receive the annotation, including refId 5 at topo pos 2):
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...   ← refId 1, root, no annotation ✓
+* Add a "Run a kubectl script" step ... "Run Job" ... Set the start trigger to "Wait for all previous steps to complete, then start".     ← refId 5, topo pos 2, annotation REQUIRED ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ... Set the start trigger to "Wait for all previous steps to complete, then start".    ← refId 2 ✓
+* Add a "Manual Intervention" step ... "Manual Judgment 2" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← refId 3 ✓
+```
 
 **Negative example — correct topological order but annotation missing on dependent stage (VERY COMMON MISTAKE)**:
 
