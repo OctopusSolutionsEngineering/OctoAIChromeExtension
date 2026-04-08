@@ -118,9 +118,9 @@ const intentionalErrorInstructions = {
 
 // Terraform option instructions configuration
 const terraformOptionInstructions = {
-    s3bucket: '* Configure the Terraform to deploy an AWS S3 Bucket',
-    azurestorageaccount: '* Configure the Terraform to deploy an Azure Storage Account',
-    gcpcloudstoragebucket: '* Configure the Terraform to deploy a GCP Cloud Storage Bucket'
+    s3bucket: '* Create an AWS OIDC account\n* Configure the Terraform to deploy an AWS S3 Bucket\n* Configure the step to use the AWS OIDC account',
+    azurestorageaccount: '* Create an Azure OIDC account\n* Configure the Terraform to deploy an Azure Storage Account\n* Configure the step to use the Azure OIDC account',
+    gcpcloudstoragebucket: '* Create an Google Cloud account\n* Configure the Terraform to deploy a GCP Cloud Storage Bucket\n* Configure the step to use the Google Cloud account'
 };
 
 // Initialize the dashboard
