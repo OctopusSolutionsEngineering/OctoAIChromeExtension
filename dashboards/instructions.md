@@ -56,7 +56,7 @@ showDashboard({
 
 * The dashboard must function in isolation. Any individual dashboard must be able to be updated or removed without impacting the functionality of other dashboards. This means no sharing of assets like images, css, or JavaScript files across dashboards.
 * Prefer using raw HTML and JavaScript rather than using external libraries like React or Angular. Because each dashboard must function in isolation, using external libraries would require bundling the library with each dashboard, which would lead to larger file sizes and slower load times.
-* There are no style style requirements for dashboards, but you should aim to create a user experience that is consistent with the Octopus Deploy web portal.
+* There are no style requirements for dashboards, but you should aim to create a user experience that is consistent with the Octopus Deploy web portal.
 * You must include a `metadata.json` file in the dashboard directory with the following content:
 
 ```json
