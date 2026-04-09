@@ -1024,20 +1024,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+
     // Function to process multiple prompt sections sequentially
     function processPromptSections(sections, currentIndex) {
         console.log(`processPromptSections called with currentIndex=${currentIndex}, sections.length=${sections.length}`);
 
         if (currentIndex >= sections.length) {
             console.log('All prompt sections processed successfully');
-            // Check if Auto-Apply is enabled
-            const autoApplyEnabled = localStorage.getItem('easymode.autoApply') === 'true';
-            if (autoApplyEnabled) {
-                console.log('Auto-Apply enabled: reloading dashboard after all sections complete');
-            } else {
-                console.log('Auto-Apply disabled: reloading dashboard after all sections complete');
-            }
-            location.reload();
+            showAllSectionsComplete();
             return;
         }
 
@@ -1200,12 +1194,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('Auto-Apply enabled: skipping Section Complete page, continuing to next section');
                 onComplete();
             } else {
-                // Single prompt: reload the dashboard immediately
-                console.log('Auto-Apply enabled: skipping Section Complete page, reloading dashboard');
-                location.reload();
+                // Single prompt: show the success screen
+                console.log('Auto-Apply enabled: skipping Section Complete page, showing success screen');
+                showAllSectionsComplete();
             }
         } else {
-            showSectionComplete(mainContent, sanitizedHtml, onComplete);
+            if (onComplete) {
+                showSectionComplete(mainContent, sanitizedHtml, onComplete);
+            } else {
+                // Single prompt with no continuation: show the success screen
+                showAllSectionsComplete();
+            }
         }
     }
 
@@ -1694,15 +1693,40 @@ function buildErrorResponseHtml(sanitizedHtml) {
     `;
 }
 
+// Function to display success page when all sections have been processed
+function showAllSectionsComplete() {
+    const mainContent = document.querySelector('.main-content');
+    if (!mainContent) return;
+
+    mainContent.innerHTML = `
+        <div class="response-container success">
+            <h2>Success</h2>
+            <div class="response-text">
+                <p>The resources were successfully created</p>
+            </div>
+            <div class="response-actions">
+                <button id="successOkBtn" class="success-ok-button">OK</button>
+            </div>
+        </div>
+    `;
+
+    const successOkBtn = document.getElementById('successOkBtn');
+    if (successOkBtn) {
+        successOkBtn.addEventListener('click', function() {
+            location.reload();
+        });
+    }
+}
+
 // Helper function to display the approval response with OK button
 function displayApprovalResponse(result) {
     // Check if Auto-Apply is enabled
     const autoApplyEnabled = localStorage.getItem('easymode.autoApply') === 'true';
 
-    // If auto-apply is enabled and no error, skip showing the page and reload immediately
+    // If auto-apply is enabled and no error, show the success screen
     if (autoApplyEnabled && result.state !== 'Error') {
-        console.log('Auto-Apply enabled: skipping approval response page, reloading dashboard');
-        location.reload();
+        console.log('Auto-Apply enabled: skipping approval response page, showing success screen');
+        showAllSectionsComplete();
         return;
     }
 

@@ -682,7 +682,8 @@ body {
 .approve-button,
 .reject-button,
 .reload-button,
-.ok-button {
+.ok-button,
+.success-ok-button {
     padding: 12px 32px;
     font-size: 14px;
     font-weight: 600;
@@ -746,6 +747,20 @@ body {
 .ok-button:active {
     transform: translateY(0);
     box-shadow: 0 2px 6px rgba(13, 128, 216, 0.2);
+}
+.success-ok-button {
+    color: #2d3e50;
+    border: 3px double transparent;
+    background: linear-gradient(#F5F6F8, rgb(255, 255, 255)) border-box padding-box, linear-gradient(rgb(46, 213, 115), rgb(34, 164, 78)) border-box rgb(27, 36, 45);
+}
+.success-ok-button:hover {
+    border-color: #2da44e;
+    box-shadow: 0 4px 12px rgba(45, 164, 78, 0.15);
+    transform: translateY(-2px);
+}
+.success-ok-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(45, 164, 78, 0.2);
 }
 .warning {
     background-color: #fff3cd;
