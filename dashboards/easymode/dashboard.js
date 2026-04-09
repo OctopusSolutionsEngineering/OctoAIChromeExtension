@@ -23,7 +23,8 @@ const kubernetesTenantBasePrompt = (tenantDescription) =>
     `* Require tenants for project deployments\n` +
     `* Add a target called "Mock K8s <tenant>", with the tag "Kubernetes", using the token account "Mock Token <tenant>", pointing to "https://mockk8s.octopusdemos.com", using the health check image "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04" from the "Docker Hub" feed, using the worker pool "Hosted Ubuntu", and linked to the tenant.\n` +
     `* Configure the Kubernetes steps to use client side apply (client side apply is required by the "Mock K8s" target).\n` +
-    `* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).`;
+    `* Disable verification checks in the Kubernetes steps (verification checks are not supported by the "Mock K8s" target).` +
+    `* Enable retries on the Kubernetes step.`;
 
 const kubernetesTenantPrompts = {
     regional:     kubernetesTenantBasePrompt('geographical regions'),
