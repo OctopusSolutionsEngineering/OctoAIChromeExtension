@@ -1016,7 +1016,7 @@ document.addEventListener('DOMContentLoaded', function() {
             dashboardSendPrompt(enhancedPrompt, config.lastServerUrl)
                 .then(function(result) {
                     // Step 4: Display the response text
-                    displayResponse(result, config.lastServerUrl);
+                    displaySingleResponse(result, config.lastServerUrl);
                 })
                 .catch(function(error) {
                     showError('An error occurred: ' + error.message);
@@ -1095,7 +1095,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function handlePromptResult(result, serverUrl, onComplete) {
         if (!result.id) {
             // No approval required, show result and continue
-            displayFinalResult(result, onComplete);
+            handleSectionApproval(result, onComplete);
             return;
         }
 
@@ -1107,7 +1107,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Automatically approve the prompt
             dashboardApprovePrompt(result.id, serverUrl)
                 .then(function(approvalResult) {
-                    displayFinalResult(approvalResult, onComplete);
+                    handleSectionApproval(approvalResult, onComplete);
                 })
                 .catch(function(error) {
                     showError('An error occurred while auto-approving: ' + error.message);
@@ -1174,7 +1174,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Function to display final result with optional continuation
-    function displayFinalResult(result, onComplete) {
+    function handleSectionApproval(result, onComplete) {
         const mainContent = document.querySelector('.main-content');
         if (!mainContent) return;
 
@@ -1187,24 +1187,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (result.state === 'Error') {
             showErrorResult(mainContent, sanitizedHtml);
+        } else if (!onComplete) {
+            // No continuation: show the success screen
+            showAllSectionsComplete();
         } else if (autoApplyEnabled) {
-            // Auto-Apply is enabled - skip the Section Complete page
-            if (onComplete) {
-                // Multi-section: continue immediately to next section
-                console.log('Auto-Apply enabled: skipping Section Complete page, continuing to next section');
-                onComplete();
-            } else {
-                // Single prompt: show the success screen
-                console.log('Auto-Apply enabled: skipping Section Complete page, showing success screen');
-                showAllSectionsComplete();
-            }
+            // Auto-Apply is enabled - skip the Section Complete page, continue immediately to next section
+            console.log('Auto-Apply enabled: skipping Section Complete page, continuing to next section');
+            onComplete();
         } else {
-            if (onComplete) {
-                showSectionComplete(mainContent, sanitizedHtml, onComplete);
-            } else {
-                // Single prompt with no continuation: show the success screen
-                showAllSectionsComplete();
-            }
+            showSectionComplete(mainContent, sanitizedHtml, onComplete);
         }
     }
 
@@ -1245,7 +1236,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Call dashboardApprovePrompt
                 dashboardApprovePrompt(result.id, serverUrl)
                     .then(function(approvalResult) {
-                        displayFinalResult(approvalResult, onComplete);
+                        handleSectionApproval(approvalResult, onComplete);
                     })
                     .catch(function(error) {
                         showError('An error occurred while approving: ' + error.message);
@@ -1554,7 +1545,7 @@ function showError(message) {
 }
 
 // Helper function to display the response with Approve/Reject buttons
-function displayResponse(result, serverUrl) {
+function displaySingleResponse(result, serverUrl) {
     if (!result.id) {
         // There is no approval required, so display the response
         displayApprovalResponse(result);
