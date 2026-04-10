@@ -217,7 +217,11 @@ async function populateProjects(serverUrl, spaceId, defaultProject) {
     const projectSelect = document.getElementById("project-select");
 
     if (!spaceId) {
-        projectSelect.innerHTML = '<option value="">Select a space first...</option>';
+        projectSelect.textContent = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select a space first...";
+        projectSelect.appendChild(placeholder);
         projectSelect.disabled = true;
         return;
     }
