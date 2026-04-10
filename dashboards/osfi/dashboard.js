@@ -280,7 +280,7 @@ async function copyLinkToClipboard() {
 
         setTimeout(() => {
             copyButton.textContent = originalText;
-            copyButton.disabled = false;
+            copyButton.disabled = !projectSelect.value || isGenerating;
         }, 1500);
     } catch (error) {
         console.error("Failed to copy link:", error);
@@ -289,6 +289,7 @@ async function copyLinkToClipboard() {
 
         setTimeout(() => {
             copyButton.textContent = originalText;
+            copyButton.disabled = !projectSelect.value || isGenerating;
         }, 1500);
     }
 }

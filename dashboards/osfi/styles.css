@@ -221,7 +221,7 @@ button:disabled {
     }
 
     .button-group {
-        justify-content: stretch;
+        justify-content: flex-start;
     }
 
     #report table,
