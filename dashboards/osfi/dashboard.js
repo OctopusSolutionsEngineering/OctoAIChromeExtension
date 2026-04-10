@@ -347,6 +347,28 @@ async function generateReport(serverUrl, institutionName) {
         });
 
         const result = await dashboardSendPrompt(prompt, serverUrl);
+
+        if (result.state === "Error") {
+            renderReportHtml(reportEl, `
+                <div class="error-message">
+                    <h3>Report Generation Failed</h3>
+                    <p>${result.response || "An unknown error occurred."}</p>
+                </div>
+            `);
+            return;
+        }
+
+        if (result.state === "Confirmation") {
+            renderReportHtml(reportEl, `
+                <div class="error-message">
+                    <h3>Confirmation Required</h3>
+                    <p>The AI Assistant requested a confirmation that is not supported by this dashboard.</p>
+                    <p>${result.response || ""}</p>
+                </div>
+            `);
+            return;
+        }
+
         const normalizedMarkdown = normalizeGeneratedMarkdown(result.response || "No response was returned.");
         const htmlContent = marked.parse(normalizedMarkdown, {
             gfm: true
