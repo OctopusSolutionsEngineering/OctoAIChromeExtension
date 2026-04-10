@@ -192,6 +192,11 @@ async function populateSpaces(serverUrl, defaultSpace) {
     spaceSelect.textContent = "";
     spaceSelect.disabled = false;
 
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = "-- Select a space --";
+    spaceSelect.appendChild(placeholderOption);
+
     spaces.forEach((space) => {
         const option = document.createElement("option");
         option.value = space.Id;
@@ -334,7 +339,7 @@ async function generateReport(serverUrl, institutionName) {
     renderReportHtml(reportEl, `
         <div class="loading-state">
             <div class="spinner"></div>
-            <p>Generating OSFI compliance evidence report for project "${spaceName} / ${projectName}"...</p>
+            <p>Generating OSFI compliance evidence report for space "${spaceName}", project "${projectName}"...</p>
         </div>
     `);
 
@@ -426,7 +431,21 @@ async function initializeDashboard() {
             }
 
             spaceSelect.addEventListener("change", async () => {
-                await populateProjects(serverUrl, spaceSelect.value, null);
+                try {
+                    await populateProjects(serverUrl, spaceSelect.value, null);
+                } catch (error) {
+                    renderReportHtml(reportEl, `
+                        <div class="error-message">
+                            <h3>Error Loading Projects</h3>
+                            <p>Failed to load projects for the selected space.</p>
+                            <p><strong>Error:</strong> ${error.message || error}</p>
+                        </div>
+                    `);
+                    projectSelect.textContent = "";
+                    projectSelect.disabled = true;
+                    generateButton.disabled = true;
+                    copyLinkButton.disabled = true;
+                }
             });
 
             projectSelect.addEventListener("change", () => {
@@ -442,7 +461,7 @@ async function initializeDashboard() {
                 await copyLinkToClipboard();
             });
 
-            if (spaceSelect.value && projectSelect.value) {
+            if (defaultSpace && defaultProject && spaceSelect.value && projectSelect.value) {
                 await generateReport(serverUrl, config.context?.institutionName);
             } else {
                 renderReportHtml(reportEl, `
