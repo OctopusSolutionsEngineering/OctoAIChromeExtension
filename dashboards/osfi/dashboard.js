@@ -74,12 +74,12 @@ function normalizeContextValue(value) {
 }
 
 function parseReportingPeriod(rawValue) {
-    const parsed = Number.parseInt(String(rawValue ?? ""), 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+    const trimmed = String(rawValue ?? "").trim();
+    if (!/^[1-9]\d*$/.test(trimmed)) {
         return DEFAULT_REPORTING_PERIOD_DAYS;
     }
 
-    return parsed;
+    return Number(trimmed);
 }
 
 function buildShareUrl(currentHref, params) {
@@ -127,11 +127,19 @@ function isMarkdownTableLine(line) {
 function normalizeGeneratedMarkdown(markdown) {
     const lines = String(markdown ?? "").split("\n");
     const normalized = [];
+    let nextNonEmptyIndex = 0;
 
     for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index];
         const previousLine = normalized[normalized.length - 1];
-        const nextNonEmptyLine = lines.slice(index + 1).find((candidate) => candidate.trim() !== "");
+
+        if (nextNonEmptyIndex <= index) {
+            nextNonEmptyIndex = index + 1;
+        }
+        while (nextNonEmptyIndex < lines.length && lines[nextNonEmptyIndex].trim() === "") {
+            nextNonEmptyIndex += 1;
+        }
+        const nextNonEmptyLine = nextNonEmptyIndex < lines.length ? lines[nextNonEmptyIndex] : "";
 
         if (line.trim() === "") {
             if (isMarkdownTableLine(previousLine) && isMarkdownTableLine(nextNonEmptyLine)) {
@@ -429,8 +437,25 @@ async function initializeDashboard() {
     });
 }
 
-if (typeof document !== "undefined" && typeof dashboardGetConfig === "function") {
+function bootstrapDashboard() {
+    if (typeof document === "undefined" || typeof dashboardGetConfig !== "function") {
+        return;
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+            initializeDashboard();
+        }, { once: true });
+        return;
+    }
+
     initializeDashboard();
+}
+
+const isCommonJsRuntime = typeof module !== "undefined" && typeof module.exports !== "undefined";
+
+if (!isCommonJsRuntime) {
+    bootstrapDashboard();
 }
 
 if (typeof module !== "undefined") {
@@ -443,6 +468,8 @@ if (typeof module !== "undefined") {
         buildShareUrl,
         buildOsfiPrompt,
         isMarkdownTableLine,
-        normalizeGeneratedMarkdown
+        normalizeGeneratedMarkdown,
+        initializeDashboard,
+        bootstrapDashboard
     };
 }

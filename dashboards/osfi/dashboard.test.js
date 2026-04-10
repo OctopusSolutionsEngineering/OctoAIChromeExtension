@@ -37,6 +37,8 @@ describe('OSFI dashboard helpers', () => {
         expect(parseReportingPeriod('')).toBe(DEFAULT_REPORTING_PERIOD_DAYS);
         expect(parseReportingPeriod('-3')).toBe(DEFAULT_REPORTING_PERIOD_DAYS);
         expect(parseReportingPeriod('hello')).toBe(DEFAULT_REPORTING_PERIOD_DAYS);
+        expect(parseReportingPeriod('30days')).toBe(DEFAULT_REPORTING_PERIOD_DAYS);
+        expect(parseReportingPeriod('30.5')).toBe(DEFAULT_REPORTING_PERIOD_DAYS);
     });
 
     test('parseReportingPeriod accepts valid positive integers', () => {
