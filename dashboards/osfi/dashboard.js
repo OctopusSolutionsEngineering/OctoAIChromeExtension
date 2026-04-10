@@ -276,25 +276,24 @@ async function copyLinkToClipboard() {
         days: reportingPeriodInput.value
     });
 
+    const restoreCopyButtonState = (originalText) => {
+        setTimeout(() => {
+            copyButton.textContent = originalText;
+            copyButton.disabled = !projectSelect.value;
+        }, 1500);
+    };
+
     try {
         await navigator.clipboard.writeText(shareUrl);
         const originalText = copyButton.textContent;
         copyButton.textContent = "Copied";
         copyButton.disabled = true;
-
-        setTimeout(() => {
-            copyButton.textContent = originalText;
-            copyButton.disabled = !projectSelect.value || isGenerating;
-        }, 1500);
+        restoreCopyButtonState(originalText);
     } catch (error) {
         console.error("Failed to copy link:", error);
         const originalText = copyButton.textContent;
         copyButton.textContent = "Copy Failed";
-
-        setTimeout(() => {
-            copyButton.textContent = originalText;
-            copyButton.disabled = !projectSelect.value || isGenerating;
-        }, 1500);
+        restoreCopyButtonState(originalText);
     }
 }
 
@@ -366,6 +365,7 @@ async function generateReport(serverUrl, institutionName) {
         spaceSelect.disabled = false;
         projectSelect.disabled = false;
         generateButton.disabled = !projectSelect.value;
+        document.getElementById("copy-link-btn").disabled = !projectSelect.value;
     }
 }
 
