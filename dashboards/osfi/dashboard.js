@@ -235,6 +235,11 @@ async function populateProjects(serverUrl, spaceId, defaultProject) {
     projectSelect.textContent = "";
     projectSelect.disabled = false;
 
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = "-- Select a project --";
+    projectSelect.appendChild(placeholderOption);
+
     projects.forEach((project) => {
         const option = document.createElement("option");
         option.value = project.Id;
@@ -243,6 +248,7 @@ async function populateProjects(serverUrl, spaceId, defaultProject) {
         projectSelect.appendChild(option);
     });
 
+    let defaultMatched = false;
     if (defaultProject) {
         const matchingOption = Array.from(projectSelect.options).find(
             (opt) => opt.dataset.name === defaultProject || opt.value === defaultProject
@@ -250,11 +256,13 @@ async function populateProjects(serverUrl, spaceId, defaultProject) {
 
         if (matchingOption) {
             projectSelect.value = matchingOption.value;
+            defaultMatched = true;
         }
     }
 
     document.getElementById("generate-report-btn").disabled = !projectSelect.value;
     document.getElementById("copy-link-btn").disabled = !projectSelect.value;
+    return defaultMatched;
 }
 
 let isGenerating = false;
@@ -426,8 +434,9 @@ async function initializeDashboard() {
 
         try {
             const selectedSpaceId = await populateSpaces(serverUrl, defaultSpace);
+            let projectMatchedDefault = false;
             if (selectedSpaceId) {
-                await populateProjects(serverUrl, selectedSpaceId, defaultProject);
+                projectMatchedDefault = await populateProjects(serverUrl, selectedSpaceId, defaultProject);
             }
 
             spaceSelect.addEventListener("change", async () => {
@@ -461,7 +470,7 @@ async function initializeDashboard() {
                 await copyLinkToClipboard();
             });
 
-            if (defaultSpace && defaultProject && spaceSelect.value && projectSelect.value) {
+            if (defaultSpace && defaultProject && spaceSelect.value && projectMatchedDefault) {
                 await generateReport(serverUrl, config.context?.institutionName);
             } else {
                 renderReportHtml(reportEl, `
