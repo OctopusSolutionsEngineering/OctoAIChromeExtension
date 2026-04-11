@@ -2,3 +2,4 @@
 .DS_Store
 copilotDiffState.xml
 node_modules
+.playwright-mcp
