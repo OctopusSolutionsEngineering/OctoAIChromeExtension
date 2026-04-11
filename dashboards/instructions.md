@@ -69,3 +69,7 @@ showDashboard({
 ## Use of Gen AI in Dashboards
 
 It is expected that dashboards will be built using Gen AI. The [Copilot Instructions](../.github/copilot-instructions.md) can be passed to your LLM to produce code that meets the requirements for dashboards.
+
+## Octopus API LLM Documentation
+
+See https://deploy.octopus.app/api/experimental/llms.txt for the REST API documentation designed for use by LLMs.
