@@ -3,21 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lucy's Super Duper Tenant Dashboard</title>
+    <title>Tenant Deployment Dashboard</title>
+    <link rel="stylesheet" href="../valuemetrics/vendor/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
     <script src="../api.js"></script>
 </head>
 <body>
-    <div id="spaces-container">
-        <label for="spaces-select">Spaces</label>
-        <select id="spaces-select">
-            <option value="">Loading spaces...</option>
-        </select>
+    <div class="container">
+
+        <!-- Space selector -->
+        <div class="space-selector">
+            <label class="space-selector__label" for="spaces-select">Space</label>
+            <select id="spaces-select" class="space-selector__select">
+                <option value="">Loading spaces...</option>
+            </select>
+        </div>
+
+        <!-- Error banner -->
+        <div id="error-banner" class="error-banner hidden"></div>
+
+        <!-- Dashboard (shown once data is loaded) -->
+        <div id="dashboard-content" class="hidden">
+
+            <!-- Page header -->
+            <div class="page-header">
+                <h1 class="page-header__title">Tenants</h1>
+                <span class="polling-indicator">
+                    Next refresh in <span id="countdown" class="polling-indicator__count">60</span>s
+                </span>
+            </div>
+
+            <!-- Toolbar: search, filter toggle, export -->
+            <div class="toolbar">
+                <div class="search-wrap">
+                    <i class="fas fa-search search-wrap__icon"></i>
+                    <input id="tenant-search" type="text" placeholder="Filter by tenant name..." class="search-wrap__input">
+                </div>
+                <button id="filter-toggle-btn" class="btn btn--ghost">
+                    <i class="fas fa-sliders-h"></i>
+                    <span id="filter-toggle-label">Show advanced filters</span>
+                </button>
+                <button id="export-csv-btn" class="btn btn--ghost">
+                    <i class="fas fa-download"></i>
+                    Export CSV
+                </button>
+            </div>
+
+            <!-- Advanced filters (collapsible) -->
+            <div id="advanced-filters" class="advanced-filters hidden">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label class="filter-label" for="environment-select">Environment</label>
+                        <select id="environment-select" class="filter-select">
+                            <option value="">All environments</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Projects</label>
+                        <div class="multiselect" id="projects-multiselect">
+                            <button class="multiselect__trigger" id="projects-trigger" type="button">
+                                All projects <i class="fas fa-chevron-down multiselect__caret"></i>
+                            </button>
+                            <div class="multiselect__menu hidden" id="projects-menu">
+                                <div id="projects-options"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Task Types</label>
+                        <div class="checkbox-row">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="type-deployment" checked> Deployment
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="type-runbook" checked> Runbook Run
+                            </label>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Date Range</label>
+                        <div class="date-range">
+                            <input type="date" id="date-from" class="date-input">
+                            <span class="date-range__sep">–</span>
+                            <input type="date" id="date-to" class="date-input">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card__label">Total Tenants</div>
+                    <div class="stat-card__row">
+                        <span class="stat-card__value" id="stat-total">0</span>
+                        <span class="stat-card__sub">customers</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-card--success">
+                    <div class="stat-card__label stat-card__label--success">All Succeeded</div>
+                    <div class="stat-card__row">
+                        <span class="stat-card__value" id="stat-succeeded">0</span>
+                        <span class="stat-card__sub">successful</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-card--failure">
+                    <div class="stat-card__label stat-card__label--failure">Has Failures</div>
+                    <div class="stat-card__row">
+                        <span class="stat-card__value" id="stat-failures">0</span>
+                        <span class="stat-card__sub">with issues</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-card--progress">
+                    <div class="stat-card__label stat-card__label--progress">In Progress</div>
+                    <div class="stat-card__row">
+                        <span class="stat-card__value" id="stat-inprogress">0</span>
+                        <span class="stat-card__sub">deploying</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress + time elapsed -->
+            <div class="meta-row">
+                <div class="progress-card">
+                    <div class="progress-card__header">
+                        <span class="progress-card__label">Deployment Progress</span>
+                        <span class="progress-card__pct" id="progress-pct">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-bar__fill" id="progress-fill" style="width:0%"></div>
+                    </div>
+                    <div class="progress-card__resolved" id="progress-resolved">0 of 0 resolved</div>
+                </div>
+                <div class="time-card hidden" id="time-card">
+                    <div class="time-card__label"><i class="fas fa-clock"></i> Time Elapsed</div>
+                    <div class="time-card__value" id="time-elapsed">–</div>
+                </div>
+            </div>
+
+            <!-- Tenant table -->
+            <div class="tenant-section">
+
+                <!-- Status filter tabs -->
+                <div class="status-tabs" id="status-tabs">
+                    <button class="status-tab active" data-filter="all">All (<span id="tab-all">0</span>)</button>
+                    <button class="status-tab" data-filter="All succeeded">All succeeded (<span id="tab-succeeded">0</span>)</button>
+                    <button class="status-tab" data-filter="Has failures">Has failures (<span id="tab-failures">0</span>)</button>
+                    <button class="status-tab" data-filter="In progress">In progress (<span id="tab-inprogress">0</span>)</button>
+                </div>
+
+                <!-- Column headers -->
+                <div class="tenant-grid tenant-grid--header">
+                    <div></div>
+                    <div>Tenant</div>
+                    <div>Tenant Tags</div>
+                    <div>Status</div>
+                    <div class="col-center">Projects</div>
+                    <div class="col-center">Tasks</div>
+                    <div class="col-center">Machines</div>
+                    <div>Last Updated</div>
+                </div>
+
+                <!-- Rows rendered by JS -->
+                <div id="tenant-rows">
+                    <div class="loading-state" id="loading-state">
+                        <i class="fas fa-spinner fa-spin"></i> Loading tenants...
+                    </div>
+                </div>
+
+                <div id="empty-state" class="empty-state hidden">
+                    No tenants match the current filters.
+                </div>
+
+            </div>
+        </div>
     </div>
-    <div id="tenants-container">
-        <h2>Tenants</h2>
-        <ul id="tenants-list"></ul>
-    </div>
+
     <script src="dashboard.js"></script>
 </body>
 </html>
