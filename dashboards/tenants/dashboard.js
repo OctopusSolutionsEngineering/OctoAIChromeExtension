@@ -253,7 +253,7 @@ async function onSpaceChange(spaceId) {
                 fetchFromOctopus(state.serverUrl, `/api/${spaceId}/environments/all`),
                 fetchFromOctopus(state.serverUrl, `/api/${spaceId}/projects/all`),
                 fetchFromOctopus(state.serverUrl, `/api/${spaceId}/tenants/all`),
-                fetchFromOctopus(state.serverUrl, `/api/${spaceId}/deployments?take=200`),
+                fetchFromOctopus(state.serverUrl, `/api/${spaceId}/deployments?take=500`),
                 fetchFromOctopus(state.serverUrl, `/api/${spaceId}/tasks?skip=0&take=200`),
             ]);
 
@@ -273,9 +273,12 @@ async function onSpaceChange(spaceId) {
             (tasksData.Items || tasksData).forEach(t => taskMap[t.Id] = t);
 
             // Group deployments by TenantId
+            // Octopus API uses PascalCase — guard against casing variations just in case
             const tenantDeployments = {};
             (deploymentsData.Items || deploymentsData).forEach(dep => {
-                if (!dep.TenantId) return;
+                const tenantId = dep.TenantId || dep.tenantId;
+                if (!tenantId) return;
+                dep.TenantId = tenantId; // normalise for downstream use
                 if (!tenantDeployments[dep.TenantId]) tenantDeployments[dep.TenantId] = [];
                 tenantDeployments[dep.TenantId].push(dep);
             });
