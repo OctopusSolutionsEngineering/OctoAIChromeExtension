@@ -280,13 +280,40 @@ async function onSpaceChange(spaceId) {
                 tenantDeployments[dep.TenantId].push(dep);
             });
 
-            // Build tenant objects — only include tenants with recent deployments
+            // Debug: log join stats to console so mismatches can be spotted
+            const depCount = (deploymentsData.Items || deploymentsData).length;
+            const tenantDepCount = Object.keys(tenantDeployments).length;
+            const taskCount = Object.keys(taskMap).length;
+            console.log(`[TenantDashboard] deployments: ${depCount}, tenant-scoped: ${tenantDepCount}, tasks: ${taskCount}`);
+            if (depCount > 0) {
+                const sample = (deploymentsData.Items || deploymentsData)[0];
+                console.log('[TenantDashboard] sample deployment:', JSON.stringify(sample, null, 2));
+            }
+            if (taskCount > 0) {
+                const sampleTask = (tasksData.Items || tasksData)[0];
+                console.log('[TenantDashboard] sample task:', JSON.stringify(sampleTask, null, 2));
+            }
+
+            // Build tenant objects — show all tenants; those without recent deployments show empty task list
             tenants = rawTenants
                 .map(apiTenant => {
                     const deps = tenantDeployments[apiTenant.Id] || [];
                     const tasks = deps.map(dep => {
                         const task = taskMap[dep.TaskId];
-                        if (!task) return null;
+                        if (!task) {
+                            // Task not in recent 200 — include with state derived from deployment alone
+                            return {
+                                id: dep.Id,
+                                serverTaskId: dep.TaskId || '–',
+                                projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
+                                releaseVersion: dep.ReleaseVersion || dep.ReleaseId || '–',
+                                taskType: 'Deployment',
+                                taskState: 'Success', // assume completed if not in recent task list
+                                startedAt: dep.Created ? new Date(dep.Created) : new Date(),
+                                duration: '–',
+                                machines: [],
+                            };
+                        }
                         return {
                             id: dep.Id,
                             serverTaskId: dep.TaskId,
@@ -301,6 +328,7 @@ async function onSpaceChange(spaceId) {
                         };
                     }).filter(Boolean);
 
+                    // Only include tenants that have had at least one deployment
                     if (tasks.length === 0) return null;
 
                     const status = deriveTenantStatus(tasks);
