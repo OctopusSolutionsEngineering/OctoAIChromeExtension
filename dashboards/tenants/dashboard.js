@@ -176,9 +176,15 @@ const state = {
 /* ─── Initialisation ─────────────────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Fallback for opening outside extension context (e.g. direct file:// preview)
+    if (typeof dashboardGetConfig === 'undefined' || typeof chrome === 'undefined') {
+        initDashboard(null);
+        return;
+    }
     dashboardGetConfig(config => {
         if (!config || !config.lastServerUrl) {
-            showError('Could not load dashboard configuration. Please reopen from Octopus Deploy.');
+            // No server URL configured — fall back to mock data for UI preview
+            initDashboard(null);
             return;
         }
         initDashboard(config.lastServerUrl);
@@ -191,9 +197,12 @@ async function initDashboard(serverUrl) {
     const spacesSelect = document.getElementById('spaces-select');
 
     try {
-        // TODO: Replace with real API call
-        // const spaces = await fetchFromOctopus(serverUrl, '/api/spaces/all');
-        const spaces = [{ Id: 'mock-space', Name: 'Default' }]; // mock
+        let spaces;
+        if (serverUrl) {
+            spaces = await fetchFromOctopus(serverUrl, '/api/spaces/all');
+        } else {
+            spaces = [{ Id: 'mock-space', Name: 'Mock Data Preview' }];
+        }
 
         state.spaces = spaces;
         spacesSelect.innerHTML = spaces.map(s =>
@@ -214,49 +223,142 @@ async function initDashboard(serverUrl) {
     wireUpControls();
 }
 
+function showLoading(visible) {
+    // loading-state lives inside tenant-rows and gets replaced by render() —
+    // null-check guards against accessing it after that happens
+    const el = document.getElementById('loading-state');
+    if (el) el.style.display = visible ? 'block' : 'none';
+}
+
 async function onSpaceChange(spaceId) {
     state.spaceId = spaceId;
-    document.getElementById('loading-state').style.display = 'block';
     document.getElementById('dashboard-content').classList.remove('hidden');
+    showLoading(true);
 
     try {
-        // TODO: Replace mock data with real API calls:
-        //
-        // const envs = await fetchFromOctopus(state.serverUrl, `/api/${spaceId}/environments/all`);
-        // const projects = await fetchFromOctopus(state.serverUrl, `/api/${spaceId}/projects/all`);
-        // const tenants = await fetchFromOctopus(state.serverUrl, `/api/${spaceId}/tenants/all`);
-        //
-        // For task state per tenant, query recent tasks and group by TenantId:
-        // const tasks = await fetchFromOctopus(state.serverUrl,
-        //   `/api/${spaceId}/tasks?skip=0&take=500&hasPendingInterruptions=false`);
-        // Then merge tasks into tenant objects.
+        let envs, rawProjects, rawTenants, tenants;
 
-        const envs = [{ Id: 'Environments-1', Name: 'Production' }, { Id: 'Environments-2', Name: 'Staging' }, { Id: 'Environments-3', Name: 'UAT' }];
-        const projects = [...new Set(MOCK_TENANTS.flatMap(t => t.tasks.map(tk => tk.projectName)))].sort();
+        if (!state.serverUrl) {
+            // No server URL — use mock data for UI preview
+            envs = [
+                { Id: 'Environments-1', Name: 'Production' },
+                { Id: 'Environments-2', Name: 'Staging' },
+                { Id: 'Environments-3', Name: 'UAT' },
+            ];
+            rawProjects = [...new Set(MOCK_TENANTS.flatMap(t => t.tasks.map(tk => tk.projectName)))].sort().map(n => ({ Id: n, Name: n }));
+            tenants = MOCK_TENANTS;
+        } else {
+            // Real API: fetch reference data and recent deployment activity in parallel
+            const [rawEnvs, projectList, tenantList, deploymentsData, tasksData] = await Promise.all([
+                fetchFromOctopus(state.serverUrl, `/api/${spaceId}/environments/all`),
+                fetchFromOctopus(state.serverUrl, `/api/${spaceId}/projects/all`),
+                fetchFromOctopus(state.serverUrl, `/api/${spaceId}/tenants/all`),
+                fetchFromOctopus(state.serverUrl, `/api/${spaceId}/deployments?take=200`),
+                fetchFromOctopus(state.serverUrl, `/api/${spaceId}/tasks?skip=0&take=200`),
+            ]);
+
+            envs = rawEnvs;
+            rawProjects = projectList;
+            rawTenants = tenantList;
+
+            // Build lookup maps
+            const envMap = {};
+            rawEnvs.forEach(e => envMap[e.Id] = e.Name);
+
+            const projectMap = {};
+            projectList.forEach(p => projectMap[p.Id] = p.Name);
+
+            // Index tasks by ID for O(1) lookup
+            const taskMap = {};
+            (tasksData.Items || tasksData).forEach(t => taskMap[t.Id] = t);
+
+            // Group deployments by TenantId
+            const tenantDeployments = {};
+            (deploymentsData.Items || deploymentsData).forEach(dep => {
+                if (!dep.TenantId) return;
+                if (!tenantDeployments[dep.TenantId]) tenantDeployments[dep.TenantId] = [];
+                tenantDeployments[dep.TenantId].push(dep);
+            });
+
+            // Build tenant objects — only include tenants with recent deployments
+            tenants = rawTenants
+                .map(apiTenant => {
+                    const deps = tenantDeployments[apiTenant.Id] || [];
+                    const tasks = deps.map(dep => {
+                        const task = taskMap[dep.TaskId];
+                        if (!task) return null;
+                        return {
+                            id: dep.Id,
+                            serverTaskId: dep.TaskId,
+                            projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
+                            releaseVersion: dep.ReleaseVersion || dep.ReleaseId || '–',
+                            taskType: task.Name === 'RunbookRun' ? 'Runbook Run' : 'Deployment',
+                            taskState: task.State || 'Unknown',
+                            startedAt: task.StartTime ? new Date(task.StartTime) : new Date(),
+                            duration: task.Duration || '–',
+                            machines: [],
+                            errorMessage: task.ErrorMessage || undefined,
+                        };
+                    }).filter(Boolean);
+
+                    if (tasks.length === 0) return null;
+
+                    const status = deriveTenantStatus(tasks);
+                    // TenantTags is { "TagSetId": ["TagSetId/TagId", ...] } — flatten to readable names
+                    const tags = Object.values(apiTenant.TenantTags || {})
+                        .flat()
+                        .map(t => t.split('/').pop());
+
+                    const firstDep = tenantDeployments[apiTenant.Id][0];
+                    const envName = firstDep ? (envMap[firstDep.EnvironmentId] || firstDep.EnvironmentId || '') : '';
+
+                    return {
+                        id: apiTenant.Id,
+                        tenantDisplayId: apiTenant.Id,
+                        name: apiTenant.Name,
+                        environment: envName,
+                        status,
+                        tags,
+                        tasks,
+                        projectCount: tasks.length,
+                        taskCount: tasks.length,
+                        lastUpdated: new Date(Math.max(...tasks.map(t => t.startedAt.getTime()))),
+                    };
+                })
+                .filter(Boolean);
+        }
 
         state.environments = envs;
-        state.projects = projects;
-        state.allTenants = MOCK_TENANTS;
+        state.projects = rawProjects.map(p => p.Name || p);
+        state.allTenants = tenants;
 
         populateEnvironmentFilter(envs);
-        populateProjectsFilter(projects);
+        populateProjectsFilter(state.projects);
         setDefaultDateRange();
 
-        // Track elapsed start for in-progress tenants
         state.elapsedStart = new Date();
 
         applyFilters();
         render();
-
-        document.getElementById('loading-state').style.display = 'none';
+        showLoading(false);
 
         startPolling();
         startElapsedTimer();
 
     } catch (err) {
         showError('Failed to load data: ' + err.message);
-        document.getElementById('loading-state').style.display = 'none';
+        showLoading(false);
     }
+}
+
+function deriveTenantStatus(tasks) {
+    if (tasks.some(t => t.taskState === 'Failed' || t.taskState === 'TimedOut' || t.taskState === 'Canceled')) {
+        return 'Has failures';
+    }
+    if (tasks.some(t => t.taskState === 'Executing' || t.taskState === 'Queued' || t.taskState === 'Cancelling')) {
+        return 'In progress';
+    }
+    return 'All succeeded';
 }
 
 /* ─── Controls wiring ────────────────────────────────────────────────────── */
