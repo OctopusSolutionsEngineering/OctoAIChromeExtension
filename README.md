@@ -35,3 +35,7 @@ git clone https://github.com/OctopusSolutionsEngineering/OctoAIChromeExtension.g
 # How to contribute new dashboards
 
 See the [community dashboards documentation](dashboards/instructions.md).
+
+# Analytics
+
+The Value Metrics dashboard collects anonymous usage analytics (page views, button clicks, feature usage) to help improve the dashboard experience. No personally identifiable information, server URLs, or Octopus instance data is collected.
