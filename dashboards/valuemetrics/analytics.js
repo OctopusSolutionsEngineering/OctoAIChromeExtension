@@ -85,7 +85,6 @@ const Analytics = (() => {
 
   /**
    * Delegated click handler that catches outbound link clicks (target="_blank")
-   * anywhere in the dashboard — no need to wire each link individually.
    */
   function _installOutboundLinkTracker() {
     document.addEventListener('click', (e) => {
@@ -98,7 +97,6 @@ const Analytics = (() => {
       else if (url.includes('/app#/')) destination = 'octopus_instance';
 
       trackEvent('outbound_link_clicked', {
-        url,
         destination,
         link_text: (anchor.textContent || '').trim().substring(0, 80),
       });
