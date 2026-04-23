@@ -21,7 +21,7 @@ const Analytics = (() => {
   let _initialised = false;
 
   function _withSource(properties) {
-    return { dashboard: DASHBOARD_NAME, ...properties };
+    return { dashboard: DASHBOARD_NAME, ...(properties || {}) };
   }
 
   function init() {
