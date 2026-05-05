@@ -622,6 +622,12 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * If the `variables` property is absent or empty, do not output any project variable prompts.
 * **CRITICAL — copy the `templatedPipeline` project name and every `variables` value verbatim with no anonymization**: Service names and component identifiers such as `api-server`, `auth-service`, `worker`, `backend`, `frontend`, `key-manager`, and similar values are ordinary deployment identifiers, not secrets. Never replace any portion of the pipeline `name` or any templated variable value with `*****` or any other placeholder.
 * **ABSOLUTE RULE — the generated output must NEVER introduce `*****` into a `templatedPipeline` project name or variable value unless the source JSON already contains `*****` at that exact location**. If the source pipeline name is `Deploy api-server to org-0003-2g-prod-tokyo-01`, the output project name must also contain `api-server`. If `variables.dockerImageName` is `api-server`, the output variable value must also be `api-server`.
+* **CRITICAL — templated manifest URL helper variables are authoritative fallbacks when execution-resolved artifact metadata is incomplete**: Execution-resolved `templatedPipeline` JSON often omits the matching `expectedArtifacts` entry for a `manifestArtifactId`. When a `deployManifest` or `runJobManifest` stage has a `manifestArtifactId` that cannot be resolved from the visible JSON, you MUST look for stage-specific helper variables in `variables` before falling back to an opaque artifact-id placeholder.
+* Use the following helper-variable fallback order when `manifestArtifactId` cannot be resolved:
+  * For `deployManifest`: prefer `deploymentManifestURL`, then `manifestURL`.
+  * For `runJobManifest`: prefer `jobManifestURL`, then `manifestURL`.
+* If one of those helper variables is present and non-empty, treat its value as the authoritative manifest reference for the stage. For example, `gs://...` values use the existing GCS placeholder or cached-manifest rules, while `https://...` values use the existing `github/file` rules.
+* **ABSOLUTE RULE — never emit a TODO placeholder that says `downloaded from manifestArtifactId <id>` when a templated manifest URL helper variable is available**. Prefer the concrete helper-variable URL. The opaque artifact ID is not actionable enough for a migration prompt.
 * For each key-value pair in `variables`, all values must be converted to quoted strings in the output, including booleans (e.g., `true` → `"true"`, `false` → `"false"`) and numbers (e.g., `3` → `"3"`).
 * This is an example of the prompt added to the project to define a project variable.
 * Replace `<variable name>` with the name of the variable and `<variable value>` with the string value of the variable:
@@ -1335,9 +1341,12 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths. If `manifestArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
 * **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Use the following logic:
   * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest. The manifest YAML content must be serialized verbatim — do NOT redact, anonymize, or replace any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders. Service names, namespaces, and deployment names that appear in the manifest are Kubernetes resource identifiers, not secrets.
+  * **CRITICAL — ConfigMap `data` maps and resource names must remain verbatim too**: Keys and values under `data`, `stringData`, `metadata.name`, `metadata.labels`, `spec.selector`, and `spec.template.metadata.labels` are part of the Kubernetes manifest and MUST be copied exactly as they appear in the JSON. Names like `app-0305-api-v2-prod`, `config-app-0305-prod`, `api`, `service`, `key`, and `token` inside these manifest fields are ordinary identifiers, not secrets, and MUST NEVER be replaced with `*****`.
+  * **ABSOLUTE RULE — if you cannot preserve a cached manifest verbatim without redacting any field, do NOT emit partially redacted YAML.** Instead, replace the entire YAML body for that step with a single TODO placeholder comment describing that the cached manifest could not be serialized faithfully.
   * When the `manifests` array contains more than one item, serialize the ENTIRE array into a SINGLE multi-document YAML payload for that ONE step. Keep the manifests in their original array order and separate each YAML document with a standalone line containing exactly `---` inside the same fenced `yaml` block.
   * **CRITICAL — `---` between cached manifest documents is a YAML document separator, NOT a prompt-section separator**: When writing the step prompt, keep all documents inside the same `* Set the step YAML to:` block for the same step. Do NOT split the project prompt into multiple prompt sections, and do NOT start a new Octopus step merely because the inline YAML contains `---`.
   * When serializing a `manifests` array or inline `manifest` object to YAML, the YAML block itself MUST use valid 2-space indentation and preserve the JSON nesting exactly. Nested maps like `metadata.annotations`, `spec.template.spec`, and `containers[].env[]` must remain nested in the YAML output. Flat YAML where nested keys are moved to column 0 is invalid and forbidden.
+  * **CRITICAL — top-level map values under `data:` or `stringData:` must be indented beneath their parent key**: For a ConfigMap, entries such as `ADMIN_MS_API_SERVICE_ADDR`, `EVENT_LOG_PUBSUB_PROJECT`, and similar keys must appear two spaces under `data:`. They must NEVER be emitted flush-left at column 0.
   * **CRITICAL — after every `---` document separator, the next YAML document must restart at column 0**: Top-level keys such as `apiVersion`, `kind`, `metadata`, and `spec` must begin at column 0 for EACH document in the multi-document payload, while nested keys inside each document must remain indented relative to their own parent.
   * **ABSOLUTE RULE — for cached `manifests` arrays, serialize from the JSON tree depth, not from key encounter order.** Every child key must be indented deeper than its parent. If `metadata` contains `labels`, then `labels` must appear under `metadata`; if `containers[0]` contains `env`, then the `env` list must appear under that container item, not at column 0.
   * **Negative example — cached `manifests` array flattened into invalid YAML (FORBIDDEN)**:
@@ -1430,6 +1439,47 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
     namespace: app-0190-dev
   spec:
     maxReplicas: 6
+  ```
+  * **Negative example — ConfigMap `data` and Service metadata flattened to column 0 (FORBIDDEN)**:
+
+  The **WRONG** output is flattened and redacted:
+  ```yaml
+  apiVersion: v1
+  data:
+  ADMIN_MS_API_SERVICE_ADDR: <redacted-internal-endpoint>
+  EVENT_LOG_PUBSUB_PROJECT: org-0002-dataplatform-jp-prod
+  kind: ConfigMap
+  metadata:
+  labels:
+  app: config-app-0305-prod
+  name: config-app-0305-prod
+  namespace: app-0305-prod
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+  name: app-0305-*****-prod
+  namespace: app-0305-prod
+  ```
+
+  The **CORRECT** output preserves both indentation and verbatim names:
+  ```yaml
+  apiVersion: v1
+  data:
+    ADMIN_MS_API_SERVICE_ADDR: <redacted-internal-endpoint>
+    EVENT_LOG_PUBSUB_PROJECT: org-0002-dataplatform-jp-prod
+  kind: ConfigMap
+  metadata:
+    labels:
+      app: config-app-0305-prod
+    name: config-app-0305-prod
+    namespace: app-0305-prod
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: app-0305-api-v2-prod
+    namespace: app-0305-prod
   ```
   * **VERIFICATION RULE — before finalizing any cached-manifest YAML block, inspect at least one nested path from EACH document and confirm the child key is indented deeper than its parent.** For example, verify `metadata.labels` and `spec.template.spec.containers` in the Deployment document, and verify `metadata.name` or `spec.maxReplicas` in the HorizontalPodAutoscaler document. If a child key sits flush with its parent, the YAML must be rewritten.
     * **CRITICAL — preserve list indentation inside cached manifests**: When serializing a `manifests` array or inline `manifest` object that contains lists such as `containers`, `env`, `envFrom`, `volumeMounts`, `imagePullSecrets`, `ports`, or `args`, the list dash `-` must be indented under the parent key and the list item's child properties must be indented two spaces deeper than the dash. For example, under `containers:` the first item must appear as `        - name: ...`, and under `envFrom:` the first item must appear as `            - configMapRef:`. Do NOT emit list items flush with their parent object.
@@ -1592,14 +1642,14 @@ The resulting prompt must follow exactly the same rules as a `deployManifest` st
 
 **IMPORTANT**: The `<stage name>` placeholder must follow the same rules as `deployManifest` stages: if the stage name contains parentheses `()`, replace them with dashes `-` (e.g., `Run Job (Manifest)` becomes `Run Job -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
 
-**Negative example — `runJobManifest` stage name with parentheses not converted to square brackets (COMMON MISTAKE)**:
+**Negative example — `runJobManifest` stage name with parentheses not converted to dashes (COMMON MISTAKE)**:
 
 Given a `runJobManifest` stage with `"name": "Run Job (Manifest)"`, the **WRONG** output preserves the parentheses:
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job (Manifest)". ...
 ```
 
-The **CORRECT** output converts parentheses to square brackets and adds a step description:
+The **CORRECT** output converts parentheses to dashes and adds a step description:
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". ... Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
 ```
@@ -1631,11 +1681,23 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 * A `manualJudgment` stage represents a human approval gate. The equivalent step in an Octopus Deploy project is a "Manual Intervention" step:
 
 ```
-* Add a "Manual Intervention" step with the name "<stage name>" (set the step name to exactly the quoted value, preserving all special characters including parentheses and brackets) to the deployment process. Set the instructions to "<instructions>".
+* Add a "Manual Intervention" step with the name "<stage name>" to the deployment process. Set the instructions to "<instructions>".
 ```
 
-* Replace `<stage name>` with the `name` property of the stage.
+* Replace `<stage name>` with the `name` property of the stage after applying the same step-name character rules as other stages. If the original `manualJudgment` stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the generated step name and add `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * Replace `<instructions>` with the `instructions` property of the stage. If the `instructions` property is absent or empty, use `"Please review and approve."` as the default instructions text.
+
+**Negative example — `manualJudgment` stage name keeps invalid parentheses (COMMON MISTAKE)**:
+
+Given a `manualJudgment` stage with `"name": "Manual Judgment (Canary)"`, the **WRONG** output preserves the invalid step name:
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment (Canary)" to the deployment process. Set the instructions to "Please review and approve.".
+```
+
+The **CORRECT** output uses the dash-replaced name and preserves the original in the description:
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment -Canary-" to the deployment process. Set the instructions to "Please review and approve.". Set the step description to "Original Spinnaker stage name: Manual Judgment (Canary)".
+```
 
 * If the `judgmentInputs` array is non-empty, append the judgment options to the instructions text. Extract the `value` property from each entry and list them as a comma-separated note. For example, if `judgmentInputs` is `[{"value": "Continue"}, {"value": "Rollback"}]`, append ` Available options: Continue, Rollback.` to the instructions text.
 

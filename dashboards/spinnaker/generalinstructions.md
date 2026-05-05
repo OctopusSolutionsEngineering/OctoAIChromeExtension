@@ -24,13 +24,17 @@
 
 * When setting `Octopus.Action.KubernetesContainers.CustomResourceYaml` in `execution_properties`, the YAML value MUST use proper 2-space indentation at every level. Flat YAML (where all keys appear at column 0) is invalid and will cause deployment failures.
 * For example, a Deployment manifest must nest `metadata.name` at 2 spaces, `spec.template` at 4 spaces, and container entries at 8 spaces.
+* ConfigMap-style maps must also remain nested. Keys under `data:` or `stringData:` must be indented two spaces beneath those parent keys; they must never be emitted at column 0.
 * YAML lists must also preserve indentation. Under keys like `containers`, `env`, `envFrom`, `volumeMounts`, `ports`, `args`, and `imagePullSecrets`, the `-` list marker must be indented beneath its parent key and the child fields beneath the list item must be indented two spaces deeper than the dash.
+* Multi-document YAML must preserve both separators and indentation. A document separator line containing exactly `---` must be followed by a new top-level document starting again at column 0, while nested keys in that document remain indented.
+* If you cannot serialize cached manifest YAML with both correct indentation and verbatim values, you must fall back to a TODO placeholder instead of emitting malformed or partially redacted YAML.
 * You will be penalized for producing flat YAML in `Octopus.Action.KubernetesContainers.CustomResourceYaml`.
 
 ## Step Name Character Rules
 
 * Octopus Deploy step names may only contain letters, numbers, periods, commas, dashes, underscores, and hashes. Parentheses `()` and square brackets `[]` are NOT valid in step names.
 * If the prompt contains a step name with parentheses or square brackets that were replaced by dashes (e.g., `Deploy -Manifest-`), use the dash-replaced form exactly as written in the prompt. Do NOT re-introduce parentheses or other special characters.
+* Do NOT normalize prompt-provided dash replacements into underscores. For example, `Manual Judgment -Canary-` must stay `Manual Judgment -Canary-`, never `Manual Judgment _Canary_`.
 * You will be penalized for creating steps with parentheses or square brackets in their names.
 
 ## Step Description Property
