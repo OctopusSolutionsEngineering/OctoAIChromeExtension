@@ -8,6 +8,10 @@
 
 **ABSOLUTE RULE — the output MUST be a complete prompt describing how to build Octopus Deploy projects. Raw YAML alone is NEVER a valid output.** Every response must begin with a `Create a project called "..."` sentence (or a feed creation sentence followed by `---` and then a project sentence). YAML content may only appear embedded inside a `* Set the step YAML to:` block that is itself part of a step bullet inside a project prompt. Outputting a bare YAML block — with no surrounding `Create a project...` sentence and step bullets — is strictly forbidden regardless of the pipeline content.
 
+**ABSOLUTE RULE — every YAML block in the output must be VALIDLY INDENTED YAML, or it must be replaced with a TODO placeholder instead.** Flat YAML is forbidden. If you cannot preserve parent/child indentation for a cached `manifests` array or inline `manifest` object, do NOT guess and do NOT emit malformed YAML. Instead, keep the step and use a single-line placeholder comment such as `# TODO: replace with correctly indented manifest serialized from the cached Spinnaker manifests array`.
+
+**CRITICAL — a placeholder comment is better than malformed YAML.** Invalid YAML breaks the migration output. When choosing between flattened YAML and a TODO placeholder, always choose the TODO placeholder.
+
 **Negative example — raw YAML as the entire output (FORBIDDEN)**:
 ```yaml
 apiVersion: batch/v1
@@ -599,16 +603,18 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * **DO convert any `stages` from the JSON** — convert all stages using exactly the same rules as for a regular pipeline.
 * **DO convert any `notifications` from the JSON** — notification steps are project-level and must be preserved. Notifications in a `templatedPipeline` must be converted using exactly the same rules as for a regular pipeline (see the Notifications section). The `when` array and `message` text must be inspected and Slack Notification steps must be generated for all applicable events.
 * DO apply the `disabled` status — add `* The project must be disabled.` when `disabled: true`.
+* A template-backed pipeline reference may appear either at `template.reference` or at `_templateRef` on execution-resolved JSON. Treat either non-empty field as the authoritative template reference for placeholder instructions.
 * If a `templatedPipeline` has top-level `expectedArtifacts` or top-level `triggers`, process those collections using the normal feed and trigger rules. Do NOT suppress feed creation or trigger conversion merely because the pipeline `type` is `templatedPipeline`.
 * Only when a `templatedPipeline` truly has no top-level `expectedArtifacts` entries and no top-level `triggers` should feed and trigger prompts be omitted for that reason.
-* If a `templatedPipeline` has a `template.reference` value but the concrete JSON has no non-notification stages, do NOT assume the visible JSON fully describes the deployment behavior. After the notification steps and project variables, add a placeholder step to preserve the missing template-supplied behavior:
+* If a `templatedPipeline` has a template reference (`template.reference` or `_templateRef`) but the concrete JSON has no non-notification stages, do NOT assume the visible JSON fully describes the deployment behavior. After the notification steps and project variables, add a placeholder step to preserve the missing template-supplied behavior:
 
 ```
-* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: expand the Spinnaker pipeline template "<template.reference>" using the templatedPipeline variables before considering this conversion complete.`
+* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: expand the Spinnaker pipeline template "<template reference>" using the templatedPipeline variables before considering this conversion complete.`
 ```
 
-* Replace `<template.reference>` with the verbatim value of `template.reference`.
-* If the template-backed pipeline also exposes variables that clearly describe automated trigger behaviour (for example `enableAutomatedTrigger`, `dockerRegistryAcc`, `dockerRegistryOrg`, `dockerRegistryRepo`, or `tag`) but no concrete trigger entries are present in the JSON, the placeholder step above is REQUIRED. Do NOT silently output a notifications-and-variables-only project and imply that the deployment process is complete.
+* Replace `<template reference>` with the verbatim value of the non-empty template reference field (`template.reference` if present, otherwise `_templateRef`).
+* If the template-backed pipeline exposes variables that clearly describe automated trigger or feed behaviour (for example `enableAutomatedTrigger`, `dockerRegistryAcc`, `dockerRegistryOrg`, `dockerRegistryRepo`, `pubsubName`, or `tag`) but no concrete trigger entries are present in the JSON, the placeholder step above is REQUIRED even when the execution-resolved JSON already contains concrete deployment stages. Do NOT silently output a deployment-only project and imply that hidden template-supplied trigger/feed behavior has been converted.
+* **CRITICAL — execution-resolved `templatedPipeline` JSON may be incomplete even when `stages` are present**: When `_resolvedFrom` indicates an execution-derived view and a template reference is present, the visible `stages` array may describe only the resolved deployment steps while template-defined trigger/feed behavior remains hidden. In that case, if trigger-related templated variables are present but `triggers` is absent or empty, you MUST add the placeholder step after the variables to preserve that missing behavior for manual review.
 
 **IMPORTANT — `templatedPipeline` notifications are REQUIRED**: When a `templatedPipeline` has a `notifications` array, you MUST generate Slack notification steps for it. Do NOT skip notifications just because the pipeline `type` is `templatedPipeline`. The Finish and Complete steps must appear in the correct order: all Slack Notification - Start steps first (if `pipeline.starting` is in `when`), followed by the deployment steps, then Slack Notification - Finish steps (if `pipeline.failed` is in `when`), then Slack Notification - Complete steps (if `pipeline.complete` is in `when`), then the `variables` prompts.
 
@@ -1329,7 +1335,11 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths. If `manifestArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
 * **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Use the following logic:
   * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest. The manifest YAML content must be serialized verbatim — do NOT redact, anonymize, or replace any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders. Service names, namespaces, and deployment names that appear in the manifest are Kubernetes resource identifiers, not secrets.
+  * When the `manifests` array contains more than one item, serialize the ENTIRE array into a SINGLE multi-document YAML payload for that ONE step. Keep the manifests in their original array order and separate each YAML document with a standalone line containing exactly `---` inside the same fenced `yaml` block.
+  * **CRITICAL — `---` between cached manifest documents is a YAML document separator, NOT a prompt-section separator**: When writing the step prompt, keep all documents inside the same `* Set the step YAML to:` block for the same step. Do NOT split the project prompt into multiple prompt sections, and do NOT start a new Octopus step merely because the inline YAML contains `---`.
   * When serializing a `manifests` array or inline `manifest` object to YAML, the YAML block itself MUST use valid 2-space indentation and preserve the JSON nesting exactly. Nested maps like `metadata.annotations`, `spec.template.spec`, and `containers[].env[]` must remain nested in the YAML output. Flat YAML where nested keys are moved to column 0 is invalid and forbidden.
+  * **CRITICAL — after every `---` document separator, the next YAML document must restart at column 0**: Top-level keys such as `apiVersion`, `kind`, `metadata`, and `spec` must begin at column 0 for EACH document in the multi-document payload, while nested keys inside each document must remain indented relative to their own parent.
+  * **ABSOLUTE RULE — for cached `manifests` arrays, serialize from the JSON tree depth, not from key encounter order.** Every child key must be indented deeper than its parent. If `metadata` contains `labels`, then `labels` must appear under `metadata`; if `containers[0]` contains `env`, then the `env` list must appear under that container item, not at column 0.
   * **Negative example — cached `manifests` array flattened into invalid YAML (FORBIDDEN)**:
 
   The **WRONG** output for a deployment manifest with `metadata.annotations`, `metadata.labels`, and `spec.template.spec.containers` is:
@@ -1366,6 +1376,62 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
           - name: app-0101
             image: registry.example.invalid/image-0453
   ```
+  * **Worked example — cached `manifests` array with a Deployment document followed by a HorizontalPodAutoscaler document**:
+
+  The **WRONG** output is flattened and therefore invalid:
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+  labels:
+  resource-0410: LOW
+  name: offer
+  namespace: app-0190-dev
+  spec:
+  template:
+  spec:
+  containers:
+  - env:
+  - name: DEBUG
+  value: "true"
+  image: registry.example.invalid/image-0492
+  ---
+  apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+  name: offer-hpa
+  namespace: app-0190-dev
+  spec:
+  maxReplicas: 6
+  ```
+
+  The **CORRECT** output preserves nesting in BOTH documents:
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    labels:
+      resource-0410: LOW
+    name: offer
+    namespace: app-0190-dev
+  spec:
+    template:
+      spec:
+        containers:
+          - env:
+              - name: DEBUG
+                value: "true"
+            image: registry.example.invalid/image-0492
+  ---
+  apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: offer-hpa
+    namespace: app-0190-dev
+  spec:
+    maxReplicas: 6
+  ```
+  * **VERIFICATION RULE — before finalizing any cached-manifest YAML block, inspect at least one nested path from EACH document and confirm the child key is indented deeper than its parent.** For example, verify `metadata.labels` and `spec.template.spec.containers` in the Deployment document, and verify `metadata.name` or `spec.maxReplicas` in the HorizontalPodAutoscaler document. If a child key sits flush with its parent, the YAML must be rewritten.
     * **CRITICAL — preserve list indentation inside cached manifests**: When serializing a `manifests` array or inline `manifest` object that contains lists such as `containers`, `env`, `envFrom`, `volumeMounts`, `imagePullSecrets`, `ports`, or `args`, the list dash `-` must be indented under the parent key and the list item's child properties must be indented two spaces deeper than the dash. For example, under `containers:` the first item must appear as `        - name: ...`, and under `envFrom:` the first item must appear as `            - configMapRef:`. Do NOT emit list items flush with their parent object.
     * **Negative example — CronJob manifest with flattened list indentation (FORBIDDEN)**:
 
