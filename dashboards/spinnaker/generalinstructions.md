@@ -1,0 +1,2247 @@
+# Instructions
+
+## General Instructions
+
+* You must carefully consider the prompt and create all the required resources.
+* You must ignore any mention of the current project.
+* If the target space is defined in the prompt, that must take precedence over any mention of a current space. For example:
+  * When given the prompt `Create a project called 'Example Project' in the 'Example Space'. The current project is 'My Web App'. The current space is 'Default'.`, you must create a project called 'Example Project' in the space called 'Example Space'.
+  * When given the prompt `Create a project called 'Example Project'. The current project is 'My Web App'. The current space is 'Default'.`, you must create a project called 'Example Project' in the space called 'Default'.
+* You must create valid Terraform.
+* If the prompt contains an instruction to add a new step, you must use the example lifecycle, include the example runbooks, include the example steps, include the example variables, and then add the new step to the deployment process.
+* Instructions to create projects "with no steps" overrides instructions to add steps to the project. When a project is created with no steps, there must not be any "octopusdeploy_process_step" resources defined for that project.
+
+## Step Execution Order and Parallel Steps
+
+* When a step prompt says `Set the start trigger to "Run in parallel with the previous step"`, the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource MUST have `start_trigger = "StartWithPrevious"`.
+* When a step prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"`, the resource MUST have `start_trigger = "StartAfterPrevious"`.
+* Steps with no start trigger annotation default to `start_trigger = "StartAfterPrevious"`.
+* You will be penalized for using `start_trigger = "StartAfterPrevious"` when the prompt explicitly says `"Run in parallel with the previous step"`.
+* You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
+
+## Inline Kubernetes YAML Indentation
+
+* When setting `Octopus.Action.KubernetesContainers.CustomResourceYaml` in `execution_properties`, the YAML value MUST use proper 2-space indentation at every level. Flat YAML (where all keys appear at column 0) is invalid and will cause deployment failures.
+* For example, a Deployment manifest must nest `metadata.name` at 2 spaces, `spec.template` at 4 spaces, and container entries at 8 spaces.
+* You will be penalized for producing flat YAML in `Octopus.Action.KubernetesContainers.CustomResourceYaml`.
+
+## Step Name Character Rules
+
+* Octopus Deploy step names may only contain letters, numbers, periods, commas, dashes, underscores, and hashes. Parentheses `()` and square brackets `[]` are NOT valid in step names.
+* If the prompt contains a step name with parentheses or square brackets that were replaced by dashes (e.g., `Deploy -Manifest-`), use the dash-replaced form exactly as written in the prompt. Do NOT re-introduce parentheses or other special characters.
+* You will be penalized for creating steps with parentheses or square brackets in their names.
+
+## Step Description Property
+
+* When the prompt says `Set the step description to "..."`, the description must be set in the `execution_properties` map of the `octopusdeploy_process_step` resource using the key `"Octopus.Action.StepDescription"`.
+* The description value must be the exact verbatim string from the prompt, including any quoted sub-strings.
+* You will be penalized for omitting a step description when the prompt explicitly instructs it to be set.
+
+## Wait Steps (Script Steps with Start-Sleep)
+
+* A `wait` stage converted to `Start-Sleep -Seconds <N>` must be implemented as an `octopusdeploy_process_step` of type `"Octopus.Script"` with `execution_properties` containing `"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds <N>"`, `"Octopus.Action.Script.Syntax" = "PowerShell"`, and `"Octopus.Action.Script.ScriptSource" = "Inline"`.
+* The step name must match the dash-replaced form from the prompt (e.g., `"Wait -15min-"`) — parentheses in the original Spinnaker stage name have been replaced with dashes.
+* You will be penalized for using a type other than `"Octopus.Script"` for wait steps.
+
+## Default Lifecycle Instructions
+
+* Use "data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id" when referencing the Default Lifecycle, for example `lifecycle_id = "${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"`.
+* You will be penalized for referencing the resource "octopusdeploy_lifecycle" "lifecycle_default_lifecycle" because it does not exist.
+* The "quantity_to_keep" attribute in a "release_retention_policy" or "tentacle_retention_policy" block in a "phase" block must be larger than 0.
+* You will be penalized for setting the "quantity_to_keep" attribute in a "release_retention_policy" or "tentacle_retention_policy" block in a "phase" block to 0.
+* You will be penalized for defining the "phase" block on a single line.
+* Each proprt of the "phase" block must be on a new line.
+
+## Data Resources Instructions
+
+* When getting the length of the "data" "octopusdeploy_projects" resource, the format is "${length(data.octopusdeploy_projects.<data name>.project) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_feeds" resource, the format is "${length(data.octopusdeploy_feeds.<data name>.feeds) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_worker_pools" resource, the format is "${length(data.octopusdeploy_worker_pools.<data name>.worker_pools) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_environments" resource, the format is "${length(data.octopusdeploy_environments.<data name>.environments) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_tag_sets" resource, the format is "${length(data.octopusdeploy_tag_sets.<data name>.tag_sets) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_lifecycles" resource, the format is "${length(data.octopusdeploy_lifecycles.<data name>.lifecycles) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_certificates" resource, the format is "${length(data.octopusdeploy_certificates.<data name>.certificates) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_git_credentials" resource, the format is "${length(data.octopusdeploy_git_credentials.<data name>.git_credentials) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_accounts" resource, the format is "${length(data.octopusdeploy_accounts.<data name>.accounts) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_machine_policies" resource, the format is "${length(data.octopusdeploy_machine_policies.<data name>.machine_policies) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_channels" resource, the format is "${length(data.octopusdeploy_channels.<data name>.channels) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_deployment_targets" resource, the format is "${length(data.octopusdeploy_deployment_targets.<data name>.deployment_targets) != 0 ? 0 : 1}".
+* The "<data name>" in the above examples must be replaced with the name of the data resource included in the output.
+* You will be penalized for using a "<data name>" that does not match the name of the data resource included in the output.
+
+## Account Data Instructions
+
+* The "account_type" in a "octopusdeploy_accounts" data source must be set to one of the following, matching the case exactly:
+  * "AmazonWebServicesAccount"
+  * "AmazonWebServicesRoleAccount"
+  * "AmazonWebServicesOidcAccount"
+  * "AzureServicePrincipal"
+  * "AzureOIDC"
+  * "AzureSubscription"
+  * "GenericOidcAccount"
+  * "GoogleCloudAccount"
+  * "None"
+  * "SshKeyPair"
+  * "Token"
+  * "UsernamePassword"
+
+* This is an example of a "octopusdeploy_accounts" data source with a correctly defined "account_type" attribute:
+
+```
+data "octopusdeploy_accounts" "account_azure" {
+  ids          = null
+  partial_name = "Azure"
+  skip         = 0
+  take         = 1
+  account_type = "AzureOIDC"
+}
+```
+
+* You will be penalized for setting the "account_type" to an empty value.
+
+## Data and Resource pairing instructions
+
+When a “data” resource is referenced in a resource’s attributes, the data resource must be included in the output.
+
+For example, when the “lifecycle_id” attribute is set to:
+
+```
+"${length(data.octopusdeploy_lifecycles.lifecycle_<data ame>.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_<data name>.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_<name>[0].id}"
+```
+
+Then the following "octopusdeploy_lifecycles" data resource must be included in the output:
+
+```
+data "octopusdeploy_lifecycles" "lifecycle_<data name>" {
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+When the "project_group_id" attribute is set to:
+
+```
+"${length(data.octopusdeploy_project_groups.project_group_<data name>.project_groups) != 0 ? data.octopusdeploy_project_groups.project_group_<data name>.project_groups[0].id : octopusdeploy_project_group.project_group_<name>[0].id}"
+```
+
+Then the following "octopusdeploy_project_groups" data resource must be included in the output:
+
+```
+data "octopusdeploy_project_groups" "project_group_<data name>" {
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+And the following "octopusdeploy_project_group" resource must be defined:
+
+```
+resource "octopusdeploy_project_group" "project_group_<name>" {
+  count = "${length(data.octopusdeploy_project_groups.project_group_<name>.project_groups) != 0 ? 0 : 1}"
+  name  = "<Name>"
+  ...
+}
+```
+
+When the "feed_id" attribute is set to:
+
+```
+"${length(data.octopusdeploy_feeds.feed_docker_hub.feeds) != 0 ? data.octopusdeploy_feeds.feed_docker_hub.feeds[0].id : octopusdeploy_docker_container_registry.feed_docker_hub[0].id}"
+```
+
+Then the following "octopusdeploy_feeds" data resource must be included in the output:
+
+```
+data "octopusdeploy_feeds" "<name>" {
+  feed_type    = "Docker"
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+And the following "octopusdeploy_docker_container_registry" resource must be defined:
+
+```
+resource "octopusdeploy_docker_container_registry" "<name>" {
+  count                                = "${length(data.octopusdeploy_feeds.feed_docker_hub.feeds) != 0 ? 0 : 1}"
+  name                                 = "<Name>"
+  # Populate the rest of the feed attributes here
+}
+```
+
+When the "environment_id" attribute is set to:
+
+```
+"${length(data.octopusdeploy_environments.environment_<data name>.environments) != 0 ? data.octopusdeploy_environments.environment_<data name>.environments[0].id : octopusdeploy_environment.environment_<name>[0].id}"
+```
+
+Then the following "octopusdeploy_environments" data resource must be included in the output:
+
+```
+data "octopusdeploy_environments" "environment_<name>" {
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+And the following "octopusdeploy_environment" resource must be defined:
+
+```
+resource "octopusdeploy_environment" "environment_<name>" {
+  count                        = "${length(data.octopusdeploy_environments.environment_<name>.environments) != 0 ? 0 : 1}"
+  name                         = "<Name>"
+  # Populate the rest of the environment attributes here
+}
+```
+
+You will be penalized for referencing a "octopusdeploy_environments" data source or "octopusdeploy_environment" resource that does not exist in the output.
+
+When the "project_id" attribute is set to "${length(data.octopusdeploy_projects.project_<name>.projects) != 0 ? 0 : 1}"
+
+```
+data "octopusdeploy_projects" "project_<name>" {
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+And the following "octopusdeploy_project" resource must be defined:
+
+```
+resource "octopusdeploy_project" "project_<name>" {
+    count = "${length(data.octopusdeploy_projects.project_<name>.projects) != 0 ? 0 : 1}"
+    name = "<Name>"
+    # Populate the rest of the project attributes here
+}
+```
+
+## Count Properties Instructions
+
+* The "count" parameter for any "octopusdeploy_process" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_steps_order" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_child_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_child_steps_order" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameters must be in the format "${length(data.<data type>.<data resource>.<collection>) != 0 ? 0 : 1}"
+* You will be penalized for using count arguments like this: "${length(data.<data type>.<data resource>.<collection>) != 0 ? 1 : 1}"
+* You will be penalized for using ternary operators that return the same value for both cases.
+
+## Account Instructions
+
+* You will be penalized for defining a "session_token" attribute on a "octopusdeploy_aws_account" resource.
+
+## Lifecycle Instructions
+
+* Custom lifecycles must include the environments "Development", "Test", and "Production" unless otherwise instructed.
+
+## Tenant Instructions
+
+* If the prompt indicates that tenants are to be created or added, the "octopusdeploy_tenant" resources must be created in addition to the "octopusdeploy_project" resource.
+* You will be penalized for creating "octopusdeploy_tenant" resources without an associated "octopusdeploy_project" resource.
+* Each resource "octopusdeploy_tenant" must have an associated data "octopusdeploy_tenants". For example, if the following resource is defined:
+
+```
+resource "octopusdeploy_tenant" "tenant_australian_office" {
+  count       = "${length(data.octopusdeploy_tenants.tenant_australian_office.tenants) != 0 ? 0 : 1}"
+  name        = "Australian Office"
+  description = "An example tenant that represents an Australian office"
+  tenant_tags = []
+  depends_on  = []
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+Then the associated data resource must be defined as follows:
+
+```
+data "octopusdeploy_tenants" "tenant_australian_office" {
+  ids          = null
+  partial_name = "Australian Office"
+  skip         = 0
+  take         = 1
+  project_id   = ""
+  tags         = null
+}
+```
+
+* When the prompt includes instructions to define the value of project tenant variables, you must define the value for all environment unless explicitly instructed otherwise.
+* When the prompt includes instructions to link a tenant to a project, you must include a "octopusdeploy_tenant_project" resource.
+* You will be penalized for defining a "octopusdeploy_tags" data source as this data source does not exist.
+
+## Library Variable Set Instructions
+
+* Each resource "octopusdeploy_library_variable_set" must have an associated data "octopusdeploy_library_variable_sets". For example, if the following resource is defined:
+
+```
+resource "octopusdeploy_library_variable_set" "library_variable_set_variables_example_variable_set" {
+  count       = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets) != 0 ? 0 : 1}"
+  name        = "Example Variable Set"
+  description = ""
+}
+```
+
+Then the associated data resource must be defined as follows:
+
+```
+data "octopusdeploy_library_variable_sets" "library_variable_set_variables_example_variable_set" {
+  ids          = null
+  partial_name = "Example Variable Set"
+  skip         = 0
+  take         = 1
+}
+```
+
+* A library variable set "Variable Template" is defined in the "template" block of a "octopusdeploy_library_variable_set" resource.
+* A tenant "Common Variable" is defined in a "octopusdeploy_tenant_project_variable" resource.
+* A tenant common variable sets the value of a variable template defined in a library variable set.
+* When the prompt indicates that the variable template defines an AWS account, the "template" block must have the "display_settings" attribute set to `{ "Octopus.ControlType" = "AmazonWebServicesAccount" }`.
+* Every "octopusdeploy_tenant_common_variable" resource must have a "depends_on" attribute that is an array including the associated "octopusdeploy_tenant_project".
+* You will be penalized for creating a "octopusdeploy_tenant_common_variable" resource without a "depends_on" attribute.
+* The "label" attribute in a "template" block of a "octopusdeploy_library_variable_set" resource must be omitted if it is an empty string.
+* You will be penalized for defining the "label" attribute as an empty string in a "template" block of a "octopusdeploy_library_variable_set" resource.
+
+* You must define the "template_id" property for every "octopusdeploy_tenant_common_variable" resource, for example:
+
+```
+# This is the data source returning existing tenants
+data "octopusdeploy_tenants" "tenant_australian_office" {
+  ids          = null
+  partial_name = "Australian Office"
+  skip         = 0
+  take         = 1
+  project_id   = ""
+  tags         = null
+}
+
+# This is the data source returning existing library variable sets
+data "octopusdeploy_library_variable_sets" "library_variable_set_variables_example_variable_set" {
+  ids          = null
+  partial_name = "Example Variable Set"
+  skip         = 0
+  take         = 1
+}
+
+# This is the library variable set resource
+resource "octopusdeploy_library_variable_set" "library_variable_set_variables_example_variable_set" {
+  count       = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets) != 0 ? 0 : 1}"
+  name        = "Example Variable Set"
+  description = ""
+
+  template {
+    name             = "Common.Variable"
+    label            = "A common variable that must be defined for each tenant"
+    help_text        = "The help text associated with the variable is defined here."
+    default_value    = ""
+    display_settings = { "Octopus.ControlType" = "MultiLineText" }
+  }
+}
+
+# This is the tenant resource
+resource "octopusdeploy_tenant" "tenant_australian_office" {
+  count       = "${length(data.octopusdeploy_tenants.tenant_australian_office.tenants) != 0 ? 0 : 1}"
+  name        = "Australian Office"
+  description = "An example tenant that represents an Australian office"
+  tenant_tags = []
+}
+
+# This is the tenant common variable resource.
+resource "octopusdeploy_tenant_common_variable" "tenantcommonvariable5_australian_office" {
+  count                   = "${length(data.octopusdeploy_tenants.tenant_australian_office.tenants) != 0 ? 0 : 1}"
+  library_variable_set_id = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets) != 0 ? data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets[0].id : octopusdeploy_library_variable_set.library_variable_set_variables_example_variable_set[0].id}"
+  template_id             = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets) != 0 ? data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets[0].template[0].id : octopusdeploy_library_variable_set.library_variable_set_variables_example_variable_set[0].template[0].id}"
+  tenant_id               = "${length(data.octopusdeploy_tenants.tenant_australian_office.tenants) != 0 ? data.octopusdeploy_tenants.tenant_australian_office.tenants[0].id : octopusdeploy_tenant.tenant_australian_office[0].id}"
+  value                   = "Option1"
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_tenant_common_variable" resource with an empty string for the "template_id" attribute.
+* You will be penalized for defining a "octopusdeploy_tenant_common_variable" resource with an empty string for the "library_variable_set_id" attribute.
+* The "library_variable_set_id" property for a "octopusdeploy_tenant_common_variable" resource must be defined.
+* You will be penalized for setting the "library_variable_set_id" property for a "octopusdeploy_tenant_common_variable" resource to an empty string or null.
+
+## Tenant Tag Instructions
+
+* The "tenant_tags" attribute must be an array with strings that looks like "<tag set name>/<tag name>", for example "Cities/Sydney" or "BU/Sales".
+* You will be penalized for defining an item in the "tenant_tags" array as a single string like "Sydney".
+* You will be penalized for defining an item in the "tenant_tags" array like "region:us-east".
+* The "<tag set name>" must match the name of a resource "octopusdeploy_tag_set".
+* The "<tag name>" must match the name of a resource "octopusdeploy_tag".
+* The "tenant_tags" attribute must only be defined in an "octopusdeploy_process_step" block.
+* You will be penalized for creating resources of type "octopusdeploy_project_tenant_tag".
+* For example, if the "tenant_tags" attribute is set to "Cities/Sydney", then the following data "octopusdeploy_tag_sets", resource "octopusdeploy_tag_set" and resource "octopusdeploy_tag" must be included in the output:
+
+```
+# A data resource to find the existing tag set
+# There is a one-to-one relationship between this resource and the data resource
+data "octopusdeploy_tag_sets" "tagset_cities" {
+  ids          = null
+  partial_name = "Cities"
+  skip         = 0
+  take         = 1
+}
+
+# If there is no existing tag set, create one with this resource
+# There is a one-to-one relationship between this resource and the data resource
+resource "octopusdeploy_tag_set" "tagset_cities" {
+  count       = "${length(data.octopusdeploy_tag_sets.tagset_cities.tag_sets) != 0 ? 0 : 1}"
+  name        = "Cities"
+  description = "An example tag set that captures cities"
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# If there is no existing tag set, create the tag with this resource
+# There is a one-to-many relationship between tag sets and tags
+resource "octopusdeploy_tag" "tagset_cities_tag_sydney" {
+  count       = length(try([for item in data.octopusdeploy_tag_sets.tagset_cities.tag_sets[0].tags : item if item.name == "Sydney"], [])) != 0 ? 0 : 1
+  name        = "Sydney"
+  tag_set_id  = "${length(data.octopusdeploy_tag_sets.tagset_cities.tag_sets) != 0 ? data.octopusdeploy_tag_sets.tagset_cities.tag_sets[0].id : octopusdeploy_tag_set.tagset_cities[0].id}"
+  # The colours are random
+  color       = "#333333"
+  description = ""
+}
+
+# If there is no existing tag set, create the tag with this resource
+# There is a one-to-many relationship between tag sets and tags
+resource "octopusdeploy_tag" "tagset_cities_tag_brisbane" {
+  count       = length(try([for item in data.octopusdeploy_tag_sets.tagset_cities.tag_sets[0].tags : item if item.name == "Brisbane"], [])) != 0 ? 0 : 1
+  name        = "Brisbane"
+  tag_set_id  = "${length(data.octopusdeploy_tag_sets.tagset_cities.tag_sets) != 0 ? data.octopusdeploy_tag_sets.tagset_cities.tag_sets[0].id : octopusdeploy_tag_set.tagset_cities[0].id}"
+  # The colours are random
+  color       = "#C5AEEE"
+  description = ""
+}
+```
+
+* The "count" attribute on the resource "octopusdeploy_tag" must be set to `length(try([for item in data.octopusdeploy_tag_sets.<tagset data name>.tag_sets[0].tags : item if item.name == "<tag name>"], [])) != 0 ? 0 : 1`
+* You will be penalized for using a "count" attribute on the resource "octopusdeploy_tag" using underscores in the place of brackets, question marks, and exclamation points like this: `length(try([for item in data.octopusdeploy_tag_sets.<tagset data name>.tag_sets[0].tags : item if item.name == "<tag name>"], []_ _= 0 _ 0 : 1`
+"
+
+## Lifecycle Instructions
+
+* When using a lifecycle other than the "Default Lifecycle", you must include a data "octopusdeploy_lifecycles" and a resource "octopusdeploy_lifecycle", for example:
+
+```
+data "octopusdeploy_lifecycles" "lifecycle_application" {
+  ids          = null
+  partial_name = "Application"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_lifecycle" "lifecycle_application" {
+  count       = "${length(data.octopusdeploy_lifecycles.lifecycle_application.lifecycles) != 0 ? 0 : 1}"
+  name        = "Application"
+  description = "This is an example lifecycle that automatically deploys to the first environment"
+
+  # You must define one or more "phase" blocks
+  phase {
+    # the phase is defined here
+  }
+}
+```
+
+* The resource "octopusdeploy_lifecycle" must have "phase" blocks with environments listed in either the "automatic_deployment_targets" array or the "optional_deployment_targets" array.
+* You must use the "optional_deployment_targets" array over the "automatic_deployment_targets" array unless instructed that the Environment should be deployed to automatically.
+* You will be penalized if you include environments in the "automatic_deployment_targets" array unless otherwise instructed.
+* You will be penalized for defining a lifecycle phase with no environments.
+
+* The `unit` property in a `release_retention_policy` or `tentacle_retention_policy` block in a `phase` block must be set to `Days` or `Items`, for example:
+
+```
+resource "octopusdeploy_lifecycle" "simple_lifecycle" {
+  description = "A test lifecycle"
+  name        = "Simple"
+
+  release_retention_policy {
+    quantity_to_keep    = 1
+    unit                = "Days"
+  }
+
+  tentacle_retention_policy {
+    quantity_to_keep    = 30
+    unit                = "Items"
+  }
+
+  phase {
+    automatic_deployment_targets = []
+    optional_deployment_targets  = [octopusdeploy_environment.development_environment.id]
+    name                         = octopusdeploy_environment.development_environment.name
+
+    release_retention_policy {
+      quantity_to_keep    = 1
+      unit                = "Days"
+    }
+
+    tentacle_retention_policy {
+      quantity_to_keep    = 30
+      unit                = "Items"
+    }
+  }
+```
+
+* You will be penalized for setting the `unit` property in a `release_retention_policy` or `tentacle_retention_policy` block in a `phase` block to `Releases`.
+
+## Variable Template Instructions
+
+* You must set the "default_value" in a "template" block to "null" when there is no default value, for example:
+
+```
+  template {
+    name             = "ConnectionString"
+    label            = "Database Connection String"
+    help_text        = "Provide the connection string for the API Gateway database."
+    default_value    = null
+    display_settings = { "Octopus.ControlType" = "SingleLineText" }
+  }
+```
+
+* You will be penalized for setting the "default_value" to an empty string.
+
+* You must always include the following data source:
+
+```
+data "octopusdeploy_lifecycles" "system_lifecycle_firstlifecycle" {
+  ids          = null
+  partial_name = ""
+  skip         = 0
+  take         = 1
+}
+```
+
+## GitHub Connection Instructions
+
+* You will be penalized for defining a data source of type "octopusdeploy_github_connections".
+
+## Resource and Data Instructions
+
+* When referencing a lifecycle, you must create the "resource" type "octopusdeploy_lifecycle" and the "data" type "octopusdeploy_lifecycles".
+* When referencing a project group, you must create the "resource" type "octopusdeploy_project_group" and the "data" type "octopusdeploy_project_groups".
+* When referencing a feed, you must create the "data" type "octopusdeploy_feeds" and one of the "resource" types:
+  * "octopusdeploy_docker_container_registry"
+  * "octopusdeploy_aws_elastic_container_registry"
+  * "octopusdeploy_maven_feed"
+  * "octopusdeploy_github_repository_feed"
+  * "octopusdeploy_helm_feed"
+  * "octopusdeploy_nuget_feed"
+  * "octopusdeploy_artifactory_generic_feed"
+  * "octopusdeploy_s3_feed"
+* The data "octopusdeploy_feeds" resource must have a "feed_type" attribute set to one of the following:
+  * "AwsElasticContainerRegistry"
+  * "BuiltIn"
+  * "Docker"
+  * "GitHub"
+  * "Helm"
+  * "Maven"
+  * "NuGet"
+  * "S3"
+  * "OciRegistry"
+  * "OctopusProject"
+  * "ArtifactoryGeneric"
+* You will be penalized for setting the "feed_type" attribute to "Git".
+
+## Feed Instructions
+
+* The data "octopusdeploy_feeds" with "type" set to "BuiltIn" must have an empty "partial_name" attribute.
+* You must define the data "octopusdeploy_feeds" "feed_docker_hub" once.
+* You will be penalized for defining the data "octopusdeploy_feeds" "feed_docker_hub" more than once.
+* You must always include a "octopusdeploy_feeds" data source that references the built-in feed, for example:
+
+```
+data "octopusdeploy_feeds" "feed_octopus_server__built_in_" {
+  feed_type    = "BuiltIn"
+  ids          = null
+  partial_name = ""
+  skip         = 0
+  take         = 1
+}
+```
+
+* You will be penalized for not including a "octopusdeploy_feeds" data source that references the built-in feed.
+* The built-in feed always exists and must not be created as a resource.
+
+* The "feed_type" attribute on a "octopusdeploy_feeds" data source must be set to one of the following values:
+  * "AwsElasticContainerRegistry"
+  * "BuiltIn"
+  * "Docker"
+  * "GitHub"
+  * "Helm"
+  * "Maven"
+  * "NuGet"
+  * "S3"
+  * "OciRegistry"
+  * "OctopusProject"
+* If the prompt specifies a "feed_type" that is not in the list, you must define the feed as "NuGet".
+* You will be penalized for setting "feed_type" to "Npm".
+* You will be penalized for setting the "password" property on a "octopusdeploy_docker_container_registry" resource to an empty string.
+* You will be penalized for creating a resource of type resource "octopusdeploy_feed".
+* You will be penalized for creating a resource of type resource "octopusdeploy_generic_artifact_feed".
+* When creating a Maven feed with anonymous authentication, you must set the "username" and "password" attributes to null.
+* When creating a Docker feed with anonymous authentication, you must set the "username" and "password" attributes to null.
+* You will be penalized for setting the "username" and "password" attributes to empty strings when creating a Maven feed with anonymous authentication.
+* You will be penalized for setting the "username" and "password" attributes to empty strings when creating a Docker feed with anonymous authentication.
+* The "is_enhanced_mode" property must only be defined on the "octopusdeploy_nuget_feed" resource.
+* You will be penalized for defining the "is_enhanced_mode" property on a "octopusdeploy_maven_feed" resource.
+* You will be penalized for creating a resource of type "octopusdeploy_builtin_feed"
+* You will be penalized for creating data or resource blocks with unbalanced brackets, for example:
+```
+data "octopusdeploy_feeds" "feed_octopus_server__built_in_" {
+  feed_type    = "BuiltIn"
+  ids          = null
+  partial_name = ""
+  skip         = 0
+  take         = 1
+  # This curly bracket is unbalanced and must be removed
+   }
+}
+
+resource "octopusdeploy_maven_feed" "feed_octopus_maven_feed" {
+  count                                = "${length(data.octopusdeploy_feeds.feed_octopus_maven_feed.feeds) != 0 ? 0 : 1}"
+  name                                 = "Octopus Maven Feed"
+  feed_uri                             = "http://octopus-sales-public-maven-repo.s3-website-ap-southeast-2.amazonaws.com/snapshot"
+  package_acquisition_location_options = ["Server", "ExecutionTarget"]
+  download_attempts                    = 5
+  download_retry_backoff_seconds       = 10
+  # The lifecycle block below has unbalanced brackets. There must be a closing curly bracket after the prevent_destroy attribute and before the closing curly bracket for the resource.
+  lifecycle {
+    ignore_changes  = [password]
+    prevent_destroy = true
+}
+```
+
+## Project Group Instructions
+
+* Only the "Default Project Group" data "octopusdeploy_project_groups" includes a "postcondition" attribute.
+* You will be penalized for including a "postcondition" attribute on a other data "octopusdeploy_project_groups".
+
+## Account Instructions
+
+* The "account_type" field must be one of the following, matching the case exactly:
+  * "AmazonWebServicesAccount"
+  * "AmazonWebServicesRoleAccount"
+  * "AmazonWebServicesOidcAccount"
+  * "AzureServicePrincipal"
+  * "AzureOIDC"
+  * "AzureSubscription"
+  * "GenericOidcAccount"
+  * "GoogleCloudAccount"
+  * "None"
+  * "SshKeyPair"
+  * "Token"
+  * "UsernamePassword"
+* You will be penalized for using an "account_type" of "AzureOidc". It must be "AzureOIDC".
+* You will be penalized for using an "account_type" of "Certificate".
+* Account resources types must be one of the following:
+  * "octopusdeploy_aws_openid_connect_account"
+  * "octopusdeploy_azure_openid_connect"
+  * "octopusdeploy_gcp_account"
+  * "octopusdeploy_azure_service_principal"
+  * "octopusdeploy_ssh_key_account"
+  * "octopusdeploy_token_account"
+  * "octopusdeploy_username_password_account"
+* The "role_arn" property on the resource "octopusdeploy_aws_openid_connect_account" is mandatory.
+* You will be penalized for omitting the "role_arn" property on the resource "octopusdeploy_aws_openid_connect_account".
+* The resource "octopusdeploy_aws_openid_connect_account" must have a "role_arn" property set to "arn:aws:iam::123456789012:role/MyRole"
+* The "azure_environment" attribute for a "octopusdeploy_azure_openid_connect" resource must be set to "AzureCloud" unless specifically instructed otherwise in the prompt.
+* The resource "octopusdeploy_azure_openid_connect" must have a "azure_environment" attribute set to one of:
+  * "AzureCloud"
+  * "AzureChinaCloud"
+  * "AzureGermanCloud"
+  * "AzureUSGovernment"
+* The "application_id" attribute for the resource "octopusdeploy_azure_service_principal" must be set to "00000000-0000-0000-0000-000000000000"
+* The "subscription_id" attribute for the resource "octopusdeploy_azure_service_principal" must be set to "00000000-0000-0000-0000-000000000000"
+* The "tenant_id" attribute for the resource "octopusdeploy_azure_service_principal" must be set to "00000000-0000-0000-0000-000000000000"
+
+## Octopus Runbook Instructions
+
+* The "retention_policy" block can only be defined for a resource "octopusdeploy_runbook".
+* You will be penalized for defining a "octopusdeploy_project_runbook" resource.
+* You will be penalized for defining the "unit" property in a "retention_policy" block in a "octopusdeploy_runbook" resource, for example, this resource "octopusdeploy_runbook" is invalid because it includes the "unit" property in the "retention_policy" block:
+
+```
+resource "octopusdeploy_runbook" "runbook_my_script_app_4_retrieve_logs" {
+    count                       = "${length(data.octopusdeploy_projects.project_my_script_app_4.projects) != 0 ? 0 : 1}"
+    name                        = "${var.runbook_my_script_app_4_retrieve_logs_name}"
+    project_id                  = "${length(data.octopusdeploy_projects.project_my_script_app_4.projects) != 0 ? data.octopusdeploy_projects.project_my_script_app_4.projects[0].id : octopusdeploy_project.project_my_script_app_4[0].id}"
+    environment_scope           = "Unscoped"
+    environments                = []
+    force_package_download      = false
+    default_guided_failure_mode = "EnvironmentDefault"
+    description                 = "Simulate the retrieval of logs"
+    multi_tenancy_mode          = "Untenanted"
+
+    retention_policy {
+      quantity_to_keep    = 1
+      # The unit property is invalid and must not be defined in a retention_policy block for a runbook resource
+      unit                = "Items"
+    }
+
+    connectivity_policy {
+      allow_deployments_to_no_targets = true
+      exclude_unhealthy_targets       = false
+      skip_machine_behavior           = "None"
+      target_roles                    = []
+    }
+}
+```
+
+* You will be penalized for setting both the "should_keep_forever" attribute and defining the "quantity_to_keep" attribute in a "octopusdeploy_runbook" resource.
+* If the "quantity_to_keep" attribute is defined in a "retention_policy" block in a "octopusdeploy_runbook" resource, the "should_keep_forever" attribute must be omitted.
+
+## Octopus Project Instructions
+
+* The "name" attribute in a "octopusdeploy_project" resource can only contain letters, numbers, periods, commas, dashes, underscores, brackets, square brackets, or hashes.
+* The "slug" attribute in a "octopusdeploy_project" resource can only contain lower case letters, numbers, or dashes.
+* You will be penalized for replacing brackets with underscores in the "name" attribute of a "octopusdeploy_project" resource.
+* Retention policies do not apply to resource "octopusdeploy_project".
+* You must ignore any mention of retention policies when building the resource "octopusdeploy_project".
+* You will be penalized for adding a "retention_policy" block to a resource "octopusdeploy_project".
+* You will be penalized for creating "octopusdeploy_project_deployment_settings" resources.
+* You will be penalized for creating "octopusdeploy_project_retention_policy" resources.
+* The "skip_machine_behavior" property can be set to "None" or "SkipUnavailableMachines"
+* If a project name was specified in the prompt, you must use that name for the "name" attribute in the resource "octopusdeploy_project".
+* You must include the "lifecycle_id" attribute for every "octopusdeploy_project" resource.
+* The "is_version_controlled" attribute must always be "false".
+* You will be penalized for setting the "auto_create_release" attribute to "true".
+* The name of the data source much also match the name used when referencing a "project_id" attribute. For example, this data source:
+
+```
+data "octopusdeploy_projects" "project_aws_lambda" {
+	  ids          = null
+	  partial_name = "${var.project_aws_lambda_name}"
+	  skip         = 0
+	  take         = 1
+}
+```
+
+must be referenced in the "project_id" attribute like this:
+
+```
+"${length(data.octopusdeploy_projects.project_aws_lambda.projects) != 0 ? data.octopusdeploy_projects.project_aws_lambda.projects[0].id : octopusdeploy_project.project_aws_lambda[0].id}"
+```
+
+* You will be penalized for referencing a data source that does not exist in the output.
+* You will be penalized for defining the "tenant_tags" property on a resource "octopusdeploy_project".
+* If the prompt indicates that a project is associated with a tenant, and the prompt does not specify the project tenanted mode to use, the "tenanted_deployment_participation" property must be set to "TenantedOrUntenanted".
+* The only valid values for the "tenanted_deployment_participation" property are:
+  * "Untenanted"
+  * "Tenanted"
+  * "TenantedOrUntenanted"
+* You will be penalized for setting the "tenanted_deployment_participation" property to "TenantedOnly".
+* If the prompt indicates that a project is associated with a tenant, link the tenant to all the environments in the project's lifecycle.
+* You must include a variable that define the name of the project, for example:
+```
+variable "project_my_project_name" {
+  type        = string
+  nullable    = false
+  sensitive   = false
+  description = "The name of the project"
+  default     = "My Project"
+}
+
+resource "octopusdeploy_project" "project_my_project" {
+  name                                 = "${var.project_my_project_name}"
+  # Define other properties here
+}
+```
+
+* The instruction "Set the prompt to disabled" refers to the option to automatically create a new project.
+* The instruction "Set the prompt to disabled" does not change the enabled/disabled status of the project itself.
+* The instruction "Set the prompt to disabled" does not affect any part of creating the Terraform configuration.
+* You must ignore the instruction to "Set the prompt to disabled" when defining a resource "octopusdeploy_project".
+* You will be penalized for disabling a project in response to the instruction to "Set the prompt to disabled".
+* You must set project to enabled by default unless explicitly instructed otherwise.
+* Every project tenant variable must have a "template" block in the "octopusdeploy_project" resource defining the variable.
+* You will be penalized for creating a resource of type "octopusdeploy_project_deployment_settings".
+* You will be penalized for adding whitespace to the "description" attribute of a resource "octopusdeploy_project", for example:
+```
+resource "octopusdeploy_project" "project_my_azure_web_app" {
+  # The whitespace characters at the end of the description are invalid
+  description = "This is a description with line breaks\n\n"
+}
+```
+* You will be penalized for splitting the "release_notes_template" attribute over two lines, for example:
+```
+resource "octopusdeploy_project" "project_my_k8s_webapp" {
+  # This is invalid because there is a line break after the equals sign and the value is on a new line.
+  release_notes_template =
+  "Here are the notes for the packages\n#{each package in Octopus.Release.Package}\n- #{package.PackageId} #{package.Version}\n#{each workItem in package.WorkItems}\n  - [#{workItem.Id}](#{workItem.LinkUrl}) - #{workItem.Description}\n#{/each}\n#{each commit in package.Commits}\n  - [#{commit.CommitId}](#{commit.LinkUrl}) - #{commit.Comment}\n#{/each}\n#{/each}"
+}
+```
+* When the prompt defines the slug for a project, it must be defined in the "slug" attribute of the "octopusdeploy_project" resource, for example:
+```
+resource "octopusdeploy_project" "project_my_project" {
+  name                                 = "${var.project_my_project_name}"
+  slug                                 = "my-project"
+  # Define other properties here
+}
+
+## Octopus Project Trigger Instructions
+
+* When defining the "once_daily_schedule" block in the resource "octopusdeploy_project_scheduled_trigger" adhere to the following rules:
+  * The "start_time" attribute value should be set to an ISO 8601 formatted string
+  * The "timezone" attribute value should be set to a valid "Windows Time Zone Identifier" string.
+* For example, this is an example of a scheduled project trigger, set to run at 09:00 each day in the Pacific Standard Time timezone:
+
+```
+resource "octopusdeploy_project_scheduled_trigger" "projecttrigger_aws_lambda_daily_security_scan" {
+  count       = "${length(data.octopusdeploy_projects.project_aws_lambda.projects) != 0 ? 0 : 1}"
+  space_id    = "${trimspace(var.octopus_space_id)}"
+  name        = "Daily Security Scan"
+  description = "This trigger reruns the deployment in the Security environment. This means any new vulnerabilities detected after a production deployment will be identified."
+  timezone    = "Pacific Standard Time"
+  is_disabled = false
+  project_id  = "${length(data.octopusdeploy_projects.project_aws_lambda.projects) != 0 ? data.octopusdeploy_projects.project_aws_lambda.projects[0].id : octopusdeploy_project.project_aws_lambda[0].id}"
+  tenant_ids  = []
+
+  once_daily_schedule {
+    start_time   = "2025-05-08T09:00:00"
+    days_of_week = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+  }
+
+  deploy_latest_release_action {
+    source_environment_id      = "${length(data.octopusdeploy_environments.environment_security.environments) != 0 ? data.octopusdeploy_environments.environment_security.environments[0].id : octopusdeploy_environment.environment_security[0].id}"
+    destination_environment_id = "${length(data.octopusdeploy_environments.environment_security.environments) != 0 ? data.octopusdeploy_environments.environment_security.environments[0].id : octopusdeploy_environment.environment_security[0].id}"
+    should_redeploy            = true
+  }
+}
+```
+
+* You will be penalized for providing an attribute value for "timezone" that isn't a valid "Windows Time Zone Identifier".
+* You will be penalized for providing an empty "project_id" attribute on a trigger.
+
+* The "deployment_action_slug" property in the "package" block of the "octopusdeploy_external_feed_create_release_trigger" resource must be set to the slug of a deployment action in the associated project, for example:
+
+```
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_every_step_project_external_feed_trigger" {
+  count      = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? 0 : 1}"
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? data.octopusdeploy_projects.project_every_step_project.projects[0].id : octopusdeploy_project.project_every_step_project[0].id}"
+  name       = "External Feed Trigger"
+  channel_id = "${length(data.octopusdeploy_channels.channel_frontend_application.channels) != 0 ? data.octopusdeploy_channels.channel_frontend_application.channels[0].id : octopusdeploy_channel.channel_frontend_application[0].id}"
+
+  package {
+    deployment_action_slug = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? null : octopusdeploy_process_step.process_step_every_step_project_run_a_script[0].slug}"
+    package_reference      = "mypackage"
+  }
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_every_step_project]
+}
+```
+
+* If the prompt specifies that a external feed trigger is to be created, and does not specify that a channel is to be created, you must create a channel called "Application" and link that channel to the external feed trigger.
+* You will be penalized for setting the "channel_id" attribute to a fixed value like "Channels-1".
+* The "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must have a "deployment_action_slug" property that references a deployment action in the associated project.
+* You will be penalized for setting the "deployment_action_slug" property in the "package" block of a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string or null when the step it references has no primary package.
+* The "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must have an empty string when referencing the "primary_package" of a step.
+* The "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must be the name of a key in the "packages" block of the referenced step if referencing a named package. For example:
+
+```
+resource "octopusdeploy_process_step" "process_step" {
+  name          = "Run a script"
+  process_id    = "octopusdeploy_process.process_octopub.id"
+  packages      = {
+    # webapp is a named package
+    webapp = {
+        acquisition_location = "Server",
+        feed_id = "octopusdeploy_maven_feed.feed_octopus_maven_feed.id",
+        id = null,
+        package_id = "MyPackage",
+        properties = { Extract = "True", Purpose = "", SelectionMode = "immediate" }
+    }
+  }
+}
+
+resource "octopusdeploy_process" "process_octopub" {
+  project_id = "octopusdeploy_project.my_project.id}"
+}
+
+resource "octopusdeploy_external_feed_create_release_trigger" "project_trigger" {
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "octopusdeploy_project.my_project.id}"
+  name       = "Second External Feed Trigger"
+  channel_id = "octopusdeploy_channel.application.id}"
+
+  package {
+    deployment_action_slug = "run-a-script"
+    # The package_reference must match the key "webapp" from the "packages" block in the octopusdeploy_process_step resource because there is no primary package
+    package_reference      = "webapp"
+  }
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_every_step_project]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* You will be penalized for setting the "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string when the referenced step has no "primary_package" defined.
+* You will be penalized for setting the "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string when the referenced step is of type "Octopus.KubernetesDeployRawYaml", as this step has no primary package.
+* You will be penalized for creating resources of type "octopusdeploy_project_automatic_release_trigger".
+* When creating a "octopusdeploy_external_feed_create_release_trigger" resource, but none of the project's steps define a "primary_package" or "packages" block, do not define the "package" block in the "octopusdeploy_external_feed_create_release_trigger" resource. This creates a placeholder trigger.
+
+## Tenant Variable Instructions
+
+* If the prompt specified that "octopusdeploy_tenant_project_variable" tenant variables are to be assigned to tenants, and does not specify which environment to define the variable for, you must define the tenant variable for all environments that the tenant is connected to.
+* You will be penalized for setting the "environment_id" property on a "octopusdeploy_tenant_project_variable" resource to "null" or an empty string.
+* You will be penalized for setting the "template_id" property on a "octopusdeploy_tenant_project_variable" resource to "null" or an empty string.
+* The "template_id" property on a "octopusdeploy_tenant_project_variable" resource must be set to a value like "${length(data.octopusdeploy_projects.<project name>.projects) != 0 ? null : octopusdeploy_project.<project name>[0].template[0].id}"
+
+## Environment Instructions
+
+* You will be penalized for defining the "use_guided_infrastructure" property on a resource "octopusdeploy_environment". This property is not valid for any environment and must not be included in any environment resource.
+
+## Octopus Project Channel Instructions
+
+* Channels defined as resource "octopusdeploy_channel" have the following required properties:
+    * "name"
+    * "project_id"
+* Channels can also have a number of optional properties:
+    * A "description"
+    * An "is_default" property that indicates whether this channel is the default resource. It should be set to "false" unless otherwise specified.
+    * A "lifecycle_id"
+    * A "rule" block is an optional nested block used to define package versioning rules per deployment step or package.
+    * A "space_id"
+    * A "tenant_tags" property is a list of strings, used to associate a channel with specific tenant tags
+* A project can have multiple "octopusdeploy_channel" resources.
+* The "count" attribute for the "octopusdeploy_channel" resource must be set to "${length(data.octopusdeploy_projects.<name>.projects) != 0 ? 0 : 1}" where "<name>" is the name of a data source "octopusdeploy_projects" that matches the name of the project that the channel is associated with.
+* Every "octopusdeploy_channel" resource must have an associated "octopusdeploy_channels" data source, for example:
+```
+data "octopusdeploy_channels" "application" {
+  ids          = []
+  partial_name = "Application"
+  project_id   = "${length(data.octopusdeploy_projects.project_my_argo_cd_webapp.projects) != 0 ? data.octopusdeploy_projects.project_my_argo_cd_webapp.projects[0].id : octopusdeploy_project.project_my_argo_cd_webapp[0].id}"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_channel" "application" {
+  # It is important that the "count" attribute references the "octopusdeploy_projects" data source and not the "octopusdeploy_channels" data source.
+  count         = "${length(data.octopusdeploy_projects.project_my_argo_cd_webapp.projects) != 0 ? 0 : 1}"
+  name          = "Application"
+  project_id    = "${length(data.octopusdeploy_projects.project_my_argo_cd_webapp.projects) != 0 ? data.octopusdeploy_projects.project_my_argo_cd_webapp.projects[0].id : octopusdeploy_project.project_my_argo_cd_webapp[0].id}"
+  is_default    = true
+  lifecycle_id  = "${length(data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_devsecops[0].id}"
+  space_id      = "${trimspace(var.octopus_space_id)}"
+}
+```
+
+
+* You will be penalized for defining a "octopusdeploy_channel" resource without an associated "octopusdeploy_channels" data source.
+* You will be penalized for having the "count" attribute for the "octopusdeploy_channel" resource reference a "octopusdeploy_channels" data source, for example:
+
+```
+resource "octopusdeploy_channel" "channel_my_blue_green_app_hotfixing_hotfix" {
+    # This is invalid - it must not reference a data source "octopusdeploy_channels"
+    count       = "${length(data.octopusdeploy_channels.channel_my_blue_green_app_hot_fix.channels) != 0 ? 0 : 1}"
+}
+```
+
+* You will be penalized for referencing a data source "octopusdeploy_projects" that does not exist in the output.
+* You will be penalized for creating a "octopusdeploy_project_channel" resource to represent a channel.
+* Here is an example of a channel resource without a "rule" block:
+
+```
+data "octopusdeploy_projects" "project_lambda_hotfixing" {
+  ids          = null
+  partial_name = "Lambda Hotfixing"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
+  count         = "${length(data.octopusdeploy_projects.project_lambda_hotfixing.projects) != 0 ? 0 : 1}"
+  name          = "Hotfix"
+  project_id    = "${length(data.octopusdeploy_projects.project_lambda_hotfixing.projects) != 0 ? data.octopusdeploy_projects.project_lambda_hotfixing.projects[0].id : octopusdeploy_project.project_lambda_hotfixing[0].id}"
+  description   = "Hotfix channel for Lambda hotfixing"
+  is_default    = false
+  lifecycle_id  = "${length(data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_lambda_hotfix[0].id}"
+  space_id      = "${trimspace(var.octopus_space_id)}"
+}
+```
+
+Here is an example of a channel resource with a "rule" block that applies when the release version matches the tag hotfix (using the regex ^hotfix$), and it targets specific deployment actions (steps):
+
+```
+data "octopusdeploy_projects" "project_lambda_hotfixing" {
+  ids          = null
+  partial_name = "Lambda Hotfixing"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
+  count         = "${length(data.octopusdeploy_projects.project_lambda_hotfixing.projects) != 0 ? 0 : 1}"
+  name          = "Hotfix"
+  project_id    = "${length(data.octopusdeploy_projects.project_lambda_hotfixing.projects) != 0 ? data.octopusdeploy_projects.project_lambda_hotfixing.projects[0].id : octopusdeploy_project.project_lambda_hotfixing[0].id}"
+  description   = "Hotfix channel for Lambda hotfixing"
+  is_default    = false
+  lifecycle_id  = "${length(data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_lambda_hotfix[0].id}"
+  space_id      = "${trimspace(var.octopus_space_id)}"
+  rule {
+        action_package {
+          deployment_action = "deploy-database-changes"
+        }
+        action_package {
+          deployment_action = "deploy-rate-service"
+        }
+        action_package {
+          deployment_action = "deploy-trading-site"
+        }
+        tag           = "^hotfix$"
+        version_range = ""
+    }
+}
+```
+
+## Octopus Global Deployment Freeze Instructions
+
+* You will be penalized for adding the "description" property to the "octopusdeploy_deployment_freeze" resource.
+* You will be penalized for adding the "space_id" property to the "octopusdeploy_deployment_freeze" resource.
+* The "end" property of the "octopusdeploy_deployment_freeze" resource must be in the future.
+
+## Octopus Deployment Process Instructions
+
+* You must consider the attributes in the "execution_properties" block and the "properties" block of the example steps to be mandatory, unless otherwise specified (the properties on script steps that define inline scripts or those sourced from packages is an example where example properties should not be considered mandatory).
+* Every "octopusdeploy_project" resource must have an associated "octopusdeploy_process" resource.
+* Every "octopusdeploy_process" resource must have an associated "octopusdeploy_process_steps_order" resource.
+* Every "octopusdeploy_process_steps_order" resource must have an associated "octopusdeploy_process_step" resource.
+* You will be penalized for not defining steps for a project or runbook.
+* Steps are defined in the "octopusdeploy_process_step" and "octopusdeploy_process_child_step" resources.
+* The order of the steps are defined in the "octopusdeploy_process_steps_order" resource.
+* The order of child steps are defined in the "octopusdeploy_process_child_steps_order" resource.
+* You will be penalized for using asterisks, for example "*****", as placeholders in step properties.
+* The "Octopus.Step.ConditionVariableExpression" property can only be defined in the "properties" block.
+* You will be penalized for defining the "Octopus.Step.ConditionVariableExpression" property in the "execution_properties" block.
+* The "condition" attribute on an "octopusdeploy_process_step" block must be set to one of the following:
+  * "Always"
+  * "Failure"
+  * "Success"
+  * "Variable"
+* If the prompt specifies a condition that is not in the list above, you must set the "condition" attribute to "Success".
+* When the "condition"attribute is set to "Variable", the "properties" block must include the "Octopus.Step.ConditionVariableExpression" property.
+* You will be penalized for setting the "condition" attribute to "Variable" without defining the "Octopus.Step.ConditionVariableExpression" property in the "properties" block.
+* Adding a step requires a new "octopusdeploy_process_step" resource to be defined and then added to the "octopusdeploy_process_steps_order" resource in the "steps" array. For example, if this is the initial set of steps:
+
+```
+data "octopusdeploy_projects" "project_azure_web_app" {
+  ids          = null
+  partial_name = "My Project"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_project" "project_azure_web_app" {
+  count                                = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                                 = "My Project"
+  # ...
+}
+
+resource "octopusdeploy_process" "process_azure_web_app" {
+  count      = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? data.octopusdeploy_projects.project_azure_web_app.projects[0].id : octopusdeploy_project.project_azure_web_app[0].id}"
+  depends_on = []
+}
+
+resource "octopusdeploy_process_steps_order" "process_step_order_azure_web_app" {
+  count      = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  process_id = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process.process_azure_web_app[0].id}"
+  steps      = ["${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process_step.process_step_azure_web_app_validate_setup[0].id}"]
+}
+
+resource "octopusdeploy_process_step" "process_step_azure_web_app_validate_setup" {
+  count                 = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                  = "Validate setup"
+  # ...
+}
+```
+
+Then adding a new step called "Deploy an Azure Web App (Web Deploy)" would require the following changes:
+
+```
+data "octopusdeploy_projects" "project_azure_web_app" {
+  ids          = null
+  partial_name = "My Project"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_project" "project_azure_web_app" {
+  count                                = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                                 = "My Project"
+  # ...
+}
+
+resource "octopusdeploy_process" "process_azure_web_app" {
+  count      = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? data.octopusdeploy_projects.project_azure_web_app.projects[0].id : octopusdeploy_project.project_azure_web_app[0].id}"
+  depends_on = []
+}
+
+resource "octopusdeploy_process_steps_order" "process_step_order_azure_web_app" {
+  count      = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  process_id = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process.process_azure_web_app[0].id}"
+  # The new step is added to the steps array
+  steps      = [
+  "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process_step.process_step_azure_web_app_validate_setup[0].id}",
+  "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process_step.process_step_azure_web_app_deploy_web_app[0].id}"
+  ]
+}
+
+resource "octopusdeploy_process_step" "process_step_azure_web_app_validate_setup" {
+  count                 = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                  = "Validate setup"
+  # ...
+}
+
+# This is the new step being added
+resource "octopusdeploy_process_step" "process_step_azure_web_app_deploy_web_app" {
+  count                 = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                  = "Deploy Web App (Web Deploy)"
+  # ...
+}
+```
+
+* The "name" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource can only contain letters, numbers, periods, commas, dashes, underscores or hashes.
+* The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource can only contain lower case letters, numbers, or dashes.
+* You will be penalized for using asterisks, for example "*****", as placeholders in the "slug" or "name" attributes.
+* You must set the "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource to a value like "step-name" derived from the "name" attribute by converting all letters to lowercase and replacing spaces with dashes.
+* The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
+* The "name" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
+* You must include all the "octopusdeploy_process_step" resources referenced in the "octopusdeploy_process_steps_order" resource "steps" array, for example:
+
+```
+data "octopusdeploy_projects" "project_my_app" {
+  ids          = null
+  partial_name = "My App"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_process_steps_order" "process_step_order_azure_function" {
+  count  = "${length(data.octopusdeploy_projects.project_my_app.projects) != 0 ? 0 : 1}"
+  steps  = ["${length(data.octopusdeploy_projects.project_my_app.projects) != 0 ? null : octopusdeploy_process_step.process_step_deploy_app[0].id}"]
+  # ...
+}
+
+resource "octopusdeploy_process_step" "process_step_deploy_app" {
+  count  = "${length(data.octopusdeploy_projects.project_my_app.projects) != 0 ? 0 : 1}"
+  # ...
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource with a duplicate "slug" attribute within the same project, for example, the following is invalid because the "slug" attribute is duplicated:
+
+```
+resource "octopusdeploy_process_step" "step1" {
+    slug = "step1"
+}
+
+resource "octopusdeploy_process_step" "step2" {
+    slug = "step2"
+}
+
+resource "octopusdeploy_process_step" "step3" {
+    slug = "step1"
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource with a duplicate "name" attribute within the same project, for example, the following is invalid because the "name" attribute is duplicated:
+
+```
+resource "octopusdeploy_process_step" "step1" {
+    name = "step1"
+}
+
+resource "octopusdeploy_process_step" "step2" {
+    name = "step2"
+}
+
+resource "octopusdeploy_process_step" "step3" {
+    name = "step1"
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource with a "name" attribute that contains any characters other than letters, numbers, periods, commas, dashes, underscores or hashes.
+* You will be penalized for defining a "name" attribute with the characters "/" and "\".
+* Target tags must only be defined in the "Octopus.Action.TargetRoles" properties on a "octopusdeploy_process_step", for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_every_step_project_deploy_an_azure_web_app__web_deploy_" {
+  count                 = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? 0 : 1}"
+  name                  = "Deploy an Azure Web App (Web Deploy)"
+  type                  = "Octopus.AzureWebApp"
+  process_id            = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? null : octopusdeploy_process.process_every_step_project[0].id}"
+  channels              = null
+  condition             = "Success"
+  environments          = null
+  excluded_environments = null
+  notes                 = "Note the Octopus.Action.TargetRoles key in the properties attribute which defines the target tags."
+  primary_package       = { acquisition_location = "Server", feed_id = "${data.octopusdeploy_feeds.feed_octopus_server__built_in_.feeds[0].id}", id = null, package_id = "WebAppPackage", properties = { SelectionMode = "immediate" } }
+  package_requirement   = "LetOctopusDecide"
+  start_trigger         = "StartAfterPrevious"
+  tenant_tags           = null
+  properties            = {
+        "Octopus.Action.TargetRoles" = "AzureWebApp"
+      }
+  execution_properties  = {
+        "Octopus.Action.RunOnServer" = "true"
+        "OctopusUseBundledTooling" = "False"
+        "Octopus.Action.Azure.UseChecksum" = "False"
+      }
+}
+```
+
+* You will be penalized for using target tags with the format "name=value" in the "target_roles" attribute.
+* You will be penalized for adding the "target_roles" attribute on an "action".
+* You will be penalized for adding the "excluded_environments" attribute on a "step".
+* You will be penalized for adding target tags to the "tenant_tags" attribute.
+* When the "Octopus.Action.Script.ScriptSource" property is set to "Package", the "Octopus.Action.Script.Syntax" and "Octopus.Action.Script.ScriptBody" property must not be defined, for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_every_step_project_run_a_script_from_a_package" {
+  name                  = "Run a Script from a package"
+  # The primary_package block is defined because the execution_properties "Octopus.Action.Script.ScriptSource" attribute is set to "Package"
+  primary_package       = {
+    acquisition_location = "Server"
+    feed_id = "${data.octopusdeploy_feeds.feed_octopus_server__built_in_.feeds[0].id}"
+    id = null
+    package_id = "${var.project_every_step_project_step_run_a_script_from_a_package_packageid}"
+    properties = {
+        SelectionMode = "immediate"
+    }
+  }
+  execution_properties  = {
+        "OctopusUseBundledTooling" = "False"
+        "Octopus.Action.RunOnServer" = "true"
+        "Octopus.Action.Script.ScriptSource" = "Package"
+        "Octopus.Action.Script.ScriptFileName" = "MyScript.ps1"
+      }
+}
+```
+
+* You will be penalized for using the "Octopus.Action.Script.Syntax" or "Octopus.Action.Script.ScriptBody" property when the "Octopus.Action.Script.ScriptSource" property is set to "Package".
+* When the "execution_properties" "Octopus.Action.Script.ScriptSource" property is set to "Inline", the "primary_package" property must not be defined in a "octopusdeploy_process_step" resource, for example:
+
+```
+resource "octopusdeploy_process_step" "my_step" {
+    name = "Open Firewall Port"
+    # There is no primary_package block because the "Octopus.Action.Script.ScriptSource" is set to "Inline"
+    execution_properties = {
+        "Octopus.Action.Azure.AccountId" = "aws-account"
+        "Octopus.Action.Script.ScriptBody" = "echo 'hi'"
+        "Octopus.Action.Script.ScriptSource" = "Inline"
+        "Octopus.Action.Script.Syntax" = "Bash"
+        "OctopusUseBundledTooling" = "False"
+    }
+}
+```
+
+* You will be penalized for using the "primary_package" property when the "Octopus.Action.Script.ScriptSource" property is set to "Inline".
+* If the prompt specifies an inline script as well as a script from a package, you must:
+    * Ignore the package
+    * Not define a "primary_package" block
+    * Only define the inline script in the "Octopus.Action.Script.ScriptBody" property in the "execution_properties" block
+    * Set the "Octopus.Action.Script.ScriptSource" property to "Inline" in the "execution_properties" block
+    * Exclude the "Octopus.Action.Script.Syntax" property in the "execution_properties" block
+
+* You will be penalized for defining a script step with no script.
+* Steps of type "Octopus.AzureAppService" must have at least one item in the "target_roles" attribute.
+* Steps of type "Octopus.AwsUploadS3" must have a "Octopus.Action.AwsAccount.Variable" property in the "execution_properties" block.
+* Steps of the following types must have a "primary_package" block:
+   * "Octopus.IIS"
+   * "Octopus.AzureWebApp"
+   * "Octopus.TentaclePackage"
+   * "Octopus.WindowsService"
+   * "Octopus.AwsUploadS3"
+   * "Octopus.JavaArchive"
+   * "Octopus.HelmChartUpgrade"
+   * "Octopus.AzureAppService"
+* You will be penalized for defining a "packages" block in steps with the types:
+   * "Octopus.IIS"
+   * "Octopus.AzureWebApp"
+   * "Octopus.TentaclePackage"
+   * "Octopus.WindowsService"
+   * "Octopus.AwsUploadS3"
+   * "Octopus.JavaArchive"
+   * "Octopus.HelmChartUpgrade"
+   * "Octopus.AzureAppService"
+* The step of type "Octopus.HelmChartUpgrade" must define a property "Octopus.Action.Helm.ClientVersion" with the value of "V3".
+* You will be penalized for adding the property "Octopus.Action.Azure.AccountId" to steps of type "Octopus.AzureWebApp".
+* You will be penalized for defining a "version" attribute on the "primary_package" block.
+* The "start_trigger" attribute must only be defined once.
+* You will be penalized for defining an empty "properties" block, for example "properties = {}".
+* You will be penalized for defining a "properties_additional" block.
+* You will be penalized for defining multiple "features" attributes.
+* You must include the "container" nested child block if one exists for a "octopusdeploy_process_step" resource in the sample Terraform configurations.
+* The "container" property is used to define the step's "Container Image".
+* Instructions that reference a step's "Container Image" result in the "container" property being defined or edited.
+* The "container" property has the following required properties:
+    * "feed_id"
+    * "image"
+* For example here is an example "container" property for a "octopusdeploy_process_step":
+```
+{
+    feed_id = "${length(data.octopusdeploy_feeds.feed_docker_hub.feeds) != 0 ? data.octopusdeploy_feeds.feed_docker_hub.feeds[0].id : octopusdeploy_docker_container_registry.feed_docker_hub[0].id}",
+    image = "octopuslabs/aws-workertools"
+}
+```
+* You will be penalized for editing the "packages" block with a prompt that includes details concerning a "Container Image".
+* For example, if the prompt asks to set the "Container Image" to "octopuslabs/k8s-workertools", and the sample Terraform defines a step with a package of "nginx", you must edit the "container" property with the specific image, while leaving the "packages" blocks unmodified:
+```
+resource "octopusdeploy_process_step" "deploy_k8s_yaml" {
+  # The prompt asks to set the Container Image to "octopuslabs/k8s-workertools"
+  container = {
+    feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+    image = "ghcr.io/octopusdeploylabs/k8s-workertools"
+  }
+  # The packages do not change, so we keep the existing package definition
+  packages = {
+      nginx = {
+          acquisition_location = "NotAcquired"
+          feed_id = "${length(data.octopusdeploy_feeds.docker.feeds) != 0 ? data.octopusdeploy_feeds.docker.feeds[0].id : octopusdeploy_docker_container_registry.docker[0].id}"
+          id = null
+          package_id = "nginx"
+          properties = { Extract = "False", Purpose = "DockerImageReference", SelectionMode = "immediate" }
+      }
+  }
+}
+```
+* The "container" property must have an equals sign "=" after the property name, for example:
+```
+container = {
+    # map properties here
+}
+```
+* You will be penalized for not including the "container" property if one exists in the sample Terraform configurations.
+* Steps with actions of the following types must have at least one role defined in the "target_roles" array:
+   * "Octopus.AzureWebApp"
+   * "Octopus.KubernetesDeployRawYaml"
+* The "Octopus.Action.DeployRelease.ProjectId" property for a step of type "Octopus.DeployRelease" must reference the project ID of a project from a data "octopusdeploy_projects", for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_orchestrator_project_deploy_a_release" {
+  type                  = "Octopus.DeployRelease"
+  execution_properties  = {
+    "Octopus.Action.DeployRelease.ProjectId" = "${data.octopusdeploy_projects.project_child_project.projects[0].id}"
+    ...
+  }
+  ...
+}
+```
+
+* You will be penalized for defining a step of type "Octopus.DeployRelease" with a string like "Projects-#" for the "Octopus.Action.DeployRelease.ProjectId" execution property.
+* You will be penalized for setting the "container" property on a step when the "Octopus.Action.RunOnServer" property is set to "false".
+* Steps of type "Octopus.AwsRunScript" must have the "Octopus.Action.Aws.Region" execution_property defined, for example:
+
+```
+resource "octopusdeploy_process_step" "aws_script_step" {
+  type                  = "Octopus.AwsRunScript"
+  execution_properties  = {
+    # The "Octopus.Action.Aws.Region" must be defined
+    "Octopus.Action.Aws.Region" = "us-east-1"
+  }
+}
+```
+
+* Steps of type "Octopus.AzureResourceGroup" and "Octopus.AzurePowerShell" must have the "Octopus.Action.Azure.AccountId" property in the execution_properties defined, for example:
+
+```
+resource "octopusdeploy_process_step" "azure_resource_group" {
+  type                  = "Octopus.AzureResourceGroup"
+  execution_properties  = {
+        "Octopus.Action.Azure.AccountId" = "${length(data.octopusdeploy_accounts.account_azure.accounts) != 0 ? data.octopusdeploy_accounts.account_azure.accounts[0].id : octopusdeploy_azure_openid_connect.account_azure[0].id}"
+      }
+}
+```
+
+* If no Azure account has been specified in the prompt, and a step of type "Octopus.AzureResourceGroup" or "Octopus.AzurePowerShell" is created, you must create an account of type "octopusdeploy_azure_openid_connect" with default settings and assign it to the "Octopus.Action.Azure.AccountId" property in the execution_properties.
+
+* You will be penalized for defining a "Octopus.Action.Azure.AccountId" execution property with an empty string.
+
+* You will be penalized for defining a "primary_package" block when the "Octopus.Action.Script.ScriptSource" execution property is set to "Inline".
+
+* Steps of type "Octopus.Script" must have the "OctopusUseBundledTooling" execution_properties defined, for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_child_project_run_a_script" {
+  type                  = "Octopus.Script"
+  execution_properties  = {
+        "OctopusUseBundledTooling" = "False"
+      }
+}
+```
+
+* Orchestration or orcestrator projects contain steps of type "Octopus.DeployRelease" that deploy a child project.
+* Each "Octopus.DeployRelease" step must have a "Octopus.Action.DeployRelease.ProjectId" execution property and a "primary_package" with the "package_id" set to the child project ID.
+* The ID of the child project can be obtained from a data "octopusdeploy_projects" data source.
+* The following is an example of a "Octopus.DeployRelease" step that references a data "octopusdeploy_projects" data source for the child project ID and a data "octopusdeploy_feeds" data source for the feed ID:
+
+```
+# This data source is used to find an existing parent project by its name.
+data "octopusdeploy_projects" "project_every_step_project" {
+  ids          = null
+  partial_name = "Orchestrator Project"
+  skip         = 0
+  take         = 1
+}
+
+# This data source find the built-in Octopus Server Releases feed.
+data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_" {
+  feed_type    = "OctopusProject"
+  ids          = null
+  partial_name = "Octopus Server Releases"
+  skip         = 0
+  take         = 1
+}
+
+# This data source is used to find an existing child project by its name.
+data "octopusdeploy_projects" "project_every_step_project" {
+  ids          = null
+  # Replace this attribute with the name of the project you want to deploy
+  partial_name = "Child project name"
+  skip         = 0
+  take         = 1
+}
+
+# This resource creates a step that deploys the child project.
+resource "octopusdeploy_process_step" "process_step_every_step_project_deploy_a_release" {
+  count                 = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? 0 : 1}"
+  name                  = "Deploy a Release"
+  type                  = "Octopus.DeployRelease"
+  process_id            = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? null : octopusdeploy_process.process_every_step_project[0].id}"
+  channels              = null
+  condition             = "Success"
+  environments          = null
+  excluded_environments = null
+  notes                 = "This step is used to deploy a release of a child project."
+  package_requirement   = "LetOctopusDecide"
+  primary_package       = {
+    acquisition_location = "NotAcquired",
+    # The feed_id is set to the built-in Octopus Server Releases feed found in the data source
+    feed_id = "${data.octopusdeploy_feeds.feed_octopus_server_releases__built_in_.feeds[0].id}",
+    id = null,
+    # The package_id is set to the child project ID found via the data source
+    package_id = "${data.octopusdeploy_projects.project_child_project.projects[0].id}",
+    properties = null
+  }
+  slug                  = "deploy-a-release"
+  start_trigger         = "StartAfterPrevious"
+  tenant_tags           = null
+  properties            = {
+      }
+  execution_properties  = {
+        "Octopus.Action.RunOnServer" = "true"
+        "Octopus.Action.DeployRelease.DeploymentCondition" = "Always"
+        # The "Octopus.Action.DeployRelease.ProjectId" property is set to the child project ID found via the data source
+        "Octopus.Action.DeployRelease.ProjectId" = "${data.octopusdeploy_projects.project_child_project.projects[0].id}"
+      }
+}
+```
+
+* The "Octopus.Action.DeployRelease.ProjectId" and "package_id" properties must reference only a data source.
+* You will be penalized for setting the "Octopus.Action.DeployRelease.ProjectId" or "package_id" property to something like `"${length(data.octopusdeploy_projects.project_reporting_microservice.projects) != 0 ? data.octopusdeploy_projects.project_reporting_microservice.projects[0].id : octopusdeploy_project.project_reporting_microservice[0].id}"`
+* You will be penalized for setting the "Octopus.Action.DeployRelease.ProjectId" property to a fixed value like "Projects-8916", "Projects-8915", and "Projects-8917".
+* You will be penalized for setting the "feed_id" attribute in the "primary_package" block to a fixed value like "Feeds-5936", "Feeds-5678", and "Feeds-91011".
+* You must not recreate the following, as these resources and data sources are only used to demonstrate the orchestration project step:
+    * data "octopusdeploy_projects" "project_child_project"
+    * resource "octopusdeploy_project" "project_child_project"
+* You must always include the `data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_"` data source.
+* The "feed_id" attribute in the "primary_package" block of a step of type "Octopus.DeployRelease" must always be set to the built-in Octopus Server Releases feed found in the `data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_"` data source.
+* The template path for a cloud formation step must be defined in the "Octopus.Action.Aws.CloudFormationTemplate" property in the "execution_properties" block.
+* You must only define attributes on "execution_properties" and "properties" blocks that appear in the supplied examples.
+* You will be penalized for defining attributes in the "execution_properties" and "properties" blocks that do not exist in the examples.
+* You will be penalized for defining properties that start with "Octopus.Action.Aws.CloudFormation" that do not exist in the examples.
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.Template".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.TemplateFile".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.TagsEnabled".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.StackName".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Manual.ResponsibleUserIds".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Manual.Roles".
+* You will be penalized for defining the Octopus.Action.Manual.ResponsibleTeamIds" property as an empty string, for example:
+```
+resource "octopusdeploy_process_step" "process_step_my_azure_web_app_5_manual_intervention" {
+  execution_properties  = {
+    # An empty string is not a valid value for the "Octopus.Action.Manual.ResponsibleTeamIds" property
+    "Octopus.Action.Manual.ResponsibleTeamIds"         = ""
+  }
+}
+```
+
+
+* You will be penalized for defining multiple "execution_properties" blocks within a single resource.
+* The "execution_properties" property must be defined as a map, for example:
+```
+execution_properties = {
+    # Define properties here
+}
+```
+* You will be penalized for defining an "execution_properties" block like this, with "name" and "value" attributes:
+```
+execution_properties {
+  name  = "<some name>"
+  value = "<some value>"
+}
+```
+* You will be penalized for defining an "execution_properties" block like this without the equal sign:
+```
+execution_properties {
+}
+```
+* You will be penalized for defining an "properties" block like this without the equal sign:
+```
+properties {
+}
+```
+* You will be penalized for defining multiple "execution_properties" blocks within a single resource, for example:
+```
+execution_properties = {
+    # Define properties here
+}
+execution_properties {
+}
+```
+* You will be penalized for defining multiple "properties" blocks within a single resource, for example:
+```
+properties = {
+    # Define properties here
+}
+properties {
+}
+```
+* Each "octopusdeploy_community_step_template" resource has a corresponding "octopusdeploy_community_step_template" data source that must be used to check for the existence of the community step template before creating it, for example:
+```
+data "octopusdeploy_community_step_template" "my_community_step_template" {
+  website = "https://library.octopus.com/step-templates/<guid goes here>"
+}
+
+resource "octopusdeploy_community_step_template" "my_community_step_template" {
+  community_action_template_id = "${length(data.octopusdeploy_community_step_template.my_community_step_template.steps) != 0 ? data.octopusdeploy_community_step_template.my_community_step_template.steps[0].id : null}"
+  count                        = "${data.octopusdeploy_step_template.my_community_step_template.step_template != null ? 0 : 1}"
+}
+```
+* You will be penalized for referencing a "octopusdeploy_step_template" data source "actions" property, for example:
+```
+ count = "${length(try(data.octopusdeploy_step_template.my_step_template.step_template.actions, [])) != 0 ? 0 : 1}"
+```
+
+* You will be penalized for defining both the "environments" and "excluded_environments" attributes in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource.
+* If the prompt defines both environments to include and environments to exclude for a step, you must only define the "environments" attribute.
+* You must escape the dollar sign and curly braces in the "Octopus.Action.Azure.ResourceGroupTemplate" property using a double dollar sign, for example:
+
+```
+"Octopus.Action.Azure.ResourceGroupTemplate" = "resource storageAccount 'Microsoft.Storage/storageAccounts@2021-04-01' = {\n  name: 'analytics$${uniqueString(resourceGroup().id)}'
+```
+
+* You must escape the dollar sign and curly braces in the "Octopus.Action.Aws.CloudFormationTemplate" property using a double dollar sign, for example:
+
+```
+"Octopus.Action.Aws.CloudFormationTemplate" = "AWSTemplateFormatVersion: '2010-09-09'\\nDescription: 'Lambda Blue/Green Deployment'\\nResources:\\n  LambdaFunction:\\n    Type: AWS::Lambda::Function\\n    Properties:\\n      FunctionName: !Sub '$${AWS::StackName}-function'\\n      Runtime: python3.9\\n      Handler: index.handler\\n      Code:\\n        S3Bucket: !Sub '$${Project.AWS.Lambda.S3.BucketName}'\\n        S3Key: 'lambda-function.zip'\\n      Environment:\\n        Variables:\\n          DB_HOST: $${DB_HOST}\\n          API_KEY: $${API_KEY}"
+
+```
+
+* The "Octopus.Action.RunOnServer" property in the "execution_properties" block must be set to "true" steps of type "Octopus.Script" that do not have any target roles.
+
+* You will be penalized for setting the "image" property in the "container" property to an empty string.
+* If the prompt indicates that a container image should be used, but does not specify an image name, you must set the "image" property in the "container" property to "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04".
+* If the "container" property is defined with a "feed_id" but the prompt does not specify a container image, you must set the "image" property in the "container" property to "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04".
+* Additional packages (also known as "referenced packages") are defined in the "packages" block of a "octopusdeploy_process_step" resource, for example:
+
+```
+packages = {
+    package-id = {
+        acquisition_location = "NotAcquired",
+        feed_id = "${length(data.octopusdeploy_feeds.feed_ghcr_anonymous.feeds) != 0 ? data.octopusdeploy_feeds.feed_ghcr_anonymous.feeds[0].id : octopusdeploy_docker_container_registry.feed_ghcr_anonymous[0].id}",
+        id = null,
+        package_id = "${var.project_kubernetes_web_app_step_deploy_a_kubernetes_web_app_via_yaml_package_octopub_selfcontained_packageid}",
+        properties = {
+            Extract = "False",
+            Purpose = "DockerImageReference",
+            SelectionMode = "immediate"
+        }
+    }
+}
+```
+
+* You will be penalized for only defining the last half of a "packages" block, for example:
+
+```
+", id = null, package_id = "mypackage", properties = { SelectionMode = "immediate" } }
+```
+
+* You will be penalized for defining values in the "execution_properties" block which are empty strings.
+* You will be penalized for defining the "target_roles" property on a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource.
+* When the prompt includes instructions to generate a custom script that is not provided by the example configurations, you must use provide a script comprised of comments about the intended functionality and a `echo` or `Write-Host` statement indicating that the script is a placeholder.
+* You will be penalized for generating complex scripts for script steps that are not copies of example configurations.
+* Using client side apply means the same as disabling server side apply for Kubernetes steps.
+* If the prompt includes instructions to enable client side apply for a Kubernetes step, you must set the "Octopus.Action.Kubernetes.ServerSideApply.Enabled" property in the "execution_properties" block to "False".
+* Steps of type "Octopus.Manual" must have a "Octopus.Action.Manual.Instructions" property in the "execution_properties" block.
+* You will be penalized for defining the "Octopus.Step.Manual.Instructions" property in the "execution_properties" block.
+* You will be penalized for defining a value in the "execution_properties" block with `jsonencode({})` and then ending with a double quote, for example:
+`"Octopus.Action.Azure.ResourceGroupTemplateParameters" = jsonencode({})"`
+* You must define a value in the "execution_properties" block with `jsonencode({})` without ending with a double quote or new line, for example:
+`"Octopus.Action.Azure.ResourceGroupTemplateParameters" = jsonencode({})`
+* You will be penalized for defining the "Octopus.Action.Aws.S3.BucketName" value in the "execution_properties" block for a step of type "Octopus.AwsRunCloudFormation".
+* You will be penalized for defining both the "excluded_environments" and "environments" attributes on a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource.
+* You will be penalized for including an incomplete primary_package block, for example:
+```
+resource "octopusdeploy_process_step" "process_step_serverless_api_9231_deploy_lambda" {
+ count                 = "${length(data.octopusdeploy_projects.project_serverless_api_9231.projects) != 0 ? 0 : 1}"
+ name                  = "Deploy Lambda"
+ type                  = "Octopus.AwsRunScript"
+ process_id            = "${length(data.octopusdeploy_projects.project_serverless_api_9231.projects) != 0 ? null : octopusdeploy_process.process_serverless_api_9231[0].id}"
+ channels              = null
+ condition             = "Success"
+ container             = { feed_id = "${length(data.octopusdeploy_feeds.feed_ghcr_anonymous.feeds) != 0 ? data.octopusdeploy_feeds.feed_ghcr_anonymous.feeds[0].id : octopusdeploy_docker_container_registry.feed_ghcr_anonymous[0].id}", image = "octopuslabs/aws-workertools" }
+ environments          = null
+ excluded_environments = ["${length(data.octopusdeploy_environments.environment_security.environments) != 0 ? data.octopusdeploy_environments.environment_security.environments[0].id : octopusdeploy_environment.environment_security[0].id}"]
+ notes                 = "Deploy Lambda function from S3 package."
+ package_requirement   = "LetOctopusDecide"
+ # The primary_package block is incomplete
+ ", id = null, package_id = "${var.project_serverless_api_9231_step_deploy_lambda_packageid}", properties = { SelectionMode = "immediate" } }
+ slug                  = "deploy-lambda"
+ start_trigger         = "StartAfterPrevious"
+ tenant_tags           = null
+ worker_pool_variable  = "Project.WorkerPool"
+ 
+ execution_properties  = {
+       "Octopus.Action.Script.ScriptBody" = "Write-Host \"Deploying Lambda function from package\""
+       "Octopus.Action.Aws.Region" = "#{AWS_REGION}"
+       "Octopus.Action.AwsAccount.UseInstanceRole" = "False"
+       "Octopus.Action.RunOnServer" = "true"
+       "Octopus.Action.Script.ScriptSource" = "Inline"
+       "OctopusUseBundledTooling" = "False"
+       "Octopus.Action.Script.Syntax" = "PowerShell"
+       "Octopus.Action.Aws.AssumeRole" = "False"
+       "Octopus.Action.AwsAccount.Variable" = "Project.AWS.Account"
+     }
+}
+```
+* Every item in the "tenant_tags" array must reference a tag defined in a resource "octopusdeploy_tag" and the tag set defined in a resource "octopusdeploy_tag_set".
+* Step template and community step template steps must use the "octopusdeploy_process_templated_step" resource.
+* You will be penalized for using the "octopusdeploy_process_step" resource for steps that are based on step templates or community step templates.
+* You will be penalized for defining a property called "Octopus.Action.Script.FileName" in the execution_properties block of a "octopusdeploy_process_step" resource of type "Octopus.Script". The correct property name is "Octopus.Action.Script.ScriptFileName".
+* If the prompt includes instructions to retain the original steps from the sample Terraform configurations, you will be penalized for including comments like "# ... include all original Azure Web App steps here, in order" in place of the original steps.
+* Every step defined in a "octopusdeploy_process_steps_order" resource must also be defined as a resource, for example "octopusdeploy_process_step" or "octopusdeploy_process_templated_step".
+* You will be penalized for defining a step in a "octopusdeploy_process_steps_order" resource that is not defined as a resource.
+* When the prompt includes instructions to add runbooks or steps not found in the template project without explicilt defining the script code, you must only define a script with a single comment in the "Octopus.Action.Script.ScriptBody" property that indicates the intended functionality of the script, for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_my_lambda_web_app_swap_loadbalancer" {
+  execution_properties  = {
+    "Octopus.Action.Script.ScriptBody" = "# This is a placeholder script that would swap load balancers"
+  }
+}
+```
+* You will be penalized for generating an example script in the "Octopus.Action.Script.ScriptBody" when the script is not provided in the sample Terraform configurations or in the prompt.
+* When the prompt contains instructions to create a script, you must recreate the script code exactly.
+* When a prompt defines a container image or other docker image, you must recreate the image name exactly.
+* You will be penalized for changing the image name in any way, for example, when hte prompt indicates to use the image "octopusdeploylabs/azure-workertools", you will be penalized for changing it to "octopuslabs/azure-workertools" or "octopusdeploylabs/azure-workertools:latest".
+* The name associated with a step must be unique within the process, and must not be the same as any other step name in the process.
+* You will be penalized for defining two steps with the same name within a process.
+* You will be penalized for writing long "notes" field with unbalanced quotes, for example:
+```
+resource "octopusdeploy_process_step" "process_step_argo_cd_manifest_update_update_argo_cd_application_manifests" {
+  # This is invalid syntax because the notes field does not have a closing quote
+  notes                 = "The projects is configured to use the sample application hosted at https://mockgit.octopus.com/repo/argocd in the `octopub-manifest` directory.\n\nThe repo requires credentials, but accepts any username and password, for example:\n\n
+}
+```
+* If the sample project contains a long "notes" field, you must recreate it exactly as it is, including all line breaks and special characters, and ensuring that all quotes are balanced.
+* You will be penalized for producing only half of the "notes" attribute.
+* The "notes" attribute can contain markdown, for example:
+resource "octopusdeploy_process_step" "process_step_argo_cd_manifest_update_update_argo_cd_application_manifests" {
+  notes                 = "Here is a code block\n\n```\n# This is some code in a code block\n```"
+}
+
+* The step start trigger is defined by the "start_trigger" attribute, and must be set to one of the following values:
+  * "StartWithPrevious"
+  * "StartAfterPrevious"
+* The "StartWithPrevious" setting corresponds with the "Run in parallel with the previous step" option in the UI.
+* The "StartAfterPrevious" setting corresponds with the "Wait for all previous steps to complete, then start" option in the UI.
+* A step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" must define a "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property. If no file name is specified in the prompt, you must set the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property to "custom-resource.yaml".
+* You wll be penalized for defining a step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" and not defining the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property.
+* A step of type "Octopus.KubernetesDeployRawYaml" with must not set the "Octopus.Action.KubernetesContainers.Namespace" property to an empty string. If the prompt does not specify a namespace, do not define the "Octopus.Action.KubernetesContainers.Namespace" property.
+* A step of type "Octopus.KubernetesDeployRawYaml" must have property indented YAML content in the "Octopus.Action.KubernetesContainers.CustomResourceYaml" property if the YAML source is set to "Inline YAML".
+* You will be penalized for defining the properties "Octopus.Action.GitRepository.ExternalRepositoryUrl" or "Octopus.Action.GitRepository.FilePathFilters" on a step of type "Octopus.KubernetesDeployRawYaml".
+* All steps must have a unique name. If two steps have the same name, add a number at the end of the step name to make it unique, for example "Deploy a Kubernetes Web App via YAML 2".
+* Any "octopusdeploy_process_templated_step" resource based on the community step template with the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" (which is the "Slack - Send Simple Notification" community step template) must set "Octopus.Action.RunOnServer" = "true" in the "execution_properties" block.
+* It is CRITICAL that the order of the steps in the prompt is maintained in the Terraform configurations. You MUST add each step, one by one, from top to bottom and left to right, as defined in the prompt.
+* The following prompt must define the "Slack Notification - Start" step first, then the "Deploy user-profile worker -dev-" step, and then the "Deploy user-track worker -dev-" step, in that specific order, in the "octopusdeploy_process_steps_order" resource:
+
+```
+Create a project called "Deploy Workers (dev&prod) and Cronjobs (dev&prod)" in the "Default Project Group" project group with no steps.
+* Set the project description to "Deploys all workers except the custom-attribute-backfill worker".
+* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "us-release".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-profile worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1626`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy user-profile worker (dev). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1626". The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-track worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1627`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy user-track worker (dev). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1627". The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
+```
+
+* You will be penalized for not maintaining the order of the steps as defined in the prompt in the "octopusdeploy_process_steps_order" resource.
+* You must correctly escape dollar signs and curly braces.
+* This is an example of an incorrectly escaped value:
+
+```
+"ssn_Message" = "*Triggered by:* ${ trigger.user }\n*Container image:* ${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
+```
+
+* This is an example of a correctly escaped value:
+
+```
+"ssn_Message" = "*Triggered by:* $${ trigger.user }\n*Container image:* $${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
+```
+
+## Octopus step template instructions
+
+* When the prompt includes instructions to create a community step template and includes a url to https://library.octopus.com/step-templates, you must create both a resource "octopusdeploy_community_step_template" and a data "octopusdeploy_community_step_template" to check for the existence of the community step template before creating it.
+* You will be penalized for creating a "octopusdeploy_process_step" resource instead of a "octopusdeploy_community_step_template" resource when the prompt includes instructions to create a community step template.
+* The "website" attribute in a data "octopusdeploy_community_step_template" must be copied literally.
+* You will be penalized for changing the "website" attribute in a data "octopusdeploy_community_step_template".
+* The "properties" attribute must be added to "octopusdeploy_step_template" resources.
+* The "id" property in the objects in the "parameters" array must be a GUID.
+* You will be penalized for defining an "id" property in the objects in the "parameters" array to plain text like "array-input".
+* You will be penalized for including two commas to separate items in the "parameters" array, for example:
+```
+# This is invalid because there are two commas after the default_sensitive_value property
+parameters      = [{ default_sensitive_value = null,, display_settings = { "Octopus.ControlType" = "MultiLineText" }, help_text = "The array to sort", id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890", label = "Array", name = "Array" }]
+```
+
+## Octopus Variable Syntax Instructions
+
+* Octopus variable syntax must be defined as "#{<variable name>}"
+* You will be penalized for using the syntax "${<variable name>}" for Octopus variables.
+* You will be penalized for using the syntax "$<variable name>" for Octopus variables.
+
+## Octopus Variable Instructions
+
+* Variables defined as resource "octopusdeploy_variable" must have a "type" attribute set to one of the following:
+  * "AmazonWebServicesAccount"
+  * "AzureAccount"
+  * "GoogleCloudAccount"
+  * "UsernamePasswordAccount"
+  * "Certificate"
+  * "Sensitive"
+  * "String"
+  * "WorkerPool"
+* You will be penalized for defining the "lifecycle" block on a resource "octopusdeploy_variable".
+* You will be penalized for setting the resource "octopusdeploy_variable" "type" attribute to "Token".
+* When the "is_sensitive" property on a resource "octopusdeploy_variable" is set to "true", the "type" attribute must be set to "Sensitive".
+* When defining the value for a resource "octopusdeploy_variable" with a "type" of "Sensitive", the "sensitive_value" attribute must be set to "CHANGEME", and the "value" attribute must not be defined.
+
+For example, this is a sensitive variable:
+
+```
+resource "octopusdeploy_variable" "a_sensitive_variable" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) == 0 ?octopusdeploy_project.project_my_project[0].id : data.octopusdeploy_projects.project_azure_my_project[0].id}"
+  name         = "A.Sensitive.Variable"
+  type         = "Sensitive"
+  is_sensitive = true
+  sensitive_value = "CHANGEME"
+}
+```
+
+This is an example of a regular variable:
+
+```
+resource "octopusdeploy_variable" "azure_function_project_azure_location_1" {
+  count        = "${length(data.octopusdeploy_projects.project_azure_function.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_azure_function.projects) == 0 ?octopusdeploy_project.project_azure_function[0].id : data.octopusdeploy_projects.project_azure_function.projects[0].id}"
+  value        = "canadacentral"
+  name         = "Project.Azure.Location"
+  type         = "String"
+  is_sensitive = false
+}
+```
+
+* You will be penalized for setting the "value" and "sensitive_value" attributes in the same resource "octopusdeploy_variable".
+* You will be penalized for setting the "sensitive_value" attribute to anything other than "CHANGEME".
+* You will be penalized for assigning an empty scope like "scope {}" to a resource "octopusdeploy_variable".
+* You will be penalized for assigning a "scope" block in a resource "octopusdeploy_variable" with all null values, for example:
+```
+resource "octopusdeploy_variable" "variables_common_settings_apiendpoint_1" {
+count        = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_common_settings.library_variable_sets) != 0 ? 0 : 1}"
+owner_id     = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_common_settings.library_variable_sets) != 0 ? data.octopusdeploy_library_variable_sets.library_variable_set_variables_common_settings.library_variable_sets[0].id : octopusdeploy_library_variable_set.library_variable_set_variables_common_settings[0].id}"
+value        = "https://api.example.com"
+name         = "ApiEndpoint"
+type         = "String"
+description  = ""
+is_sensitive = false
+# This is invalid as all the attributes in the scope block are null
+scope {
+  actions      = null
+  channels     = null
+  environments = null
+  machines     = null
+  roles        = null
+  tenant_tags  = null
+  processes    = null
+}
+lifecycle {
+  ignore_changes  = [sensitive_value]
+  prevent_destroy = true
+}
+depends_on = []
+}
+```
+
+* You will be penalized for including more than one resource "octopusdeploy_variable" with the same name.
+* The only valid attributes for the "scope" block  for a "octopusdeploy_variable" resource are:
+  * "actions"
+  * "channels"
+  * "environments"
+  * "machines"
+  * "roles"
+  * "tenant_tags"
+* You will be penalized for defining "tenants" in the "scope" block for a "octopusdeploy_variable" resource.
+* The "tenant_tags" attribute in the "scope" block for a "octopusdeploy_variable" resource must be in the format "Tag Set Name/Tag Name", with two phrases separated by a forward slash, where the first phrase is the tag set name, and the second phrase is the tag name, for example "Region/West". Here is an example of a tenant tag defined for a variable:
+
+```
+resource "octopusdeploy_variable" "tag_scoped" {
+  scope {
+    tenant_tags = ["Region/West"]
+  }
+}
+```
+
+* The "Tag Set Name" in the "tenant_tags" attribute must match the name of a tag set defined in a resource "octopusdeploy_tag_set".
+* The "Tag Name" in the "tenant_tags" attribute must match a tag defined in a tag defined in a resource "octopusdeploy_tag".
+* Every tag belongs to a tag set.
+* If tags were specified in the prompt, but no tag set was specified in the prompt, you must create a tag set of "Default" and assign all tags to that tag set, for example:
+
+```
+data "octopusdeploy_tag_sets" "default_tag_set" {
+  ids          = null
+  partial_name = "Default"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_tag_set" "default_tag_set" {
+  name        = "Default"
+  description = "The default tag set"
+  count       = length(data.octopusdeploy_tag_sets.default_tag_set.tag_sets) != 0 ? 0 : 1
+}
+```
+
+* You will be penalized for defining a tenant tag in the "tenant_tags" attribute with a single word like "West" or "Enterprise-Client" in the "tenant_tags" attribute in the "scope" block for a "octopusdeploy_variable" resource.
+* Variables of type "WorkerPool" must query the hosted worker pool data source first and then the default worker pool data source second. This is done by setting the "value" attribute to "${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}", for example:
+
+```
+resource "octopusdeploy_variable" "worker_pool_variable" {
+  count        = "${length(data.octopusdeploy_projects.project_kubernetes_web_app.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_kubernetes_web_app.projects) == 0 ?octopusdeploy_project.project_kubernetes_web_app[0].id : data.octopusdeploy_projects.project_kubernetes_web_app.projects[0].id}"
+  value        = "${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}"
+  name         = "Octopus.Project.WorkerPool"
+  type         = "WorkerPool"
+  description  = "Using a variable to define the worker pool used by steps allows the worker pool to be easily changed in a central location."
+  is_sensitive = false
+}
+```
+
+* You will be penalized for defining a resource "octopusdeploy_variable" of type "WorkerPool" with the "value" attribute to "${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : null}".
+* If the prompt includes instructions to create a variable in a library variable set or as a tenant variable, you must not create any project variables with the same name. Custom variables defined in tenants or library variables sets take precedence over project variables.
+* You will be penalized for defining a "tenant_id" property in a "octopusdeploy_variable" resource.
+* You will be penalized for defining an empty `scope` block for a `octopusdeploy_variable` resource.
+* The names of "octopusdeploy_variable" resources must start with a letter or underscore.
+* You will be penalized for defining a name for a "octopusdeploy_variable" resource that starts with a number or special character.
+* The "label" attribute in a "prompt" block of a "octopusdeploy_variable" resource must be set to an empty string if the prompt should not display a label for the variable.
+* You will be penalized for omitting the "label" attribute as an empty string in a "prompt" block of a "octopusdeploy_variable" resource.
+
+## Runbook Instructions
+
+* The "runbook_id" attribute of resource "octopusdeploy_runbook_process" is in the format "${length(data.octopusdeploy_projects.<project>.projects) != 0 ? null : octopusdeploy_runbook.<runbook>[0].id}"
+* You will be penalized for creating a "octopusdeploy_runbook" or "octopusdeploy_runbooks" data source as these data sources do not exist.
+* The "count" property for a "octopusdeploy_runbook" resource is based on the parent project, for example:
+```
+data "octopusdeploy_projects" "project_my_project" {
+  ids          = null
+  partial_name = "My project"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_runbook" "runbook_my_runbook" {
+  count                       = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+}
+```
+
+## Worker Pool Instructions
+
+* You must always include the data "octopusdeploy_worker_pools" "workerpool_default_worker_pool", for example:
+
+```
+data "octopusdeploy_worker_pools" "workerpool_default_worker_pool" {
+  ids          = null
+  partial_name = "Default Worker Pool"
+  skip         = 0
+  take         = 1
+}
+```
+
+* The "worker_pool_id" attribute must first test the length of the "worker_pools" property exposed by the data source associated with a hosted worker pool, return the first worker pool if the hosted worker pool array is not empty, otherwise return the first worker pool from the default worker pool data source, for example:
+
+```
+worker_pool_id = ${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}
+```
+
+## Octopus Target Instructions
+
+* Targets must be scoped to at least one environment
+* You will be penalized for defining a target with an empty "environments" attribute.
+* If a target has no environments specified, the "environments" attribute must include all environments.
+* Each resource "octopusdeploy_kubernetes_cluster_deployment_target" must have an associated data "octopusdeploy_deployment_targets". For example, if the following resource is defined:
+
+```
+resource "octopusdeploy_kubernetes_cluster_deployment_target" "kubernetes_cluster_target_example" {
+  count       = "${length(data.octopusdeploy_deployment_targets.kubernetes_cluster_target_example.deployment_targets) != 0 ? 0 : 1}"
+  name        = "Kubernetes Target"
+}
+```
+
+Then the associated data resource must be defined as follows:
+
+```
+data "octopusdeploy_deployment_targets" "kubernetes_cluster_target_example" {
+  partial_name         = "Kubernetes Target"
+  skip                 = 0
+  take                 = 1
+}
+```
+
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_ssh_connection_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_listening_tentacle_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_polling_tentacle_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_cloud_region_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_offline_package_drop_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_azure_cloud_service_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_azure_service_fabric_cluster_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_azure_web_app_deployment_target".
+* You will be penalized for setting the "machine_policy_id" attribute to an empty string.
+* If no machine policy is specified in the prompt for a target, the "machine_policy_id" attribute must be set by looking up the existing machine policy called "Default Machine Policy", for example:
+
+```
+data "octopusdeploy_machine_policies" "default_machine_policy" {
+  ids          = null
+  partial_name = "Default Machine Policy"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_kubernetes_cluster_deployment_target" "target_mock_k8s" {
+  # The machine policy must be assigned by looking up the existing machine policy called "Default Machine Policy"
+  machine_policy_id                 = "${data.octopusdeploy_machine_policies.default_machine_policy.machine_policies[0].id}"
+}
+```
+* If no machine policy is specified in the prompt for a target, you will be penalized for setting the "machine_policy_id" attribute to "MachinePolicies-1" or any other fixed value.
+* You will be penalized for defining a block with the name "health_check_container" in a resource "octopusdeploy_kubernetes_cluster_deployment_target". The correct block name is "container".
+* The "octopusdeploy_kubernetes_cluster_deployment_target" resource has a container block with no equals sign, for example:
+```
+resource "octopusdeploy_kubernetes_cluster_deployment_target" "target_kubernetes_target" {
+  container {
+    feed_id = "Feeds-5455"
+    image   = "octopusdeploy/worker-tools:6.4.0-ubuntu.22.04"
+  }
+}
+```
+* You will be penalized for defining a "conatiner" argument with an equals sign, for example:
+```
+resource "octopusdeploy_kubernetes_cluster_deployment_target" "target_kubernetes_target" {
+  # This is invalid because "container" should not have an equals sign
+  container = {
+    feed_id = "Feeds-5455"
+    image   = "octopusdeploy/worker-tools:6.4.0-ubuntu.22.04"
+  }
+}
+```
+
+## Octopus Machine Policy Instructions
+* You will be penalized for adding the "tenant_ids" attribute to a resource "octopusdeploy_machine_policies" data source.
+* You will be penalized for adding the "environment_ids" attribute to a resource "octopusdeploy_machine_policies" data source.
+* You will be penalized for adding the "project_ids" attribute to a resource "octopusdeploy_machine_policies" data source.
+* The valid values for the "tentacle_update_behavior" attribute are "NeverUpdate" or "Update" for a "octopusdeploy_machine_policy" resource.
+* You will be penalized for setting the "tentacle_update_behavior" attribute to "UpdateAutomatically" for a "octopusdeploy_machine_policy" resource.
+
+## Octopus Account Instructions
+
+* You must set the "token" attribute on a "octopusdeploy_token_account" resource to "CHANGEME".
+* If the prompt indicates that an account is associated with a tenant, and the prompt does not specify the project tenanted mode to use, the "tenanted_deployment_participation" property must be set to "TenantedOrUntenanted".
+* If the prompt indicates that an account is associated with a tenant, the tenants must be included in the "tenants" attribute of the account resource.
+* If the prompt indicates that an account is associated with tenant tags, the tags must be included in the "tenant_tags" attribute of the account resource.
+* You must create one distinct "octopusdeploy_aws_openid_connect_account" resource for each AWS OIDC account specified in the prompt.
+* You must create one distinct "octopusdeploy_accounts" data source for each "octopusdeploy_aws_openid_connect_account" resource.
+* You will be penalized for using a `locals` block to define account names.
+* Every "octopusdeploy_aws_openid_connect_account" resource must have an associated "octopusdeploy_accounts" data source with the "account_type" set to "AmazonWebServicesOidcAccount", for example, if the prompt specified that there are two AWS OIDC accounts called "My OIDC Account" and "My other OIDC Account", the following Terraform configuration would be required:
+
+```
+resource "octopusdeploy_aws_openid_connect_account" "my_oidc_account" {
+  count                             = "${length(data.octopusdeploy_accounts.my_oidc_account.accounts) != 0 ? 0 : 1}"
+  name                              = "My OIDC Account"
+  description                       = "An AWS OIDC account. See https://octopus.com/docs/infrastructure/accounts/aws for more information. Note the \"account_type\" in the associated \"octopusdeploy_accounts\" data source is set to \"AmazonWebServicesOidcAccount\". Note the \"role_arn\" property is mandatory for accounts of type \"AmazonWebServicesOidcAccount\"."
+  role_arn                          = "arn:aws:iam::381713788115:role/OIDCAdminAccess"
+  account_test_subject_keys         = ["space"]
+  environments                      = []
+  execution_subject_keys            = ["space"]
+  health_subject_keys               = ["space"]
+  session_duration                  = 3600
+  tenant_tags                       = []
+  tenants                           = []
+  tenanted_deployment_participation = "Untenanted"
+  depends_on                        = []
+  lifecycle {
+    ignore_changes  = []
+    prevent_destroy = true
+  }
+}
+
+data "octopusdeploy_accounts" "my_oidc_account" {
+  ids          = null
+  partial_name = "My OIDC Account"
+  skip         = 0
+  take         = 1
+  account_type = "AmazonWebServicesOidcAccount"
+}
+
+resource "octopusdeploy_aws_openid_connect_account" "my_other_oidc_account" {
+  count                             = "${length(data.octopusdeploy_accounts.my_other_oidc_account.accounts) != 0 ? 0 : 1}"
+  name                              = "My other OIDC Account"
+  description                       = "An AWS OIDC account. See https://octopus.com/docs/infrastructure/accounts/aws for more information. Note the \"account_type\" in the associated \"octopusdeploy_accounts\" data source is set to \"AmazonWebServicesOidcAccount\". Note the \"role_arn\" property is mandatory for accounts of type \"AmazonWebServicesOidcAccount\"."
+  role_arn                          = "arn:aws:iam::381713788115:role/OIDCAdminAccess"
+  account_test_subject_keys         = ["space"]
+  environments                      = []
+  execution_subject_keys            = ["space"]
+  health_subject_keys               = ["space"]
+  session_duration                  = 3600
+  tenant_tags                       = []
+  tenants                           = []
+  tenanted_deployment_participation = "Untenanted"
+  depends_on                        = []
+  lifecycle {
+    ignore_changes  = []
+    prevent_destroy = true
+  }
+}
+
+data "octopusdeploy_accounts" "my_other_oidc_account" {
+  ids          = null
+  partial_name = "My other OIDC Account"
+  skip         = 0
+  take         = 1
+  account_type = "AmazonWebServicesOidcAccount"
+}
+```
+
+* When the prompt indicates that a step requires an account, the associated account data source and resource must be created.
+
+## Worker Instructions
+
+* The "octopusdeploy_ssh_connection_worker" resources must define the "account_id", "fingerprint", and "host" attributes.
+* You will be penalized for supplying empty strings to the "account_id", "fingerprint", and "host" attributes in the "octopusdeploy_ssh_connection_worker" resource.
+* If no machine policy is specified in the prompt for a worker, the "machine_policy_id" attribute must be set by looking up the existing machine policy called "Default Machine Policy"
+* If no worker pool is specified in the prompt for a worker, you must use a data source to look for an existing worker pool with a suitable name and assign the worker to that worker pool, and if that pool does not exist, create a new worker pool and assign the worker to that worker pool.
+
+## Platform Hub Instructions
+
+* The Platform Hub version control settings are defined in a "octopusdeploy_platform_hub_version_control_username_password_settings" resource.
+* You will be penalized for creating a "octopusdeploy_git_credential" in conjuction with a "octopusdeploy_platform_hub_version_control_username_password_settings" resource, unless specifically instructed to do so in the prompt.
+
+## Terraform Instructions
+* All resource and data names must start with a character or underscore.
+* When resource names are based on a string that starts with a number, for example "123 My Resource", you must prefix the resource name with an underscore, for example " _123_my_resource", "_08_script_project", or "_14_kubernetes_with_mock_target_octopus_project_workerpool_1".
+* You will be penalized for creating resource names or data names that start with a number, for example "14_kubernetes_with_mock_target_kubernetes_deployment_name_1" or "14_kubernetes_with_mock_target_octopusprintvariables_1".
+* You can only use the following built-in terraform functions:
+    * "jsondecode"
+    * "jsonencode"
+    * "keys"
+    * "length"
+    * "list"
+    * "trim"
+    * "trimprefix"
+    * "trimspace"
+    * "trimsuffix"
+    * "try"
+* Resource names must be unique per type.
+* Data names must be unique per type.
+* You will be penalized for defining resources or adding attributes that are not included in the sample Terraform configurations.
+* Every resource must have a "count" attribute.
+* Each "count" attribute must be defined in the format "${length(data.<data type>.<data resource>.<collection>) != 0 ? 0 : 1}".
+* You will be penalized for defining a "count" attribute with the value of "1".
+* You will be penalized for using heredoc syntax.
+* You must only respond with the Terraform configuration.
+* A block starting with "{" and ending with "}" must write each child property on a new line.
+* You will be penalized for writing a single line block like this: "lifecycle { ignore_changes = [sensitive_value] prevent_destroy = true }".
+* You will be penalized for writing a block starting with "{" and ending with "}" on a single line.
+* You must use the password "CHANGEME" for all passwords and secret keys.
+* You must use username "CHANGEME" for all usernames.
+* You must only create the following types of steps:
+  * "Octopus.Script" - Run a Script step
+  * "Octopus.AzurePowerShell" - Run an Azure Script step
+  * "Octopus.AwsRunScript" - Run an AWS CLI Script step
+  * "Octopus.GoogleCloudScripting" - Run gcloud in a Script step
+  * "Octopus.AzureResourceGroup" - Deploy an Azure Resource Manager template step
+  * "Octopus.KubernetesRunScript" - Run a kubectl script step
+  * "Octopus.IIS" - Deploy to IIS step
+  * "Octopus.TentaclePackage" - Deploy a Package step
+  * "Octopus.WindowsService" - Deploy a Windows Service step
+  * "Octopus.AzureWebApp" - Deploy an Azure Web App (Web Deploy) step
+  * "Octopus.AwsUploadS3" - Upload a package to an AWS S3 bucket step
+  * "Octopus.JavaArchive" - Deploy Java Archive step
+  * "Octopus.HelmChartUpgrade" - Deploy a Helm Chart step
+  * "Octopus.KubernetesDeployRawYaml" - Deploy Kubernetes YAML step
+  * "Octopus.Kubernetes.Kustomize" - Deploy with Kustomize step
+  * "Octopus.TerraformApply" - Apply a Terraform template step
+  * "Octopus.TerraformDestroy" - Destroy Terraform resources step
+  * "Octopus.TerraformPlan" - Plan to apply a Terraform template step
+  * "Octopus.TerraformPlanDestroy" - Plan a Terraform destroy step
+  * "Octopus.AwsRunCloudFormation" - Deploy an AWS CloudFormation template step
+  * "Octopus.AwsApplyCloudFormationChangeSet" - Apply an AWS CloudFormation Change Set step
+  * "Octopus.AwsDeleteCloudFormation" - Delete an AWS CloudFormation stack step
+  * "Octopus.ArgoCDUpdateImageTags" - Update ArgoCD Image Tags step
+  * "Octopus.DeployRelease" - Deploy a Release step
+* The "octopusdeploy" provider must set the "space_id" attribute to the value "trimspace(var.octopus_space_id)".
+* The Terraform variable "octopus_space_id" must be included, for example:
+```
+variable "octopus_space_id" {
+    type        = string
+    nullable    = false
+    sensitive   = false
+    description = "The ID of the Octopus space to populate."
+}
+```
+
+* Terraform string interpolation must be implemented as "${}".
+* You will be penalized for using two curly brackets for string interpolation like "${{}}".
+* Dollar signs in script steps must be escaped with a second dollar sign like "$$", for example:
+
+```
+"Octopus.Action.Script.ScriptBody" = "echo $$variable"
+```
+
+* Percent signs in script steps must be escaped with a second percent sign like "%%", for example:
+
+```
+"Octopus.Action.Script.ScriptBody" = "curl -w \"%%{http_code}\" http://example.org"
+```
+
+This is another example using the heredoc syntax:
+
+```
+"Octopus.Action.Script.ScriptBody" = <<EOT
+    curl -w \"%%{http_code}\" http://example.org
+EOT
+```
+
+* Script steps that reference variables like "${VARIABLE}" must escape the dollar sign like "$${VARIABLE}", for example:
+
+```
+"Octopus.Action.Script.ScriptBody" = "echo $${VARIABLE}"
+"Octopus.Action.Azure.ResourceGroupTemplate" = "param location string = resourceGroup().location\nresource storageAccount 'Microsoft.Storage/storageAccounts@2021-04-01' = {\n  name: 'octoglobal$${uniqueString(resourceGroup().id)}'\n  location: location\n  sku: {\n    name: 'Standard_LRS'\n  }\n  kind: 'StorageV2'\n}\n"
+```
+
+* You must define the "Octopus.Action.TargetRoles" property in the "properties" block for steps that deploy to targets, including steps of type:
+    * "Octopus.TentaclePackage"
+    * "Octopus.TomcatDeploy"
+    * "Octopus.AzureAppService"
+    * "Octopus.IIS"
+    * "Octopus.WindowsService"
+    * "Octopus.AzureWebApp"
+    * "Octopus.JavaArchive"
+    * "Octopus.HelmChartUpgrade"
+    * "Octopus.KubernetesDeployRawYaml"
+    * "Octopus.Kubernetes.Kustomize"
+    * "Octopus.TransferPackage"
+
+ * You must take EXTREME CARE when escaping quotes in the generated Terraform.
+ * This is an example of a property that is not escaped correctly:
+
+ ```
+ "ssn_Message" = "Image: $${trigger[\"artifacts\"].?[name == _"registry.example.invalid_image-0095_"][0][_"version_"]}"
+ ```
+
+ * This is an example of the same property with correct escaping:
+
+ ```
+ "ssn_Message" = "Image: $${trigger[\"artifacts\"].?[name == _\"registry.example.invalid_image-0095_\"][0][_\"version_\"]}"
+ ```
+
+## Terraform Variable Instructions
+
+* All terraform variables must have default values, for example:
+
+```
+variable "project_group_name" {
+  type        = string
+  nullable    = false
+  sensitive   = false
+  description = "The name of the project group to lookup"
+  default     = "My Project Group"
+}
+```
+
+* You will be penalized for defining a "scope" block in a terraform variable.
+* You will be penalized for defining the "type" in a variable with an value that includes double quotes, for example `type = "string"`. The correct syntax is `type = string` without double quotes.
+* You will be penalized for omitting the equals sign between the variable properties and their values, for example:
+
+```
+variable "project_group_name" {
+  type        = string
+  # This is wrong because there is no equals sign between "nullable" and "false"
+  nullable     false
+  sensitive   = false
+  description = "The name of the project group to lookup"
+  default     = "My Project Group"
+}
+
+## Penalties and General Instructions
+
+* You will be penalized for creating resources with names that start with a number, for example, a resource named "123_my_resource" or "05_script_project" is invalid.
+* You will be penalized for generating invalid Terraform.
+* You will be penalized for setting the "space_id" attribute in the "octopusdeploy" provider to a value like "Spaces-1".
+* You will be penalized if you include any markdown.
+* You will be penalized for including any code blocks.
+* You will be penalized for including any instructions.
+* You will be penalized for returning any other text.
+* You will be penalized for including any comments.
+* You will be penalized for using "locals" blocks.
+* You will be penalized for using for loops to create resources or data sources.
+* You will be penalized for using syntax like `%{ for idx, name in local.names ~}`.
+* You will be penalized for using dynamic blocks.
+* You will be penalized for using the `replace()` or `lower()` Terraform functions.
+* You will be penalized for writing a summary at the end of your response, especially a message around length constraints.
+* You will be penalized for duplicating resource names for a resource type, for example, the following terraform is invalid because the resource name "step1" for resource type "octopusdeploy_process_step" is duplicated:
+
+```
+resource "octopusdeploy_process_step" "step1" { ... }
+resource "octopusdeploy_process_step" "step2" { ... }
+resource "octopusdeploy_process_step" "step1" { ... }
+```
+
+* You will be penalized for duplicating data names for a data type, for example, the following terraform is invalid because the data name "project1" for data type "octopusdeploy_projects" is duplicated:
+
+```
+data "octopusdeploy_projects" "project1" { ... }
+data "octopusdeploy_projects" "project2" { ... }
+data "octopusdeploy_projects" "project1" { ... }
+```
+
+* You will be penalized for not including all required resources and data blocks.
+* You will be penalized for stopping the Terraform configuration generation before it is complete.
+* You will be penalized for stopping generation mid-resource or mid-block.
+* You will be penalized for generating partial configurations that reference undefined resources or data sources.
+* You must generate the complete Terraform configuration in a single response.
+* You must verify that all opening braces { have corresponding closing braces } before completing your response.
+* If you cannot complete the entire configuration due to length constraints, you must prioritize completing the current resource block rather than leaving it incomplete.
+* You will be penalized for using syntax like `${var.step_name | lower | replace(" ", "-")}`, as Terraform does not support the pipe character to modify varibale values.
+* You will be penalized for leaving any resources out for brevity.
+* You must include all requested resources.
+* You will be penalized for redacting, anonymizing, or replacing any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders.
+* Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
