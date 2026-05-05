@@ -49,7 +49,7 @@ Append `The current space is "Scratchpad"` to the end of each individual prompt.
 
 You must pass the original prompt exactly as it was returned with the addition of the space context.
 
-It is **CRITICAL** that you DO NOT fix the returned prompt! Any errors with the returned prompt must be addressed by improving the `prompt.md` file. You MUST pass through the prompt unaltered with the addition of the space context.
+It is **CRITICAL** that you DO NOT fix the returned prompt! Any errors with the returned prompt must be addressed by improving the `prompt.md` and `generalinstructions.md` files. You MUST pass through the prompt unaltered with the addition of the space context.
 
 The default timeout of 60 seconds is often not enough for call to `send_prompt` or `send_prompt_from_file`, which means they time out. If the `send_prompt` or `send_prompt_from_file` tools time out, sleep for 180 seconds, and try again. You can retry calls to the `send_prompt` or `send_prompt_from_file` tools up to 5 times.
 
@@ -69,10 +69,14 @@ DO NOT pass the API key or server url parameters to the `convertOctopusToTerrafo
 
 Compare the Terraform configuration of the space to the original array item from the pipelines.json file. 
 
-Update the prompt.md file to address the 5 most significant issues found as part of the migration.
+Update the `prompt.md` file to address the 5 most significant issues found as part of the migration.
 
-Update the generalinstructions.md file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
+Update the `generalinstructions.md` file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
 
-The directory `/Users/matthewcasperson/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. You can refer to these files when making improvements to the `prompt.md` and `generalinstructions.md` files.
+The directory `/Users/matthewcasperson/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. You can refer to these files when making improvements to the `generalinstructions.md` file.
 
-Once the `generalinstructions.md` file has been updated, use the `upload_file` tool from the `blobuploader` agent to upload the files to the Azure Blob Storage container.
+Once the `generalinstructions.md` file has been updated, use the `upload_file` tool from the `blobuploader` agent to upload the files to the Azure Blob Storage container. Uploading this file will make it available to the AI Assistant for future iterations of this process, and ensures that the improvements made to the instructions are retained for future use.
+
+## Check the results
+
+Recreate the same project again with the improved `prompt.md` and `generalinstructions.md` file, and compare the results to the previous attempt. Repeat the process until you are satisfied that the improvements made to the `prompt.md` and `generalinstructions.md` files have resulted in a significantly improved migration process.
