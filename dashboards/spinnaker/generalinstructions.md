@@ -33,7 +33,9 @@
 
 ## Step Description Property
 
-* When the prompt says `Set the step description to "..."`, the description must be set in the `execution_properties` map of the `octopusdeploy_process_step` resource using the key `"Octopus.Action.StepDescription"`.
+* When the prompt says `Set the step description to "..."`, the description must be set in the `execution_properties` map of the `octopusdeploy_process_step` resource using the property `notes`.
+* When the prompt says `Set the step description to include: "..."` or otherwise instructs you to append text to an existing step description, you must build a SINGLE final description string in prompt order and store that combined value in `notes`. Do not emit multiple competing description properties.
+* If a step receives more than one description fragment in the prompt, concatenate them with a single space between fragments unless the prompt explicitly specifies different punctuation.
 * The description value must be the exact verbatim string from the prompt, including any quoted sub-strings.
 * You will be penalized for omitting a step description when the prompt explicitly instructs it to be set.
 
@@ -1021,6 +1023,8 @@ resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
 * Steps are defined in the "octopusdeploy_process_step" and "octopusdeploy_process_child_step" resources.
 * The order of the steps are defined in the "octopusdeploy_process_steps_order" resource.
 * The order of child steps are defined in the "octopusdeploy_process_child_steps_order" resource.
+* If the prompt indicates that a Spinnaker stage was skipped because it was hard-disabled, do not create any placeholder step resource for it and do not include it in the "octopusdeploy_process_steps_order" resource.
+* When a skipped or ignored stage is removed from the dependency graph, the Terraform step order must reflect the rewritten dependency chain from the prompt. Do not preserve an order that still assumes the skipped stage exists.
 * You will be penalized for using asterisks, for example "*****", as placeholders in step properties.
 * The "Octopus.Step.ConditionVariableExpression" property can only be defined in the "properties" block.
 * You will be penalized for defining the "Octopus.Step.ConditionVariableExpression" property in the "execution_properties" block.
@@ -2244,4 +2248,88 @@ data "octopusdeploy_projects" "project1" { ... }
 * You will be penalized for leaving any resources out for brevity.
 * You must include all requested resources.
 * You will be penalized for redacting, anonymizing, or replacing any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders.
+
+## Git Repository Branch Instructions
+
+* When the prompt says `Set the Repository Branch to "<branch>"` for a "Deploy Kubernetes YAML" step, the `git_dependencies` block of the corresponding `octopusdeploy_process_step` resource MUST set `default_branch = "<branch>"` using the exact branch name from the prompt.
+* If the prompt does NOT include a `Set the Repository Branch to` instruction for a step, use `default_branch = "main"` as the default value.
+* You will be penalized for setting `default_branch = "main"` when the prompt explicitly specifies a different branch.
+
+**Example — step prompt with explicit branch**:
+
+Given a step prompt:
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the Repository URL to "https://example.invalid/url-0001". Set the File Paths to "deploy/app.yaml". Set the Repository Branch to "master". Set the target tag to Kubernetes.
+```
+
+The **CORRECT** Terraform includes `default_branch = "master"`:
+```
+git_dependencies {
+  default_branch         = "master"
+  git_credential_type    = "Anonymous"
+  repository_uri         = "https://example.invalid/url-0001"
+  file_path_filters      = ["deploy/app.yaml"]
+}
+```
+
+The **WRONG** Terraform defaults to "main" and ignores the prompt:
+```
+git_dependencies {
+  default_branch         = "main"
+  git_credential_type    = "Anonymous"
+  repository_uri         = "https://example.invalid/url-0001"
+  file_path_filters      = ["deploy/app.yaml"]
+}
+```
+
+## Prompted Variable Select Options Instructions
+
+* When the prompt includes `The variable must have the following selectable options: <option1>, <option2>, ...` for a project variable, the corresponding `octopusdeploy_variable` resource MUST use `control_type = "Select"` in its `display_settings` block and MUST include one `select_option` block for each option.
+* Each `select_option` block must set both `display_name` and `value` to the option string from the prompt.
+* If the prompt does NOT include a selectable options instruction, use `control_type = "SingleLineText"` in the `display_settings` block (the default).
+* You will be penalized for using `control_type = "SingleLineText"` when the prompt specifies selectable options.
+* You will be penalized for omitting any `select_option` block when selectable options are specified.
+
+**Example — prompted variable with selectable options**:
+
+Given a prompt:
+```
+* Add a project variable called "account-purpose", with a default value of "", the description "account purpose name", and the label "account-purpose". The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: wakai, mercoin, escrow, partner_invoice.
+```
+
+The **CORRECT** Terraform uses `control_type = "Select"` and includes `select_option` blocks:
+```
+resource "octopusdeploy_variable" "variable_account_purpose" {
+  ...
+  prompt {
+    description = "account purpose name"
+    label       = "account-purpose"
+    is_required = false
+    display_settings {
+      control_type = "Select"
+      select_option {
+        display_name = "wakai"
+        value        = "wakai"
+      }
+      select_option {
+        display_name = "mercoin"
+        value        = "mercoin"
+      }
+      select_option {
+        display_name = "escrow"
+        value        = "escrow"
+      }
+      select_option {
+        display_name = "partner_invoice"
+        value        = "partner_invoice"
+      }
+    }
+  }
+}
+```
+
+## Step Description Notes from Runtime Artifact Binding
+
+* When the prompt says `Set the step description to "NOTE: This step originally required the following Docker images to be bound at runtime by Spinnaker: ..."`, the description note MUST be set in the `notes` proeprty of the `octopusdeploy_process_step` resource  with the exact verbatim text from the prompt.
+* If the step already has an `notes` entry for another reason (e.g., the stage name contained special characters), the two description texts must be concatenated, separated by a space, in the same `notes` property.
 * Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.

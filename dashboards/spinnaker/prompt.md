@@ -397,6 +397,8 @@ Pipelines are represented by a project. This is the base prompt to create an emp
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
 ```
 
+The `limitConcurrent` property of the Spinnaker pipeline has no equivalent setting in Octopus. This value MUST be ignored.  
+
 Other prompts are then appended to the base prompt to create the equivalent project in Octopus Deploy, for example:
 
 ```
@@ -597,7 +599,16 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * **DO convert any `stages` from the JSON** — convert all stages using exactly the same rules as for a regular pipeline.
 * **DO convert any `notifications` from the JSON** — notification steps are project-level and must be preserved. Notifications in a `templatedPipeline` must be converted using exactly the same rules as for a regular pipeline (see the Notifications section). The `when` array and `message` text must be inspected and Slack Notification steps must be generated for all applicable events.
 * DO apply the `disabled` status — add `* The project must be disabled.` when `disabled: true`.
-* DO NOT add feed creation prompts — `templatedPipeline` types have no `expectedArtifacts` in the top-level JSON.
+* If a `templatedPipeline` has top-level `expectedArtifacts` or top-level `triggers`, process those collections using the normal feed and trigger rules. Do NOT suppress feed creation or trigger conversion merely because the pipeline `type` is `templatedPipeline`.
+* Only when a `templatedPipeline` truly has no top-level `expectedArtifacts` entries and no top-level `triggers` should feed and trigger prompts be omitted for that reason.
+* If a `templatedPipeline` has a `template.reference` value but the concrete JSON has no non-notification stages, do NOT assume the visible JSON fully describes the deployment behavior. After the notification steps and project variables, add a placeholder step to preserve the missing template-supplied behavior:
+
+```
+* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: expand the Spinnaker pipeline template "<template.reference>" using the templatedPipeline variables before considering this conversion complete.`
+```
+
+* Replace `<template.reference>` with the verbatim value of `template.reference`.
+* If the template-backed pipeline also exposes variables that clearly describe automated trigger behaviour (for example `enableAutomatedTrigger`, `dockerRegistryAcc`, `dockerRegistryOrg`, `dockerRegistryRepo`, or `tag`) but no concrete trigger entries are present in the JSON, the placeholder step above is REQUIRED. Do NOT silently output a notifications-and-variables-only project and imply that the deployment process is complete.
 
 **IMPORTANT — `templatedPipeline` notifications are REQUIRED**: When a `templatedPipeline` has a `notifications` array, you MUST generate Slack notification steps for it. Do NOT skip notifications just because the pipeline `type` is `templatedPipeline`. The Finish and Complete steps must appear in the correct order: all Slack Notification - Start steps first (if `pipeline.starting` is in `when`), followed by the deployment steps, then Slack Notification - Finish steps (if `pipeline.failed` is in `when`), then Slack Notification - Complete steps (if `pipeline.complete` is in `when`), then the `variables` prompts.
 
@@ -1141,6 +1152,12 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 * The name of notification steps must be unique. Append a counter the end of step names, like `Slack Notification - Complete 2`, to ensure step names are unique.
 
 # Stages
+
+## Stage Enabled Rules
+
+* If `stageEnabled.expression` is the boolean `false` or the exact case-insensitive string `"false"`, the stage is hard-disabled and the corresponding Octopus steps must be set to disabled.
+* If `stageEnabled.expression` is the boolean `true` or the exact case-insensitive string `"true"`, the stage is always enabled and the corresponding Octopus steps must be set to enabled.
+* Only after those exact boolean checks are done may any remaining string-valued `stageEnabled.expression` be treated as a SpEL-style manual-review condition.
 
 ## Deploy Manifest Kubernetes Stage
 
@@ -1773,13 +1790,54 @@ Some Spinnaker stages have a `stageEnabled` property that controls whether the s
 
 * When `stageEnabled.expression` is `false` (a boolean literal, not a string), the stage is hard-disabled. **Skip this stage entirely** — do not generate any step for it.
 * When `stageEnabled.expression` is `true` (a boolean literal), the stage is always enabled — treat it as a normal stage.
-* When `stageEnabled.expression` is a **string** (a SpEL expression), there is no direct Octopus Deploy equivalent. **Convert the stage normally** but append the following NOTE to the step prompt:
+* **ABSOLUTE RULE — before treating any string-valued `stageEnabled.expression` as a SpEL expression, first check for the exact case-insensitive string values `"true"` and `"false"`.** These exact string values are NOT manual-review expressions. They are hard boolean outcomes.
+* When `stageEnabled.expression` is the exact string `"false"` or `"False"` with no surrounding expression syntax, treat it the same as the boolean literal `false`: the stage is hard-disabled and the corresponding Octopus steps must be disabled.
+* When `stageEnabled.expression` is the exact string `"true"` or `"True"` with no surrounding expression syntax, treat it the same as the boolean literal `true`: the stage is always enabled and must be converted normally.
+* When a stage is skipped because `stageEnabled.expression` resolves to false (either the boolean literal or the exact string forms above), the corresponding Octopus steps must be disabled.
+* When `stageEnabled.expression` is any other **string** (for example a SpEL expression like `${ ... }`), there is no direct Octopus Deploy equivalent. **Convert the stage normally** but append the following NOTE to the step description. If the step already has a description, append this text to the existing description separated by a single space; do NOT emit a second independent description instruction:
 
   ```
-  Add the following description: `This step has a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent: stageEnabled.expression = "<expression>". Manually review whether this step should be conditionally disabled or use an Octopus run condition.`
+  Set the step description to include: `This step has a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent: stageEnabled.expression = "<expression>". Manually review whether this step should be conditionally disabled or use an Octopus run condition.`
   ```
 
   Replace `<expression>` with the verbatim value of `stageEnabled.expression`.
+
+**Example — `stageEnabled.expression` as the exact string `"false"`**:
+
+Given:
+```json
+{
+  "stages": [
+    {
+      "name": "MigrarteDB(Manifest)",
+      "refId": "1",
+      "requisiteStageRefIds": [],
+      "stageEnabled": {
+        "expression": "false",
+        "type": "expression"
+      },
+      "type": "deployManifest"
+    },
+    {
+      "name": "Deploy (Manifest)",
+      "refId": "2",
+      "requisiteStageRefIds": ["1"],
+      "type": "deployManifest"
+    }
+  ]
+}
+```
+
+The **CORRECT** output creates a disabled step:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "MigrarteDB-Manifest-". The step must be disabled.
+```
+
+The **WRONG** output converts the hard-disabled stage and merely adds a manual-review note:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "MigrarteDB-Manifest-". ... Set the step description to include: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "false" ...`
+```
+← WRONG: the exact string `"false"` is a hard-disabled stage and must be skipped.
 
 **Example — `stageEnabled` with SpEL expression**:
 
@@ -1796,7 +1854,7 @@ Given a `deployManifest` stage with:
 
 The **CORRECT** output appends the conditional NOTE:
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Prod". Add the following description: `This step has a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent: stageEnabled.expression = "${ #judgment(\"Manual Judgment\").equals(\"Continue\")}". Manually review whether this step should be conditionally disabled or use an Octopus run condition.`
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Prod". Set the step description to include: `This step has a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent: stageEnabled.expression = "${ #judgment(\"Manual Judgment\").equals(\"Continue\")}". Manually review whether this step should be conditionally disabled or use an Octopus run condition.`
 ```
 
 **CRITICAL — `stageEnabled` only applies to the SPECIFIC stage that contains it**: Each stage's `stageEnabled` property must be read EXCLUSIVELY from that stage's own JSON object. You MUST NOT carry forward, copy, or infer a `stageEnabled` condition from a neighbouring stage (or any other stage) to a stage that has no `stageEnabled` property. A stage that does NOT have a `stageEnabled` key in its JSON must NEVER receive a stageEnabled description note.
@@ -1830,7 +1888,7 @@ Given a pipeline with two stages where only stage A (refId 6) has `stageEnabled`
 
 The **WRONG** output (stageEnabled from refId 6 incorrectly applied to refId 2 — FORBIDDEN):
 ```
-* Add a "Manual Intervention" step with the name "Canary: manual judgment" ... Add the following description: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${ #judgment(\"Start: manual judgment\").equals(\"Continue\")}"...`
+* Add a "Manual Intervention" step with the name "Canary: manual judgment" ... Set the step description to include: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${ #judgment(\"Start: manual judgment\").equals(\"Continue\")}"...`
 ← WRONG: refId 2 has NO stageEnabled. This description was copied from refId 6 and must not appear here.
 ```
 
@@ -1839,7 +1897,7 @@ The **CORRECT** output (stageEnabled note only on refId 6, not on refId 2):
 * Add a "Manual Intervention" step with the name "Canary: manual judgment" ...
 [No stageEnabled note — the manualJudgment stage has no stageEnabled property]
 ...
-* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ... Add the following description: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${ #judgment(\"Start: manual judgment\").equals(\"Continue\")}"...`
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ... Set the step description to include: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${ #judgment(\"Start: manual judgment\").equals(\"Continue\")}"...`
 [stageEnabled note appears here because refId 6 IS the stage with stageEnabled]
 ```
 
@@ -1876,7 +1934,7 @@ Given a pipeline with two `deployManifest` stages where only refId 5 has `stageE
 
 The **WRONG** output (stageEnabled from refId 5 incorrectly applied to refId 3; refId 5 missing its note):
 ```
-* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Add the following description: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${#judgment(\"Manual Judgment (Deploy All)\").equals(\"Deploy all\")}"...`
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Set the step description to include: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${#judgment(\"Manual Judgment (Deploy All)\").equals(\"Deploy all\")}"...`
 ← WRONG: refId 3 has NO stageEnabled — this note must NOT appear here
 * Add a "Deploy Kubernetes YAML" step ... "Deploy" ...
 ← WRONG: refId 5 HAS stageEnabled but the note is missing
@@ -1887,7 +1945,7 @@ The **CORRECT** output (`stageEnabled` note only on refId 5, which actually has 
 * Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ...
 ← CORRECT: no stageEnabled note (refId 3 has no stageEnabled property)
 ...
-* Add a "Deploy Kubernetes YAML" step ... "Deploy" ... Add the following description: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${#judgment(\"Manual Judgment (Deploy All)\").equals(\"Deploy all\")}"...`
+* Add a "Deploy Kubernetes YAML" step ... "Deploy" ... Set the step description to include: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "${#judgment(\"Manual Judgment (Deploy All)\").equals(\"Deploy all\")}"...`
 ← CORRECT: stageEnabled note here only, because refId 5 is the stage with stageEnabled
 ```
 
@@ -1912,10 +1970,10 @@ Some Spinnaker stages have a `restrictExecutionDuringTimeWindow` property combin
 }
 ```
 
-* Octopus Deploy has no equivalent time-window restriction for individual steps. When a stage has `"restrictExecutionDuringTimeWindow": true`, convert the stage normally but append the following description to the step prompt:
+* Octopus Deploy has no equivalent time-window restriction for individual steps. When a stage has `"restrictExecutionDuringTimeWindow": true`, convert the stage normally but append the following text to the step description. If the step already has a description, append this text separated by a single space; do NOT emit a second independent description instruction:
 
   ```
-  Add the following description: `This step originally had a Spinnaker execution time window restriction. Days: <days>. Window: <startHour>:<startMin>-<endHour>:<endMin>. Replicate this restriction manually in Octopus if required.`
+  Set the step description to include: `This step originally had a Spinnaker execution time window restriction. Days: <days>. Window: <startHour>:<startMin>-<endHour>:<endMin>. Replicate this restriction manually in Octopus if required.`
   ```
 
   Replace `<days>` with the numeric day numbers from `restrictedExecutionWindow.days` (1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday) and `<startHour>:<startMin>-<endHour>:<endMin>` from the first whitelist entry.
