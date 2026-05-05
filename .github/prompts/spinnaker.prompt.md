@@ -7,6 +7,8 @@ You will convert Spinnaker pipelines into Octopus projects, compare the results,
 
 The prompt.md file contains the instructions required to convert Spinnaker pipelines into prompts that create Octopus projects.
 
+The generalinstructions.md file contains instructions for building Terraform configurations for Octopus projects.
+
 # Reading the pipeline
 
 Select a random Spinnaker pipeline JSON file from one of the directories under `/Users/matthewcasperson/Downloads/spinnaker-pipelines-vendor-anonymized`.
@@ -68,3 +70,5 @@ DO NOT pass the API key or server url parameters to the `convertOctopusToTerrafo
 Compare the Terraform configuration of the space to the original array item from the pipelines.json file. 
 
 Update the prompt.md file to address the 5 most significant issues found as part of the migration.
+
+Update the generalinstructions.md file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
