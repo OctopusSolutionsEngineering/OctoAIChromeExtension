@@ -74,3 +74,5 @@ Update the prompt.md file to address the 5 most significant issues found as part
 Update the generalinstructions.md file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
 
 The directory `/Users/matthewcasperson/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. You can refer to these files when making improvements to the `prompt.md` and `generalinstructions.md` files.
+
+Once the `generalinstructions.md` file has been updated, use the `upload_file` tool from the `blobuploader` agent to upload the files to the Azure Blob Storage container.
