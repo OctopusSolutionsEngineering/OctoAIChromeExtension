@@ -726,7 +726,9 @@ Add a single external feed trigger that creates a new release for each step that
 
 * **CRITICAL**: A Docker trigger in the pipeline JSON does NOT automatically mean the external feed trigger prompt should be generated. The external feed trigger is only valid when at least one deployment step in the project actually deploys a Docker image. Before emitting the external feed trigger prompt, check every deployment stage (`deployManifest`, `runJobManifest`, `runJob`) in the pipeline:
   * A `runJob` stage qualifies if its `containers` array contains an `imageDescription` field.
-  * A `deployManifest` or `runJobManifest` stage qualifies **only if** its manifest artifact has `type: "docker/image"`. Stages whose `manifestArtifact.type` is `"gcs/object"` or `"github/file"` do **NOT** reference Docker images.
+  * A `deployManifest` or `runJobManifest` stage qualifies if its manifest artifact has `type: "docker/image"`.
+  * A `deployManifest` or `runJobManifest` stage ALSO qualifies when the stage has a non-empty cached `manifests` array (or an inline `manifest` object) and the rendered Kubernetes YAML contains at least one container image reference, for example `image: registry.example.invalid/my-app:1.2.3` or `image: gcr.io/my-project/my-app`. This remains true even when the source artifact type is `"gcs/object"` or `"github/file"` because the rendered manifest that Octopus will deploy clearly references a Docker image.
+  * If a `deployManifest` or `runJobManifest` stage resolves a `manifestArtifactId` to `gcs/object` or `github/file`, and the stage has a non-empty cached `manifests` array with `image:` fields, it still qualifies as deploying a Docker image. The artifact source describes where the YAML came from; the rendered `manifests` content describes what will actually be deployed.
   * If no qualifying Docker-image steps are found, omit the external feed trigger prompt entirely — even if the pipeline has Docker or Pubsub triggers.
 * **CRITICAL — `requiredArtifactIds` does NOT qualify a stage as deploying a Docker image**: A `deployManifest` or `runJobManifest` stage may have a `requiredArtifactIds` array that references a Docker image artifact. This field tells Spinnaker which artifacts must be bound before the stage runs (e.g., a Docker image to be injected into a GCS-sourced manifest). However, `requiredArtifactIds` does NOT change the type of the manifest artifact itself. If the stage's actual manifest comes from a `gcs/object` or `github/file` artifact (via `manifestArtifactId` or `manifestArtifact`), the stage does NOT qualify as deploying a Docker image for external feed trigger purposes — regardless of what is in `requiredArtifactIds`.
 
@@ -788,6 +790,79 @@ Create a project called "my-service deploy to prod" in the "Default Project Grou
 
 The **WRONG** output (external feed trigger MUST NOT appear when all stages are GCS-only):
 ```
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
+```
+
+**CRITICAL — rendered `manifests` content overrides the artifact-source shortcut for external feed trigger eligibility**: If a `deployManifest` or `runJobManifest` stage has a non-empty cached `manifests` array and that rendered manifest includes one or more `image:` fields, the stage MUST be treated as deploying a Docker image even when the source artifact itself is `gcs/object` or `github/file`. The external feed trigger prompt is REQUIRED in that case.
+
+**Worked example — GCS manifest source with cached rendered manifests that contain Docker images**:
+
+```json
+{
+  "expectedArtifacts": [
+    {
+      "defaultArtifact": {
+        "reference": "gs://example-bucket/storage-3012",
+        "type": "gcs/object"
+      },
+      "id": "manifest-artifact"
+    },
+    {
+      "matchArtifact": {
+        "name": "registry.example.invalid/orders-api",
+        "type": "docker/image"
+      },
+      "id": "docker-artifact"
+    }
+  ],
+  "stages": [
+    {
+      "type": "deployManifest",
+      "name": "Deploy Orders",
+      "manifestArtifactId": "manifest-artifact",
+      "requiredArtifactIds": ["docker-artifact"],
+      "manifests": [
+        {
+          "apiVersion": "apps/v1",
+          "kind": "Deployment",
+          "metadata": { "namespace": "orders-prod" },
+          "spec": {
+            "template": {
+              "spec": {
+                "containers": [
+                  { "name": "orders-api", "image": "registry.example.invalid/orders-api:1.2.3" }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    { "type": "docker", "registry": "gcr.io", "enabled": false }
+  ]
+}
+```
+
+The **WRONG** output (no external feed trigger because the source artifact is GCS — FORBIDDEN):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+
+---
+
+Create a project called "Deploy Orders" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step...
+```
+
+The **CORRECT** output (external feed trigger is REQUIRED because the rendered manifest deploys a Docker image):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+
+---
+
+Create a project called "Deploy Orders" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step...
 * Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
 ```
 
@@ -1254,6 +1329,44 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths. If `manifestArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
 * **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Use the following logic:
   * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest. The manifest YAML content must be serialized verbatim — do NOT redact, anonymize, or replace any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders. Service names, namespaces, and deployment names that appear in the manifest are Kubernetes resource identifiers, not secrets.
+  * When serializing a `manifests` array or inline `manifest` object to YAML, the YAML block itself MUST use valid 2-space indentation and preserve the JSON nesting exactly. Nested maps like `metadata.annotations`, `spec.template.spec`, and `containers[].env[]` must remain nested in the YAML output. Flat YAML where nested keys are moved to column 0 is invalid and forbidden.
+  * **Negative example — cached `manifests` array flattened into invalid YAML (FORBIDDEN)**:
+
+  The **WRONG** output for a deployment manifest with `metadata.annotations`, `metadata.labels`, and `spec.template.spec.containers` is:
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+  annotations:
+  artifact.spinnaker.io/location: app-0101-prod
+  labels:
+  app: app-0101
+  spec:
+  template:
+  spec:
+  containers:
+  - name: app-0101
+  image: registry.example.invalid/image-0453
+  ```
+  ← WRONG: `annotations`, `labels`, `template`, `containers`, and `image` lost their nesting and indentation.
+
+  The **CORRECT** output preserves the nesting:
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      artifact.spinnaker.io/location: app-0101-prod
+    labels:
+      app: app-0101
+  spec:
+    template:
+      spec:
+        containers:
+          - name: app-0101
+            image: registry.example.invalid/image-0453
+  ```
+  * When the inline YAML produced from a `manifests` array or inline `manifest` object contains a single clear `metadata.namespace` value, append `Set the step namespace to "<namespace>".` to the step prompt even when `namespaceOverride` is absent. Use the namespace from the rendered manifest, not from the artifact reference.
   * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at \"<reference>\". The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space.
 * Do NOT generate a feed prompt from `manifestArtifact` GCS references.
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
@@ -1295,7 +1408,8 @@ If the `defaultArtifact.type` of the resolved entry is `"gcs/object"`, apply the
 * Use `defaultArtifact.reference` as the GCS path.
 * If the stage has a non-empty `manifests` array, serialize those manifests to YAML as the inline YAML content.
 * If there is no `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to `# TODO: replace with manifest downloaded from <reference>`. Set the step description using the same GCS note as for direct GCS stages.
-* **CRITICAL**: A stage that resolves via `manifestArtifactId` to a `gcs/object` expected artifact does **NOT** qualify as deploying a Docker image — it must NOT trigger an external feed trigger, even if a Docker trigger is present in the pipeline.
+* If the stage has a non-empty `manifests` array with a single clear `metadata.namespace`, append `Set the step namespace to "<namespace>".` using the namespace from the rendered manifest.
+* **CRITICAL**: A stage that resolves via `manifestArtifactId` to a `gcs/object` expected artifact does **NOT** qualify as deploying a Docker image based on `requiredArtifactIds` alone. However, if its rendered `manifests` array contains one or more `image:` fields, it DOES qualify as deploying a Docker image for external feed trigger purposes.
 
 **ABSOLUTE RULE — `manifestArtifactId` resolving to GCS MUST NEVER produce "Files from a Git repository"**: Regardless of whether the artifact is referenced via `manifestArtifactId` or directly via `manifestArtifact`, a `gcs/object` artifact reference MUST ALWAYS produce an "Inline YAML" step — never a "Files from a Git repository" step. The `gs://` paths are Google Cloud Storage paths, not Git repository URLs, and using them as Repository URLs is incorrect and will cause deployment failures.
 
