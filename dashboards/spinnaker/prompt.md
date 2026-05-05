@@ -1366,6 +1366,42 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
           - name: app-0101
             image: registry.example.invalid/image-0453
   ```
+    * **CRITICAL — preserve list indentation inside cached manifests**: When serializing a `manifests` array or inline `manifest` object that contains lists such as `containers`, `env`, `envFrom`, `volumeMounts`, `imagePullSecrets`, `ports`, or `args`, the list dash `-` must be indented under the parent key and the list item's child properties must be indented two spaces deeper than the dash. For example, under `containers:` the first item must appear as `        - name: ...`, and under `envFrom:` the first item must appear as `            - configMapRef:`. Do NOT emit list items flush with their parent object.
+    * **Negative example — CronJob manifest with flattened list indentation (FORBIDDEN)**:
+
+    The **WRONG** output for a cached CronJob manifest is:
+    ```yaml
+    spec:
+      jobTemplate:
+        spec:
+          template:
+            spec:
+              containers:
+              - envFrom:
+                - configMapRef:
+                    name: shared-config
+                image: registry.example.invalid/image-0872
+              imagePullSecrets:
+              - name: <redacted-secret-name>
+    ```
+    ← WRONG: the list items under `containers`, `envFrom`, and `imagePullSecrets` are not indented beneath their parent keys.
+
+    The **CORRECT** output preserves the list nesting:
+    ```yaml
+    spec:
+      jobTemplate:
+        spec:
+          template:
+            spec:
+              containers:
+                - envFrom:
+                    - configMapRef:
+                        name: shared-config
+                  image: registry.example.invalid/image-0872
+              imagePullSecrets:
+                - name: <redacted-secret-name>
+    ```
+    * **ABSOLUTE RULE — after writing the YAML block, visually verify that every nested key is indented deeper than its parent and that every list item is indented under its list key.** If any nested key such as `metadata.name`, `spec.concurrencyPolicy`, `jobTemplate.spec`, `containers`, `envFrom`, or `imagePullSecrets` appears at the same indentation level as its parent key, the YAML is wrong and must be rewritten before finalizing the output.
   * When the inline YAML produced from a `manifests` array or inline `manifest` object contains a single clear `metadata.namespace` value, append `Set the step namespace to "<namespace>".` to the step prompt even when `namespaceOverride` is absent. Use the namespace from the rendered manifest, not from the artifact reference.
   * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at \"<reference>\". The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space.
 * Do NOT generate a feed prompt from `manifestArtifact` GCS references.
@@ -1885,10 +1921,32 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 
 * The equivalent step in an Octopus Deploy project is created with the following prompt.
 * Replace `<seconds>` with the `waitTime` property in the Spinnaker stage.
-* Replace `<name>` with the `name` property in the Spinnaker stage.
+* Replace `<name>` with the `name` property in the Spinnaker stage after applying the same special-character replacement rules as `deployManifest` stages. If the wait stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the generated step name.
+* If the original wait stage name contained parentheses or square brackets, also append `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 
 ```
 * Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
+```
+
+**Negative example — wait step name keeps parentheses (COMMON MISTAKE)**:
+
+Given:
+```json
+{
+  "type": "wait",
+  "name": "Wait (15min)",
+  "waitTime": 900
+}
+```
+
+The **WRONG** output preserves the invalid step name characters:
+```
+* Add a "Run a Script" step with the name "Wait (15min)" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 900`
+```
+
+The **CORRECT** output uses the dash-replaced step name and preserves the original in the description:
+```
+* Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 900`. Set the step description to "Original Spinnaker stage name: Wait (15min)".
 ```
 
 ## Stage Conditions (`stageEnabled`)
@@ -1904,12 +1962,13 @@ Some Spinnaker stages have a `stageEnabled` property that controls whether the s
 }
 ```
 
-* When `stageEnabled.expression` is `false` (a boolean literal, not a string), the stage is hard-disabled. **Skip this stage entirely** — do not generate any step for it.
+* When `stageEnabled.expression` is `false` (a boolean literal, not a string), the stage is hard-disabled. **Convert the stage, but mark the corresponding Octopus step as disabled.** Do not drop the stage from the dependency graph.
 * When `stageEnabled.expression` is `true` (a boolean literal), the stage is always enabled — treat it as a normal stage.
 * **ABSOLUTE RULE — before treating any string-valued `stageEnabled.expression` as a SpEL expression, first check for the exact case-insensitive string values `"true"` and `"false"`.** These exact string values are NOT manual-review expressions. They are hard boolean outcomes.
 * When `stageEnabled.expression` is the exact string `"false"` or `"False"` with no surrounding expression syntax, treat it the same as the boolean literal `false`: the stage is hard-disabled and the corresponding Octopus steps must be disabled.
 * When `stageEnabled.expression` is the exact string `"true"` or `"True"` with no surrounding expression syntax, treat it the same as the boolean literal `true`: the stage is always enabled and must be converted normally.
-* When a stage is skipped because `stageEnabled.expression` resolves to false (either the boolean literal or the exact string forms above), the corresponding Octopus steps must be disabled.
+* When `stageEnabled.expression` resolves to false (either the boolean literal or the exact string forms above), the corresponding Octopus steps must be disabled.
+* **CRITICAL — hard-disabled stages still participate in dependency ordering and parallel grouping**: A disabled stage still occupies its original place in the stage graph. It can be part of a parallel root group, and later stages may still need `Set the start trigger to "Wait for all previous steps to complete, then start"` because they depend on a disabled stage. Do NOT remove hard-disabled stages from the dependency graph when computing output order or start-trigger annotations.
 * When `stageEnabled.expression` is any other **string** (for example a SpEL expression like `${ ... }`), there is no direct Octopus Deploy equivalent. **Convert the stage normally** but append the following NOTE to the step description. If the step already has a description, append this text to the existing description separated by a single space; do NOT emit a second independent description instruction:
 
   ```
@@ -2915,6 +2974,7 @@ Create a project called "Check SSL dev" in the "Default Project Group" project g
 
 * First, topologically sort all deployment stages by their `requisiteStageRefIds` dependency graph. Treat each `refId` as a node and each entry in `requisiteStageRefIds` as a directed edge from prerequisite to dependent. Stages with an empty or absent `requisiteStageRefIds` array have no prerequisites and must appear first in the sorted order; stages that depend only on those come next; and so on, until all stages are ordered.
 * **CRITICAL: Perform the topological sort based purely on `requisiteStageRefIds` values — NOT on the position of the stage in the JSON array.** A stage that appears late in the JSON array but has `"requisiteStageRefIds": []` must still be placed in the first (root) group, even if the JSON places it after a stage that depends on it.
+* Disabled stages still count when building dependency groups. If two stages share the same `requisiteStageRefIds` value, and one of them is disabled, they are STILL in the same parallel group for annotation purposes.
 * When the topologically-sorted execution order differs from the original JSON array order (i.e., at least one stage must be moved when converting from JSON order to topological order):
   * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent NON-PARALLEL stage's step prompt — i.e., every stage that is the FIRST in its dependency group (except the root group which has already been handled). Parallel siblings (2nd, 3rd, etc. stages within the same dependency group) continue to use `"Run in parallel with the previous step"` as before.
 * **IMPORTANT**: The `"Wait for all previous steps to complete, then start"` annotation is ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved), do NOT add this annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
@@ -2991,6 +3051,34 @@ The **CORRECT** output (no "Wait for all previous steps" — sequential pipeline
   * Similarly, if stages with refIds 8, 9, 11, 12, 13, 14, 19 all have `"requisiteStageRefIds": ["5"]`, then the step for refId 8 gets no parallel annotation (it is first in the group), but the steps for refIds 9, 11, 12, 13, 14, and 19 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
 * **CRITICAL — notification steps (Slack Notification Start/Finish/Complete) are NOT deployment stages and must NEVER influence parallel annotations of deployment stages.** When determining the parallel annotation for the first deployment stage in a parallel group, ignore any preceding notification steps entirely. If the first deployment stage in the root group is preceded only by a Slack Notification - Start step, that deployment stage MUST NOT receive a "Run in parallel with the previous step" annotation — it is the first deployment stage in its group and runs sequentially after the notification.
 * **CRITICAL — the first stage in ANY parallel group NEVER receives a parallel annotation**, regardless of whether it is the root group or a subsequent group. Only the 2nd and later stages within a parallel group get the "Run in parallel" annotation. This applies across all dependency levels: if six stages in the pipeline all depend on stage 5, the first of those six stages in JSON order gets no annotation; only stages 2-6 in that group get the parallel annotation.
+* **CRITICAL — this rule also applies when the second stage in the parallel group is disabled**: A hard-disabled stage with `stageEnabled.expression = false` still gets `Set the start trigger to "Run in parallel with the previous step"` when it is the second or later member of a dependency group. Disabled status changes `The step must be disabled.` only; it does NOT cancel the parallel annotation.
+* **CRITICAL — convergence after a parallel group must still use `Wait for all previous steps` even when one or more incoming branches are disabled**: If a stage depends on multiple prior stages (for example `requisiteStageRefIds: ["1", "2"]`), and one of those prior stages is disabled, the dependent stage still waits for the full group and must receive `Set the start trigger to "Wait for all previous steps to complete, then start"` when the ordering rules require it.
+
+**Worked example — disabled root sibling still gets `Run in parallel`, and the convergence step still gets `Wait for all previous steps`**:
+
+Given a pipeline with:
+```json
+{
+  "stages": [
+    { "refId": "1", "name": "Deploy Dev", "requisiteStageRefIds": [], "type": "deployManifest" },
+    { "refId": "2", "name": "Deploy Staging", "requisiteStageRefIds": [], "type": "deployManifest", "stageEnabled": { "expression": false, "type": "expression" } },
+    { "refId": "3", "name": "Manual Judgment", "requisiteStageRefIds": ["1", "2"], "type": "manualJudgment" }
+  ]
+}
+```
+
+The **CORRECT** output is:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... The step must be disabled. Set the start trigger to "Run in parallel with the previous step".
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+
+The **WRONG** output omits either of the start-trigger annotations:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... The step must be disabled.
+* Add a "Manual Intervention" step ... "Manual Judgment" ...
+```
 
 **Negative example — first deployment stage after notification incorrectly marked as parallel**:
 
