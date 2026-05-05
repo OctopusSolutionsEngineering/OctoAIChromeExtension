@@ -614,6 +614,8 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 
 * A `templatedPipeline` entry may contain a `variables` object with deployment configuration. These are added as variables to the project.
 * If the `variables` property is absent or empty, do not output any project variable prompts.
+* **CRITICAL — copy the `templatedPipeline` project name and every `variables` value verbatim with no anonymization**: Service names and component identifiers such as `api-server`, `auth-service`, `worker`, `backend`, `frontend`, `key-manager`, and similar values are ordinary deployment identifiers, not secrets. Never replace any portion of the pipeline `name` or any templated variable value with `*****` or any other placeholder.
+* **ABSOLUTE RULE — the generated output must NEVER introduce `*****` into a `templatedPipeline` project name or variable value unless the source JSON already contains `*****` at that exact location**. If the source pipeline name is `Deploy api-server to org-0003-2g-prod-tokyo-01`, the output project name must also contain `api-server`. If `variables.dockerImageName` is `api-server`, the output variable value must also be `api-server`.
 * For each key-value pair in `variables`, all values must be converted to quoted strings in the output, including booleans (e.g., `true` → `"true"`, `false` → `"false"`) and numbers (e.g., `3` → `"3"`).
 * This is an example of the prompt added to the project to define a project variable.
 * Replace `<variable name>` with the name of the variable and `<variable value>` with the string value of the variable:
@@ -2767,18 +2769,13 @@ Create a project called "My Project" in the "Default Project Group" project grou
 * Add a project variable called "timeout", with a default value of "30"...
 ```
 
-**ABSOLUTE RULE — `parameterConfig` variable prompts MUST appear AFTER all deployment step prompts**: The correct ordering within a project creation block is:
-1. Slack Notification - Start steps (if `pipeline.starting` is in `when`)
-2. Deployment steps (in topological dependency order)  
-3. Slack Notification - Finish steps (if `pipeline.failed` is in `when`)
-4. Slack Notification - Complete steps (if `pipeline.complete` is in `when`)
-5. External feed trigger prompt (if applicable)
-6. `parameterConfig` project variable prompts (LAST — before the disabled line)
-7. `* The project must be disabled.` (if `disabled: true`)
+**ABSOLUTE RULE — `parameterConfig` variable prompts must follow the Notification Step Ordering rules exactly**: There are only two valid placements for `parameterConfig` variables inside a project block:
+1. If the pipeline has one or more pipeline-level notification steps, place the `parameterConfig` variable prompts AFTER the Slack Notification - Complete steps and before the external feed trigger / disabled line.
+2. If the pipeline has NO pipeline-level notification steps, place the `parameterConfig` variable prompts BEFORE all stage steps.
 
 **Negative example — `parameterConfig` variables placed BEFORE deployment stages (COMMON MISTAKE)**:
 
-Given a pipeline with both `parameterConfig` entries AND `stages`, the following output has the WRONG ordering with variables before stages:
+Given a pipeline with both `parameterConfig` entries, `stages`, and pipeline-level notifications, the following output has the WRONG ordering with variables before stages:
 ```
 Create a project called "Check SSL dev" in the "Default Project Group" project group with no steps.
 * Add a project variable called "AlertDays", with a default value of "3"...
@@ -2787,11 +2784,13 @@ Create a project called "Check SSL dev" in the "Default Project Group" project g
 ← WRONG: Variables appear BEFORE stages. They must appear AFTER all deployment steps.
 ```
 
-The **CORRECT** output has deployment steps FIRST, then variables:
+The **CORRECT** output has deployment steps and notification steps FIRST, then variables:
 ```
 Create a project called "Check SSL dev" in the "Default Project Group" project group with no steps.
 * Add a "Deploy Kubernetes YAML" step to the deployment process ...
 [... all other deployment stages ...]
+* Add a community step template step ... "Slack Notification - Finish" ...
+* Add a community step template step ... "Slack Notification - Complete" ...
 * Add a project variable called "AlertDays", with a default value of "3"...
 * Add a project variable called "WarnDays", with a default value of "5"...
 ```
@@ -3586,6 +3585,7 @@ The replacement only fires when producing a `Set the target tag to ...` instruct
 * **Variable values**: Every value copied into `Add a project variable called "<name>" with the value "<value>"` must be the literal string from the pipeline JSON — never replaced with `*****` or any other placeholder.
 * **Parameter defaults and descriptions**: The `default`, `description`, and `label` fields copied from `parameterConfig` entries must be verbatim — do not redact or modify them.
 * **Step names**: Step names must be unique. Append a number to the name of steps with the same name to make them unique.
+* **ABSOLUTE RULE — unless the source JSON itself contains `*****`, the generated output must not contain `*****` anywhere inside a project name, variable value, parameter default, parameter description, parameter label, notification message, or stage name.** Do not apply safety redaction or secret masking to service names such as `api-server`, `auth-service`, `key-manager`, `serviceID`, `dockerImageName`, or similar identifiers.
 
 **CRITICAL — duplicate step names arise when multiple Spinnaker stages have the same `name` value**: After the name transformation rules are applied (replacing special characters with dashes), if two or more steps would result in the same name, the FIRST occurrence keeps the base name; the SECOND gets suffix ` 2`; the THIRD gets suffix ` 3`; and so on. You MUST check all step names for uniqueness before finalizing the output.
 
