@@ -733,6 +733,13 @@ Add a single external feed trigger that creates a new release for each step that
 ```
 
 * If the Docker trigger has `"enabled": false`, use `The trigger must be disabled.` instead of `The trigger must be enabled.`
+* If the Docker trigger has a non-empty `tag` value and an external feed trigger is generated for the project, add the following prompt immediately before the external feed trigger prompt:
+
+```
+* Add a channel called "Application" to the project and configure a version rule that matches the regex "<tag>" for every step that deploys a Docker image.
+```
+
+  Replace `<tag>` with the exact verbatim value of the Docker trigger's `tag` property. Do not modify the regex, do not strip anchors like `^` or `$`, and do not add or remove escaping.
 
 * Place the external feed trigger prompt **after** all deployment step prompts (including Slack notification steps) and all variable prompts, but **before** the `* The project must be disabled.` line.
 
@@ -742,72 +749,15 @@ Add a single external feed trigger that creates a new release for each step that
   * A `deployManifest` or `runJobManifest` stage ALSO qualifies when the stage has a non-empty cached `manifests` array (or an inline `manifest` object) and the rendered Kubernetes YAML contains at least one container image reference, for example `image: registry.example.invalid/my-app:1.2.3` or `image: gcr.io/my-project/my-app`. This remains true even when the source artifact type is `"gcs/object"` or `"github/file"` because the rendered manifest that Octopus will deploy clearly references a Docker image.
   * If a `deployManifest` or `runJobManifest` stage resolves a `manifestArtifactId` to `gcs/object` or `github/file`, and the stage has a non-empty cached `manifests` array with `image:` fields, it still qualifies as deploying a Docker image. The artifact source describes where the YAML came from; the rendered `manifests` content describes what will actually be deployed.
   * If no qualifying Docker-image steps are found, omit the external feed trigger prompt entirely — even if the pipeline has Docker or Pubsub triggers.
-* **CRITICAL — `requiredArtifactIds` does NOT qualify a stage as deploying a Docker image**: A `deployManifest` or `runJobManifest` stage may have a `requiredArtifactIds` array that references a Docker image artifact. This field tells Spinnaker which artifacts must be bound before the stage runs (e.g., a Docker image to be injected into a GCS-sourced manifest). However, `requiredArtifactIds` does NOT change the type of the manifest artifact itself. If the stage's actual manifest comes from a `gcs/object` or `github/file` artifact (via `manifestArtifactId` or `manifestArtifact`), the stage does NOT qualify as deploying a Docker image for external feed trigger purposes — regardless of what is in `requiredArtifactIds`.
+* **CRITICAL — runtime-bound Docker artifacts DO qualify a stage as deploying a Docker image**: A `deployManifest` or `runJobManifest` stage may reference Docker image artifacts through `requiredArtifactIds` or `requiredArtifacts`. If any referenced artifact resolves to `type: "docker/image"`, the stage MUST be treated as deploying a Docker image for external feed trigger purposes, even when the manifest itself comes from `gcs/object` or `github/file`. This preserves the original Spinnaker behaviour where the manifest source and the image source are separate artifacts that are bound together at runtime.
 
-  **Negative example — `requiredArtifactIds` pointing to Docker image but manifest is GCS**: Given a stage with `manifestArtifactId` resolving to a GCS artifact AND `requiredArtifactIds` pointing to a Docker image artifact, the stage does **NOT** qualify. The external feed trigger must **NOT** be generated.
+* **CRITICAL — `requiredArtifactIds` / `requiredArtifacts` only qualify when they resolve to Docker images**: Do not treat every required artifact as a Docker image deployment. The stage qualifies only when at least one required artifact resolves to a Docker image artifact. If the required artifacts are empty or resolve only to non-Docker artifacts, the stage does NOT qualify.
 
-  ```json
-  {
-    "stages": [
-      {
-        "manifestArtifactId": "gcs-artifact-id",
-        "requiredArtifactIds": ["docker-image-artifact-id"],
-        "type": "deployManifest",
-        "name": "Deploy prod"
-      }
-    ]
-  }
-  ```
+* **IMPORTANT**: Creating a feed from a Docker trigger's `registry` field (because `expectedArtifacts` is absent or empty) does **NOT** imply that an external feed trigger should be generated. The two decisions are independent. Even when a GCR or Docker feed is created solely from the trigger's `registry` field, you must still verify that at least one deployment stage qualifies as deploying a Docker image before emitting the external feed trigger prompt.
 
-  The **WRONG** output (generates external feed trigger because of `requiredArtifactIds` — FORBIDDEN):
-  ```
-  * Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be enabled.
-  ```
+**ABSOLUTE RULE — omit the external feed trigger when no step deploys or binds a Docker image**: If every `deployManifest`, `runJobManifest`, and `runJob` stage lacks rendered `image:` content, lacks `containers[].imageDescription`, and lacks any `requiredArtifactIds` / `requiredArtifacts` that resolve to `docker/image`, the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger.
 
-  The **CORRECT** output (no external feed trigger because the manifest itself is GCS, not docker/image):
-  ```
-  [no external feed trigger line]
-  ```
-* **IMPORTANT**: Creating a feed from a Docker trigger's `registry` field (because `expectedArtifacts` is absent or empty) does **NOT** imply that an external feed trigger should be generated. The two decisions are independent. Even when a GCR or Docker feed is created solely from the trigger's `registry` field, you must still verify that at least one deployment stage qualifies as deploying a Docker image before emitting the external feed trigger prompt. If all stages use `manifestArtifact.type: "gcs/object"` or `"github/file"`, omit the external feed trigger prompt regardless of how the feed was determined.
-
-**ABSOLUTE RULE — GCS/GitHub-only deployments never get an external feed trigger**: If every `deployManifest`, `runJobManifest`, and `runJob` stage in the pipeline uses `manifestArtifact.type: "gcs/object"` or `manifestArtifact.type: "github/file"` (and no `runJob` stage has a `containers[].imageDescription`), the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger.
-
-**CRITICAL — absent `expectedArtifacts` does NOT qualify stages as Docker-image deployments**: When the `expectedArtifacts` key is entirely absent from the pipeline JSON (not present at all), and the only deployment stages use `manifestArtifact.type: "gcs/object"` or `manifestArtifact.type: "github/file"`, this combination **MUST NOT** generate an external feed trigger — even if a Docker trigger is present and even if a GCR feed is created. The absence of `expectedArtifacts` never implies that stages deploy Docker images.
-
-**Negative example — absent `expectedArtifacts` + Docker trigger + GCS-only stages (MOST COMMON MISTAKE)**:
-
-```json
-{
-  "name": "my-service deploy to prod",
-  "stages": [
-    {
-      "manifestArtifact": { "type": "gcs/object", "reference": "gs://bucket/manifest.yaml" },
-      "type": "deployManifest"
-    }
-  ],
-  "triggers": [ { "registry": "gcr.io", "type": "docker", "enabled": false } ]
-  // Note: no "expectedArtifacts" key at all
-}
-```
-
-The **CORRECT** output for this pipeline has a GCR feed section AND a project section with NO external feed trigger:
-```
-Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
-
----
-
-Create a project called "my-service deploy to prod" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step... [no external feed trigger line]
-```
-
-The **WRONG** output (external feed trigger MUST NOT appear when all stages are GCS-only):
-```
-* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
-```
-
-**CRITICAL — rendered `manifests` content overrides the artifact-source shortcut for external feed trigger eligibility**: If a `deployManifest` or `runJobManifest` stage has a non-empty cached `manifests` array and that rendered manifest includes one or more `image:` fields, the stage MUST be treated as deploying a Docker image even when the source artifact itself is `gcs/object` or `github/file`. The external feed trigger prompt is REQUIRED in that case.
-
-**Worked example — GCS manifest source with cached rendered manifests that contain Docker images**:
+**Worked example — GCS manifest source with runtime-bound Docker image**:
 
 ```json
 {
@@ -832,32 +782,16 @@ The **WRONG** output (external feed trigger MUST NOT appear when all stages are 
       "type": "deployManifest",
       "name": "Deploy Orders",
       "manifestArtifactId": "manifest-artifact",
-      "requiredArtifactIds": ["docker-artifact"],
-      "manifests": [
-        {
-          "apiVersion": "apps/v1",
-          "kind": "Deployment",
-          "metadata": { "namespace": "orders-prod" },
-          "spec": {
-            "template": {
-              "spec": {
-                "containers": [
-                  { "name": "orders-api", "image": "registry.example.invalid/orders-api:1.2.3" }
-                ]
-              }
-            }
-          }
-        }
-      }
+      "requiredArtifactIds": ["docker-artifact"]
     }
   ],
   "triggers": [
-    { "type": "docker", "registry": "gcr.io", "enabled": false }
+    { "type": "docker", "registry": "gcr.io", "tag": "^master.*", "enabled": false }
   ]
 }
 ```
 
-The **WRONG** output (no external feed trigger because the source artifact is GCS — FORBIDDEN):
+The **CORRECT** output preserves the trigger because the stage still binds a Docker image at runtime:
 ```
 Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
 
@@ -865,20 +799,11 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
 
 Create a project called "Deploy Orders" in the "Default Project Group" project group with no steps.
 * Add a "Deploy Kubernetes YAML" step...
-```
-
-The **CORRECT** output (external feed trigger is REQUIRED because the rendered manifest deploys a Docker image):
-```
-Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
-
----
-
-Create a project called "Deploy Orders" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step...
+* Add a channel called "Application" to the project and configure a version rule that matches the regex "^master.*" for every step that deploys a Docker image.
 * Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
 ```
 
-**Negative example**: The following pipeline has a Docker trigger but the only `deployManifest` stage uses `manifestArtifact.type: "gcs/object"`. Because no stage qualifies as deploying a Docker image, the external feed trigger prompt **must NOT** be generated:
+**Negative example — GCS-only stage with no rendered images and no runtime-bound Docker artifacts**:
 
 ```json
 {
@@ -902,90 +827,7 @@ Create a project called "Deploy Orders" in the "Default Project Group" project g
 }
 ```
 
-The correct output for this pipeline has **no external feed trigger prompt**. Only a GCR feed creation prompt and the project creation prompt are produced.
-
-**WRONG output** (must never appear for this pipeline):
-```
-* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
-```
-
-**CORRECT output** (no external feed trigger line at all — the project prompt contains only the Kubernetes YAML step):
-```
-Create a project called "Deploy Workers" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Workers". Set the YAML Source to "Inline YAML"...
-```
-
-**Negative example — Docker trigger enabled + `requiredArtifactIds` referencing Docker image + GCS/GitHub-file manifest stages (DO NOT add external feed trigger)**:
-
-A pipeline may have a Docker trigger with `enabled: true` AND deployment stages that have `requiredArtifactIds` pointing to a Docker image artifact, while the manifest itself comes from `gcs/object` or `github/file`. In this case, the external feed trigger MUST NOT be generated because the manifest source type determines eligibility, not `requiredArtifactIds` or trigger `enabled` state.
-
-```json
-{
-  "triggers": [ { "type": "docker", "registry": "gcr.io", "enabled": true } ],
-  "stages": [
-    {
-      "type": "deployManifest",
-      "manifestArtifactId": "gcs-artifact-id",
-      "requiredArtifactIds": ["docker-image-artifact-id"],
-      "name": "Deploy Canary"
-    },
-    {
-      "type": "scaleManifest",
-      "manifestName": "deployment/my-service-canary",
-      "replicas": 0,
-      "name": "Scale Down Canary"
-    }
-  ]
-}
-```
-
-The **WRONG** output (external feed trigger added because Docker trigger is enabled — FORBIDDEN):
-```
-* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be enabled.
-```
-
-The **CORRECT** output (no external feed trigger — GCS manifest and scaleManifest do not qualify):
-```
-[no external feed trigger line]
-```
-
-**Negative example — direct `manifestArtifact.type: "github/file"` + `requiredArtifactIds` pointing to docker/image + docker/image in `expectedArtifacts` (DO NOT add external feed trigger)**:
-
-This is a particularly common mistake when a pipeline has `expectedArtifacts` with a docker/image entry AND a `deployManifest` stage that uses a `github/file` manifest with `requiredArtifactIds` referencing that docker/image. Even though docker/image appears in `expectedArtifacts` AND `requiredArtifactIds`, the stage does NOT qualify because the manifest itself is `github/file`, not `docker/image`.
-
-```json
-{
-  "expectedArtifacts": [
-    {
-      "matchArtifact": { "name": "registry.example.invalid/image-0460", "type": "docker/image" },
-      "id": "docker-artifact-id"
-    }
-  ],
-  "stages": [
-    {
-      "type": "deployManifest",
-      "manifestArtifact": {
-        "name": "spinnaker/microservices/app-0089/production/job.yaml",
-        "reference": "https://example.invalid/url-0462",
-        "type": "github/file"
-      },
-      "requiredArtifactIds": ["docker-artifact-id"],
-      "name": "Deploy (Manifest)"
-    }
-  ],
-  "triggers": [ { "type": "docker", "registry": "gcr.io", "enabled": false } ]
-}
-```
-
-The **WRONG** output (external feed trigger added because `expectedArtifacts` has docker/image and `requiredArtifactIds` references it — FORBIDDEN):
-```
-* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
-```
-
-The **CORRECT** output (NO external feed trigger — the manifest source is `github/file`, not `docker/image`; `requiredArtifactIds` alone never qualifies a stage):
-```
-[no external feed trigger line]
-```
+The **CORRECT** output for this pipeline has **no external feed trigger prompt** because no step deploys or binds a Docker image.
 
 ## Pubsub Triggers
 
@@ -1236,9 +1078,14 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 * Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log". Set the "ssn_Message" property to "Deployment completed."
 ```
 
+* **IMPORTANT — `pipeline.complete` condition depends on whether `pipeline.failed` is also present**:
+  * If BOTH `pipeline.complete` AND `pipeline.failed` are in the `when` array, use `Always run the step.` for the Complete step. This matches the Spinnaker behaviour where the complete notification fires on success and the failed notification fires on failure — so the Complete step should run in all cases.
+  * If `pipeline.complete` is in `when` but `pipeline.failed` is **NOT** in `when`, use `Only run the step when the deployment is successful.` instead of `Always run the step.` The Spinnaker `pipeline.complete` event fires only on **success**; using `Always` would incorrectly send the notification on failure too.
+
 * The `ssn_Message` value for the Complete step must come from `notifications[].message.pipeline.complete.text` OR `notifications[].message.pipeline.completed.text` (whichever is present — they are equivalent). If both are absent or empty, omit the `ssn_Message` property entirely. Do NOT fall back to the `pipeline.failed` message text.
 
 * The name of notification steps must be unique. Append a counter the end of step names, like `Slack Notification - Complete 2`, to ensure step names are unique.
+* If one or more pipeline-level Slack notification steps are generated for the project, add exactly one variable prompt after the Slack notification steps and before any external feed trigger prompt: `* Add a sensitive project variable called "Project.Slack.WebhookUrl" with the description "Slack webhook URL used by migrated Spinnaker notification steps.".` Do not generate this variable when the pipeline has no qualifying pipeline-level Slack notifications.
 
 # Stages
 
@@ -1247,6 +1094,13 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 * If `stageEnabled.expression` is the boolean `false` or the exact case-insensitive string `"false"`, the stage is hard-disabled and the corresponding Octopus steps must be set to disabled.
 * If `stageEnabled.expression` is the boolean `true` or the exact case-insensitive string `"true"`, the stage is always enabled and the corresponding Octopus steps must be set to enabled.
 * Only after those exact boolean checks are done may any remaining string-valued `stageEnabled.expression` be treated as a SpEL-style manual-review condition.
+
+## Runtime Artifact Binding Notes
+
+* If a `deployManifest` or `runJobManifest` stage has non-empty `requiredArtifactIds` or `requiredArtifacts` entries that resolve to one or more `docker/image` artifacts, append the following note to the step description: `NOTE: This step originally required the following Docker images to be bound at runtime by Spinnaker: <image 1>, <image 2>, ...`.
+* Resolve `requiredArtifactIds` by matching them to `expectedArtifacts[].id`. Resolve `requiredArtifacts` directly from the artifact objects embedded on the stage.
+* Build the comma-separated image list from the exact verbatim Docker image names or references present in the artifact definition. Prefer `matchArtifact.name`, then `defaultArtifact.name`, then `matchArtifact.reference`, then `defaultArtifact.reference`.
+* If the step already has a description for another reason (for example, the stage name contained special characters or the manifest came from GCS), append the runtime-binding note to the existing description text, separated by a single space. Do not create a second independent step description instruction.
 
 ## Deploy Manifest Kubernetes Stage
 
@@ -1309,8 +1163,36 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 
 **CRITICAL — use dashes `-` NOT underscores `_` when replacing parentheses**: Although underscores are technically valid Octopus step name characters, they are also Markdown formatting characters (e.g., `_text_` renders as italic and strips the underscores). Using underscores in step names that are generated as part of Markdown text causes the underscores to be silently stripped. You MUST use dashes `-` instead. For example, `Deploy (Manifest)` MUST become `Deploy -Manifest-` (with dashes), NOT `Deploy _Manifest_` (with underscores).
 
+**CRITICAL — duplicate step names must be made unique**: Spinnaker allows multiple stages to share the same `name` within a pipeline, but Octopus requires every step name to be unique. After applying the special-character replacement rules to each stage's `name`, scan the generated step names for duplicates. If two or more stages would produce the same step name, append ` 2`, ` 3`, etc. to the second and subsequent occurrences (in the topological/output order) to make them unique. For example, if three stages are each named `Deploy (Manifest)`, the generated Octopus steps must be named `Deploy -Manifest-`, `Deploy -Manifest- 2`, and `Deploy -Manifest- 3`. Apply the same deduplication for all stage types (`deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, etc.).
+
+* **IMPORTANT — Repository Branch from `defaultArtifact.version`**: When the `defaultArtifact` of the resolved `expectedArtifacts` entry has a `version` field that is non-empty, include `Set the Repository Branch to "<version>".` in the step prompt. This preserves the exact git branch that the Spinnaker pipeline was configured to pull the manifest from. If `defaultArtifact.version` is absent, null, or an empty string, omit the Repository Branch instruction and let the step use the default branch (`main`).
+
+**Worked example — `deployManifest` stage with `defaultArtifact.version` set**:
+
+Given an `expectedArtifacts` entry:
+```json
+{
+  "defaultArtifact": {
+    "name": "job/batch-generate-listing-suggest-index-dev.yaml",
+    "reference": "https://example.invalid/url-0068",
+    "type": "github/file",
+    "version": "kannan-batch-generate-listing-index"
+  }
+}
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
+
+The **CORRECT** step prompt includes the branch:
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "https://example.invalid/url-0068". Set the File Paths to "job/batch-generate-listing-suggest-index-dev.yaml". Set the Repository Branch to "kannan-batch-generate-listing-index". Set the target tag to Kubernetes.
+```
+
+The **WRONG** step prompt omits the branch (defaulting to "main" — FORBIDDEN when the original was a different branch):
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "https://example.invalid/url-0068". Set the File Paths to "job/batch-generate-listing-suggest-index-dev.yaml". Set the target tag to Kubernetes.
+```
+
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the Repository Branch to "<version>" (only if defaultArtifact.version is non-empty). Set the target tag to <account>.
 ```
 
 Some `deployManifest` stages do not use `manifestArtifactId` to reference an entry in `expectedArtifacts`. Instead, they embed the artifact directly in a `manifestArtifact` property on the stage itself. For example:
@@ -1339,6 +1221,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 ```
 
 * When a stage has a `manifestArtifact` property directly (instead of `manifestArtifactId`), use the `reference` field of `manifestArtifact` as the Repository URL and the `name` field of `manifestArtifact` as the File Paths. If `manifestArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
+* **IMPORTANT — Repository Branch from `manifestArtifact.version`**: When the `manifestArtifact` has a `version` field that is non-empty, include `Set the Repository Branch to "<version>".` in the step prompt. This preserves the exact git branch that Spinnaker was configured to pull the manifest from. If `manifestArtifact.version` is absent, null, or an empty string, omit the Repository Branch instruction.
 * **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Use the following logic:
   * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest. The manifest YAML content must be serialized verbatim — do NOT redact, anonymize, or replace any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders. Service names, namespaces, and deployment names that appear in the manifest are Kubernetes resource identifiers, not secrets.
   * **CRITICAL — ConfigMap `data` maps and resource names must remain verbatim too**: Keys and values under `data`, `stringData`, `metadata.name`, `metadata.labels`, `spec.selector`, and `spec.template.metadata.labels` are part of the Kubernetes manifest and MUST be copied exactly as they appear in the JSON. Names like `app-0305-api-v2-prod`, `config-app-0305-prod`, `api`, `service`, `key`, and `token` inside these manifest fields are ordinary identifiers, not secrets, and MUST NEVER be replaced with `*****`.
@@ -1528,7 +1411,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 1. Find the `expectedArtifacts` entry whose `id` matches the stage's `manifestArtifactId` value.
 2. Check the `defaultArtifact.type` of that entry.
 3. If `defaultArtifact.type` is `"gcs/object"`, **STOP** — do NOT use "Files from a Git repository". Apply the **GCS inline YAML rules** instead.
-4. If `defaultArtifact.type` is `"github/file"`, use **"Files from a Git repository"** — use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. If `defaultArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value. NEVER use "Inline YAML" for a `github/file` artifact.
+4. If `defaultArtifact.type` is `"github/file"`, use **"Files from a Git repository"** — use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. If `defaultArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value. NEVER use "Inline YAML" for a `github/file` artifact. If `defaultArtifact.version` is present and non-empty, also include `Set the Repository Branch to "<version>".` in the step prompt to preserve the configured git branch.
 
 **CRITICAL — `github/file` artifacts ALWAYS use "Files from a Git repository"**: Whether the artifact is referenced via `manifestArtifactId` (resolving to an `expectedArtifacts` entry) or directly via `manifestArtifact`, if `type` is `"github/file"`, the step MUST ALWAYS use `YAML Source: "Files from a Git repository"`. NEVER use "Inline YAML" for a `github/file` artifact. The URL `https://...` in a `github/file` reference is a GitHub URL, NOT a Google Cloud Storage path — do NOT treat it as GCS, do NOT generate a GCS TODO placeholder, and do NOT append a "Google Cloud Storage" NOTE.
 
@@ -1634,8 +1517,8 @@ The **WRONG** output (namespace annotation silently omitted):
 
 Stages with `"type": "runJobManifest"` represent Kubernetes job executions and must be converted using exactly the same rules as `deployManifest` stages. Apply the artifact reference logic identically:
 
-* If the stage has a `manifestArtifactId` property, look up the matching entry in `expectedArtifacts` by `id` and use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. If `defaultArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
-* If the stage has a direct `manifestArtifact` property, use `manifestArtifact.reference` as the Repository URL and `manifestArtifact.name` as the File Paths. If `manifestArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value.
+* If the stage has a `manifestArtifactId` property, look up the matching entry in `expectedArtifacts` by `id` and use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. If `defaultArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value. If `defaultArtifact.version` is present and non-empty, include `Set the Repository Branch to "<version>".` in the step prompt.
+* If the stage has a direct `manifestArtifact` property, use `manifestArtifact.reference` as the Repository URL and `manifestArtifact.name` as the File Paths. If `manifestArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value. If `manifestArtifact.version` is present and non-empty, include `Set the Repository Branch to "<version>".` in the step prompt.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 
 The resulting prompt must follow exactly the same rules as a `deployManifest` stage, including the stage name transformation rules.
@@ -3019,6 +2902,9 @@ The variable must be required.
 ```
 The variable must not be required.
 ```
+
+* If `hasOptions` is `true` and the `options` array contains one or more non-empty `value` entries, append the following sentence to the end of the variable prompt: `The variable must have the following selectable options: <option1>, <option2>, ...`.
+* Copy the selectable option values verbatim from `options[].value`, preserve their original order, and omit any option entries whose `value` is absent or the empty string.
 
 * **CRITICAL — the `required` flag MUST always be applied**: When `required` is `true`, the phrase "The variable must be required." MUST be appended to the variable prompt. Do not omit this phrase even when other fields like `default` or `label` are missing. Both "The variable must be prompted for when creating a release." and "The variable must be required." (or "must not be required.") are ALWAYS required parts of every `parameterConfig` variable prompt.
 

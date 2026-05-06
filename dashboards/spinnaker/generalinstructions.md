@@ -850,6 +850,9 @@ resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_ev
 ```
 
 * If the prompt specifies that a external feed trigger is to be created, and does not specify that a channel is to be created, you must create a channel called "Application" and link that channel to the external feed trigger.
+* If the prompt specifies `Add a channel called "Application" to the project and configure a version rule that matches the regex "<regex>" for every step that deploys a Docker image.`, create an `octopusdeploy_channel` resource named "Application" with a `rule` block whose `tag` property is set to the exact regex from the prompt.
+* When that regex-based channel rule applies to steps that expose package metadata, add one `action_package` block per matching deployment action. If the matching steps are `Octopus.KubernetesDeployRawYaml` steps without `primary_package` or `packages` blocks, still create the channel and still set the `rule.tag` property. Do not drop the channel just because `action_package` blocks cannot be emitted for placeholder Docker-image triggers.
+* If the prompt specifies both a regex-based `Application` channel and an external feed trigger, the `octopusdeploy_external_feed_create_release_trigger` resource must reference that regex-based channel instead of creating or linking to a second bare `Application` channel.
 * If the prompt specifies an external feed trigger for a project whose deployment steps are `Octopus.KubernetesDeployRawYaml` steps without a `primary_package` or `packages` block, create the `octopusdeploy_external_feed_create_release_trigger` resource without a `package` block. Do not drop the trigger merely because the referenced deployment step has no package metadata.
 * You will be penalized for setting the "channel_id" attribute to a fixed value like "Channels-1".
 * The "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must have a "deployment_action_slug" property that references a deployment action in the associated project.
@@ -1011,6 +1014,53 @@ resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
         tag           = "^hotfix$"
         version_range = ""
     }
+}
+```
+
+* Channel version rules must supply a package, for example:
+
+```
+resource "octopusdeploy_channel" "channel_every_step_project_hotfix" {
+  count       = "${length(data.octopusdeploy_projects.channel_every_step_project_hotfix.projects) != 0 ? 0 : 1}"
+  name        = "Hotfix"
+  description = "This is an example channel with package version rules"
+  project_id  = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? data.octopusdeploy_projects.project_every_step_project.projects[0].id : octopusdeploy_project.project_every_step_project[0].id}"
+  is_default  = false
+
+  rule {
+
+    action_package {
+      deployment_action = "Deploy a Helm Chart"
+    }
+
+    tag           = "^featurebranch$"
+    version_range = "[1.0,)"
+  }
+
+  tenant_tags = []
+  depends_on  = [octopusdeploy_process_steps_order.process_step_order_every_step_project,octopusdeploy_process_steps_order.process_step_order_every_step_project_example_runbook,octopusdeploy_process_steps_order.process_step_order_every_step_project_runbook_scoped_to_projects_lifecycle_environment,octopusdeploy_process_steps_order.process_step_order_every_step_project_runbook_with_no_environments]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_channel" resource with a "rule" block with an empty version, for example: 
+
+```
+resource "octopusdeploy_channel" "channel_dev_deployment_application" {
+  count      = "${length(data.octopusdeploy_projects.project_dev_deployment.projects) != 0 ? 0 : 1}"
+  name       = "Application"
+  project_id = "${length(data.octopusdeploy_projects.project_dev_deployment.projects) != 0 ? data.octopusdeploy_projects.project_dev_deployment.projects[0].id : octopusdeploy_project.project_dev_deployment[0].id}"
+  is_default = false
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  rule {
+    tag           = "^master.*"
+    version_range = ""
+  }
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 ```
 
@@ -1685,6 +1735,27 @@ resource "octopusdeploy_process_step" "process_step_argo_cd_manifest_update_upda
 * The "StartAfterPrevious" setting corresponds with the "Wait for all previous steps to complete, then start" option in the UI.
 * A step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" must define a "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property. If no file name is specified in the prompt, you must set the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property to "custom-resource.yaml".
 * You wll be penalized for defining a step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" and not defining the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property.
+* **CRITICAL — `file_path_filters` must be set from the "Set the File Paths to" instruction**: When the prompt includes `Set the File Paths to "<path>"` for a "Deploy Kubernetes YAML" step that uses "Files from a Git repository" as its YAML source, you MUST set `file_path_filters = ["<path>"]` in the `git_dependencies` block. Additionally, set `Octopus.Action.KubernetesContainers.CustomResourceYamlFileName = "<path>"` in the `execution_properties` block using the SAME value. Both `file_path_filters` and `CustomResourceYamlFileName` must reflect the exact file path string from the prompt instruction.
+* You will be penalized for setting `file_path_filters = null` when the prompt specifies "Set the File Paths to '<path>'" for a GitRepository-sourced Deploy Kubernetes YAML step.
+
+**Example — Deploy Kubernetes YAML step with File Paths instruction**:
+
+Given a prompt instruction: `Set the File Paths to "resource-0172".`
+
+The **CORRECT** Terraform sets both `file_path_filters` and `CustomResourceYamlFileName` to the same value:
+```
+git_dependencies = { "" = { default_branch = "master", file_path_filters = ["resource-0172"], git_credential_type = "Anonymous", repository_uri = "https://example.invalid/url-0234" } }
+execution_properties = {
+  "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" = "resource-0172"
+  "Octopus.Action.Script.ScriptSource" = "GitRepository"
+  ...
+}
+```
+
+The **WRONG** Terraform leaves `file_path_filters` as null — FORBIDDEN when a File Paths instruction is present:
+```
+git_dependencies = { "" = { default_branch = "master", file_path_filters = null, ... } }
+```
 * If the prompt says `Set the step namespace to "<namespace>".` for a step of type "Octopus.KubernetesDeployRawYaml", you must define `"Octopus.Action.KubernetesContainers.Namespace" = "<namespace>"` in the `execution_properties` block using that exact value.
 * A step of type "Octopus.KubernetesDeployRawYaml" with must not set the "Octopus.Action.KubernetesContainers.Namespace" property to an empty string. If the prompt does not specify a namespace, do not define the "Octopus.Action.KubernetesContainers.Namespace" property.
 * A step of type "Octopus.KubernetesDeployRawYaml" must have property indented YAML content in the "Octopus.Action.KubernetesContainers.CustomResourceYaml" property if the YAML source is set to "Inline YAML".
@@ -1758,6 +1829,7 @@ parameters      = [{ default_sensitive_value = null,, display_settings = { "Octo
 * You will be penalized for setting the resource "octopusdeploy_variable" "type" attribute to "Token".
 * When the "is_sensitive" property on a resource "octopusdeploy_variable" is set to "true", the "type" attribute must be set to "Sensitive".
 * When defining the value for a resource "octopusdeploy_variable" with a "type" of "Sensitive", the "sensitive_value" attribute must be set to "CHANGEME", and the "value" attribute must not be defined.
+* When the prompt says `Add a sensitive project variable called "<name>" with the description "<description>".`, create a project-scoped `octopusdeploy_variable` resource with `name = "<name>"`, `description = "<description>"`, `type = "Sensitive"`, `is_sensitive = true`, and `sensitive_value = "CHANGEME"`. Do not define a `value` attribute for that variable.
 
 For example, this is a sensitive variable:
 
@@ -2303,6 +2375,7 @@ git_dependencies {
 
 * When the prompt includes `The variable must have the following selectable options: <option1>, <option2>, ...` for a project variable, the corresponding `octopusdeploy_variable` resource MUST use `control_type = "Select"` in its `display_settings` block and MUST include one `select_option` block for each option.
 * Each `select_option` block must set both `display_name` and `value` to the option string from the prompt.
+* Preserve the option order from the prompt exactly and ignore any empty option strings.
 * If the prompt does NOT include a selectable options instruction, use `control_type = "SingleLineText"` in the `display_settings` block (the default).
 * You will be penalized for using `control_type = "SingleLineText"` when the prompt specifies selectable options.
 * You will be penalized for omitting any `select_option` block when selectable options are specified.
@@ -2347,6 +2420,7 @@ resource "octopusdeploy_variable" "variable_account_purpose" {
 
 ## Step Description Notes from Runtime Artifact Binding
 
-* When the prompt says `Set the step description to "NOTE: This step originally required the following Docker images to be bound at runtime by Spinnaker: ..."`, the description note MUST be set in the `notes` proeprty of the `octopusdeploy_process_step` resource  with the exact verbatim text from the prompt.
+* When the prompt says `Set the step description to "NOTE: This step originally required the following Docker images to be bound at runtime by Spinnaker: ..."`, the description note MUST be set in the `notes` property of the `octopusdeploy_process_step` resource with the exact verbatim text from the prompt.
 * If the step already has an `notes` entry for another reason (e.g., the stage name contained special characters), the two description texts must be concatenated, separated by a space, in the same `notes` property.
+* Preserve the comma-separated Docker image list exactly as it appears in the prompt. Do not reorder the images, do not deduplicate them, and do not redact registry names, repositories, tags, or quotes.
 * Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
