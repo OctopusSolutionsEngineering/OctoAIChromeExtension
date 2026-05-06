@@ -80,3 +80,7 @@ Once the `generalinstructions.md` file has been updated, use the `upload_file` t
 ## Check the results
 
 Recreate the same project again with the improved `prompt.md` and `generalinstructions.md` file, and compare the results to the previous attempt. Repeat the process until you are satisfied that the improvements made to the `prompt.md` and `generalinstructions.md` files have resulted in a significantly improved migration process.
+
+# Final Instructions
+
+When reading files, confirm that you have read the whole file by counting the number of lines in the file with `wc -l` and comparing it to the number of lines you have read. If the numbers do not match, you have not read the whole file.
