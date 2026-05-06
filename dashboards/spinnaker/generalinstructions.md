@@ -712,7 +712,7 @@ resource "octopusdeploy_runbook" "runbook_my_script_app_4_retrieve_logs" {
 ## Octopus Project Instructions
 
 * The "name" attribute in a "octopusdeploy_project" resource can only contain letters, numbers, periods, commas, dashes, underscores, brackets, square brackets, or hashes.
-* The "slug" attribute in a "octopusdeploy_project" resource can only contain lower case letters, numbers, or dashes.
+* The "slug" attribute in a "octopusdeploy_project" resource can only contain lower case letters, numbers, or dashes. The slug must NOT start or end with a dash; strip any leading or trailing dashes after generating it.
 * You will be penalized for replacing brackets with underscores in the "name" attribute of a "octopusdeploy_project" resource.
 * Retention policies do not apply to resource "octopusdeploy_project".
 * You must ignore any mention of retention policies when building the resource "octopusdeploy_project".
@@ -1178,6 +1178,8 @@ resource "octopusdeploy_process_step" "process_step_azure_web_app_deploy_web_app
 * The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource can only contain lower case letters, numbers, or dashes.
 * You will be penalized for using asterisks, for example "*****", as placeholders in the "slug" or "name" attributes.
 * You must set the "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource to a value like "step-name" derived from the "name" attribute by converting all letters to lowercase and replacing spaces with dashes.
+* The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must NOT start or end with a dash. After replacing spaces and special characters with dashes, you must strip any leading or trailing dashes from the result. For example, a step name "Start -main-" would produce the intermediate slug "start--main-" which after stripping leading/trailing dashes and collapsing consecutive dashes becomes "start-main".
+* You will be penalized for generating a "slug" attribute that starts or ends with a dash, such as "start-" or "-deploy".
 * The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
 * The "name" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
 * You must include all the "octopusdeploy_process_step" resources referenced in the "octopusdeploy_process_steps_order" resource "steps" array, for example:
