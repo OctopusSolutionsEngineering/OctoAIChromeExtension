@@ -332,6 +332,7 @@ resource "octopusdeploy_project" "project_<name>" {
 * The "count" parameter for any "octopusdeploy_process_steps_order" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
 * The "count" parameter for any "octopusdeploy_process_child_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
 * The "count" parameter for any "octopusdeploy_process_child_steps_order" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_external_feed_create_release_trigger" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
 * The "count" parameters must be in the format "${length(data.<data type>.<data resource>.<collection>) != 0 ? 0 : 1}"
 * You will be penalized for using count arguments like this: "${length(data.<data type>.<data resource>.<collection>) != 0 ? 1 : 1}"
 * You will be penalized for using ternary operators that return the same value for both cases.
@@ -942,11 +943,70 @@ resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_ev
 ```
 
 * If the prompt specifies that a external feed trigger is to be created, and does not specify that a channel is to be created, you must create a channel called "Application" and link that channel to the external feed trigger.
+
+**Negative example — external feed trigger created without creating the "Application" channel (CRITICAL MISTAKE)**:
+
+If the prompt says:
+```
+* Add a channel called "Application" to the project.
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image.
+```
+
+The **WRONG** output omits the `octopusdeploy_channel` resource and uses `"Channels-1"` as a fallback:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  channel_id = "Channels-1"  # WRONG: The "Application" channel was never created
+  ...
+}
+```
+
+The **CORRECT** output always creates the `octopusdeploy_channel` resource AND references it via ternary lookup:
+```hcl
+resource "octopusdeploy_channel" "channel_application" {
+  count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
+  name       = "Application"
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  channel_id = "${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"
+  ...
+}
+```
 * If the prompt specifies `Add a channel called "Application" to the project and configure a version rule that matches the regex "<regex>" for every step that deploys a Docker image.`, create an `octopusdeploy_channel` resource named "Application" with a `rule` block whose `tag` property is set to the exact regex from the prompt.
 * When that regex-based channel rule applies to steps that expose package metadata, add one `action_package` block per matching deployment action. If the matching steps are `Octopus.KubernetesDeployRawYaml` steps without `primary_package` or `packages` blocks, still create the channel and still set the `rule.tag` property. Do not drop the channel just because `action_package` blocks cannot be emitted for placeholder Docker-image triggers.
 * If the prompt specifies both a regex-based `Application` channel and an external feed trigger, the `octopusdeploy_external_feed_create_release_trigger` resource must reference that regex-based channel instead of creating or linking to a second bare `Application` channel.
 * If the prompt specifies an external feed trigger for a project whose deployment steps are `Octopus.KubernetesDeployRawYaml` steps without a `primary_package` or `packages` block, create the `octopusdeploy_external_feed_create_release_trigger` resource without a `package` block. Do not drop the trigger merely because the referenced deployment step has no package metadata.
 * You will be penalized for setting the "channel_id" attribute to a fixed value like "Channels-1".
+
+**Negative example — `channel_id` set to a hard-coded value (COMMON MISTAKE)**:
+
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  channel_id = "Channels-1"  # WRONG: hard-coded channel ID is never valid
+  name       = "External Feed Trigger"
+}
+```
+
+The **CORRECT** output uses a ternary lookup for `channel_id`:
+
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  channel_id = "${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"
+  name       = "External Feed Trigger"
+}
+```
+
+* The `project_id` attribute on an `octopusdeploy_external_feed_create_release_trigger` resource MUST use the ternary lookup pattern, just like the `project_id` on any other resource. You will be penalized for setting `project_id` to a direct resource reference such as `octopusdeploy_project.project_foo.id` without the ternary guard.
+* Every `octopusdeploy_external_feed_create_release_trigger` resource MUST include a `lifecycle { prevent_destroy = true }` block. You will be penalized for omitting this block.
 * The "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must have a "deployment_action_slug" property that references a deployment action in the associated project.
 * You will be penalized for setting the "deployment_action_slug" property in the "package" block of a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string or null when the step it references has no primary package.
 * The "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must have an empty string when referencing the "primary_package" of a step.

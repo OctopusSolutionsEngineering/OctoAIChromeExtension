@@ -769,13 +769,32 @@ Add a single external feed trigger that creates a new release for each step that
 ```
 
 * If the Docker trigger has `"enabled": false`, use `The trigger must be disabled.` instead of `The trigger must be enabled.`
-* If the Docker trigger has a non-empty `tag` value and an external feed trigger is generated for the project, add the following prompt immediately before the external feed trigger prompt:
+* **CRITICAL — an "Application" channel prompt MUST ALWAYS be included immediately before every external feed trigger prompt**: Without an explicit channel instruction, the Terraform generator will fall back to a hard-coded channel ID (`"Channels-1"`) which is invalid. You MUST always emit the channel line.
+  * If the Docker trigger has a **non-empty `tag`** value, emit the channel instruction with a version rule:
+    ```
+    * Add a channel called "Application" to the project and configure a version rule that matches the regex "<tag>" for every step that deploys a Docker image.
+    ```
+    Replace `<tag>` with the exact verbatim value of the Docker trigger's `tag` property. Do not modify the regex, do not strip anchors like `^` or `$`, and do not add or remove escaping.
+  * If the Docker trigger has **no `tag`** (the property is absent, `null`, or an empty string `""`), emit the channel instruction without a version rule:
+    ```
+    * Add a channel called "Application" to the project.
+    ```
+
+**Negative example — external feed trigger emitted without the preceding "Application" channel instruction (COMMON MISTAKE)**:
 
 ```
-* Add a channel called "Application" to the project and configure a version rule that matches the regex "<tag>" for every step that deploys a Docker image.
+* Add a "Deploy Kubernetes YAML" step ...
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
 ```
+← WRONG: The "Application" channel instruction is missing. This causes the Terraform generator to use `channel_id = "Channels-1"` which is invalid.
 
-  Replace `<tag>` with the exact verbatim value of the Docker trigger's `tag` property. Do not modify the regex, do not strip anchors like `^` or `$`, and do not add or remove escaping.
+**CORRECT output** (channel instruction always precedes the trigger):
+
+```
+* Add a "Deploy Kubernetes YAML" step ...
+* Add a channel called "Application" to the project.
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
+```
 
 * Place the external feed trigger prompt **after** all deployment step prompts (including Slack notification steps) and all variable prompts, but **before** the `* The project must be disabled.` line.
 
@@ -941,6 +960,7 @@ Add a single external feed trigger that creates a new release for each step that
 
 * Apply the same enabled/disabled rule as for Docker triggers: if the Pubsub trigger has `"enabled": false`, use `The trigger must be disabled.` instead of `The trigger must be enabled.`
 * The same **CRITICAL** check applies: only emit the external feed trigger prompt when at least one deployment step actually deploys a Docker image (see the Docker Triggers section above for the qualifying criteria).
+* **CRITICAL — just like Docker triggers, a Pubsub-only external feed trigger MUST also be preceded by the "Application" channel instruction** (see the Docker Triggers section for the full rule). When a Pubsub trigger generates the external feed trigger prompt and there is no Docker trigger with a `tag`, emit `* Add a channel called "Application" to the project.` immediately before the external feed trigger prompt.
 * There is no equivalent of the `runAsUser`, `subscriptionName`, or `pubsubSystem` properties in Octopus Deploy, so they are not included in the prompt.
 
 ## Pipeline Triggers
@@ -2920,9 +2940,21 @@ The **CORRECT** output (step description added to preserve original name with pa
 
 Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource to a target replica count (e.g., scaling to zero to effectively stop a deployment). Convert them using the same prompt as `deleteManifest` stages:
 
-* Replace `<stage name>` with the `name` property of the stage.
+* Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages. **CRITICAL**: if the stage `name` contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the step name (e.g., `Scale (Manifest)` → `Scale -Manifest-`). When the original name contained those characters, append `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<code>` with a PowerShell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field.
+
+**Negative example — `scaleManifest` stage name with parentheses not converted (COMMON MISTAKE)**:
+
+Given a `scaleManifest` stage with `"name": "Scale (Manifest)"`, the following is **WRONG**:
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale (Manifest)". ...
+```
+
+The **CORRECT** output (parentheses replaced with dashes, step description added):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale -Manifest-". Set the script to inline Powershell with the code `kubectl scale ...`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Scale (Manifest)".
+```
 
 ```
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell with the code `<code>`. Set the target tag to <account>.
