@@ -43,6 +43,7 @@ notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls bac
 * If the prompt says `The step must be disabled.`, you must still keep that step in the `octopusdeploy_process_steps_order` resource and preserve any explicit `start_trigger` annotation from the prompt. Disabled steps still participate in process ordering.
 * You will be penalized for using `start_trigger = "StartAfterPrevious"` when the prompt explicitly says `"Run in parallel with the previous step"`.
 * You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
+* **MANDATORY SELF-CHECK — parallel group completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Run in parallel with the previous step"`. For EACH such step, verify that the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` uses `start_trigger = "StartWithPrevious"`. If any step with that phrase uses `start_trigger = "StartAfterPrevious"`, correct it before outputting.
 
 **CRITICAL — the `start_trigger` on the FIRST step in a project is always `"StartAfterPrevious"`**: The first step in `octopusdeploy_process_steps_order` always uses `start_trigger = "StartAfterPrevious"` (or the equivalent default). For the first step, `"StartAfterPrevious"` means "start immediately" since there are no previous steps. This is correct behavior and must NOT be changed to `"StartWithPrevious"`.
 
@@ -96,6 +97,68 @@ resource "octopusdeploy_process_step" "... rollback_internal" {
 1. Parse the flat keys by their Kubernetes schema knowledge. For a Deployment, `apiVersion`, `kind`, `metadata`, `spec` are at depth 0 (column 0). Keys inside `metadata` (`name`, `namespace`, `labels`, `annotations`) are at depth 1 (2 spaces). Keys inside `spec` are at depth 1 (2 spaces), unless they are inside `template` (depth 2, 4 spaces) or deeper.
 2. For lists (`containers`, `env`, `envFrom`, `volumeMounts`, `imagePullSecrets`, `ports`), the list key itself is at its schema depth, the `-` marker appears at the same column as the list key, and the child fields of each list item appear at 2 spaces deeper than the `-`.
 3. Always verify: does each key appear at a deeper column than its parent key? If not, it is wrong.
+
+**CronJob YAML re-indentation**: CronJob has an extra `jobTemplate` nesting level compared to Deployment. The key depths are:
+* `apiVersion`, `kind`, `metadata`, `spec` → depth 0, column 0
+* `spec.schedule`, `spec.concurrencyPolicy`, `spec.successfulJobsHistoryLimit` etc. → depth 1, 2 spaces
+* `spec.jobTemplate` → depth 1, 2 spaces
+* `spec.jobTemplate.spec` → depth 2, 4 spaces
+* `spec.jobTemplate.spec.template` → depth 3, 6 spaces
+* `spec.jobTemplate.spec.template.spec` → depth 4, 8 spaces
+* `spec.jobTemplate.spec.template.spec.containers` → depth 5, 10 spaces (list key)
+* `spec.jobTemplate.spec.template.spec.containers[-]` (dash) → depth 5, 10 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].name` → depth 6, 12 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].env` → depth 6, 12 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].env[-]` (dash) → depth 6, 12 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].env[0].name` → depth 7, 14 spaces
+
+**Example — reconstructing a flat CronJob from the prompt into correct Terraform YAML**:
+
+If the prompt says (flat YAML from conversion step):
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+name: my-cronjob
+namespace: app-prod
+spec:
+schedule: "0 2 * * *"
+jobTemplate:
+spec:
+template:
+spec:
+containers:
+- name: my-task
+image: gcr.io/my-org/my-task:latest
+env:
+- name: ENV_VAR
+value: "production"
+restartPolicy: Never
+```
+
+The **CORRECT** Terraform value re-indents each key based on CronJob schema depth:
+```hcl
+"Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+  apiVersion: batch/v1
+  kind: CronJob
+  metadata:
+    name: my-cronjob
+    namespace: app-prod
+  spec:
+    schedule: "0 2 * * *"
+    jobTemplate:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: my-task
+                image: gcr.io/my-org/my-task:latest
+                env:
+                  - name: ENV_VAR
+                    value: "production"
+            restartPolicy: Never
+  EOT
+```
 
 **Example — reconstructing a flat Deployment + HPA multi-document from the prompt into correct Terraform YAML**:
 
@@ -171,7 +234,7 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * You will be penalized for omitting a step description when the prompt explicitly instructs it to be set.
 * You will be penalized for placing the `notes` attribute inside `execution_properties` — `notes` is a top-level attribute of the `octopusdeploy_process_step` resource.
 * **CRITICAL — never add backslash-escaping to GCS paths or other URLs in step descriptions.** When a step description contains a GCS path like `gs://example-bucket/path/to/file.yaml`, reproduce it verbatim in the `notes` string without adding backslashes or extra quotation marks around the URL. For example, `notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."` — NOT `notes = "... at \"gs://example-bucket/path\"."`.
-
+* **CRITICAL — `NOTE (migration):` text must be preserved verbatim**: When a step description includes text of the form `NOTE (migration): ...`, this text MUST appear verbatim in the `notes` attribute. Do NOT drop, summarize, or rephrase migration notes. These notes communicate important information about conditional branching or preconditions that were lost during migration. For example, if the prompt says `Set the step description to "...; NOTE (migration): This step was originally on the SUCCESS branch after \"Manual Judgment\". In this migration, both branches now run in parallel."`, the `notes` value MUST include the full NOTE (migration) sentence.
 **Negative example — GCS URL with incorrect backslash escaping in notes (FORBIDDEN)**:
 ```hcl
 notes = "This step originally loaded its manifest from Google Cloud Storage at \"gs://example-bucket/storage-3209\". The manifest must be inlined."
@@ -1511,6 +1574,7 @@ resource "octopusdeploy_process_step" "process_step_azure_web_app_deploy_web_app
 * The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
 * The "name" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
 * You must include all the "octopusdeploy_process_step" resources referenced in the "octopusdeploy_process_steps_order" resource "steps" array, for example:
+* **MANDATORY SELF-CHECK — step count verification**: Before finalizing the Terraform output, count the number of `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources defined. Then count the number of step references in the `octopusdeploy_process_steps_order` `steps` array. These two counts MUST be equal. If any step resource is missing from the `steps` array, or if the `steps` array references a non-existent resource, correct the discrepancy before outputting.
 
 ```
 data "octopusdeploy_projects" "project_my_app" {
@@ -2708,6 +2772,7 @@ data "octopusdeploy_projects" "project1" { ... }
 * You will be penalized for leaving any resources out for brevity.
 * You must include all requested resources.
 * You will be penalized for redacting, anonymizing, or replacing any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders.
+* **CRITICAL — disabled steps must be included in `octopusdeploy_process_steps_order` with `is_disabled = true`**: When the prompt says `The step must be disabled.` for a step, that step MUST still appear in the `steps` array of `octopusdeploy_process_steps_order` AND the corresponding `octopusdeploy_process_step` resource MUST have `is_disabled = true`. A disabled step is NOT an omitted step. Omitting a disabled step from the process order is a critical error.
 
 ## Git Repository Branch Instructions
 

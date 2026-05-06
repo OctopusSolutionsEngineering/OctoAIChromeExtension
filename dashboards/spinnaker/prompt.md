@@ -58,6 +58,19 @@ envFrom:
 * `spec.template.spec.containers[0].envFrom[0].secretRef` → depth 6 → 12 spaces
 * `spec.template.spec.containers[0].envFrom[0].secretRef.name` → depth 7 → 14 spaces
 
+**CronJob-specific YAML depths**: A CronJob has an extra nesting level (`spec.jobTemplate.spec`) compared to a Deployment. Apply the depth-tracking algorithm carefully:
+* `spec` → depth 1 → 2 spaces
+* `spec.schedule` → depth 2 → 4 spaces  ← not nested under jobTemplate
+* `spec.jobTemplate` → depth 2 → 4 spaces
+* `spec.jobTemplate.spec` → depth 3 → 6 spaces
+* `spec.jobTemplate.spec.template` → depth 4 → 8 spaces
+* `spec.jobTemplate.spec.template.spec` → depth 5 → 10 spaces
+* `spec.jobTemplate.spec.template.spec.containers` → depth 6 → 12 spaces
+* `spec.jobTemplate.spec.template.spec.containers[-]` (dash) → depth 6 → 12 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].name` → depth 7 → 14 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].env[-]` (dash) → depth 7 → 14 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].env[0].name` → depth 8 → 16 spaces
+
 **NEVER collapse multiple depth levels to the same column.** If you find two or more keys at the same column that have a parent-child relationship in the JSON, the YAML is wrong and must be rewritten.
 
 **CRITICAL — the section separator `---` must appear on its own line with a blank line before and after it (`\n\n---\n\n`).** This is critical because Kubernetes YAML manifests also use `---` as a multi-document separator. Within a `Set the step YAML to:` block, `---` is a YAML document separator and must NOT be interpreted as a section separator. A `---` line is only a section separator when it appears with blank lines on both sides (i.e., it is the entire content of its line AND is surrounded by blank lines).
@@ -2380,7 +2393,7 @@ The following stage types represent Spinnaker-internal operations or metadata lo
 
 * `findArtifactFromExecution` — looks up artifacts produced by another pipeline execution. This is a Spinnaker-specific mechanism for passing artifacts between pipelines and has no Octopus Deploy equivalent.
 * `evaluateVariables` — evaluates SpEL expressions to set pipeline variables. Skip it entirely.
-* `checkPreconditions` — checks pipeline preconditions. Skip it entirely.
+* `checkPreconditions` — checks pipeline preconditions. Skip it entirely. **HOWEVER**, when a `checkPreconditions` stage has `preconditions` items with `type: "stageStatus"`, preserve the condition information by appending a NOTE to each downstream step that directly follows the `checkPreconditions` stage in dependency order. The NOTE should describe what condition was originally being enforced. Example: if the precondition checks that stage "Manual Judgment" has status `SUCCEEDED`, append the text `NOTE (migration): This step originally ran only when the "Manual Judgment" stage had SUCCEEDED.` to the step description. If multiple `checkPreconditions` stages with **different** `stageStatus` values (e.g., one for SUCCEEDED and one for TERMINAL/CANCELLED) both depend on the same upstream stage, their respective downstream steps now run in parallel — include a NOTE on each downstream step explaining its original conditional branch (e.g., `NOTE (migration): This step was originally on the SUCCESS branch after "Manual Judgment". In this migration, both branches now run in parallel.` and `NOTE (migration): This step was originally on the CANCELLED/TERMINAL branch after "Manual Judgment". In this migration, both branches now run in parallel.`).
 * `setPipelineParameters` — sets parameters for a running pipeline. Skip it entirely.
 
 **IMPORTANT**: If a pipeline has only ignored stages (e.g., only `findArtifactFromExecution` and `checkPreconditions` stages), the project creation prompt must still be generated with no steps (use `"with no steps"` in the project prompt). Do not omit the project creation prompt just because all stages are of ignored types.
@@ -3386,10 +3399,31 @@ The **CORRECT** output (no "Wait for all previous steps" — sequential pipeline
 * When multiple stages share exactly the same `requisiteStageRefIds` value, they are intended to run in parallel. **This includes stages that all have an empty `requisiteStageRefIds` array `[]`** — an empty array `[]` is a shared value just like any other. For the second and subsequent stages in such a parallel group, append `Set the start trigger to "Run in parallel with the previous step".` to the step prompt.
   * Example: If stages with refIds 1, 2, 4, 15, 16, 17, 18 all have `"requisiteStageRefIds": []`, then the step for refId 1 gets no parallel annotation (it is first), but the steps for refIds 2, 4, 15, 16, 17, and 18 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
   * Similarly, if stages with refIds 8, 9, 11, 12, 13, 14, 19 all have `"requisiteStageRefIds": ["5"]`, then the step for refId 8 gets no parallel annotation (it is first in the group), but the steps for refIds 9, 11, 12, 13, 14, and 19 each get `Set the start trigger to "Run in parallel with the previous step"` appended.
+  * **CRITICAL — a parallel group member appearing LATE in the JSON array is still a group member**: Do NOT assume that because a stage appears at JSON position 16 (after many other stages) it belongs to a different group. If its `requisiteStageRefIds` exactly matches the `requisiteStageRefIds` of stages at positions 2 and 3, it is in the SAME parallel group and MUST receive `Set the start trigger to "Run in parallel with the previous step"`.
 * **CRITICAL — notification steps (Slack Notification Start/Finish/Complete) are NOT deployment stages and must NEVER influence parallel annotations of deployment stages.** When determining the parallel annotation for the first deployment stage in a parallel group, ignore any preceding notification steps entirely. If the first deployment stage in the root group is preceded only by a Slack Notification - Start step, that deployment stage MUST NOT receive a "Run in parallel with the previous step" annotation — it is the first deployment stage in its group and runs sequentially after the notification.
 * **CRITICAL — the first stage in ANY parallel group NEVER receives a parallel annotation**, regardless of whether it is the root group or a subsequent group. Only the 2nd and later stages within a parallel group get the "Run in parallel" annotation. This applies across all dependency levels: if six stages in the pipeline all depend on stage 5, the first of those six stages in JSON order gets no annotation; only stages 2-6 in that group get the parallel annotation.
 * **CRITICAL — this rule also applies when the second stage in the parallel group is disabled**: A hard-disabled stage with `stageEnabled.expression = false` still gets `Set the start trigger to "Run in parallel with the previous step"` when it is the second or later member of a dependency group. Disabled status changes `The step must be disabled.` only; it does NOT cancel the parallel annotation.
 * **CRITICAL — convergence after a parallel group must still use `Wait for all previous steps` even when one or more incoming branches are disabled**: If a stage depends on multiple prior stages (for example `requisiteStageRefIds: ["1", "2"]`), and one of those prior stages is disabled, the dependent stage still waits for the full group and must receive `Set the start trigger to "Wait for all previous steps to complete, then start"` when the ordering rules require it.
+
+**Worked example — scattered parallel group member at late JSON position**:
+
+Given a pipeline with 20 stages, where refId 2 (JSON pos 2), refId 3 (JSON pos 3), and refId 18 (JSON pos 16) all have `"requisiteStageRefIds": ["1"]`, while stages at positions 4–15 have `"requisiteStageRefIds": ["2","3","18"]`:
+
+The **WRONG** output (stage 18 treated as sequential because it appears late in JSON):
+```
+* Add ... "Deploy App" ...                ← refId 2, first in {2,3,18} group, no annotation ✓
+* Add ... "Deploy Config" ... Set the start trigger to "Run in parallel with the previous step".  ← refId 3 ✓
+[... many stages for {2,3,18} dependents ...]
+* Add ... "Deploy Worker" ... Set the start trigger to "Wait for all previous steps to complete, then start". ← refId 18, WRONG: it's in the same {2,3,18} group as refIds 2 and 3!
+```
+
+The **CORRECT** output (stage 18 is in the same parallel group as stages 2 and 3):
+```
+* Add ... "Deploy App" ...                ← refId 2, first in {2,3,18} group, no annotation ✓
+* Add ... "Deploy Config" ... Set the start trigger to "Run in parallel with the previous step".  ← refId 3 ✓
+[... many stages for {2,3,18} dependents (these come BEFORE refId 18 in topological order) ...]
+* Add ... "Deploy Worker" ... Set the start trigger to "Run in parallel with the previous step". ← refId 18, CORRECT: same group as 2 and 3 ✓
+```
 
 **Worked example — disabled root sibling still gets `Run in parallel`, and the convergence step still gets `Wait for all previous steps`**:
 
@@ -4203,6 +4237,19 @@ Create a project called "Deploy api-server to org-0003-2g-prod-tokyo-01" in the 
 **MANDATORY SELF-CHECK BEFORE COMPLETING YOUR RESPONSE**: Before finalizing your output, scan every line for the five-character sequence `*****`. If you find `*****` in any `Create a project called "..."` sentence, any step name (e.g., `name the step "..."`), any YAML value, or any step description — and the source JSON at that location did NOT already contain `*****` — you have incorrectly redacted a resource name. Go back to the source JSON, copy the original text, and replace the incorrect `*****` with the original text verbatim. The only valid `*****` values in your output are those that were literally present as `*****` in the source JSON input. Anything else is a bug that MUST be corrected before outputting.
 
 **WHY "api" IS NEVER AN API KEY**: In this organization's microservice naming convention, `api` is a short form of "application" (as in "application synchronizer" = `api-syncer`, "application server" = `api-server`). It is a CATEGORY of microservice, not an indicator that the name is a credential. Other examples: `auth-service` = authentication microservice, `key-manager` = encryption key management service, `token-processor` = authentication token processing service. The presence of these words in a service name makes the name a MICROSERVICE IDENTIFIER — it never makes the name a secret, API key, or credential. If you ever feel the urge to replace a service name with `*****`, STOP: the name is an identifier and must be preserved verbatim.
+
+**PRE-GENERATION PARALLEL GROUP ENUMERATION STEP**: Before writing any step prompts, perform this mandatory enumeration:
+1. Scan the ENTIRE `stages` array and build a map: `requisiteStageRefIds_value → [list of all refIds with that value]`. Include ALL stages regardless of their position in the JSON array.
+2. For each unique `requisiteStageRefIds` value, collect EVERY stage with that value into one parallel group — NOT just those that appear adjacent in the JSON.
+3. Mark the FIRST stage in each group (by JSON order) as the group leader. ALL other stages in the group (second, third, etc.) MUST get `Set the start trigger to "Run in parallel with the previous step"`.
+4. Verify your group map is complete: for example, if stages at JSON positions 2, 3, and 16 all have `"requisiteStageRefIds": ["1"]`, all three belong to the SAME parallel group — the stage at position 16 is NOT in a separate group.
+
+**Negative example — scattered parallel group member missed (CRITICAL MISTAKE)**:
+Given stages: refId 2 (`requisiteStageRefIds: ["1"]`, JSON pos 2), refId 3 (`requisiteStageRefIds: ["1"]`, JSON pos 3), refId 18 (`requisiteStageRefIds: ["1"]`, JSON pos 16):
+```
+WRONG: generate 2 as first in group, 3 as parallel, then (much later) 18 as "Wait for all previous steps" ← 18 is in the SAME group as 2 and 3!
+CORRECT: generate 2 as first in group, 3 as parallel (StartWithPrevious), 18 as parallel (StartWithPrevious) — all three share requisiteStageRefIds: ["1"]
+```
 
 **PRE-GENERATION IDENTIFIER EXTRACTION STEP**: Before writing your output, perform this mandatory preparation step:
 1. Read the top-level `"name"` field from the pipeline JSON below. Write it down exactly as it appears. This will be the project name in `Create a project called "..."`.
