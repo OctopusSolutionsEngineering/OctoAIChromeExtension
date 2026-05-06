@@ -32,6 +32,69 @@
 * **CRITICAL — if the prompt provides YAML that is already flat (all keys at column 0)**, you MUST re-indent it with proper 2-space nesting before embedding it as the value of `Octopus.Action.KubernetesContainers.CustomResourceYaml`. Flat YAML from the prompt is NOT a valid reason to emit flat YAML in Terraform. If you cannot correctly reconstruct the proper indentation from the flat input, use a TODO placeholder comment instead.
 * You will be penalized for embedding flat (column-0) YAML into any `execution_properties` value even when the source prompt also showed flat YAML.
 
+**CRITICAL — flat YAML re-indentation algorithm**: When the prompt provides flat YAML and you must reconstruct the correct indentation, use the following depth-tracking approach:
+1. Parse the flat keys by their Kubernetes schema knowledge. For a Deployment, `apiVersion`, `kind`, `metadata`, `spec` are at depth 0 (column 0). Keys inside `metadata` (`name`, `namespace`, `labels`, `annotations`) are at depth 1 (2 spaces). Keys inside `spec` are at depth 1 (2 spaces), unless they are inside `template` (depth 2, 4 spaces) or deeper.
+2. For lists (`containers`, `env`, `envFrom`, `volumeMounts`, `imagePullSecrets`, `ports`), the list key itself is at its schema depth, the `-` marker appears at the same column as the list key, and the child fields of each list item appear at 2 spaces deeper than the `-`.
+3. Always verify: does each key appear at a deeper column than its parent key? If not, it is wrong.
+
+**Example — reconstructing a flat Deployment + HPA multi-document from the prompt into correct Terraform YAML**:
+
+If the prompt says (flat YAML from conversion step):
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: gateway
+namespace: app-0126-dev
+spec:
+replicas: 2
+template:
+spec:
+containers:
+- name: gateway
+image: registry.example.invalid/image-0200
+envFrom:
+- secretRef:
+name: double-api-token
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+name: gateway-hpa
+spec:
+maxReplicas: 4
+minReplicas: 2
+```
+
+The **CORRECT** Terraform value re-indents each document based on schema depth:
+```hcl
+"Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: gateway
+    namespace: app-0126-dev
+  spec:
+    replicas: 2
+    template:
+      spec:
+        containers:
+          - name: gateway
+            image: registry.example.invalid/image-0200
+            envFrom:
+              - secretRef:
+                  name: double-api-token
+  ---
+  apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: gateway-hpa
+  spec:
+    maxReplicas: 4
+    minReplicas: 2
+  EOT
+```
+
 ## Step Name Character Rules
 
 * Octopus Deploy step names may only contain letters, numbers, periods, commas, dashes, underscores, and hashes. Parentheses `()` and square brackets `[]` are NOT valid in step names.
@@ -41,11 +104,38 @@
 
 ## Step Description Property
 
-* When the prompt says `Set the step description to "..."`, the description must be set in the `execution_properties` map of the `octopusdeploy_process_step` resource using the property `notes`.
+* When the prompt says `Set the step description to "..."`, the description must be set as the top-level `notes` attribute on the `octopusdeploy_process_step` resource, NOT inside the `execution_properties` map.
 * When the prompt says `Set the step description to include: "..."` or otherwise instructs you to append text to an existing step description, you must build a SINGLE final description string in prompt order and store that combined value in `notes`. Do not emit multiple competing description properties.
 * If a step receives more than one description fragment in the prompt, concatenate them with a single space between fragments unless the prompt explicitly specifies different punctuation.
 * The description value must be the exact verbatim string from the prompt, including any quoted sub-strings.
 * You will be penalized for omitting a step description when the prompt explicitly instructs it to be set.
+* You will be penalized for placing the `notes` attribute inside `execution_properties` — `notes` is a top-level attribute of the `octopusdeploy_process_step` resource.
+
+**Example — correct placement of `notes` attribute**:
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_staging" {
+  name                  = "Deploy Staging"
+  notes                 = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."
+  is_disabled           = true
+  execution_properties  = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: ..."
+    "Octopus.Action.Script.ScriptSource"                     = "Inline"
+  }
+}
+```
+
+**WRONG — `notes` inside `execution_properties` (FORBIDDEN)**:
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_staging" {
+  name                  = "Deploy Staging"
+  execution_properties  = {
+    "notes"                                                  = "This step originally..."  # WRONG
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: ..."
+  }
+}
+```
 
 ## Wait Steps (Script Steps with Start-Sleep)
 
@@ -1769,9 +1859,12 @@ git_dependencies = { "" = { default_branch = "master", file_path_filters = null,
 * For inline YAML copied from the prompt, treat the prompt's indentation as authoritative. Never left-shift nested keys such as `labels`, `annotations`, `containers`, `env`, `ports`, `metrics`, or `scaleTargetRef` to the same column as their parent key.
 * If the prompt includes a Deployment document followed by a HorizontalPodAutoscaler document in one inline YAML block, both documents must remain in the same `Octopus.Action.KubernetesContainers.CustomResourceYaml` value and both documents must preserve their own nested indentation after the `---` separator.
 * When the prompt explicitly says `The step must be disabled.`, set `is_disabled = true` on the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource. Do not omit the resource and do not change the step order to compensate.
+* **CRITICAL — steps whose inline YAML content is a TODO placeholder comment must also have `is_disabled = true`**: When the prompt says both `Set the YAML content to \`# TODO: ...\`` AND `The step must be disabled.`, you MUST set `is_disabled = true`. A disabled step with a TODO YAML body is preserved in the deployment process so engineers can see it, but it will not execute until the TODO is resolved and the step is re-enabled.
 * You will be penalized for defining the properties "Octopus.Action.GitRepository.ExternalRepositoryUrl" or "Octopus.Action.GitRepository.FilePathFilters" on a step of type "Octopus.KubernetesDeployRawYaml".
 * All steps must have a unique name. If two steps have the same name, add a number at the end of the step name to make it unique, for example "Deploy a Kubernetes Web App via YAML 2".
 * Any "octopusdeploy_process_templated_step" resource based on the community step template with the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" (which is the "Slack - Send Simple Notification" community step template) must set "Octopus.Action.RunOnServer" = "true" in the "execution_properties" block.
+* **CRITICAL — omit `ssn_Message` when the prompt does not specify a message value**: If the prompt instruction for a Slack notification step does NOT include `Set the "ssn_Message" property to "..."`, do NOT add an `"ssn_Message"` key to the `parameters` block at all. Only include `"ssn_Message"` when the prompt explicitly provides a message string. An absent `ssn_Message` is different from an empty string — do not substitute an empty string placeholder.
+* **CRITICAL — do NOT add extra Slack notification parameters that are not mentioned in the prompt**: The only parameters to include in a Slack notification `parameters` block are those explicitly mentioned in the step prompt (e.g., `ssn_HookUrl`, `ssn_Channel`, `ssn_Message`). Do not add `ssn_IconUrl`, `ssn_Username`, `ssn_Color`, or any other parameter unless the prompt explicitly requests it.
 * It is CRITICAL that the order of the steps in the prompt is maintained in the Terraform configurations. You MUST add each step, one by one, from top to bottom and left to right, as defined in the prompt.
 * The following prompt must define the "Slack Notification - Start" step first, then the "Deploy user-profile worker -dev-" step, and then the "Deploy user-track worker -dev-" step, in that specific order, in the "octopusdeploy_process_steps_order" resource:
 

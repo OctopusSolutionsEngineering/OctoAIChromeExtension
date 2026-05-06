@@ -10,9 +10,40 @@
 
 **ABSOLUTE RULE — every YAML block in the output must be VALIDLY INDENTED YAML, or it must be replaced with a TODO placeholder instead.** Flat YAML is forbidden. If you cannot preserve parent/child indentation for a cached `manifests` array or inline `manifest` object, do NOT guess and do NOT emit malformed YAML. Instead, keep the step and use a single-line placeholder comment such as `# TODO: replace with correctly indented manifest serialized from the cached Spinnaker manifests array`.
 
+**ABSOLUTE RULE — Kubernetes Secret and ConfigMap reference names are NEVER secrets, and MUST NEVER be redacted.** The values of `envFrom[].secretRef.name`, `envFrom[].configMapRef.name`, `volumes[].secret.secretName`, `volumes[].configMap.name`, and `imagePullSecrets[].name` are the NAMES of Kubernetes objects, not the secret data itself. Names like `double-api-token`, `launch-darkly-sdk`, `registry-credentials`, and `api-key-config` identify WHICH object to mount — they are resource identifiers. The presence of words like `token`, `key`, `secret`, `api`, or `credential` in these names does NOT make them confidential. NEVER replace ANY portion of such a name with `*****`. If the JSON has `"secretRef": {"name": "double-api-token"}`, the output MUST contain `name: double-api-token` verbatim.
+
+**Negative example — Kubernetes Secret reference name incorrectly redacted (FORBIDDEN)**:
+```yaml
+envFrom:
+  - secretRef:
+      name: double-*****     ← WRONG: "double-api-token" was in the source JSON; the full name must appear verbatim.
+```
+**Correct output**:
+```yaml
+envFrom:
+  - secretRef:
+      name: double-api-token   ← CORRECT: verbatim resource reference name.
+```
+
 **CRITICAL — a placeholder comment is better than malformed YAML.** Invalid YAML breaks the migration output. When choosing between flattened YAML and a TODO placeholder, always choose the TODO placeholder.
 
 **CRITICAL — YAML indentation must use exactly 2 spaces per level.** All keys nested under a parent must be indented 2 spaces more than the parent. YAML list items (`-`) must be indented 2 spaces under their list key, and the fields of each list item must be indented 2 additional spaces beyond the dash. For example, the `containers` key under `spec` must be at 4 spaces, each `- ` marker at 6 spaces, and fields of each container at 8 spaces. If the Spinnaker stage's `manifests` array is stored as JSON objects, you MUST re-serialize them with proper YAML indentation — do NOT flatten all keys to column 0.
+
+**CRITICAL — YAML serialization depth-tracking algorithm**: When serializing a JSON manifest to YAML, track the nesting depth of each key explicitly. Assign depth 0 to top-level keys (`apiVersion`, `kind`, `metadata`, `spec`). Each level of nesting adds 1 to the depth; each depth level corresponds to 2 spaces of indentation. For list items under a key at depth N, the dash `-` is at depth N+1 (indented 2*(N+1) spaces) and the child fields of each list item are at depth N+2 (indented 2*(N+2) spaces). Example depths for a Deployment:
+* `apiVersion` → depth 0 → 0 spaces
+* `metadata` → depth 0 → 0 spaces
+* `metadata.labels` → depth 1 → 2 spaces
+* `metadata.labels.app` → depth 2 → 4 spaces
+* `spec.template.spec` → depth 3 → 6 spaces (spec=0, template=1, spec=2, BUT nested spec under template is depth 3 from root)
+* `spec.template.spec.containers` → depth 4 → 8 spaces  
+* `spec.template.spec.containers[-]` (list item dash) → depth 4 → 8 spaces (the dash itself is at 8 spaces)
+* `spec.template.spec.containers[0].name` → depth 5 → 10 spaces
+* `spec.template.spec.containers[0].envFrom` → depth 5 → 10 spaces
+* `spec.template.spec.containers[0].envFrom[-]` (list item dash) → depth 5 → 10 spaces
+* `spec.template.spec.containers[0].envFrom[0].secretRef` → depth 6 → 12 spaces
+* `spec.template.spec.containers[0].envFrom[0].secretRef.name` → depth 7 → 14 spaces
+
+**NEVER collapse multiple depth levels to the same column.** If you find two or more keys at the same column that have a parent-child relationship in the JSON, the YAML is wrong and must be rewritten.
 
 **CRITICAL — the section separator `---` must appear on its own line with a blank line before and after it (`\n\n---\n\n`).** This is critical because Kubernetes YAML manifests also use `---` as a multi-document separator. Within a `Set the step YAML to:` block, `---` is a YAML document separator and must NOT be interpreted as a section separator. A `---` line is only a section separator when it appears with blank lines on both sides (i.e., it is the entire content of its line AND is surrounded by blank lines).
 
@@ -628,10 +659,11 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * **ABSOLUTE RULE — the generated output must NEVER introduce `*****` into a `templatedPipeline` project name or variable value unless the source JSON already contains `*****` at that exact location**. If the source pipeline name is `Deploy api-server to org-0003-2g-prod-tokyo-01`, the output project name must also contain `api-server`. If `variables.dockerImageName` is `api-server`, the output variable value must also be `api-server`.
 * **CRITICAL — templated manifest URL helper variables are authoritative fallbacks when execution-resolved artifact metadata is incomplete**: Execution-resolved `templatedPipeline` JSON often omits the matching `expectedArtifacts` entry for a `manifestArtifactId`. When a `deployManifest` or `runJobManifest` stage has a `manifestArtifactId` that cannot be resolved from the visible JSON, you MUST look for stage-specific helper variables in `variables` before falling back to an opaque artifact-id placeholder.
 * Use the following helper-variable fallback order when `manifestArtifactId` cannot be resolved:
-  * For `deployManifest`: prefer `deploymentManifestURL`, then `manifestURL`.
+  * For `deployManifest`: prefer `deploymentManifestURL`, then `manifestURL`. Also check for stage-name-specific variables that embed the environment or stage in their name: `devManifestURL`, `stgManifestURL`, `stagingManifestURL`, `prodManifestURL`, `productionManifestURL`, `canaryProdManifestURL`, `canaryManifestURL`. Match the helper variable name to the deployment stage name by substring (e.g., a stage named "Deploy Staging" → try `stgManifestURL` or `stagingManifestURL`; a stage named "Deploy Dev" → try `devManifestURL`; a stage named "Deploy Prod (Canary)" → try `canaryProdManifestURL` or `canaryManifestURL`; a stage named "Deploy Prod" → try `prodManifestURL`).
   * For `runJobManifest`: prefer `jobManifestURL`, then `manifestURL`.
-* If one of those helper variables is present and non-empty, treat its value as the authoritative manifest reference for the stage. For example, `gs://...` values use the existing GCS placeholder or cached-manifest rules, while `https://...` values use the existing `github/file` rules.
+* If one of those helper variables is present and its value is a non-empty, non-null string other than the literal `"null"`, treat its value as the authoritative manifest reference for the stage. For example, `gs://...` values use the existing GCS placeholder or cached-manifest rules, while `https://...` values use the existing `github/file` rules.
 * **ABSOLUTE RULE — never emit a TODO placeholder that says `downloaded from manifestArtifactId <id>` when a templated manifest URL helper variable is available**. Prefer the concrete helper-variable URL. The opaque artifact ID is not actionable enough for a migration prompt.
+* **CRITICAL — when the resolved manifest URL helper variable has the string literal value `"null"` (or a JSON null)**, the stage's manifest URL is not configured in this template instance. In that case: set the YAML Source to "Inline YAML", set the YAML content to `# TODO: manifest URL not configured — set variable to a valid GCS or GitHub path`, set the step description to "The manifest URL for this stage is not configured in this pipeline template instance (variable resolved to null). Configure the manifest URL variable and update the YAML source before deploying.", and **add `The step must be disabled.`** to the step prompt. Do NOT write "loaded from Google Cloud Storage at null" — the word "null" is not a valid GCS path.
 * For each key-value pair in `variables`, all values must be converted to quoted strings in the output, including booleans (e.g., `true` → `"true"`, `false` → `"false"`) and numbers (e.g., `3` → `"3"`).
 * This is an example of the prompt added to the project to define a project variable.
 * Replace `<variable name>` with the name of the variable and `<variable value>` with the string value of the variable:
@@ -1265,6 +1297,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 * **GCS artifacts**: When `manifestArtifact.type` is `"gcs/object"`, the artifact reference is a Google Cloud Storage path (e.g., `gs://bucket/path`). GCS paths are NOT valid Git repository URLs and cannot be used as the Repository URL in a "Deploy Kubernetes YAML" step with the "Files from a Git repository" source. Use the following logic:
   * If the stage has a non-empty `manifests` array (a cached copy of the Kubernetes manifest from a previous execution), serialize those manifests to YAML and use that content as the inline YAML for the step. This avoids requiring manual intervention to supply the manifest. The manifest YAML content must be serialized verbatim — do NOT redact, anonymize, or replace any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders. Service names, namespaces, and deployment names that appear in the manifest are Kubernetes resource identifiers, not secrets.
   * **CRITICAL — ConfigMap `data` maps and resource names must remain verbatim too**: Keys and values under `data`, `stringData`, `metadata.name`, `metadata.labels`, `spec.selector`, and `spec.template.metadata.labels` are part of the Kubernetes manifest and MUST be copied exactly as they appear in the JSON. Names like `app-0305-api-v2-prod`, `config-app-0305-prod`, `api`, `service`, `key`, and `token` inside these manifest fields are ordinary identifiers, not secrets, and MUST NEVER be replaced with `*****`.
+  * **CRITICAL — Kubernetes reference names in `envFrom`, `volumes`, `volumeMounts`, and `imagePullSecrets` are resource identifiers, NOT secrets**: The values of `envFrom[].secretRef.name`, `envFrom[].configMapRef.name`, `volumes[].secret.secretName`, `volumes[].configMap.name`, `volumeMounts[].name`, and `imagePullSecrets[].name` are Kubernetes object reference names (e.g., `double-api-token`, `app-config`, `registry-credentials`). These names identify which Kubernetes Secret or ConfigMap to mount — they are not the secret data itself. NEVER replace any portion of these reference names with `*****` or any other placeholder. If the source JSON has `"secretRef": {"name": "double-api-token"}`, the output YAML must also have `secretRef:\n  name: double-api-token`, verbatim.
   * **ABSOLUTE RULE — if you cannot preserve a cached manifest verbatim without redacting any field, do NOT emit partially redacted YAML.** Instead, replace the entire YAML body for that step with a single TODO placeholder comment describing that the cached manifest could not be serialized faithfully.
   * When the `manifests` array contains more than one item, serialize the ENTIRE array into a SINGLE multi-document YAML payload for that ONE step. Keep the manifests in their original array order and separate each YAML document with a standalone line containing exactly `---` inside the same fenced `yaml` block.
   * **CRITICAL — `---` between cached manifest documents is a YAML document separator, NOT a prompt-section separator**: When writing the step prompt, keep all documents inside the same `* Set the step YAML to:` block for the same step. Do NOT split the project prompt into multiple prompt sections, and do NOT start a new Octopus step merely because the inline YAML contains `---`.
@@ -1441,6 +1474,68 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
                 - name: <redacted-secret-name>
     ```
     * **ABSOLUTE RULE — after writing the YAML block, visually verify that every nested key is indented deeper than its parent and that every list item is indented under its list key.** If any nested key such as `metadata.name`, `spec.concurrencyPolicy`, `jobTemplate.spec`, `containers`, `envFrom`, or `imagePullSecrets` appears at the same indentation level as its parent key, the YAML is wrong and must be rewritten before finalizing the output.
+  * **Negative example — Deployment manifest with `envFrom.secretRef.name` flattened and redacted (FORBIDDEN)**:
+
+    Given a stage with a `manifests` array containing:
+    ```json
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": { "name": "gateway", "namespace": "app-0126-dev" },
+      "spec": {
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "name": "gateway",
+                "image": "registry.example.invalid/image-0200",
+                "envFrom": [
+                  { "secretRef": { "name": "double-api-token" } }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+    ```
+
+    The **WRONG** output flattens indentation AND redacts the secret reference name:
+    ```yaml
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+    name: gateway
+    namespace: app-0126-dev
+    spec:
+    template:
+    spec:
+    containers:
+    - name: gateway
+    image: registry.example.invalid/image-0200
+    envFrom:
+    - secretRef:
+    name: double-*****
+    ```
+    ← WRONG: All keys flattened to column 0, and `double-api-token` redacted to `double-*****`.
+
+    The **CORRECT** output preserves full nesting and copies the secret reference name verbatim:
+    ```yaml
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: gateway
+      namespace: app-0126-dev
+    spec:
+      template:
+        spec:
+          containers:
+            - name: gateway
+              image: registry.example.invalid/image-0200
+              envFrom:
+                - secretRef:
+                    name: double-api-token
+    ```
   * When the inline YAML produced from a `manifests` array or inline `manifest` object contains a single clear `metadata.namespace` value, append `Set the step namespace to "<namespace>".` to the step prompt even when `namespaceOverride` is absent. Use the namespace from the rendered manifest, not from the artifact reference.
   * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at \"<reference>\". The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space.
 * Do NOT generate a feed prompt from `manifestArtifact` GCS references.
