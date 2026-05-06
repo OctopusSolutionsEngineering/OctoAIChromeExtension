@@ -57,7 +57,7 @@ When sleeping, run the command `sleep 180` with no other arguments or commands. 
 
 DO NOT attempt to fix the timeout issues with any other strategy than sleeping.
 
-If the response indicates that the project could not be created, retry with a new Spinnaker pipeline.
+If the response indicates that the project could not be created, read the error message and update the `prompt.md` and `generalinstructions.md` files to address the error.
 
 ## Read the converted projects
 
