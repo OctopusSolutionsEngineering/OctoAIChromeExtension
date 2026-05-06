@@ -12,6 +12,10 @@
 
 **CRITICAL — a placeholder comment is better than malformed YAML.** Invalid YAML breaks the migration output. When choosing between flattened YAML and a TODO placeholder, always choose the TODO placeholder.
 
+**CRITICAL — YAML indentation must use exactly 2 spaces per level.** All keys nested under a parent must be indented 2 spaces more than the parent. YAML list items (`-`) must be indented 2 spaces under their list key, and the fields of each list item must be indented 2 additional spaces beyond the dash. For example, the `containers` key under `spec` must be at 4 spaces, each `- ` marker at 6 spaces, and fields of each container at 8 spaces. If the Spinnaker stage's `manifests` array is stored as JSON objects, you MUST re-serialize them with proper YAML indentation — do NOT flatten all keys to column 0.
+
+**CRITICAL — the section separator `---` must appear on its own line with a blank line before and after it (`\n\n---\n\n`).** This is critical because Kubernetes YAML manifests also use `---` as a multi-document separator. Within a `Set the step YAML to:` block, `---` is a YAML document separator and must NOT be interpreted as a section separator. A `---` line is only a section separator when it appears with blank lines on both sides (i.e., it is the entire content of its line AND is surrounded by blank lines).
+
 **Negative example — raw YAML as the entire output (FORBIDDEN)**:
 ```yaml
 apiVersion: batch/v1
@@ -191,7 +195,7 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
 ---
 
 Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source."
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1058. The manifest must be inlined or the step must be reconfigured to read from a supported source."
 * The project must be disabled.
 ```
 
@@ -279,7 +283,7 @@ Create a feed called "Google Container Registry" in Octopus Deploy with a feed U
 ---
 
 Create a project called "my-service deploy to dev" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy (Manifest)". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/manifest.yaml`. Set the target tag to Kubernetes. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/manifest.yaml". The manifest must be inlined or the step must be reconfigured to read from a supported source."
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy (Manifest)". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/manifest.yaml`. Set the target tag to Kubernetes. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/manifest.yaml. The manifest must be inlined or the step must be reconfigured to read from a supported source."
 ```
 
 **WRONG output** (no GCR feed section — this is a common mistake when `expectedArtifacts` is absent):
@@ -554,7 +558,7 @@ Create a project called "[dev] my-service" in the "Default Project Group" projec
 The **CORRECT** output (stage IS converted AND the project is disabled):
 ```
 Create a project called "[dev] my-service" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1058". The manifest must be inlined or the step must be reconfigured to read from a supported source."
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1058`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1058. The manifest must be inlined or the step must be reconfigured to read from a supported source."
 * The project must be disabled.
 ```
 
@@ -587,14 +591,14 @@ Given a pipeline with `"disabled": true` and one `runJobManifest` stage:
 The **WRONG** output (disabled line missing even though stage is correctly converted):
 ```
 Create a project called "app-0368-job" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-0042". The manifest must be inlined or the step must be reconfigured to read from a supported source."
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-0042. The manifest must be inlined or the step must be reconfigured to read from a supported source."
 ```
 ← WRONG: `* The project must be disabled.` is missing despite `"disabled": true` in the pipeline JSON.
 
 The **CORRECT** output (stage IS converted AND the project is disabled):
 ```
 Create a project called "app-0368-job" in the "Default Project Group" project group with no steps.
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-0042". The manifest must be inlined or the step must be reconfigured to read from a supported source."
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0042`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-0042. The manifest must be inlined or the step must be reconfigured to read from a supported source."
 * The project must be disabled.
 ```
 
@@ -673,7 +677,7 @@ Create a project called "Deploy cronjob example to dev" in the "Default Project 
 * Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has failed."
 * Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has completed."
 * Add a project variable called "enableAutomatedTrigger" with the value "false".
-* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-0420".
+* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-0420.
 * The project must be disabled.
 ```
 
@@ -1064,6 +1068,8 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.s
 
 * If `message.pipeline.starting.text` is present and non-empty, add `Set the "ssn_Message" property to "<text>".` to the end of the Start step prompt, where `<text>` is the value of `message.pipeline.starting.text`. If `message.pipeline.starting.text` is absent or empty, omit the `ssn_Message` property entirely.
 
+* **CRITICAL — Spinnaker SpEL expressions in notification message text**: Spinnaker notification messages may contain Spring Expression Language (SpEL) expressions such as `${trigger.user}`, `${#triggerResolvedArtifactByType("docker/image")["reference"]}`, or `${execution.name}`. These expressions use the `${...}` syntax, which is also used for Terraform string interpolation. When such message text is embedded in Terraform string values, the `$` character MUST be escaped as `$$` to prevent Terraform from attempting to evaluate the expression. The downstream Terraform generator MUST produce `$${ trigger.user }` rather than `${ trigger.user }`. Copy the message text verbatim into the prompt (including all SpEL expressions), but add a parenthetical note `(NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)` appended to the message text.
+
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.failed` event is created with the prompt:
 
 ```
@@ -1086,6 +1092,40 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.c
 
 * The name of notification steps must be unique. Append a counter the end of step names, like `Slack Notification - Complete 2`, to ensure step names are unique.
 * If one or more pipeline-level Slack notification steps are generated for the project, add exactly one variable prompt after the Slack notification steps and before any external feed trigger prompt: `* Add a sensitive project variable called "Project.Slack.WebhookUrl" with the description "Slack webhook URL used by migrated Spinnaker notification steps.".` Do not generate this variable when the pipeline has no qualifying pipeline-level Slack notifications.
+* **ABSOLUTE RULE — `Slack Notification - Complete` is NOT the last line when Slack steps exist.** After the final Slack notification step is emitted, you MUST immediately continue with `* Add a sensitive project variable called "Project.Slack.WebhookUrl" ...` unless there were no qualifying pipeline-level Slack notifications. Do not stop the output at the Complete step.
+* **ABSOLUTE RULE — when a project has pipeline-level Slack notifications, zero `parameterConfig` entries, no external feed trigger, and `disabled` is false or absent, the Slack webhook variable MUST be the final line of the project block.** In this common case, the correct ending is: Finish step, Complete step, webhook variable. Nothing may be omitted between the Complete step and the end of the project block.
+
+**CRITICAL — the Slack webhook variable is required even when ALL Slack notification steps omit `ssn_Message`**: The decision to create `Project.Slack.WebhookUrl` depends ONLY on whether one or more qualifying pipeline-level Slack notification steps were generated. It does NOT depend on whether any notification has a `message` object or whether any `ssn_Message` property is emitted. If Start, Finish, or Complete Slack steps exist, the sensitive project variable MUST also exist exactly once.
+
+**Negative example — Slack steps generated but webhook variable omitted because `message` is absent (COMMON MISTAKE)**:
+
+Given a pipeline-level Slack notification with:
+```json
+{
+  "address": "mp-fe-deployment",
+  "level": "pipeline",
+  "type": "slack",
+  "when": ["pipeline.starting", "pipeline.complete", "pipeline.failed"]
+}
+```
+
+The **WRONG** output omits the required sensitive variable:
+```
+* Add a community step template step with the name "Slack Notification - Start" ... Set the "ssn_Channel" property to "mp-fe-deployment".
+* Add a "Deploy Kubernetes YAML" step ...
+* Add a community step template step with the name "Slack Notification - Finish" ... Set the "ssn_Channel" property to "mp-fe-deployment".
+* Add a community step template step with the name "Slack Notification - Complete" ... Set the "ssn_Channel" property to "mp-fe-deployment".
+```
+← WRONG: once any pipeline-level Slack notification steps are generated, the output MUST also include `* Add a sensitive project variable called "Project.Slack.WebhookUrl" ...` exactly once.
+
+The **CORRECT** output includes the variable after the Slack steps even though no `ssn_Message` properties are present:
+```
+* Add a community step template step with the name "Slack Notification - Start" ... Set the "ssn_Channel" property to "mp-fe-deployment".
+* Add a "Deploy Kubernetes YAML" step ...
+* Add a community step template step with the name "Slack Notification - Finish" ... Set the "ssn_Channel" property to "mp-fe-deployment".
+* Add a community step template step with the name "Slack Notification - Complete" ... Set the "ssn_Channel" property to "mp-fe-deployment".
+* Add a sensitive project variable called "Project.Slack.WebhookUrl" with the description "Slack webhook URL used by migrated Spinnaker notification steps.".
+```
 
 # Stages
 
@@ -1476,12 +1516,12 @@ Given a pipeline with:
 
 The **WRONG** output (uses "Files from a Git repository" with a `gs://` URL — this will fail):
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "gs://example-bucket/storage-2091". Set the File Paths to "gs://example-bucket/storage-2091". Set the target tag to Kubernetes.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "gs://example-bucket/storage-2091. Set the File Paths to "gs://example-bucket/storage-2091. Set the target tag to Kubernetes.
 ```
 
 The **CORRECT** output (resolves via `manifestArtifactId` to GCS → inline YAML):
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2091`. Set the target tag to Kubernetes. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2091". The manifest must be inlined or the step must be reconfigured to read from a supported source."
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy Dev". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2091`. Set the target tag to Kubernetes. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-2091. The manifest must be inlined or the step must be reconfigured to read from a supported source."
 ```
 
 ## Namespace Override for Deploy Manifest Stages
@@ -1504,7 +1544,7 @@ Some `deployManifest` stages include a `namespaceOverride` property that overrid
 
 The **CORRECT** output for a stage with `"namespaceOverride": "org-0001-product-catalog-jp-dev"`:
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2053`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-2053". The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the step namespace to "org-0001-product-catalog-jp-dev".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-2053`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-2053. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the step namespace to "org-0001-product-catalog-jp-dev".
 ```
 
 The **WRONG** output (namespace annotation silently omitted):
@@ -2761,6 +2801,7 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * Replace `<code>` with a PowerShell script to call `kubectl` to delete the resource in the `manifestName` field.
 * The `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"job my-job"` → `kubectl delete job my-job`). Parse the kind and name from this field.
 * If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"job job-denpyo-checker"` and `location` is `"app-0251-dev"`, the command is `kubectl delete job job-denpyo-checker -n app-0251-dev`.
+* **`mode: "label"` deleteManifest stages**: When the `mode` field is `"label"` (instead of `"static"`), the stage uses `labelSelectors` to identify resources to delete rather than a specific `manifestName`. In this case, build the kubectl command using `-l` label selectors. Iterate over the `labelSelectors.selectors` array and convert each selector to a label expression (e.g., `{key: "app", kind: "EQUALS", values: ["server"]}` → `app=server`). Combine multiple selectors with commas. Also use the `kinds` array to specify the resource types to delete. For example, a stage with `kinds: ["deployment", "replicaSet", "pod"]` and selectors `app=server,stack=canary,version=v1` in namespace `app-0220-prod` generates: `kubectl delete deployment,replicaSet,pod -l app=server,stack=canary,version=v1 -n app-0220-prod`. The `kinds` list should be comma-joined with no spaces.
 * **IMPORTANT — step name special character replacement and step description**: The same rules as `deployManifest` stages apply. If the stage `name` contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the step name (e.g., `Delete (canary)` → `Delete -canary-`). For every `deleteManifest` step where the stage name contained parentheses or other special characters, ALSO set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
 
 **Negative example — `deleteManifest` stage with parentheses and no step description (COMMON MISTAKE)**:
@@ -3863,5 +3904,7 @@ Create a project called "Deploy ***** to org-0003-2g-prod-tokyo-01" in the "Defa
 Create a project called "Deploy api-server to org-0003-2g-prod-tokyo-01" in the "Default Project Group" project group with no steps.
 * Add a project variable called "dockerImageName" with the value "api-server".
 ```
+
+**FINAL CHECK FOR THE EMBEDDED SAMPLE BELOW — the response is incomplete unless it includes the Slack webhook variable**: The sample pipeline below contains one qualifying pipeline-level Slack notification and no `parameterConfig` entries. The correct response MUST therefore include `* Add a sensitive project variable called "Project.Slack.WebhookUrl" with the description "Slack webhook URL used by migrated Spinnaker notification steps.".` after the Slack Notification - Complete step. A response that ends at the Complete step is wrong because it stops before emitting the required variable.
 
 Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy.

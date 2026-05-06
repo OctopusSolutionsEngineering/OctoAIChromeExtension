@@ -29,6 +29,8 @@
 * Multi-document YAML must preserve both separators and indentation. A document separator line containing exactly `---` must be followed by a new top-level document starting again at column 0, while nested keys in that document remain indented.
 * If you cannot serialize cached manifest YAML with both correct indentation and verbatim values, you must fall back to a TODO placeholder instead of emitting malformed or partially redacted YAML.
 * You will be penalized for producing flat YAML in `Octopus.Action.KubernetesContainers.CustomResourceYaml`.
+* **CRITICAL — if the prompt provides YAML that is already flat (all keys at column 0)**, you MUST re-indent it with proper 2-space nesting before embedding it as the value of `Octopus.Action.KubernetesContainers.CustomResourceYaml`. Flat YAML from the prompt is NOT a valid reason to emit flat YAML in Terraform. If you cannot correctly reconstruct the proper indentation from the flat input, use a TODO placeholder comment instead.
+* You will be penalized for embedding flat (column-0) YAML into any `execution_properties` value even when the source prompt also showed flat YAML.
 
 ## Step Name Character Rules
 
@@ -1777,8 +1779,8 @@ git_dependencies = { "" = { default_branch = "master", file_path_filters = null,
 Create a project called "Deploy Workers (dev&prod) and Cronjobs (dev&prod)" in the "Default Project Group" project group with no steps.
 * Set the project description to "Deploys all workers except the custom-attribute-backfill worker".
 * Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "us-release".
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-profile worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1626`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy user-profile worker (dev). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1626". The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-track worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1627`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy user-track worker (dev). This step originally loaded its manifest from Google Cloud Storage at "gs://example-bucket/storage-1627". The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-profile worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1626`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy user-profile worker (dev). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1626. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-track worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1627`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy user-track worker (dev). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1627. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
 ```
 
 * You will be penalized for not maintaining the order of the steps as defined in the prompt in the "octopusdeploy_process_steps_order" resource.
@@ -1794,6 +1796,12 @@ Create a project called "Deploy Workers (dev&prod) and Cronjobs (dev&prod)" in t
 ```
 "ssn_Message" = "*Triggered by:* $${ trigger.user }\n*Container image:* $${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
 ```
+
+* **CRITICAL — Spinnaker SpEL expressions MUST be escaped in ALL Terraform string values, not just ssn_Message**: Any Terraform property value (including `notes`, `"Octopus.Action.Manual.Instructions"`, and any other `execution_properties` value) that contains `${...}` Spinnaker SpEL syntax must escape the dollar sign as `$${...}`. Failure to do so causes Terraform to attempt to interpolate the expression and produce a Terraform validation error.
+* You will be penalized for generating Terraform where any execution_property value or notes value contains unescaped `${...}` expressions that are not Terraform variables.
+* **CRITICAL — step descriptions with embedded string content**: When a `notes` attribute value is derived from a prompt instruction containing phrases like `at gs://...` or other path/URL references, do NOT add quotation marks around the URL or path inside the Terraform string value. The URL must appear without surrounding quotes in the `notes` string. For example:
+  * **WRONG**: `notes = "This step loaded its manifest from Google Cloud Storage at \"gs://my-bucket/path\". The manifest must be inlined."`
+  * **CORRECT**: `notes = "This step loaded its manifest from Google Cloud Storage at gs://my-bucket/path. The manifest must be inlined."`
 
 ## Octopus step template instructions
 
