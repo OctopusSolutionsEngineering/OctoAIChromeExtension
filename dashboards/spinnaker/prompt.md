@@ -829,6 +829,8 @@ Add a single external feed trigger that creates a new release for each step that
 
 **ABSOLUTE RULE — omit the external feed trigger when no step deploys or binds a Docker image**: If every `deployManifest`, `runJobManifest`, and `runJob` stage lacks rendered `image:` content, lacks `containers[].imageDescription`, and lacks any `requiredArtifactIds` / `requiredArtifacts` that resolve to `docker/image`, the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger.
 
+**IMPORTANT — external feed trigger IS generated even when ALL qualifying stages produce TODO YAML steps**: When stages qualify for the external feed trigger via `requiredArtifactIds` / `requiredArtifacts` resolving to `docker/image` (rather than via inline manifests with `image:` fields), the resulting Octopus steps will have TODO YAML placeholder content and will be disabled. Despite this, the external feed trigger **MUST STILL BE GENERATED** — it acts as a placeholder that preserves the original Spinnaker intent to trigger on Docker image pushes. The trigger will become functional once the TODO steps are resolved and re-enabled.
+
 **Worked example — GCS manifest source with runtime-bound Docker image**:
 
 ```json
@@ -976,9 +978,42 @@ Add a single external feed trigger that creates a new release for each step that
 ```
 
 * Apply the same enabled/disabled rule as for Docker triggers: if the Pubsub trigger has `"enabled": false`, use `The trigger must be disabled.` instead of `The trigger must be enabled.`
+* **CRITICAL — combined trigger enabled state when Docker and Pubsub triggers are merged**: When a pipeline has BOTH a Docker trigger AND a Pubsub trigger, and they are combined into a single external feed trigger prompt, use the following rule to determine the enabled state:
+  * If **at least one** of the contributing triggers has `"enabled": true`, use `The trigger must be enabled.`
+  * Only use `The trigger must be disabled.` when **ALL** contributing triggers have `"enabled": false`.
+  * Example: Docker trigger with `"enabled": false` + Pubsub trigger with `"enabled": true` → combined trigger prompt uses `The trigger must be enabled.`
+  * Example: Docker trigger with `"enabled": false` + Pubsub trigger with `"enabled": false` → combined trigger prompt uses `The trigger must be disabled.`
 * The same **CRITICAL** check applies: only emit the external feed trigger prompt when at least one deployment step actually deploys a Docker image (see the Docker Triggers section above for the qualifying criteria).
 * **CRITICAL — just like Docker triggers, a Pubsub-only external feed trigger MUST also be preceded by the "Application" channel instruction** (see the Docker Triggers section for the full rule). When a Pubsub trigger generates the external feed trigger prompt and there is no Docker trigger with a `tag`, emit `* Add a channel called "Application" to the project.` immediately before the external feed trigger prompt.
 * There is no equivalent of the `runAsUser`, `subscriptionName`, or `pubsubSystem` properties in Octopus Deploy, so they are not included in the prompt.
+
+**Worked example — combined Docker (disabled, no tag) + Pubsub (enabled) triggers with GCS-manifest stage qualifying via `requiredArtifactIds`**:
+
+Given a pipeline with:
+- Docker trigger: `"enabled": false`, `"tag": ""`, `"expectedArtifactIds": ["abc-123"]`
+- Pubsub trigger: `"enabled": true`, `"payloadConstraints": {"tag": "registry.example.invalid/image-0050"}, "expectedArtifactIds": ["abc-123"]`
+- `expectedArtifacts`: one docker/image artifact with id "abc-123", name "registry.example.invalid/image-0050"
+- Stage: `runJobManifest`, `source: "artifact"`, `manifestArtifact.type: "gcs/object"`, `requiredArtifactIds: ["abc-123"]`, no `manifests` array
+
+The stage qualifies for external feed trigger because `requiredArtifactIds` contains the docker/image artifact "abc-123" (per the runtime-bound Docker artifacts rule). The combined trigger is **enabled** because the Pubsub trigger is enabled. The Docker trigger has no tag so the channel has no version rule.
+
+The **CORRECT** output is:
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+
+---
+
+Create a project called "<pipeline name>" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-0050`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-0050. The manifest must be inlined or the step must be reconfigured to read from a supported source. NOTE: This step originally required the following Docker images to be bound at runtime by Spinnaker: registry.example.invalid/image-0050." The step must be disabled.
+* Add a channel called "Application" to the project.
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be enabled.
+```
+
+Key observations:
+1. The step is **disabled** because it has TODO YAML content — it cannot deploy successfully until the TODO is resolved
+2. The channel has **no version rule** because the Docker trigger has an empty `tag`
+3. The external feed trigger is **enabled** because the Pubsub trigger is enabled (at least one contributing trigger is enabled)
+4. The external feed trigger IS generated despite the step being a placeholder — it preserves the original Spinnaker intent to trigger on Docker image pushes
 
 ## Pipeline Triggers
 
@@ -1575,7 +1610,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
                     name: double-api-token
     ```
   * When the inline YAML produced from a `manifests` array or inline `manifest` object contains a single clear `metadata.namespace` value, append `Set the step namespace to "<namespace>".` to the step prompt even when `namespaceOverride` is absent. Use the namespace from the rendered manifest, not from the artifact reference.
-  * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at <reference>. The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space.
+  * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at <reference>. The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space. **Additionally, add `The step must be disabled.` to the step prompt.** A TODO YAML placeholder is not valid Kubernetes YAML and will fail at deployment time if the step is enabled.
 * Do NOT generate a feed prompt from `manifestArtifact` GCS references.
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
 * Replace `<account>` with the value of the `account` property in the stage.
@@ -1615,9 +1650,9 @@ The **CORRECT** output (`github/file` → "Files from a Git repository"):
 If the `defaultArtifact.type` of the resolved entry is `"gcs/object"`, apply the **same GCS inline YAML rules** as for a direct `manifestArtifact.type: "gcs/object"` stage:
 * Use `defaultArtifact.reference` as the GCS path.
 * If the stage has a non-empty `manifests` array, serialize those manifests to YAML as the inline YAML content.
-* If there is no `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to `# TODO: replace with manifest downloaded from <reference>`. Set the step description using the same GCS note as for direct GCS stages.
+* If there is no `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to `# TODO: replace with manifest downloaded from <reference>`. Set the step description using the same GCS note as for direct GCS stages. **Additionally, add `The step must be disabled.` to the step prompt**, since the TODO placeholder is not valid Kubernetes YAML and will fail at deployment time if the step is enabled.
 * If the stage has a non-empty `manifests` array with a single clear `metadata.namespace`, append `Set the step namespace to "<namespace>".` using the namespace from the rendered manifest.
-* **CRITICAL**: A stage that resolves via `manifestArtifactId` to a `gcs/object` expected artifact does **NOT** qualify as deploying a Docker image based on `requiredArtifactIds` alone. However, if its rendered `manifests` array contains one or more `image:` fields, it DOES qualify as deploying a Docker image for external feed trigger purposes.
+* **CRITICAL**: A stage that resolves via `manifestArtifactId` to a `gcs/object` expected artifact DOES qualify as deploying a Docker image if ANY of the following are true: (a) its rendered `manifests` array contains one or more `image:` fields, OR (b) it has non-empty `requiredArtifactIds` or `requiredArtifacts` entries that resolve to `docker/image` artifacts (consistent with the global rule at the Docker Triggers section above). In case (b), the resulting Octopus step will have TODO YAML content and should be marked as disabled — but the external feed trigger IS still generated to preserve the original Spinnaker intent.
 
 **ABSOLUTE RULE — `manifestArtifactId` resolving to GCS MUST NEVER produce "Files from a Git repository"**: Regardless of whether the artifact is referenced via `manifestArtifactId` or directly via `manifestArtifact`, a `gcs/object` artifact reference MUST ALWAYS produce an "Inline YAML" step — never a "Files from a Git repository" step. The `gs://` paths are Google Cloud Storage paths, not Git repository URLs, and using them as Repository URLs is incorrect and will cause deployment failures.
 

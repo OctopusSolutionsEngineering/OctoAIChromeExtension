@@ -1017,6 +1017,24 @@ resource "octopusdeploy_project" "project_my_project" {
 * You must ignore the instruction to "Set the prompt to disabled" when defining a resource "octopusdeploy_project".
 * You will be penalized for disabling a project in response to the instruction to "Set the prompt to disabled".
 * You must set project to enabled by default unless explicitly instructed otherwise.
+* **CRITICAL — when the prompt contains the line `* The project must be disabled.`, set `is_disabled = true` on the `octopusdeploy_project` resource.** This is distinct from the "Set the prompt to disabled" instruction above (which refers to the UI option for auto-creating projects). The `* The project must be disabled.` line in the prompt maps directly to `is_disabled = true` on the project resource.
+
+**Positive example — project disabled via prompt**:
+```
+resource "octopusdeploy_project" "project_my_project" {
+  name                                 = "${var.project_my_project_name}"
+  is_disabled                          = true
+  # ...other attributes
+}
+```
+
+**Negative example — project not disabled when prompt says "The project must be disabled." (COMMON MISTAKE)**:
+```
+resource "octopusdeploy_project" "project_my_project" {
+  name                                 = "${var.project_my_project_name}"
+  is_disabled                          = false   # WRONG: prompt says "The project must be disabled." — this must be true
+}
+```
 * Every project tenant variable must have a "template" block in the "octopusdeploy_project" resource defining the variable.
 * You will be penalized for creating a resource of type "octopusdeploy_project_deployment_settings".
 * You will be penalized for adding whitespace to the "description" attribute of a resource "octopusdeploy_project", for example:
@@ -1394,7 +1412,13 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
   * "Failure"
   * "Success"
   * "Variable"
+* The same `condition` values apply to `octopusdeploy_process_templated_step` resources — they accept the same valid values as `octopusdeploy_process_step`.
 * If the prompt specifies a condition that is not in the list above, you must set the "condition" attribute to "Success".
+* **CRITICAL — condition mapping for Slack notification step phrases in the prompt**:
+  * When the prompt says `Only run the step when the previous step has failed.` for a step, set `condition = "Failure"` on that step.
+  * When the prompt says `Always run the step.` for a step, set `condition = "Always"` on that step.
+  * When neither phrase is present (default), set `condition = "Success"` on that step.
+  * This mapping applies to both `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources.
 * When the "condition"attribute is set to "Variable", the "properties" block must include the "Octopus.Step.ConditionVariableExpression" property.
 * You will be penalized for setting the "condition" attribute to "Variable" without defining the "Octopus.Step.ConditionVariableExpression" property in the "properties" block.
 * Adding a step requires a new "octopusdeploy_process_step" resource to be defined and then added to the "octopusdeploy_process_steps_order" resource in the "steps" array. For example, if this is the initial set of steps:
@@ -2072,6 +2096,38 @@ git_dependencies = { "" = { default_branch = "master", file_path_filters = null,
 * If the prompt includes a Deployment document followed by a HorizontalPodAutoscaler document in one inline YAML block, both documents must remain in the same `Octopus.Action.KubernetesContainers.CustomResourceYaml` value and both documents must preserve their own nested indentation after the `---` separator.
 * When the prompt explicitly says `The step must be disabled.`, set `is_disabled = true` on the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource. Do not omit the resource and do not change the step order to compensate.
 * **CRITICAL — steps whose inline YAML content is a TODO placeholder comment must also have `is_disabled = true`**: When the prompt says both `Set the YAML content to \`# TODO: ...\`` AND `The step must be disabled.`, you MUST set `is_disabled = true`. A disabled step with a TODO YAML body is preserved in the deployment process so engineers can see it, but it will not execute until the TODO is resolved and the step is re-enabled.
+
+**Positive example — disabled step with TODO YAML**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_run_job_manifest" {
+  name                  = "Run Job -Manifest-"
+  type                  = "Octopus.KubernetesDeployRawYaml"
+  process_id            = "${octopusdeploy_process.process_my_project.id}"
+  is_disabled           = true   # Required because the YAML content is a TODO placeholder
+  condition             = "Success"
+  notes                 = "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path."
+  properties = {
+    "Octopus.Action.TargetRoles" = "Kubernetes"
+  }
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with manifest downloaded from gs://example-bucket/path"
+    "Octopus.Action.Script.ScriptSource"                     = "Inline"
+    "Octopus.Action.RunOnServer"                             = "true"
+    "OctopusUseBundledTooling"                               = "False"
+  }
+}
+```
+
+**Negative example — TODO YAML step not disabled (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_run_job_manifest" {
+  name                  = "Run Job -Manifest-"
+  is_disabled           = false  # WRONG: a TODO placeholder YAML step must be disabled
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with manifest..."
+  }
+}
+```
 * You will be penalized for defining the properties "Octopus.Action.GitRepository.ExternalRepositoryUrl" or "Octopus.Action.GitRepository.FilePathFilters" on a step of type "Octopus.KubernetesDeployRawYaml".
 * All steps must have a unique name. If two steps have the same name, add a number at the end of the step name to make it unique, for example "Deploy a Kubernetes Web App via YAML 2".
 * Any "octopusdeploy_process_templated_step" resource based on the community step template with the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" (which is the "Slack - Send Simple Notification" community step template) must set "Octopus.Action.RunOnServer" = "true" in the "execution_properties" block.
@@ -2690,6 +2746,52 @@ git_dependencies {
 
 * When the prompt includes `The variable must have the following selectable options: <option1>, <option2>, ...` for a project variable, the corresponding `octopusdeploy_variable` resource MUST use `control_type = "Select"` in its `display_settings` block and MUST include one `select_option` block for each option.
 * Each `select_option` block must set both `display_name` and `value` to the option string from the prompt.
+
+## Prompted Variable (Non-Select) Instructions
+
+* When the prompt includes `The variable must be prompted for when creating a release.` WITHOUT a selectable options instruction, the `octopusdeploy_variable` resource MUST include a `prompt` block with `control_type = "SingleLineText"` in `display_settings`.
+* When the prompt says `The variable must be required.`, set `is_required = true` in the `prompt` block.
+* When the prompt says `The variable must not be required.`, set `is_required = false` in the `prompt` block.
+* The `description` attribute in the `prompt` block must match the variable description from the prompt instruction.
+* The `label` attribute in the `prompt` block must match the label from the prompt instruction.
+
+**Example — prompted string variable without selectable options**:
+
+Given a prompt:
+```
+* Add a project variable called "key", with a default value of "", the description "Identifier of the job", and the label "Job Key". The variable must be prompted for when creating a release. The variable must be required.
+```
+
+The **CORRECT** Terraform:
+```
+resource "octopusdeploy_variable" "variable_key" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) == 0 ? octopusdeploy_project.project_my_project[0].id : data.octopusdeploy_projects.project_my_project.projects[0].id}"
+  name         = "key"
+  type         = "String"
+  value        = ""
+  is_sensitive = false
+  prompt {
+    description = "Identifier of the job"
+    label       = "Job Key"
+    is_required = true
+    display_settings {
+      control_type = "SingleLineText"
+    }
+  }
+}
+```
+
+The **WRONG** output (missing `prompt` block — the variable is not prompted for during release creation):
+```
+resource "octopusdeploy_variable" "variable_key" {
+  ...
+  name  = "key"
+  type  = "String"
+  value = ""
+  # WRONG: no prompt block, so this variable won't be prompted during release creation
+}
+```
 * Preserve the option order from the prompt exactly and ignore any empty option strings.
 * If the prompt does NOT include a selectable options instruction, use `control_type = "SingleLineText"` in the `display_settings` block (the default).
 * You will be penalized for using `control_type = "SingleLineText"` when the prompt specifies selectable options.
