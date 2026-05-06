@@ -22,6 +22,19 @@ name = "[PROD] ***** canary"   ← WRONG: "api-syncer" from the prompt was repla
 name = "[PROD] api-syncer canary"   ← CORRECT: verbatim project name from the prompt
 ```
 
+**CRITICAL — step notes (descriptions) must also reproduce any service names verbatim**: When a step description says `"Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/api-syncer to the previous revision in namespace app-0004-prod."`, the value of the `notes` attribute MUST be reproduced verbatim — including the service name `api-syncer`. Never replace any part of a step description with `*****`.
+
+**Negative example — step notes incorrectly redacted (FORBIDDEN)**:
+```hcl
+notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/***** to the previous revision in namespace app-0004-prod."
+← WRONG: "api-syncer" in the notes was replaced with "*****"
+```
+**Correct output**:
+```hcl
+notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/api-syncer to the previous revision in namespace app-0004-prod."
+← CORRECT: verbatim reproduction of the step description
+```
+
 ## Step Execution Order and Parallel Steps
 
 * When a step prompt says `Set the start trigger to "Run in parallel with the previous step"`, the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource MUST have `start_trigger = "StartWithPrevious"`.
@@ -30,6 +43,42 @@ name = "[PROD] api-syncer canary"   ← CORRECT: verbatim project name from the 
 * If the prompt says `The step must be disabled.`, you must still keep that step in the `octopusdeploy_process_steps_order` resource and preserve any explicit `start_trigger` annotation from the prompt. Disabled steps still participate in process ordering.
 * You will be penalized for using `start_trigger = "StartAfterPrevious"` when the prompt explicitly says `"Run in parallel with the previous step"`.
 * You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
+
+**CRITICAL — the `start_trigger` on the FIRST step in a project is always `"StartAfterPrevious"`**: The first step in `octopusdeploy_process_steps_order` always uses `start_trigger = "StartAfterPrevious"` (or the equivalent default). For the first step, `"StartAfterPrevious"` means "start immediately" since there are no previous steps. This is correct behavior and must NOT be changed to `"StartWithPrevious"`.
+
+**CRITICAL — steps that appear CONSECUTIVE in the `octopusdeploy_process_steps_order` list and should run in parallel MUST use `start_trigger = "StartWithPrevious"` for the SECOND and subsequent steps in the parallel group.** If the prompt says `Set the start trigger to "Run in parallel with the previous step"` for a step, you must set `start_trigger = "StartWithPrevious"` — even if the step appears AFTER a step that itself uses `"StartAfterPrevious"`. The `start_trigger` on each step is evaluated independently: it controls how THAT step starts relative to the step immediately before it in the ordered list.
+
+**Negative example — consecutive parallel step incorrectly using StartAfterPrevious (COMMON MISTAKE)**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **WRONG** Terraform (Rollback step uses StartAfterPrevious — FORBIDDEN when prompt says parallel):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_canary" {
+  start_trigger = "StartAfterPrevious"
+  ...
+}
+resource "octopusdeploy_process_step" "... rollback_internal" {
+  start_trigger = "StartAfterPrevious"  ← WRONG: prompt says "Run in parallel with the previous step"
+  ...
+}
+```
+
+The **CORRECT** Terraform (Rollback step uses StartWithPrevious as instructed):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_canary" {
+  start_trigger = "StartAfterPrevious"
+  ...
+}
+resource "octopusdeploy_process_step" "... rollback_internal" {
+  start_trigger = "StartWithPrevious"  ← CORRECT: matches "Run in parallel with the previous step"
+  ...
+}
+```
 
 ## Inline Kubernetes YAML Indentation
 
@@ -167,7 +216,7 @@ resource "octopusdeploy_process_step" "process_step_deploy_staging" {
 
 ## kubectl Script Steps (KubernetesRunScript)
 
-* Steps of type `"Octopus.KubernetesRunScript"` (generated from Spinnaker `deleteManifest` and `scaleManifest` stages) MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. These steps run `kubectl` commands on Linux Kubernetes workers where Bash is the idiomatic shell.
+* Steps of type `"Octopus.KubernetesRunScript"` (generated from Spinnaker `deleteManifest`, `scaleManifest`, and `undoRolloutManifest` stages) MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. These steps run `kubectl` commands on Linux Kubernetes workers where Bash is the idiomatic shell.
 * You will be penalized for using `"Octopus.Action.Script.Syntax" = "PowerShell"` on an `"Octopus.KubernetesRunScript"` step.
 * The `execution_properties` for an `"Octopus.KubernetesRunScript"` step must include:
   * `"Octopus.Action.RunOnServer" = "true"`
@@ -177,6 +226,45 @@ resource "octopusdeploy_process_step" "process_step_deploy_staging" {
   * `"Octopus.Action.Script.ScriptBody"` — the inline Bash kubectl command
   * `"Octopus.Action.KubernetesContainers.Namespace"` — the Kubernetes namespace (if specified)
 * The `properties` block for a `"Octopus.KubernetesRunScript"` step must include `"Octopus.Action.TargetRoles"` set to the Kubernetes target tag.
+
+**CRITICAL — `undoRolloutManifest` steps use `Octopus.KubernetesRunScript` with `kubectl rollout undo`**: When the prompt says `Add a "Run a kubectl script" step` with a script like `kubectl rollout undo deployment/my-deployment -n my-namespace`, this step uses the SAME type (`Octopus.KubernetesRunScript`) and the SAME Bash syntax as `deleteManifest` and `scaleManifest` steps. Do NOT use `Octopus.Script` for these steps.
+
+**Negative example — `undoRolloutManifest` step incorrectly using `Octopus.Script` (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_rollback_internal" {
+  name   = "Rollback -internal-"
+  type   = "Octopus.Script"   ← WRONG: should be "Octopus.KubernetesRunScript"
+  ...
+  execution_properties = {
+    "Octopus.Action.Script.ScriptBody"   = "kubectl rollout undo deployment/my-deployment -n my-namespace"
+    "Octopus.Action.Script.Syntax"       = "PowerShell"   ← WRONG: should be "Bash"
+  }
+}
+```
+
+**Correct output** — `undoRolloutManifest` step using `Octopus.KubernetesRunScript` with Bash:
+```hcl
+resource "octopusdeploy_process_step" "process_step_rollback_internal" {
+  name                 = "Rollback -internal-"
+  type                 = "Octopus.KubernetesRunScript"   ← CORRECT
+  process_id           = octopusdeploy_process.process_myproject[0].id
+  condition            = "Success"
+  notes                = "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod."
+  package_requirement  = "LetOctopusDecide"
+  start_trigger        = "StartAfterPrevious"
+  properties           = {
+    "Octopus.Action.TargetRoles" = "Kubernetes"
+  }
+  execution_properties = {
+    "Octopus.Action.RunOnServer"                    = "true"
+    "OctopusUseBundledTooling"                      = "False"
+    "Octopus.Action.Script.ScriptSource"            = "Inline"
+    "Octopus.Action.Script.Syntax"                  = "Bash"   ← CORRECT
+    "Octopus.Action.Script.ScriptBody"              = "kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod"
+    "Octopus.Action.KubernetesContainers.Namespace" = "app-0112-prod"
+  }
+}
+```
 
 **Example — correct `Octopus.KubernetesRunScript` step with Bash syntax**:
 

@@ -2389,7 +2389,42 @@ The **CORRECT** output (ALL non-ignored stages included in proper dependency ord
 * Add a "Deploy Kubernetes YAML" step ... (refId 8) ... Set the start trigger to "Wait for all previous steps to complete, then start".
 ```
 
-## Shift Traffic Stage
+**CRITICAL — when MULTIPLE stages depend on the same ignored stage, those stages become PARALLEL with each other**: When two or more non-ignored stages both depend on the same ignored stage (or different ignored stages that ultimately share the same non-ignored predecessor), those stages are in the SAME parallel dependency group. The first of these stages in JSON order is the "first in its group" (no parallel annotation); subsequent stages get `"Run in parallel with the previous step"`.
+
+**Worked example — multiple branches through different ignored stages becoming parallel**:
+
+Given a pipeline where two separate `checkPreconditions` stages (11 and 5) both depend on stage 4, and two non-ignored stages (6 and 13) depend on those two ignored stages:
+
+| refId | type | requisiteStageRefIds | effective deps (after ignoring) |
+|---|---|---|---|
+| 3 | deployManifest | `[]` | ROOT |
+| 4 | manualJudgment | `["3"]` | `["3"]` |
+| 5 | checkPreconditions **(SKIP)** | `["4"]` | — |
+| 6 | deployManifest | `["5"]` → effectively `["4"]` | `["4"]` |
+| 11 | checkPreconditions **(SKIP)** | `["4"]` | — |
+| 13 | deployManifest | `["11"]` → effectively `["4"]` | `["4"]` |
+| 7 | manualJudgment | `["6"]` | `["6"]` |
+
+After removing ignored stages: stages 6 and 13 BOTH effectively depend on stage 4 → they are in the SAME parallel group. Stage 6 comes first in JSON order (position 4 vs position 10) → no parallel annotation; stage 13 gets `"Run in parallel with the previous step"`.
+
+The **WRONG** output (stage 13 placed after stage 7 with "Wait for all previous steps" — FORBIDDEN):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -internal-" ...  ← refId 3, ROOT, no annotation ✓
+* Add a "Manual Intervention" step ... "Judge -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Manual Intervention" step ... "Judge -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← WRONG: placed after stage 7; should be parallel with "Deploy -canary-"
+```
+← WRONG: Stage 13 (Rollback -internal-) effectively depends on stage 4 (like stage 6). It MUST be parallel with stage 6, not placed after stage 7.
+
+The **CORRECT** output (stages 6 and 13 are parallel, both effectively depend on 4):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -internal-" ...  ← refId 3, ROOT, no annotation ✓
+* Add a "Manual Intervention" step ... "Judge -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".    ← refId 4
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← refId 6, FIRST in {6,13} parallel group
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".            ← refId 13, SECOND in {6,13} parallel group ✓
+* Add a "Manual Intervention" step ... "Judge -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".      ← refId 7, depends on 6
+```
 
 Stages with `"type": "shiftTrafficProd"` (and the analogous `"type": "shiftTrafficStaging"`) represent canary traffic-shifting operations that run a Kubernetes Job to redistribute traffic between service versions. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
 
@@ -2895,9 +2930,46 @@ spec:
 ```
 ```
 
+## Undo Rollout Manifest Stage
+
+Stages with `"type": "undoRolloutManifest"` represent a Kubernetes rollback operation — rolling a named deployment back to a previous revision. Convert them to a "Run a kubectl script" step using `kubectl rollout undo`:
+
+The following snippet is an example of an `undoRolloutManifest` stage in Spinnaker:
+
+```json
+{
+  "account": "<redacted-cluster>",
+  "cloudProvider": "kubernetes",
+  "location": "app-0112-prod",
+  "manifestName": "deployment dmp-market-web-internal",
+  "mode": "static",
+  "name": "Rollback (internal)",
+  "numRevisionsBack": 1,
+  "refId": "13",
+  "requisiteStageRefIds": ["11"],
+  "type": "undoRolloutManifest"
+}
+```
+
+* Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages (replace `()` and `[]` with dashes `-`; add a step description when the original name contained those characters).
+* Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
+* Parse `manifestName` into `<kind>/<name>` (e.g., `"deployment dmp-market-web-internal"` → `deployment/dmp-market-web-internal`). The first token is the Kubernetes resource kind; the second token is the resource name.
+* Replace `<namespace>` with the `location` property of the stage (the Kubernetes namespace).
+* `numRevisionsBack` is informational only — the generated command always uses `kubectl rollout undo <kind>/<name> -n <namespace>` (rolling back one revision). If `numRevisionsBack > 1`, add a note in the step description.
+
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `kubectl rollout undo <kind>/<name> -n <namespace>`. Set the target tag to <account>. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back <kind>/<name> to the previous revision in namespace <namespace>."
+```
+
+**Example** — converting the stage above produces:
+
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Rollback -internal-". Set the script to inline Bash with the code `kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod."
+```
+
 ## Unknown Stage Types
 
-If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
+If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
 
 ```
 * Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: convert Spinnaker stage of type "<type>" — this stage type has no direct Octopus Deploy equivalent and requires manual conversion.`
@@ -3178,6 +3250,36 @@ Create a project called "Check SSL dev" in the "Default Project Group" project g
 * When the topologically-sorted execution order differs from the original JSON array order (i.e., at least one stage must be moved when converting from JSON order to topological order):
   * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent NON-PARALLEL stage's step prompt — i.e., every stage that is the FIRST in its dependency group (except the root group which has already been handled). Parallel siblings (2nd, 3rd, etc. stages within the same dependency group) continue to use `"Run in parallel with the previous step"` as before.
 * **IMPORTANT**: The `"Wait for all previous steps to complete, then start"` annotation is ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved), do NOT add this annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
+
+**ABSOLUTE RULE — the ROOT stage (the first stage in topological order, i.e., the stage with `"requisiteStageRefIds": []` that appears first in the output) MUST NEVER receive any start trigger annotation.** Even when the topological sort changes the execution order relative to the JSON array order, the root stage appears first in the output and has no prior stages to wait for. Adding `"Wait for all previous steps to complete, then start"` to the root stage is always wrong.
+
+**Negative example — root stage incorrectly annotated when topological order differs from JSON (COMMON MISTAKE)**:
+
+Given a pipeline where refId 3 (root) appears at JSON position 1 but refId 6 at JSON position 4 depends on it through ignored checkPreconditions:
+
+| JSON position | refId | type | requisiteStageRefIds |
+|---|---|---|---|
+| 1 | 3 | deployManifest | `[]` ← ROOT |
+| 2 | 4 | manualJudgment | `["3"]` |
+| 3 | 5 | checkPreconditions **(SKIP)** | `["4"]` |
+| 4 | 6 | deployManifest | `["5"]` → effectively `["4"]` |
+
+Topological order (after ignoring stage 5): 3 → 4 → 6. Order differs from JSON only for stage 6 (was at JSON pos 4, moves to topo pos 3). Annotations are required for stages after the root.
+
+The **WRONG** output (root stage 3 INCORRECTLY receives "Wait for all previous steps"):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -internal-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← WRONG: refId 3 is ROOT
+* Add a "Manual Intervention" step ... "Judge -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+← WRONG: The ROOT stage (refId 3, first in topological order) must NEVER receive any start trigger annotation.
+
+The **CORRECT** output (root stage has no annotation; annotations only on stages 4 and 6):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -internal-" ...   ← refId 3, ROOT — no annotation ✓
+* Add a "Manual Intervention" step ... "Judge -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
 
 **CRITICAL — when the topological order differs from JSON order, EVERY non-root, non-parallel stage in the ENTIRE chain MUST receive the "Wait for all previous steps" annotation**: It is NOT sufficient to annotate only the last sequential stage before a parallel group. EVERY stage that is the first (or only) stage in its dependency group must receive the annotation — from the second topological level onward, throughout the entire depth of the chain.
 
@@ -4062,5 +4164,17 @@ Create a project called "Deploy api-server to org-0003-2g-prod-tokyo-01" in the 
 ```
 
 **FINAL CHECK FOR THE EMBEDDED SAMPLE BELOW — the response is incomplete unless it includes the Slack webhook variable**: The sample pipeline below contains one qualifying pipeline-level Slack notification and no `parameterConfig` entries. The correct response MUST therefore include `* Add a sensitive project variable called "Project.Slack.WebhookUrl" with the description "Slack webhook URL used by migrated Spinnaker notification steps.".` after the Slack Notification - Complete step. A response that ends at the Complete step is wrong because it stops before emitting the required variable.
+
+**MANDATORY SELF-CHECK BEFORE COMPLETING YOUR RESPONSE**: Before finalizing your output, scan every line for the five-character sequence `*****`. If you find `*****` in any `Create a project called "..."` sentence, any step name (e.g., `name the step "..."`), any YAML value, or any step description — and the source JSON at that location did NOT already contain `*****` — you have incorrectly redacted a resource name. Go back to the source JSON, copy the original text, and replace the incorrect `*****` with the original text verbatim. The only valid `*****` values in your output are those that were literally present as `*****` in the source JSON input. Anything else is a bug that MUST be corrected before outputting.
+
+**WHY "api" IS NEVER AN API KEY**: In this organization's microservice naming convention, `api` is a short form of "application" (as in "application synchronizer" = `api-syncer`, "application server" = `api-server`). It is a CATEGORY of microservice, not an indicator that the name is a credential. Other examples: `auth-service` = authentication microservice, `key-manager` = encryption key management service, `token-processor` = authentication token processing service. The presence of these words in a service name makes the name a MICROSERVICE IDENTIFIER — it never makes the name a secret, API key, or credential. If you ever feel the urge to replace a service name with `*****`, STOP: the name is an identifier and must be preserved verbatim.
+
+**PRE-GENERATION IDENTIFIER EXTRACTION STEP**: Before writing your output, perform this mandatory preparation step:
+1. Read the top-level `"name"` field from the pipeline JSON below. Write it down exactly as it appears. This will be the project name in `Create a project called "..."`.
+2. Read every `"name"` field from every item in `"stages"`. Write them all down exactly as they appear. These will be the step names.
+3. For each name you wrote down, confirm: does it appear verbatim (character-for-character, with no asterisks) in your intended output? If not, fix your output before generating it.
+4. Only AFTER completing steps 1–3, begin writing your output.
+
+This step is not optional — it ensures the project name and all step names are recorded before any text is generated, preventing accidental replacement of identifier words like `api`, `auth`, `key`, `token`, or `service` with `*****`.
 
 Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy.
