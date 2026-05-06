@@ -57,6 +57,8 @@ When sleeping, run the command `sleep 180` with no other arguments or commands. 
 
 DO NOT attempt to fix the timeout issues with any other strategy than sleeping.
 
+If the response indicates that the project could not be created, retry with a new Spinnaker pipeline.
+
 ## Read the converted projects
 
 Serialize the project `<project name>` in the space `Scratchpad` to terraform with the `convertOctopusToTerraform` tool. Replace `<project name>` with the name of the project that was just created.
