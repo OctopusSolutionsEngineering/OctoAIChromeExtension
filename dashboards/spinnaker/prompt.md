@@ -10,6 +10,21 @@
 
 **ABSOLUTE RULE — every YAML block in the output must be VALIDLY INDENTED YAML, or it must be replaced with a TODO placeholder instead.** Flat YAML is forbidden. If you cannot preserve parent/child indentation for a cached `manifests` array or inline `manifest` object, do NOT guess and do NOT emit malformed YAML. Instead, keep the step and use a single-line placeholder comment such as `# TODO: replace with correctly indented manifest serialized from the cached Spinnaker manifests array`.
 
+**ABSOLUTE RULE — pipeline `name` fields and stage `name` fields are resource identifiers, NEVER secrets, and MUST NEVER be redacted.** The pipeline's top-level `name` property (e.g., `"[PROD] api-syncer canary"`, `"deploy-to-prod"`, `"run-job-load-service-cr-tag"`) and every stage's `name` property (e.g., `"Deploy api-syncer"`, `"Delete api-sync-job"`, `"Scale Down Canary"`) are deployment resource identifiers. Words such as `api`, `key`, `token`, `service`, `auth`, `credential`, and similar terms that appear in these name fields are part of service and component names — they are NOT secrets, API keys, or credentials. NEVER replace ANY portion of a pipeline name or stage name with `*****` or any other anonymization placeholder unless the source JSON already contains `*****` at that exact location.
+
+**CRITICAL — the Spinnaker pipeline JSON provided to you has ALREADY been pre-anonymized.** Actual secrets such as the Kubernetes cluster name and repository owner have been replaced with specific placeholders like `<redacted-cluster>`, `<redacted-owner>`, and `<redacted-secret-name>`. All other values — including service names like `api-syncer`, `bq-syncer`, `publisher`, `server`, `auth-service`, `key-manager` — are intentionally preserved and are safe to use verbatim. Do NOT apply additional redaction to any value that was not already anonymized in the source JSON with a `<redacted-*>` placeholder.
+
+**Negative example — pipeline name containing "api" incorrectly redacted (FORBIDDEN)**:
+```
+Pipeline name: "[PROD] api-syncer canary" → WRONG: "[PROD] ***** canary"
+Stage name: "Deploy org-0004-api-syncer" → WRONG: "Deploy org-0004-*****"
+```
+**Correct output** (names must be preserved verbatim):
+```
+Pipeline name: "[PROD] api-syncer canary"  ← CORRECT
+Stage name: "Deploy org-0004-api-syncer"   ← CORRECT
+```
+
 **ABSOLUTE RULE — Kubernetes Secret and ConfigMap reference names are NEVER secrets, and MUST NEVER be redacted.** The values of `envFrom[].secretRef.name`, `envFrom[].configMapRef.name`, `volumes[].secret.secretName`, `volumes[].configMap.name`, and `imagePullSecrets[].name` are the NAMES of Kubernetes objects, not the secret data itself. Names like `double-api-token`, `launch-darkly-sdk`, `registry-credentials`, and `api-key-config` identify WHICH object to mount — they are resource identifiers. The presence of words like `token`, `key`, `secret`, `api`, or `credential` in these names does NOT make them confidential. NEVER replace ANY portion of such a name with `*****`. If the JSON has `"secretRef": {"name": "double-api-token"}`, the output MUST contain `name: double-api-token` verbatim.
 
 **Negative example — Kubernetes Secret reference name incorrectly redacted (FORBIDDEN)**:
@@ -436,6 +451,8 @@ Pipelines are represented by a project. This is the base prompt to create an emp
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
 ```
 
+The project name MUST be the exact verbatim value of the pipeline `name` field. **CRITICAL — do NOT redact or anonymize the pipeline `name` when using it as the project name**: Words such as `api`, `key`, `token`, `service`, `syncer`, `auth`, or `credential` in the pipeline name are microservice names and deployment identifiers — they are NOT secrets or API keys. For example, a pipeline `"name": "[PROD] api-syncer canary"` must produce `Create a project called "[PROD] api-syncer canary"` verbatim. NEVER replace any portion of the pipeline name with `*****`.
+
 The `limitConcurrent` property of the Spinnaker pipeline has no equivalent setting in Octopus. This value MUST be ignored.  
 
 Other prompts are then appended to the base prompt to create the equivalent project in Octopus Deploy, for example:
@@ -656,7 +673,7 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * A `templatedPipeline` entry may contain a `variables` object with deployment configuration. These are added as variables to the project.
 * If the `variables` property is absent or empty, do not output any project variable prompts.
 * **CRITICAL — copy the `templatedPipeline` project name and every `variables` value verbatim with no anonymization**: Service names and component identifiers such as `api-server`, `auth-service`, `worker`, `backend`, `frontend`, `key-manager`, and similar values are ordinary deployment identifiers, not secrets. Never replace any portion of the pipeline `name` or any templated variable value with `*****` or any other placeholder.
-* **ABSOLUTE RULE — the generated output must NEVER introduce `*****` into a `templatedPipeline` project name or variable value unless the source JSON already contains `*****` at that exact location**. If the source pipeline name is `Deploy api-server to org-0003-2g-prod-tokyo-01`, the output project name must also contain `api-server`. If `variables.dockerImageName` is `api-server`, the output variable value must also be `api-server`.
+* **ABSOLUTE RULE — the generated output must NEVER introduce `*****` into ANY pipeline or stage name unless the source JSON already contains `*****` at that exact location.** This applies to ALL pipeline types, not just `templatedPipeline`. If the source pipeline name is `Deploy api-server to org-0003-2g-prod-tokyo-01`, the output project name must also contain `api-server`. If `variables.dockerImageName` is `api-server`, the output variable value must also be `api-server`.
 * **CRITICAL — templated manifest URL helper variables are authoritative fallbacks when execution-resolved artifact metadata is incomplete**: Execution-resolved `templatedPipeline` JSON often omits the matching `expectedArtifacts` entry for a `manifestArtifactId`. When a `deployManifest` or `runJobManifest` stage has a `manifestArtifactId` that cannot be resolved from the visible JSON, you MUST look for stage-specific helper variables in `variables` before falling back to an opaque artifact-id placeholder.
 * Use the following helper-variable fallback order when `manifestArtifactId` cannot be resolved:
   * For `deployManifest`: prefer `deploymentManifestURL`, then `manifestURL`. Also check for stage-name-specific variables that embed the environment or stage in their name: `devManifestURL`, `stgManifestURL`, `stagingManifestURL`, `prodManifestURL`, `productionManifestURL`, `canaryProdManifestURL`, `canaryManifestURL`. Match the helper variable name to the deployment stage name by substring (e.g., a stage named "Deploy Staging" → try `stgManifestURL` or `stagingManifestURL`; a stage named "Deploy Dev" → try `devManifestURL`; a stage named "Deploy Prod (Canary)" → try `canaryProdManifestURL` or `canaryManifestURL`; a stage named "Deploy Prod" → try `prodManifestURL`).
@@ -1252,6 +1269,7 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
 * **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores or hashes. If the stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` (e.g., `Deploy (Manifest)` becomes `Deploy -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+* **CRITICAL — do NOT redact or anonymize the stage `name` value when generating the step name**: Words such as `api`, `dev`, `prod`, `key`, `token`, `service`, `syncer`, `auth`, `credential`, or similar terms in stage names are microservice and deployment identifiers — they are NOT secrets. For example, `"Deploy org-0004-api-syncer"` must produce the step name `"Deploy org-0004-api-syncer"` verbatim. NEVER replace any portion of a stage name with `*****`.
 
 **CRITICAL — use dashes `-` NOT underscores `_` when replacing parentheses**: Although underscores are technically valid Octopus step name characters, they are also Markdown formatting characters (e.g., `_text_` renders as italic and strips the underscores). Using underscores in step names that are generated as part of Markdown text causes the underscores to be silently stripped. You MUST use dashes `-` instead. For example, `Deploy (Manifest)` MUST become `Deploy -Manifest-` (with dashes), NOT `Deploy _Manifest_` (with underscores).
 
@@ -1557,7 +1575,7 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
                     name: double-api-token
     ```
   * When the inline YAML produced from a `manifests` array or inline `manifest` object contains a single clear `metadata.namespace` value, append `Set the step namespace to "<namespace>".` to the step prompt even when `namespaceOverride` is absent. Use the namespace from the rendered manifest, not from the artifact reference.
-  * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at \"<reference>\". The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space.
+  * If the stage does NOT have a `manifests` array (or it is empty), set the YAML Source to **"Inline YAML"** and set the YAML content to a placeholder comment `# TODO: replace with manifest downloaded from <reference>`. Set the step description to "This step originally loaded its manifest from Google Cloud Storage at <reference>. The manifest must be inlined or the step must be reconfigured to read from a supported source." If the step already has a step description (because the stage name contained special characters), append this GCS note to the existing description text, separated by a space.
 * Do NOT generate a feed prompt from `manifestArtifact` GCS references.
 * If the stage has `"source": "text"` and an inline `manifest` object (with no `manifestArtifactId` or `manifestArtifact` reference), serialize the `manifest` object to YAML and use that YAML content as the inline value on the step.
 * Replace `<account>` with the value of the `account` property in the stage.
@@ -2913,7 +2931,7 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 
 * Replace `<stage name>` with the `name` property of the stage.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
-* Replace `<code>` with a PowerShell script to call `kubectl` to delete the resource in the `manifestName` field.
+* Replace `<code>` with a Bash script to call `kubectl` to delete the resource in the `manifestName` field.
 * The `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"job my-job"` → `kubectl delete job my-job`). Parse the kind and name from this field.
 * If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"job job-denpyo-checker"` and `location` is `"app-0251-dev"`, the command is `kubectl delete job job-denpyo-checker -n app-0251-dev`.
 * **`mode: "label"` deleteManifest stages**: When the `mode` field is `"label"` (instead of `"static"`), the stage uses `labelSelectors` to identify resources to delete rather than a specific `manifestName`. In this case, build the kubectl command using `-l` label selectors. Iterate over the `labelSelectors.selectors` array and convert each selector to a label expression (e.g., `{key: "app", kind: "EQUALS", values: ["server"]}` → `app=server`). Combine multiple selectors with commas. Also use the `kinds` array to specify the resource types to delete. For example, a stage with `kinds: ["deployment", "replicaSet", "pod"]` and selectors `app=server,stack=canary,version=v1` in namespace `app-0220-prod` generates: `kubectl delete deployment,replicaSet,pod -l app=server,stack=canary,version=v1 -n app-0220-prod`. The `kinds` list should be comma-joined with no spaces.
@@ -2923,17 +2941,17 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 
 Given a `deleteManifest` stage with `"name": "Delete (canary)"`, the **WRONG** output omits the step description:
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Delete _canary_". Set the script to inline Powershell with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes.
+* Add a "Run a kubectl script" step to the deployment process and name the step "Delete _canary_". Set the script to inline Bash with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes.
 ```
 ← WRONG: The step description is MISSING. The original name "Delete (canary)" had parentheses, so the description must be added.
 
 The **CORRECT** output (step description added to preserve original name with parentheses):
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Delete -canary-". Set the script to inline Powershell with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Delete (canary)".
+* Add a "Run a kubectl script" step to the deployment process and name the step "Delete -canary-". Set the script to inline Bash with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Delete (canary)".
 ```
 
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell with the code `<code>`. Set the target tag to <account>.
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `<code>`. Set the target tag to <account>.
 ```
 
 ## Scale Manifest Stage
@@ -2942,7 +2960,7 @@ Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource
 
 * Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages. **CRITICAL**: if the stage `name` contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the step name (e.g., `Scale (Manifest)` → `Scale -Manifest-`). When the original name contained those characters, append `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
-* Replace `<code>` with a PowerShell script to call `kubectl` to scale the resource in the `manifestName` field to the number in the `replicas` field.
+* Replace `<code>` with a Bash script to call `kubectl` to scale the resource in the `manifestName` field to the value in the `replicas` field (which may be a string or a number — use it as-is).
 
 **Negative example — `scaleManifest` stage name with parentheses not converted (COMMON MISTAKE)**:
 
@@ -2953,11 +2971,11 @@ Given a `scaleManifest` stage with `"name": "Scale (Manifest)"`, the following i
 
 The **CORRECT** output (parentheses replaced with dashes, step description added):
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Scale -Manifest-". Set the script to inline Powershell with the code `kubectl scale ...`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Scale (Manifest)".
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale -Manifest-". Set the script to inline Bash with the code `kubectl scale ...`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Scale (Manifest)".
 ```
 
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Powershell with the code `<code>`. Set the target tag to <account>.
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `<code>`. Set the target tag to <account>.
 ```
 
 # Parameter Config
@@ -3969,7 +3987,18 @@ The replacement only fires when producing a `Set the target tag to ...` instruct
 * **Variable values**: Every value copied into `Add a project variable called "<name>" with the value "<value>"` must be the literal string from the pipeline JSON — never replaced with `*****` or any other placeholder.
 * **Parameter defaults and descriptions**: The `default`, `description`, and `label` fields copied from `parameterConfig` entries must be verbatim — do not redact or modify them.
 * **Step names**: Step names must be unique. Append a number to the name of steps with the same name to make them unique.
-* **ABSOLUTE RULE — unless the source JSON itself contains `*****`, the generated output must not contain `*****` anywhere inside a project name, variable value, parameter default, parameter description, parameter label, notification message, or stage name.** Do not apply safety redaction or secret masking to service names such as `api-server`, `auth-service`, `key-manager`, `serviceID`, `dockerImageName`, or similar identifiers.
+* **ABSOLUTE RULE — unless the source JSON itself contains `*****`, the generated output must not contain `*****` anywhere inside a project name, variable value, parameter default, parameter description, parameter label, notification message, or stage name.** Do not apply safety redaction or secret masking to service names such as `api-server`, `api-syncer`, `api-gateway`, `auth-service`, `key-manager`, `serviceID`, `dockerImageName`, or similar identifiers. Names that follow the pattern `api-<suffix>` (e.g., `api-syncer`, `api-loader`, `api-router`) are microservice names — they are NOT API keys or API credentials and MUST NOT be redacted.
+
+**Negative example — service name containing "api" incorrectly redacted in project/step names (FORBIDDEN)**:
+```
+Project name: "[PROD] ***** canary"   ← WRONG: source JSON had "[PROD] api-syncer canary"
+Step name:    "Deploy org-0004-*****" ← WRONG: source JSON had "Deploy org-0004-api-syncer"
+```
+**Correct output** (names reproduced verbatim from the source JSON):
+```
+Project name: "[PROD] api-syncer canary"   ← CORRECT
+Step name:    "Deploy org-0004-api-syncer" ← CORRECT
+```
 
 **CRITICAL — duplicate step names arise when multiple Spinnaker stages have the same `name` value**: After the name transformation rules are applied (replacing special characters with dashes), if two or more steps would result in the same name, the FIRST occurrence keeps the base name; the SECOND gets suffix ` 2`; the THIRD gets suffix ` 3`; and so on. You MUST check all step names for uniqueness before finalizing the output.
 

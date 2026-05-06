@@ -11,6 +11,17 @@
 * If the prompt contains an instruction to add a new step, you must use the example lifecycle, include the example runbooks, include the example steps, include the example variables, and then add the new step to the deployment process.
 * Instructions to create projects "with no steps" overrides instructions to add steps to the project. When a project is created with no steps, there must not be any "octopusdeploy_process_step" resources defined for that project.
 
+**CRITICAL — project names and step names from the prompt are resource identifiers and MUST be reproduced verbatim in Terraform.** A project name like `"[PROD] api-syncer canary"` and step names like `"Deploy api-syncer"` or `"Scale Down Canary"` are deployment resource identifiers. The presence of words such as `api`, `key`, `token`, `service`, `auth`, or `credential` in these names does NOT make them sensitive. NEVER omit, shorten, or replace any portion of a project name or step name from the prompt with `*` or any other placeholder when generating Terraform.
+
+**Negative example — project name incorrectly redacted (FORBIDDEN)**:
+```hcl
+name = "[PROD] ***** canary"   ← WRONG: "api-syncer" from the prompt was replaced with "*****"
+```
+**Correct output**:
+```hcl
+name = "[PROD] api-syncer canary"   ← CORRECT: verbatim project name from the prompt
+```
+
 ## Step Execution Order and Parallel Steps
 
 * When a step prompt says `Set the start trigger to "Run in parallel with the previous step"`, the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource MUST have `start_trigger = "StartWithPrevious"`.
@@ -110,6 +121,17 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * The description value must be the exact verbatim string from the prompt, including any quoted sub-strings.
 * You will be penalized for omitting a step description when the prompt explicitly instructs it to be set.
 * You will be penalized for placing the `notes` attribute inside `execution_properties` — `notes` is a top-level attribute of the `octopusdeploy_process_step` resource.
+* **CRITICAL — never add backslash-escaping to GCS paths or other URLs in step descriptions.** When a step description contains a GCS path like `gs://example-bucket/path/to/file.yaml`, reproduce it verbatim in the `notes` string without adding backslashes or extra quotation marks around the URL. For example, `notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."` — NOT `notes = "... at \"gs://example-bucket/path\"."`.
+
+**Negative example — GCS URL with incorrect backslash escaping in notes (FORBIDDEN)**:
+```hcl
+notes = "This step originally loaded its manifest from Google Cloud Storage at \"gs://example-bucket/storage-3209\". The manifest must be inlined."
+                                                                            ^WRONG: backslash-escaped quotes added around the GCS URL
+```
+**Correct output**:
+```hcl
+notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-3209. The manifest must be inlined."
+```
 
 **Example — correct placement of `notes` attribute**:
 
@@ -142,6 +164,48 @@ resource "octopusdeploy_process_step" "process_step_deploy_staging" {
 * A `wait` stage converted to `Start-Sleep -Seconds <N>` must be implemented as an `octopusdeploy_process_step` of type `"Octopus.Script"` with `execution_properties` containing `"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds <N>"`, `"Octopus.Action.Script.Syntax" = "PowerShell"`, and `"Octopus.Action.Script.ScriptSource" = "Inline"`.
 * The step name must match the dash-replaced form from the prompt (e.g., `"Wait -15min-"`) — parentheses in the original Spinnaker stage name have been replaced with dashes.
 * You will be penalized for using a type other than `"Octopus.Script"` for wait steps.
+
+## kubectl Script Steps (KubernetesRunScript)
+
+* Steps of type `"Octopus.KubernetesRunScript"` (generated from Spinnaker `deleteManifest` and `scaleManifest` stages) MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. These steps run `kubectl` commands on Linux Kubernetes workers where Bash is the idiomatic shell.
+* You will be penalized for using `"Octopus.Action.Script.Syntax" = "PowerShell"` on an `"Octopus.KubernetesRunScript"` step.
+* The `execution_properties` for an `"Octopus.KubernetesRunScript"` step must include:
+  * `"Octopus.Action.RunOnServer" = "true"`
+  * `"OctopusUseBundledTooling" = "False"`
+  * `"Octopus.Action.Script.ScriptSource" = "Inline"`
+  * `"Octopus.Action.Script.Syntax" = "Bash"`
+  * `"Octopus.Action.Script.ScriptBody"` — the inline Bash kubectl command
+  * `"Octopus.Action.KubernetesContainers.Namespace"` — the Kubernetes namespace (if specified)
+* The `properties` block for a `"Octopus.KubernetesRunScript"` step must include `"Octopus.Action.TargetRoles"` set to the Kubernetes target tag.
+
+**Example — correct `Octopus.KubernetesRunScript` step with Bash syntax**:
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_delete_manifest" {
+  name                  = "Delete -Manifest-"
+  type                  = "Octopus.KubernetesRunScript"
+  process_id            = octopusdeploy_process.process_myproject[0].id
+  condition             = "Success"
+  notes                 = "Original Spinnaker stage name: Delete (Manifest)"
+  package_requirement   = "LetOctopusDecide"
+  start_trigger         = "StartAfterPrevious"
+  properties            = {
+    "Octopus.Action.TargetRoles" = "Kubernetes"
+  }
+  execution_properties  = {
+    "Octopus.Action.RunOnServer"                      = "true"
+    "OctopusUseBundledTooling"                        = "False"
+    "Octopus.Action.Script.ScriptSource"              = "Inline"
+    "Octopus.Action.Script.Syntax"                    = "Bash"
+    "Octopus.Action.Script.ScriptBody"                = "kubectl delete deployment my-deployment -n my-namespace"
+    "Octopus.Action.KubernetesContainers.Namespace"   = "my-namespace"
+  }
+}
+```
+
+* A `Octopus.KubernetesRunScript` step must NOT include a `container` block unless the prompt explicitly requests a specific container image. Spinnaker `deleteManifest` and `scaleManifest` stages run kubectl using the worker's native environment, not a containerized image.
+* When the prompt specifies a Kubernetes namespace in the step (e.g., `Set the step namespace to "my-namespace"`), set `"Octopus.Action.KubernetesContainers.Namespace" = "my-namespace"` in `execution_properties`. When no namespace is specified, omit this property entirely — do NOT set it to an empty string or null.
+* You will be penalized for adding a `container` block to an `Octopus.KubernetesRunScript` step when the prompt does not explicitly request one.
 
 ## Default Lifecycle Instructions
 
