@@ -57,7 +57,7 @@ When sleeping, run the command `sleep 180` with no other arguments or commands. 
 
 DO NOT attempt to fix the timeout issues with any other strategy than sleeping.
 
-If the response indicates that the project could not be created, read the error message and update the `prompt.md` and `generalinstructions.md` files to address the error.
+If the response indicates that the project could not be created, update the `prompt.md` and `generalinstructions.md` files to address the error returned by the AI Assistant.
 
 ## Read the converted projects
 
