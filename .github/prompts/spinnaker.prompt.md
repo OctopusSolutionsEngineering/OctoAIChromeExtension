@@ -51,6 +51,8 @@ You must pass the original prompt exactly as it was returned with the addition o
 
 It is **CRITICAL** that you DO NOT fix the returned prompt! Any errors with the returned prompt must be addressed by improving the `prompt.md` and `generalinstructions.md` files. You MUST pass through the prompt unaltered with the addition of the space context.
 
+The response from the AI Assistant includes the generated Terraform configuration and may include errors related to planning or applying the Terraform configuration.
+
 The default timeout of 60 seconds is often not enough for call to `send_prompt` or `send_prompt_from_file`, which means they time out. If the `send_prompt` or `send_prompt_from_file` tools time out, sleep for 180 seconds, and try again. You can retry calls to the `send_prompt` or `send_prompt_from_file` tools up to 5 times.
 
 When sleeping, run the command `sleep 180` with no other arguments or commands. You must assume that when the command is done, you have slept for the appropriate amount of time.
