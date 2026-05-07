@@ -1545,6 +1545,9 @@ resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_ev
     package_reference      = "mypackage"
   }
   depends_on = [octopusdeploy_process_steps_order.process_step_order_every_step_project]
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 ```
 
@@ -1580,6 +1583,10 @@ resource "octopusdeploy_external_feed_create_release_trigger" "example" {
   count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
   project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
   channel_id = "${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_project_foo]
+  lifecycle {
+    prevent_destroy = true
+  }
   ...
 }
 ```
@@ -1629,6 +1636,10 @@ resource "octopusdeploy_external_feed_create_release_trigger" "example" {
   project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
   channel_id = "${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"
   name       = "External Feed Trigger"
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_project_foo]
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 ```
 
@@ -1808,8 +1819,15 @@ resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
   is_default    = false
   lifecycle_id  = "${length(data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_lambda_hotfix[0].id}"
   space_id      = "${trimspace(var.octopus_space_id)}"
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 ```
+
+* **CRITICAL — every `octopusdeploy_channel` resource MUST include a `lifecycle { prevent_destroy = true }` block.** You will be penalized for defining an `octopusdeploy_channel` resource without this block. This applies to ALL channel resources, including bare named channels created without `rule` blocks (e.g., the "Application" channel for external feed triggers).
+
+**MANDATORY SELF-CHECK before finalizing channels**: Before outputting any `octopusdeploy_channel` resource, verify that it has: (1) a `count` attribute using the project's data source length pattern (`"${length(data.octopusdeploy_projects...) != 0 ? 0 : 1}"`), (2) `project_id` using the ternary lookup pattern, (3) a `lifecycle { prevent_destroy = true }` block. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
 
 Here is an example of a channel resource with a "rule" block that applies when the release version matches the tag hotfix (using the regex ^hotfix$), and it targets specific deployment actions (steps):
 
@@ -1842,6 +1860,9 @@ resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
         tag           = "^hotfix$"
         version_range = ""
     }
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 ```
 
@@ -1874,6 +1895,7 @@ resource "octopusdeploy_channel" "channel_every_step_project_hotfix" {
 ```
 
 * **ABSOLUTE RULE — every `rule` block in an `octopusdeploy_channel` resource MUST have at least one `action_package` block**: The Octopus API enforces this requirement and rejects channels with `rule` blocks that have no `action_package` entries, returning the error "Version rules must specify a package step". If there are no package-based deployment steps to reference (e.g., all steps are `Octopus.KubernetesDeployRawYaml` without package blocks), do NOT add any `rule` block to the channel at all. A channel without a `rule` block is valid and serves as a named channel for triggers.
+* **CRITICAL — `octopusdeploy_channel` resources with `rule` blocks MUST include `depends_on` referencing `octopusdeploy_process_steps_order`**: When a channel has a `rule` block with `action_package` entries that reference deployment action slugs, the slugs must already exist before the channel is created. You MUST add `depends_on = [octopusdeploy_process_steps_order.process_step_order_<project>]` to any channel with a `rule` block to ensure the step slugs are available. You will be penalized for omitting `depends_on` from a channel that has `rule` blocks.
 * You will be penalized for defining a "octopusdeploy_channel" resource with a "rule" block with an empty version, for example: 
 
 ```
