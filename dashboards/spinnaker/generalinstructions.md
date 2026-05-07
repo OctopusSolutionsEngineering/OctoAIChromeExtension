@@ -47,6 +47,8 @@ notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls bac
 
   **CRITICAL — the SECOND step in a parallel group is the most commonly broken**: When a prompt includes a large parallel group (e.g., 8 steps all with "Run in parallel with the previous step"), the SECOND step — the first one to receive the parallel annotation — is where the `StartAfterPrevious` mistake is most often made. Before finalizing, explicitly check the resource for the SECOND parallel step and confirm it uses `start_trigger = "StartWithPrevious"`, not `"StartAfterPrevious"`.
 
+  **CRITICAL — the bug can occur at ANY position in a large parallel group, not just the second step**: After fixing the second step, do NOT assume all remaining parallel steps are correct. The `StartAfterPrevious` mistake can occur at any index in a large parallel group (third, fourth, etc.). The self-check must examine EVERY step annotated with "Run in parallel with the previous step" — not just the second one.
+
   **Negative example — SECOND step in large parallel group incorrectly using StartAfterPrevious (VERY COMMON MISTAKE)**:
 
   Given that the prompt says:
