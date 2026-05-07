@@ -2323,6 +2323,12 @@ spec:
 
 * You must attempt to extract the name of the child project from the `name` property of the stage. In the example above, the child project name is "[DEV] Deploy Sandbox API".
 
+* **`waitForCompletion` handling**: When the `waitForCompletion` property is `false`, set the "Wait for deployment to complete" property to `false` in the generated prompt (replace `true` with `false` in the example above). When `waitForCompletion` is `true` or absent, use `true`.
+
+* **`failPipeline: false` handling**: When the `failPipeline` property is `false`, append the following sentence to the step description (or create one if none exists): `NOTE (migration): The original Spinnaker pipeline stage had failPipeline=false, meaning the parent pipeline continued even if this child pipeline failed. In Octopus, a failed child deployment will still fail this step — review whether to configure subsequent steps to always run.`
+
+* **`pipelineParameters` handling**: When the `pipelineParameters` property is a non-empty object (i.e., it contains one or more key-value pairs), append the following sentence to the step description: `NOTE (migration): The original stage passed the following parameters to the child pipeline: <parameters>`. Replace `<parameters>` with a comma-separated list of `key=value` pairs from the `pipelineParameters` object. If `pipelineParameters` is absent or an empty object `{}`, do not add any note.
+
 * For every child project that the "Deploy a Release" step depends on, add the following prompt at the start of the output:
 
 ```
@@ -3291,9 +3297,57 @@ The following snippet is an example of an `undoRolloutManifest` stage in Spinnak
 * Add a "Run a kubectl script" step to the deployment process and name the step "Rollback -internal-". Set the script to inline Bash with the code `kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod. NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually."
 ```
 
+## Webhook Stage
+
+A `webhook` stage in Spinnaker sends an HTTP request to an external service. Convert it to a "Run a Script" step that executes the equivalent request using `curl`.
+
+The following snippet is an example of a `webhook` stage:
+
+```json
+{
+  "method": "POST",
+  "name": "Notify External Service",
+  "payload": {
+    "message": "Deployment started",
+    "version": "${parameters.version}"
+  },
+  "customHeaders": {
+    "Authorization": "Bearer ${parameters.oauthToken}",
+    "Content-Type": "application/json"
+  },
+  "statusUrlResolution": "getMethod",
+  "type": "webhook",
+  "url": "https://api.example.com/notifications",
+  "waitForCompletion": true
+}
+```
+
+Convert this to a "Run a Script" step using `curl` in Bash:
+
+* Replace `<stage name>` with the `name` property of the stage.
+* Replace `<method>` with the `method` property (e.g., `POST`, `GET`, `PUT`, `DELETE`).
+* Replace `<url>` with the `url` property. Convert any Spinnaker SpEL expressions such as `${parameters.myParam}` to Octopus variable syntax `#{myParam}`.
+* For each key-value pair in `customHeaders`, add a `-H "Key: Value"` flag. Convert any SpEL expressions in header values to Octopus variable syntax.
+* If the `payload` property is present, serialize it as a JSON string and add it as the `-d` argument to `curl`. Convert any SpEL expressions in payload values to Octopus variable syntax.
+* If `waitForCompletion` is `false`, append the following sentence to the step description: `NOTE (migration): The original Spinnaker webhook stage had waitForCompletion=false (fire-and-forget). This curl command waits for a response — adjust error handling if fire-and-forget behaviour is required.`
+
+```
+* Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline Bash code:
+```bash
+curl -X <method> \
+  "<url>" \
+  -H "Content-Type: application/json" \
+  <additional -H headers> \
+  -d '<json payload>'
+```
+Set the step description to "Original Spinnaker stage type: webhook. Sends an HTTP <method> request to <url>."
+```
+
+**SpEL conversion rule**: All Spinnaker Spring Expression Language (SpEL) expressions in the webhook URL, headers, and payload (e.g., `${parameters.version}`, `${ parameters.oauthToken }`) MUST be converted to Octopus variable syntax by replacing `${parameters.<name>}` or `${ parameters.<name> }` with `#{<name>}`. Never leave raw SpEL expressions in the generated script.
+
 ## Unknown Stage Types
 
-If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
+If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `webhook`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
 
 ```
 * Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: convert Spinnaker stage of type "<type>" — this stage type has no direct Octopus Deploy equivalent and requires manual conversion.`
@@ -3508,6 +3562,14 @@ The **CORRECT** output (parentheses replaced with dashes, step description added
 * Replace `<parameter default>` with the `default` property of the parameter in the Spinnaker pipeline. If the `default` property is absent or null, use an empty string `""` as the default value.
 * Replace `<parameter description>` with the `description` property of the parameter in the Spinnaker pipeline. If the `description` property is absent, use an empty string `""`.
 * Replace `<parameter label>` with the `label` property of the parameter in the Spinnaker pipeline. If the `label` property is absent or an empty string (`""`), use the `name` property as the label.
+
+* **CRITICAL — Sensitive parameterConfig detection**: Before generating the variable prompt, check whether the parameter `name` or `description` (case-insensitive) contains any of the following substrings: `token`, `secret`, `password`, `oauth`, `credential`, `apikey`, `api_key`. If any match is found, the parameter represents a credential and MUST be treated as sensitive. For sensitive parameters, use the alternative prompt format below instead of the standard `Add a project variable` format:
+
+```
+* Add a sensitive prompted project variable called "<parameter name>" with the description "<parameter description>" and the label "<parameter label>". The variable must be prompted for when creating a release.
+```
+
+Apply the `required`/`not required` suffix rules below to sensitive prompted variables in the same way as regular prompted variables.
 
 ```
 * Add a project variable called "<parameter name>", with a default value of "<parameter default>", the description "<parameter description>", and the label "<parameter label>". The variable must be prompted for when creating a release.

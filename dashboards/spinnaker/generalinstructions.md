@@ -698,6 +698,17 @@ resource "octopusdeploy_process_step" "process_step_delete_manifest" {
 * When the prompt specifies a Kubernetes namespace in the step (e.g., `Set the step namespace to "my-namespace"`), set `"Octopus.Action.KubernetesContainers.Namespace" = "my-namespace"` in `execution_properties`. When no namespace is specified, omit this property entirely — do NOT set it to an empty string or null.
 * You will be penalized for adding a `container` block to an `Octopus.KubernetesRunScript` step when the prompt does not explicitly request one.
 
+## Webhook / HTTP Script Steps
+
+* When the prompt says `Add a "Run a Script" step` with inline Bash code that contains a `curl` command (i.e., the step is an HTTP webhook call converted from a Spinnaker `webhook` stage), the `Octopus.Script` step MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. Do NOT use `"PowerShell"` for `curl`-based script steps.
+* The `execution_properties` for a webhook/curl `"Octopus.Script"` step must include:
+  * `"Octopus.Action.RunOnServer" = "true"`
+  * `"Octopus.Action.Script.ScriptSource" = "Inline"`
+  * `"Octopus.Action.Script.Syntax" = "Bash"`
+  * `"Octopus.Action.Script.ScriptBody"` — the inline Bash `curl` command, preserving all `-H`, `-d`, and `-X` flags exactly as provided in the prompt.
+* You will be penalized for using `"Octopus.Action.Script.Syntax" = "PowerShell"` on a script step whose `ScriptBody` contains a `curl` command.
+* Do NOT set `worker_pool_id` or `worker_pool_variable` on a webhook/curl `Octopus.Script` step. These steps run on the Octopus server (`"Octopus.Action.RunOnServer" = "true"`) and do not use a worker pool. Leave both `worker_pool_id` and `worker_pool_variable` unset (or `null`) for server-side script steps.
+
 ## Default Lifecycle Instructions
 
 * Use "data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id" when referencing the Default Lifecycle, for example `lifecycle_id = "${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"`.
@@ -2419,6 +2430,10 @@ resource "octopusdeploy_process_step" "process_step_every_step_project_deploy_a_
 }
 ```
 
+* When the prompt says `Set the "Wait for deployment to complete" property to true`, add `"Octopus.Action.DeployRelease.WaitForDeployment" = "True"` to the `execution_properties` block of the `Octopus.DeployRelease` step.
+* When the prompt says `Set the "Wait for deployment to complete" property to false`, add `"Octopus.Action.DeployRelease.WaitForDeployment" = "False"` to the `execution_properties` block of the `Octopus.DeployRelease` step.
+* When the prompt does not specify a "Wait for deployment to complete" value for a `Octopus.DeployRelease` step, default to `"Octopus.Action.DeployRelease.WaitForDeployment" = "True"`.
+
 * The "Octopus.Action.DeployRelease.ProjectId" and "package_id" properties must reference only a data source.
 * You will be penalized for setting the "Octopus.Action.DeployRelease.ProjectId" or "package_id" property to something like `"${length(data.octopusdeploy_projects.project_reporting_microservice.projects) != 0 ? data.octopusdeploy_projects.project_reporting_microservice.projects[0].id : octopusdeploy_project.project_reporting_microservice[0].id}"`
 * You will be penalized for setting the "Octopus.Action.DeployRelease.ProjectId" property to a fixed value like "Projects-8916", "Projects-8915", and "Projects-8917".
@@ -2557,6 +2572,7 @@ packages = {
 * If the prompt includes instructions to enable client side apply for a Kubernetes step, you must set the "Octopus.Action.Kubernetes.ServerSideApply.Enabled" property in the "execution_properties" block to "False".
 * Steps of type "Octopus.Manual" must have a "Octopus.Action.Manual.Instructions" property in the "execution_properties" block.
 * Steps of type "Octopus.Manual" must set `"Octopus.Action.RunOnServer" = "true"` in the `execution_properties` block.
+* Steps of type "Octopus.Manual" must always include `"Octopus.Action.Manual.BlockConcurrentDeployments" = "True"` in the `execution_properties` block. Omitting this property is a common mistake that causes concurrent deployments to proceed past the manual intervention gate without pausing.
 * You will be penalized for defining the "Octopus.Step.Manual.Instructions" property in the "execution_properties" block.
 * When the prompt defines manual-intervention instructions, the value of "Octopus.Action.Manual.Instructions" must preserve the prompt text exactly. Do not rewrite `${ ... }` SpEL expressions into Octopus `#{...}` syntax, do not normalize punctuation, and do not strip or replace Unicode characters.
 * If the prompt appends a NOTE explaining that the instructions contain SpEL expressions, include that NOTE verbatim at the end of the same "Octopus.Action.Manual.Instructions" string. Do not "fix" the embedded expression text.
@@ -2842,6 +2858,7 @@ parameters      = [{ default_sensitive_value = null,, display_settings = { "Octo
 * When defining the value for a resource "octopusdeploy_variable" with a "type" of "Sensitive", the "sensitive_value" attribute must be set to "CHANGEME", and the "value" attribute must not be defined.
 * **CRITICAL — project variables derived from `templatedPipeline` `variables` entries must always use `type = "String"`**: When the prompt says `Add a project variable called "<name>" with the value "<value>"` and the variable originates from a `templatedPipeline` `variables` object, the Terraform variable resource MUST use `type = "String"` regardless of whether the value looks like a boolean (`"true"`, `"false"`), a number (`"15"`, `"900"`), a URL, or any other non-string type. Do NOT use `type = "Boolean"`, `type = "Integer"`, or any other type — all `templatedPipeline` variable values are stored as strings in Octopus. Exception: if the prompt explicitly says `Add a sensitive project variable`, use `type = "Sensitive"` and `is_sensitive = true` instead.
 * When the prompt says `Add a sensitive project variable called "<name>" with the description "<description>".`, create a project-scoped `octopusdeploy_variable` resource with `name = "<name>"`, `description = "<description>"`, `type = "Sensitive"`, `is_sensitive = true`, and `sensitive_value = "CHANGEME"`. Do not define a `value` attribute for that variable.
+* When the prompt says `Add a sensitive prompted project variable called "<name>" with the description "<description>" and the label "<label>". The variable must be prompted for when creating a release.`, create a project-scoped `octopusdeploy_variable` resource with `name = "<name>"`, `description = "<description>"`, `type = "Sensitive"`, `is_sensitive = true`, `sensitive_value = "CHANGEME"`, and a `prompt` block with `label = "<label>"`, `is_required = true` (or `false` if the prompt says "must not be required"), and `display_settings { control_type = "Sensitive" }`. Do not define a `value` attribute for that variable.
 
 For example, this is a sensitive variable:
 
@@ -3423,12 +3440,47 @@ git_dependencies {
 
 ## Prompted Variable (Non-Select) Instructions
 
-* When the prompt includes `The variable must be prompted for when creating a release.` WITHOUT a selectable options instruction, the `octopusdeploy_variable` resource MUST include a `prompt` block with `control_type = "SingleLineText"` in `display_settings`.
+* When the prompt includes `The variable must be prompted for when creating a release.` WITHOUT a selectable options instruction, the `octopusdeploy_variable` resource MUST include a `prompt` block with `control_type = "SingleLineText"` in `display_settings`. **CRITICAL EXCEPTION**: When the variable has `type = "Sensitive"` and `is_sensitive = true` (i.e., the prompt says `Add a sensitive prompted project variable`), the `prompt` block MUST use `control_type = "Sensitive"` instead of `"SingleLineText"`. This is MANDATORY — you will be penalized for using `control_type = "SingleLineText"` on a prompted variable that also has `is_sensitive = true`.
 * When the prompt says `The variable must be required.`, set `is_required = true` in the `prompt` block.
 * When the prompt says `The variable must not be required.`, set `is_required = false` in the `prompt` block.
 * The `description` attribute in the `prompt` block must match the variable description from the prompt instruction.
 * The `label` attribute in the `prompt` block must match the label from the prompt instruction.
 * **IMPORTANT — when the prompt specifies a label that equals the variable name**: This is the correct behavior when the original `parameterConfig` entry had an empty `label` field — the variable name is used as a fallback label. In Terraform, set `label = "<variable name>"` using the exact variable name string. Do NOT set an empty string for label in this case.
+
+**Example — sensitive prompted variable with `control_type = "Sensitive"` (REQUIRED)**:
+
+Given a prompt:
+```
+* Add a sensitive prompted project variable called "apiToken" with the description "API authentication token" and the label "API Token". The variable must be prompted for when creating a release. The variable must be required.
+```
+
+The **CORRECT** Terraform uses `type = "Sensitive"`, `is_sensitive = true`, `sensitive_value = "CHANGEME"`, and `control_type = "Sensitive"`:
+```hcl
+resource "octopusdeploy_variable" "variable_apitoken" {
+  name            = "apiToken"
+  type            = "Sensitive"
+  description     = "API authentication token"
+  is_sensitive    = true
+  sensitive_value = "CHANGEME"
+  prompt {
+    description = "API authentication token"
+    label       = "API Token"
+    is_required = true
+    display_settings {
+      control_type = "Sensitive"
+    }
+  }
+}
+```
+
+The **WRONG** output (uses `SingleLineText` on a sensitive variable — FORBIDDEN):
+```hcl
+  prompt {
+    display_settings {
+      control_type = "SingleLineText"   ← WRONG for sensitive variables
+    }
+  }
+```
 
 **Example — prompted variable whose label equals the variable name (empty label fallback)**:
 
