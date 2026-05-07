@@ -84,6 +84,7 @@ The directory `/Users/matthewcasperson/Code/OctopusCopilot/context` contains Ter
 Once the `generalinstructions.md` file has been updated, use the `upload_file` tool from the `blobuploader` agent to upload the files to the Azure Blob Storage container. Uploading this file will make it available to the AI Assistant for future iterations of this process and ensures that the improvements made to the instructions are retained for future use.
 
 You MUST NOT use any other method to upload the files to the Azure Blob Storage container other than the `upload_file` tool from the `blobuploader` agent.
+You MUST NOT attempt to use a CLI tool to upload the files to the Azure Blob Storage container.
 
 ## Check the results
 
