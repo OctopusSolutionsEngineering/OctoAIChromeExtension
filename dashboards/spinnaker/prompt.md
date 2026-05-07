@@ -687,6 +687,32 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 
 * Replace `<template reference>` with the verbatim value of the non-empty template reference field (`template.reference` if present, otherwise `_templateRef`).
 * **IMPORTANT — placement of the "Review template-derived pipeline behavior" step**: This step must appear as the LAST step in the deployment process, after all deployment steps, notification steps, and project variable prompts. This placement ensures engineers see the review reminder after all other migration content has been established, and can act on it by reviewing the template variables and re-enabling any disabled steps.
+
+* **CRITICAL — "Review template-derived pipeline behavior" placement when stages array is empty**: When a `templatedPipeline` has a template reference but NO non-notification stages (i.e., the `stages` array is empty or contains only skipped stages), the "Review" step must STILL appear AFTER all Slack Notification - Finish and Slack Notification - Complete steps, and AFTER all `parameterConfig` variable prompts. Do NOT insert the "Review" step between the Start step and the Finish/Complete steps. The correct order is: Start → [no non-notification stages] → Finish → Complete → [variables] → Review template-derived pipeline behavior.
+
+**Negative example — "Review" step incorrectly placed between Start and Finish (COMMON MISTAKE when stages is empty)**:
+```
+Create a project called "Deploy cronjob example to dev" in the "Default Project Group" project group with no steps.
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" ...  ← WRONG: appears before Finish/Complete
+* Add a community step template step with the name "Slack Notification - Finish" ...
+* Add a community step template step with the name "Slack Notification - Complete" ...
+* Add a project variable called "enableAutomatedTrigger" with the value "false".
+* The project must be disabled.
+```
+← WRONG: The "Review" step must come AFTER all notification steps and variables, not between Start and Finish.
+
+The **CORRECT** output places "Review" as the last step:
+```
+Create a project called "Deploy cronjob example to dev" in the "Default Project Group" project group with no steps.
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a community step template step with the name "Slack Notification - Finish" ...
+* Add a community step template step with the name "Slack Notification - Complete" ...
+* Add a project variable called "enableAutomatedTrigger" with the value "false".
+* Add a sensitive project variable called "Project.Slack.WebhookUrl" ...
+* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" ...  ← CORRECT: appears last
+* The project must be disabled.
+```
 * If the template-backed pipeline exposes variables that clearly describe automated trigger or feed behaviour (for example `enableAutomatedTrigger`, `dockerRegistryAcc`, `dockerRegistryOrg`, `dockerRegistryRepo`, `pubsubName`, or `tag`) but no concrete trigger entries are present in the JSON, the placeholder step above is REQUIRED even when the execution-resolved JSON already contains concrete deployment stages. Do NOT silently output a deployment-only project and imply that hidden template-supplied trigger/feed behavior has been converted.
 * **CRITICAL — execution-resolved `templatedPipeline` JSON may be incomplete even when `stages` are present**: When `_resolvedFrom` indicates an execution-derived view and a template reference is present, the visible `stages` array may describe only the resolved deployment steps while template-defined trigger/feed behavior remains hidden. In that case, if trigger-related templated variables are present but `triggers` is absent or empty, you MUST add the placeholder step after the variables to preserve that missing behavior for manual review.
 
@@ -714,7 +740,7 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * Add a project variable called "<variable name>" with the value "<variable value>".
 ```
 
-* The following is a full example of a `templatedPipeline` JSON entry and its expected output:
+* The following is a full example of a `templatedPipeline` JSON entry **without** a template reference and its expected output:
 
 ```json
 {
@@ -751,7 +777,52 @@ Create a project called "Deploy cronjob example to dev" in the "Default Project 
 * Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has failed."
 * Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "${execution.name} has completed."
 * Add a project variable called "enableAutomatedTrigger" with the value "false".
-* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-0420.
+* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-0420".
+* Add a sensitive project variable called "Project.Slack.WebhookUrl" with the description "Slack webhook URL used by migrated Spinnaker notification steps.".
+* The project must be disabled.
+```
+
+* The following is a full example of a `templatedPipeline` JSON entry **WITH** a template reference (and no non-notification stages) and its expected output. Note that the "Review template-derived pipeline behavior" step appears LAST, after all notification steps and all project variables:
+
+```json
+{
+  "application": "app-0015",
+  "disabled": true,
+  "name": "Deploy cronjob basic to dev",
+  "notifications": [
+    {
+      "address": "#pj-example-channel",
+      "level": "pipeline",
+      "message": {
+        "pipeline.complete": { "text": "${execution.name} has completed." },
+        "pipeline.failed":   { "text": "${execution.name} has failed." },
+        "pipeline.starting": { "text": "${execution.name} has started." }
+      },
+      "type": "slack",
+      "when": ["pipeline.starting", "pipeline.failed", "pipeline.complete"]
+    }
+  ],
+  "stages": [],
+  "template": { "reference": "spinnaker://basic-gcs" },
+  "type": "templatedPipeline",
+  "variables": {
+    "clusterAccount": "gke-prod",
+    "dockerImageName": "api-server"
+  }
+}
+```
+
+The equivalent prompt for this entry is:
+
+```
+Create a project called "Deploy cronjob basic to dev" in the "Default Project Group" project group with no steps.
+* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "#{Octopus.Release.Number} has started."
+* Add a community step template step with the name "Slack Notification - Finish" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Only run the step when the previous step has failed. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "#{Octopus.Release.Number} has failed."
+* Add a community step template step with the name "Slack Notification - Complete" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the end of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "#pj-example-channel". Set the "ssn_Message" property to "#{Octopus.Release.Number} has completed."
+* Add a project variable called "clusterAccount" with the value "gke-prod".
+* Add a project variable called "dockerImageName" with the value "api-server".
+* Add a sensitive project variable called "Project.Slack.WebhookUrl" with the description "Slack webhook URL used by migrated Spinnaker notification steps.".
+* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: expand the Spinnaker pipeline template "spinnaker://basic-gcs" using the templatedPipeline variables before considering this conversion complete.`
 * The project must be disabled.
 ```
 
@@ -1214,9 +1285,11 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.s
   |---|---|
   | `${execution.name}` | `#{Octopus.Release.Number}` (release number that triggered the deployment) |
   | `${trigger.user}` | `#{Octopus.Deployment.CreatedBy.DisplayName}` |
+  | `${trigger['user']}` | `#{Octopus.Deployment.CreatedBy.DisplayName}` (bracket notation equivalent to `${trigger.user}`) |
   | `${trigger.type}` | `#{Octopus.Deployment.Trigger.Name}` |
   | `${parameters['key']}` | `#{key}` (replace `key` with the parameter name) |
   | `${trigger.payload.tag}` | `#{Octopus.Deployment.Trigger.Name}` (or a project variable for the image tag) |
+  | `${trigger['tag']}` | `#{Octopus.Deployment.Trigger.Name}` (bracket notation — refers to the Docker image tag that triggered the pipeline) |
   | `${execution.id}` | `#{Octopus.Deployment.Id}` |
 
   When the message text contains ONLY expressions from this table (with no other SpEL syntax), replace the SpEL expressions with the Octopus equivalents AND remove the NOTE comment. When the message text contains complex SpEL (e.g., `#triggerResolvedArtifactByType(...)` or ternary operators), retain the original text verbatim with the NOTE comment.
@@ -1853,6 +1926,8 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 * Replace `<stage name>` with the `name` property of the stage after applying the same step-name character rules as other stages. If the original `manualJudgment` stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the generated step name and add `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * Replace `<instructions>` with the `instructions` property of the stage. If the `instructions` property is absent or empty, use `"Please review and approve."` as the default instructions text.
 * **IMPORTANT — `stageTimeoutMs` preservation**: When a `manualJudgment` stage has a `stageTimeoutMs` property, convert the value from milliseconds to minutes (divide by 60000) and append `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a Manual Intervention timeout in Octopus if required.` to the step description. If the stage already has a description (because the name contained special characters), append this note after the existing description text, separated by a space. For example, a `stageTimeoutMs` of `1800000` (30 minutes) becomes: `NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.`
+
+* **IMPORTANT — `stageTimeoutMs` on non-`manualJudgment` stages**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`, `runJob`) has a `stageTimeoutMs` property, Octopus Deploy has no direct equivalent step-level timeout. Preserve the intent by appending `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` to the step description, where `<N>` is the value in milliseconds divided by 60000 (rounded down). If the step already has a description, append this note after the existing description text, separated by a space.
 
 **Negative example — `manualJudgment` stage name keeps invalid parentheses (COMMON MISTAKE)**:
 
@@ -4027,6 +4102,8 @@ When a project has pipeline-level notification entries, the generated prompt mus
 3. All "Slack Notification - Finish" steps (one per `notifications` array entry that has `pipeline.failed` in its `when` array) must be listed after all deployment stage steps, in `notifications` array order.
 4. All "Slack Notification - Complete" steps (one per `notifications` array entry that has `pipeline.complete` in its `when` array) must be listed last, after all Finish steps, in `notifications` array order.
 5. All `parameterConfig` variable prompts must follow all notification steps (after the Complete steps). When there are NO pipeline-level notification steps, variable prompts must appear BEFORE the deployment stage steps.
+5.5. The `Project.Slack.WebhookUrl` sensitive variable prompt (if Slack notification steps were generated) must follow all `parameterConfig` variable prompts.
+5.6. The "Review template-derived pipeline behavior" step (for `templatedPipeline` pipelines with a template reference and no non-notification stages) must appear AFTER all `parameterConfig` variable prompts and the `Project.Slack.WebhookUrl` variable, as the LAST deployment process step.
 
 **ABSOLUTE RULE — when notifications are present, variables MUST come AFTER the Finish and Complete notification steps**: Even if the Finish and Complete steps seem to be missing or were dropped due to missing `message` text, the variable ordering rule still applies. Variables must be placed as if Finish and Complete steps exist (i.e., at the very end before the external feed trigger and disabled line). Do NOT place variables between the deployment stages and the Finish/Complete steps.
 6. The external feed trigger prompt (if any) must follow all variable prompts and all notification steps, but before `* The project must be disabled.`.
@@ -4038,6 +4115,8 @@ When a project has pipeline-level notification entries, the generated prompt mus
 3. Slack Notification - Finish steps (after deployment stages)
 4. Slack Notification - Complete steps (after Finish steps)
 5. `parameterConfig` variable prompts (after ALL notification steps)
+5.5. `Project.Slack.WebhookUrl` sensitive variable prompt (if Slack notification steps exist)
+5.6. "Review template-derived pipeline behavior" step (if `templatedPipeline` with template reference and no non-notification stages)
 6. External feed trigger (if any)
 7. `* The project must be disabled.` (only if `disabled: true`)
 

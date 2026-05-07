@@ -390,6 +390,8 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * **CRITICAL — never add backslash-escaping to GCS paths or other URLs in step descriptions.** When a step description contains a GCS path like `gs://example-bucket/path/to/file.yaml`, reproduce it verbatim in the `notes` string without adding backslashes or extra quotation marks around the URL. For example, `notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."` — NOT `notes = "... at \"gs://example-bucket/path\"."`.
 * **CRITICAL — `NOTE (migration):` text must be preserved verbatim**: When a step description includes text of the form `NOTE (migration): ...`, this text MUST appear verbatim in the `notes` attribute. Do NOT drop, summarize, or rephrase migration notes. These notes communicate important information about conditional branching or preconditions that were lost during migration. For example, if the prompt says `Set the step description to "...; NOTE (migration): This step was originally on the SUCCESS branch after \"Manual Judgment\". In this migration, both branches now run in parallel."`, the `notes` value MUST include the full NOTE (migration) sentence.
 * **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` must be preserved verbatim**: When a `manualJudgment` stage had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit or shorten the timeout note.
+
+* **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` on non-`manualJudgment` stages must also be preserved verbatim**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`) had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute. Never omit or shorten this migration note even for non-manualJudgment steps.
 **Negative example — GCS URL with incorrect backslash escaping in notes (FORBIDDEN)**:
 ```hcl
 notes = "This step originally loaded its manifest from Google Cloud Storage at \"gs://example-bucket/storage-3209\". The manifest must be inlined."
@@ -431,6 +433,34 @@ resource "octopusdeploy_process_step" "process_step_deploy_staging" {
 * A `wait` stage converted to `Start-Sleep -Seconds <N>` must be implemented as an `octopusdeploy_process_step` of type `"Octopus.Script"` with `execution_properties` containing `"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds <N>"`, `"Octopus.Action.Script.Syntax" = "PowerShell"`, and `"Octopus.Action.Script.ScriptSource" = "Inline"`.
 * The step name must match the dash-replaced form from the prompt (e.g., `"Wait -15min-"`) — parentheses in the original Spinnaker stage name have been replaced with dashes.
 * You will be penalized for using a type other than `"Octopus.Script"` for wait steps.
+
+## "Review Template-Derived Pipeline Behavior" Script Step
+
+* When the prompt includes `Add a "Run a Script" step with the name "Review template-derived pipeline behavior"`, create an `octopusdeploy_process_step` resource of type `"Octopus.Script"` with `execution_properties` containing:
+  * `"Octopus.Action.Script.ScriptBody"` — the inline PowerShell comment from the prompt (e.g., `# TODO: expand the Spinnaker pipeline template "spinnaker://basic-gcs" using the templatedPipeline variables before considering this conversion complete.`)
+  * `"Octopus.Action.Script.Syntax" = "PowerShell"`
+  * `"Octopus.Action.Script.ScriptSource" = "Inline"`
+* This step does NOT require a `properties` block with `Octopus.Action.TargetRoles` — it runs on the server, not on a Kubernetes target.
+* This step MUST be the LAST entry in the `octopusdeploy_process_steps_order` `steps` array.
+
+**Example — "Review template-derived pipeline behavior" step in Terraform**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_review_template_derived_pipeline_behavior" {
+  count                = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name                 = "Review template-derived pipeline behavior"
+  type                 = "Octopus.Script"
+  process_id           = octopusdeploy_process.process_my_project[0].id
+  condition            = "Success"
+  package_requirement  = "LetOctopusDecide"
+  start_trigger        = "StartAfterPrevious"
+  execution_properties = {
+    "Octopus.Action.RunOnServer"         = "true"
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.Syntax"       = "PowerShell"
+    "Octopus.Action.Script.ScriptBody"   = "# TODO: expand the Spinnaker pipeline template \"spinnaker://basic-gcs\" using the templatedPipeline variables before considering this conversion complete."
+  }
+}
+```
 
 ## Multiple Description Fragments in `notes` (CRITICAL)
 
@@ -1666,6 +1696,8 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
   * `${ parameters.namespace }` → `#{namespace}`
   This conversion ensures the script uses the correct Octopus variable reference at runtime. If the script contains any such converted references, add a comment at the top of the script or in the step notes: `# NOTE: Spinnaker SpEL parameter references have been converted to Octopus variable syntax (#{variable_name}).`
 
+* **CRITICAL — Spinnaker SpEL expressions in Terraform string values must escape the `$` character**: When a Terraform string value (e.g., in `parameters`, `notes`, or `execution_properties`) must contain a Spinnaker SpEL expression verbatim (because it could not be converted to Octopus variable syntax), the `$` character MUST be escaped as `$$` to prevent Terraform from treating it as a string interpolation sequence. For example, if the prompt contains the notification message text `${execution.name} has started.` and this text cannot be converted, the Terraform string must be `"$${execution.name} has started."`. Do NOT emit `"${execution.name} has started."` as Terraform will attempt to evaluate the expression and produce an error. Where the prompt provides already-converted Octopus variable syntax (e.g., `#{Octopus.Release.Number}`), no escaping is needed — only `${}` patterns require `$$`.
+
 * You must consider the attributes in the "execution_properties" block and the "properties" block of the example steps to be mandatory, unless otherwise specified (the properties on script steps that define inline scripts or those sourced from packages is an example where example properties should not be considered mandatory).
 * Every "octopusdeploy_project" resource must have an associated "octopusdeploy_process" resource.
 * Every "octopusdeploy_process" resource must have an associated "octopusdeploy_process_steps_order" resource.
@@ -1702,6 +1734,36 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
 | `Set condition to "Variable"` with expression | `"Variable"` |
 
 **MANDATORY SELF-CHECK — after generating all step resources, verify completeness of `octopusdeploy_process_steps_order`**: Before finalizing any Terraform output, scan every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource you created. For EACH such resource, confirm its ID appears in the `steps` array of the corresponding `octopusdeploy_process_steps_order` resource. If any step resource is missing from the steps order array, add it immediately. This applies to ALL steps including disabled steps, parallel steps, and notification steps. A step resource that exists in Terraform but does not appear in `octopusdeploy_process_steps_order` will not execute at deployment time.
+
+**CRITICAL — "Review template-derived pipeline behavior" step must be the LAST entry in `octopusdeploy_process_steps_order`**: When a `templatedPipeline` project contains a "Review template-derived pipeline behavior" script step, the reference to that step in the `steps` array of `octopusdeploy_process_steps_order` MUST appear as the LAST element. The correct order is: all Slack Notification - Start references, then all deployment stage references, then all Slack Notification - Finish references, then all Slack Notification - Complete references, and finally the "Review template-derived pipeline behavior" reference at the very end. Do NOT place the Review step reference between the Start notification and the Finish/Complete notification references.
+
+**Negative example — Review step placed between Start and Finish in steps order (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_steps_order" "process_step_order_my_project" {
+  count      = ...
+  process_id = ...
+  steps      = [
+    octopusdeploy_process_templated_step.process_step_slack_notification_start[0].id,
+    octopusdeploy_process_step.process_step_review_template[0].id,          # ← WRONG: before Finish/Complete
+    octopusdeploy_process_templated_step.process_step_slack_notification_finish[0].id,
+    octopusdeploy_process_templated_step.process_step_slack_notification_complete[0].id,
+  ]
+}
+```
+
+**Correct output** — Review step reference is LAST:
+```hcl
+resource "octopusdeploy_process_steps_order" "process_step_order_my_project" {
+  count      = ...
+  process_id = ...
+  steps      = [
+    octopusdeploy_process_templated_step.process_step_slack_notification_start[0].id,
+    octopusdeploy_process_templated_step.process_step_slack_notification_finish[0].id,
+    octopusdeploy_process_templated_step.process_step_slack_notification_complete[0].id,
+    octopusdeploy_process_step.process_step_review_template[0].id,          # ← CORRECT: last
+  ]
+}
+```
 * When the "condition"attribute is set to "Variable", the "properties" block must include the "Octopus.Step.ConditionVariableExpression" property.
 * You will be penalized for setting the "condition" attribute to "Variable" without defining the "Octopus.Step.ConditionVariableExpression" property in the "properties" block.
 * Adding a step requires a new "octopusdeploy_process_step" resource to be defined and then added to the "octopusdeploy_process_steps_order" resource in the "steps" array. For example, if this is the initial set of steps:
@@ -3104,6 +3166,40 @@ git_dependencies {
 * When the prompt says `The variable must not be required.`, set `is_required = false` in the `prompt` block.
 * The `description` attribute in the `prompt` block must match the variable description from the prompt instruction.
 * The `label` attribute in the `prompt` block must match the label from the prompt instruction.
+* **IMPORTANT — when the prompt specifies a label that equals the variable name**: This is the correct behavior when the original Spinnaker `parameterConfig` entry had an empty `label` field — the variable name is used as a fallback label. In Terraform, set `label = "<variable name>"` using the exact variable name string. Do NOT set an empty string for label in this case.
+
+**Example — prompted variable whose label equals the variable name (empty label fallback)**:
+
+Given a prompt:
+```
+* Add a project variable called "dryRun", with the description "dry run without making changes", and the label "dryRun". The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: false, true.
+```
+
+The **CORRECT** Terraform uses `label = "dryRun"` (same as the variable name):
+```hcl
+resource "octopusdeploy_variable" "variable_dryrun" {
+  name         = "dryRun"
+  type         = "String"
+  value        = "false"
+  is_sensitive = false
+  prompt {
+    description = "dry run without making changes"
+    label       = "dryRun"
+    is_required = false
+    display_settings {
+      control_type = "Select"
+      select_option {
+        display_name = "false"
+        value        = "false"
+      }
+      select_option {
+        display_name = "true"
+        value        = "true"
+      }
+    }
+  }
+}
+```
 
 **Example — prompted string variable without selectable options**:
 
