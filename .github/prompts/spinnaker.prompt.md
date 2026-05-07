@@ -81,10 +81,11 @@ You will be penalized for adding Spinnaker specific instructions to the `general
 
 The directory `/Users/matthewcasperson/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. You can refer to these files when making improvements to the `generalinstructions.md` file.
 
-Once the `generalinstructions.md` file has been updated, use the `upload_file` tool from the `blobuploader` agent to upload the files to the Azure Blob Storage container. Uploading this file will make it available to the AI Assistant for future iterations of this process and ensures that the improvements made to the instructions are retained for future use.
+Once the `generalinstructions.md` file has been updated, use the `upload_file` tool from the `blobuploader` agent to upload the files to the Azure Blob Storage container. The `upload_file` tool is harded to upload the `generalinstructions.md` file to Azure Blob Storage. This is the only file that needs to be uploaded. Uploading this file will make it available to the AI Assistant for future iterations of this process and ensures that the improvements made to the instructions are retained for future use.
 
 You MUST NOT use any other method to upload the files to the Azure Blob Storage container other than the `upload_file` tool from the `blobuploader` agent.
 You MUST NOT attempt to use a CLI tool to upload the files to the Azure Blob Storage container.
+You MUST NOT upload the `prompt.md` file to the Azure Blob Storage container.
 
 ## Check the results
 
