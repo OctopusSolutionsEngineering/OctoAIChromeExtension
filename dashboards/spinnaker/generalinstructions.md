@@ -44,6 +44,44 @@ notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls bac
 * You will be penalized for using `start_trigger = "StartAfterPrevious"` when the prompt explicitly says `"Run in parallel with the previous step"`.
 * You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
 * **MANDATORY SELF-CHECK — parallel group completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Run in parallel with the previous step"`. For EACH such step, verify that the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` uses `start_trigger = "StartWithPrevious"`. If any step with that phrase uses `start_trigger = "StartAfterPrevious"`, correct it before outputting.
+* **MANDATORY SELF-CHECK — convergence step completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Wait for all previous steps to complete, then start"`. For EACH such step, verify that the corresponding resource uses `start_trigger = "StartAfterPrevious"`. If any step with that phrase uses `start_trigger = "StartWithPrevious"`, correct it before outputting.
+
+**CRITICAL — convergence steps (after a parallel group) MUST use `start_trigger = "StartAfterPrevious"`**: When the prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"`, this indicates a convergence point — a step that waits for multiple preceding parallel steps to finish before it begins. In Octopus Terraform, this is expressed as `start_trigger = "StartAfterPrevious"`. This is the SAME attribute value as the default, but it MUST be explicitly set when the prompt says "Wait for all previous steps". The `StartAfterPrevious` value is used for two distinct cases:
+1. Sequential steps (default, no annotation needed)
+2. Convergence steps (explicitly annotated in prompt — MUST be set even though value matches default)
+
+**Negative example — convergence step after a parallel group incorrectly using StartWithPrevious**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...         (no annotation — first in root group)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+
+The **WRONG** Terraform (Manual Judgment uses StartWithPrevious — FORBIDDEN at a convergence point):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_staging" {
+  start_trigger = "StartWithPrevious"  ← correct
+  ...
+}
+resource "octopusdeploy_process_step" "... manual_judgment" {
+  start_trigger = "StartWithPrevious"  ← WRONG: convergence point must use StartAfterPrevious
+  ...
+}
+```
+
+The **CORRECT** Terraform (Manual Judgment uses StartAfterPrevious as a convergence point):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_staging" {
+  start_trigger = "StartWithPrevious"  ← CORRECT: parallel
+  ...
+}
+resource "octopusdeploy_process_step" "... manual_judgment" {
+  start_trigger = "StartAfterPrevious"  ← CORRECT: convergence — waits for all parallel steps
+  ...
+}
+```
 
 **CRITICAL — a step with BOTH `is_disabled = true` AND `start_trigger = "StartWithPrevious"` is VALID and REQUIRED when a disabled stage is a parallel group member**: When the prompt says `The step must be disabled. Set the start trigger to "Run in parallel with the previous step"`, the corresponding Terraform resource MUST have both attributes set. Setting `is_disabled = true` does NOT override or cancel the `start_trigger` annotation.
 

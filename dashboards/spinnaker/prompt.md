@@ -715,6 +715,7 @@ Create a project called "Deploy cronjob example to dev" in the "Default Project 
 ```
 * If the template-backed pipeline exposes variables that clearly describe automated trigger or feed behaviour (for example `enableAutomatedTrigger`, `dockerRegistryAcc`, `dockerRegistryOrg`, `dockerRegistryRepo`, `pubsubName`, or `tag`) but no concrete trigger entries are present in the JSON, the placeholder step above is REQUIRED even when the execution-resolved JSON already contains concrete deployment stages. Do NOT silently output a deployment-only project and imply that hidden template-supplied trigger/feed behavior has been converted.
 * **CRITICAL — execution-resolved `templatedPipeline` JSON may be incomplete even when `stages` are present**: When `_resolvedFrom` indicates an execution-derived view and a template reference is present, the visible `stages` array may describe only the resolved deployment steps while template-defined trigger/feed behavior remains hidden. In that case, if trigger-related templated variables are present but `triggers` is absent or empty, you MUST add the placeholder step after the variables to preserve that missing behavior for manual review.
+* **EXCEPTION — do NOT add the "Review template-derived pipeline behavior" step when `enableAutomatedTrigger` is explicitly `false` or the string `"false"`**: When the pipeline's `variables` object contains `"enableAutomatedTrigger": false` or `"enableAutomatedTrigger": "false"`, the variable explicitly states that automated triggering is disabled. In this case, the missing trigger is intentional — do NOT add the review step for the purpose of warning about missing trigger behaviour. This exception applies even when other trigger-related variables (such as `pubsubName`, `dockerRegistryAcc`, or `tag`) are present. If the pipeline has a template reference AND `enableAutomatedTrigger` is `false` AND `triggers` is empty (`[]`) AND the pipeline HAS concrete non-notification stages, omit the review step entirely. The review step is only required when `triggers` is completely absent (null/missing field) regardless of `enableAutomatedTrigger`, OR when `enableAutomatedTrigger` is `true` or absent and `triggers` is empty.
 
 **IMPORTANT — `templatedPipeline` notifications are REQUIRED**: When a `templatedPipeline` has a `notifications` array, you MUST generate Slack notification steps for it. Do NOT skip notifications just because the pipeline `type` is `templatedPipeline`. The Finish and Complete steps must appear in the correct order: all Slack Notification - Start steps first (if `pipeline.starting` is in `when`), followed by the deployment steps, then Slack Notification - Finish steps (if `pipeline.failed` is in `when`), then Slack Notification - Complete steps (if `pipeline.complete` is in `when`), then the `variables` prompts.
 
@@ -1879,18 +1880,24 @@ Stages with `"type": "runJobManifest"` represent Kubernetes job executions and m
 
 The resulting prompt must follow exactly the same rules as a `deployManifest` stage, including the stage name transformation rules.
 
-**IMPORTANT**: The `<stage name>` placeholder must follow the same rules as `deployManifest` stages: if the stage name contains parentheses `()`, replace them with dashes `-` (e.g., `Run Job (Manifest)` becomes `Run Job -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+**IMPORTANT**: The `<stage name>` placeholder must follow the same rules as `deployManifest` stages: if the stage name contains parentheses `()`, replace them with dashes `-` (e.g., `Run Job (Manifest)` becomes `Run Job -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage type: runJobManifest. Original Spinnaker stage name: <original name>"` to the step prompt.
+
+**CRITICAL — `runJobManifest` steps must mention stage type in their description**: Unlike `deployManifest` stages (which deploy long-running Kubernetes Deployments/Services), `runJobManifest` stages execute Kubernetes Jobs — one-time or batch workloads that run to completion and then exit. This distinction is operationally significant. The step description MUST always include `Original Spinnaker stage type: runJobManifest.` as the first sentence, so engineers understand the step represents a one-time Job execution, not a continuous Deployment.
 
 **Negative example — `runJobManifest` stage name with parentheses not converted to dashes (COMMON MISTAKE)**:
 
-Given a `runJobManifest` stage with `"name": "Run Job (Manifest)"`, the **WRONG** output preserves the parentheses:
+Given a `runJobManifest` stage with `"name": "Run Job (Manifest)"`, the **WRONG** output preserves the parentheses or omits the stage type:
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job (Manifest)". ...
 ```
-
-The **CORRECT** output converts parentheses to dashes and adds a step description:
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". ... Set the step description to "Original Spinnaker stage name: Run Job (Manifest)".
+```
+← WRONG: missing `Original Spinnaker stage type: runJobManifest.` prefix in description
+
+The **CORRECT** output converts parentheses to dashes and includes both the stage type and the original name in the description:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Run Job -Manifest-". ... Set the step description to "Original Spinnaker stage type: runJobManifest. Original Spinnaker stage name: Run Job (Manifest). This step executes a one-time Kubernetes Job (not a long-running Deployment)."
 ```
 
 ```
@@ -3492,6 +3499,10 @@ Create a project called "Check SSL dev" in the "Default Project Group" project g
 
 > **ABSOLUTE RULE — JSON position is irrelevant to execution order.** A stage's topological group is determined **exclusively** by its `requisiteStageRefIds` value. A stage with `"requisiteStageRefIds": []` is **always** in the root group, even if it appears as the last item in the JSON array. Never use the position of a stage in the JSON array to decide its topological group or whether it runs before or after another stage. When you identify the root group, scan the **entire** `stages` array and collect ALL stages whose `requisiteStageRefIds` is empty or absent regardless of where they appear in the JSON.
 
+> **ABSOLUTE RULE — MINIMUM PARALLEL CASE (2 root stages)**: Even when there are only TWO stages with `"requisiteStageRefIds": []`, the SECOND stage MUST get `Set the start trigger to "Run in parallel with the previous step"`. This is the simplest parallel case and is the most commonly missed. Before finalizing any conversion that has exactly 2 stages with empty `requisiteStageRefIds`, verify that the second stage has this annotation. The fact that both stages may be disabled (e.g., because their manifests are TODO placeholders) does NOT exempt them from this rule.
+
+> **ABSOLUTE RULE — CONVERGENCE AFTER 2+ PARALLEL STAGES**: When any stage has `requisiteStageRefIds` containing TWO OR MORE refIds (e.g., `["1","2"]`), that stage is a convergence point. It MUST receive `Set the start trigger to "Wait for all previous steps to complete, then start"`. This is MANDATORY even if ALL of the stages it depends on are disabled. There are no exceptions to this rule.
+
 * First, topologically sort all deployment stages by their `requisiteStageRefIds` dependency graph. Treat each `refId` as a node and each entry in `requisiteStageRefIds` as a directed edge from prerequisite to dependent. Stages with an empty or absent `requisiteStageRefIds` array have no prerequisites and must appear first in the sorted order; stages that depend only on those come next; and so on, until all stages are ordered.
 * **CRITICAL: Perform the topological sort based purely on `requisiteStageRefIds` values — NOT on the position of the stage in the JSON array.** A stage that appears late in the JSON array but has `"requisiteStageRefIds": []` must still be placed in the first (root) group, even if the JSON places it after a stage that depends on it.
 * Disabled stages still count when building dependency groups. If two stages share the same `requisiteStageRefIds` value, and one of them is disabled, they are STILL in the same parallel group for annotation purposes.
@@ -3604,6 +3615,34 @@ The **CORRECT** output (no "Wait for all previous steps" — sequential pipeline
 * **CRITICAL — the first stage in ANY parallel group NEVER receives a parallel annotation**, regardless of whether it is the root group or a subsequent group. Only the 2nd and later stages within a parallel group get the "Run in parallel" annotation. This applies across all dependency levels: if six stages in the pipeline all depend on stage 5, the first of those six stages in JSON order gets no annotation; only stages 2-6 in that group get the parallel annotation.
 * **CRITICAL — this rule also applies when the second stage in the parallel group is disabled**: A hard-disabled stage with `stageEnabled.expression = false` still gets `Set the start trigger to "Run in parallel with the previous step"` when it is the second or later member of a dependency group. Disabled status changes `The step must be disabled.` only; it does NOT cancel the parallel annotation.
 * **CRITICAL — convergence after a parallel group must still use `Wait for all previous steps` even when one or more incoming branches are disabled**: If a stage depends on multiple prior stages (for example `requisiteStageRefIds: ["1", "2"]`), and one of those prior stages is disabled, the dependent stage still waits for the full group and must receive `Set the start trigger to "Wait for all previous steps to complete, then start"` when the ordering rules require it.
+
+* **ABSOLUTE RULE — when ALL stages in a parallel root group are disabled (e.g., because all manifests are TODO placeholders), the parallel and convergence annotations MUST STILL be applied**: Disabling a step affects ONLY the `The step must be disabled.` annotation — it does NOT remove the step from its dependency group or cancel its `start_trigger` annotation. When ALL root-group stages end up disabled (for example, because all GCS manifest URLs resolve to null), the 2nd, 3rd, etc. disabled stages MUST still receive `Set the start trigger to "Run in parallel with the previous step"`, and any convergence stage that depends on multiple disabled stages MUST still receive `Set the start trigger to "Wait for all previous steps to complete, then start"`. There is NO exception for "everything is disabled anyway" — the annotations are always required.
+
+**Concrete example — both root-group stages disabled but annotations still required**:
+
+Given:
+```json
+{ "stages": [
+  { "refId": "1", "name": "Deploy Dev",     "requisiteStageRefIds": [], "type": "deployManifest" },
+  { "refId": "2", "name": "Deploy Staging", "requisiteStageRefIds": [], "type": "deployManifest" },
+  { "refId": "3", "name": "Manual Judgment","requisiteStageRefIds": ["1","2"], "type": "manualJudgment" }
+]}
+```
+Even if Deploy Dev AND Deploy Staging are BOTH disabled (because both manifest URLs are null/TODO):
+
+The **WRONG** output omits start-trigger annotations on the disabled stages:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ... The step must be disabled.
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... The step must be disabled.
+* Add a "Manual Intervention" step ... "Manual Judgment" ...
+```
+
+The **CORRECT** output applies all annotations regardless of disabled status:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ... The step must be disabled.
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... The step must be disabled. Set the start trigger to "Run in parallel with the previous step".
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
 
 **Worked example — scattered parallel group member at late JSON position**:
 
