@@ -895,6 +895,7 @@ resource "octopusdeploy_project" "project_<name>" {
 
 * The "count" parameter for any "octopusdeploy_process" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
 * The "count" parameter for any "octopusdeploy_process_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_templated_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource. This applies to ALL templated steps including Slack notification steps (Start, Finish, Complete), community step template steps, and any other step created with the `octopusdeploy_process_templated_step` resource type. You will be penalized for omitting `count` on any `octopusdeploy_process_templated_step` resource.
 * The "count" parameter for any "octopusdeploy_process_steps_order" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
 * The "count" parameter for any "octopusdeploy_process_child_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
 * The "count" parameter for any "octopusdeploy_process_child_steps_order" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
@@ -903,6 +904,33 @@ resource "octopusdeploy_project" "project_<name>" {
 * You will be penalized for using count arguments like this: "${length(data.<data type>.<data resource>.<collection>) != 0 ? 1 : 1}"
 * You will be penalized for using ternary operators that return the same value for both cases.
 * **MANDATORY SELF-CHECK before finalizing external feed triggers**: Before outputting an `octopusdeploy_external_feed_create_release_trigger` resource, verify that it has: (1) a `count` attribute matching the project's count pattern, (2) `project_id` using the ternary lookup pattern, (3) `channel_id` using the ternary lookup pattern, (4) a `lifecycle { prevent_destroy = true }` block, (5) a `depends_on` referencing `octopusdeploy_process_steps_order`. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
+
+**STOP — verify external feed trigger before outputting**: An `octopusdeploy_external_feed_create_release_trigger` resource MUST contain ALL of the following attributes. If any are missing, the Terraform will fail on idempotent re-apply. Check each:
+
+```hcl
+# CORRECT: complete external feed trigger with ALL required attributes
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"   # REQUIRED
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"   # REQUIRED: ternary
+  name       = "External Feed Trigger"
+  channel_id = "${length(data.octopusdeploy_channels.channel_my_project_application.channels) != 0 ? data.octopusdeploy_channels.channel_my_project_application.channels[0].id : octopusdeploy_channel.channel_my_project_application[0].id}"   # REQUIRED: ternary
+  is_disabled = true   # when prompt says "The trigger must be disabled."
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]   # REQUIRED
+  lifecycle {
+    prevent_destroy = true   # REQUIRED
+  }
+}
+```
+
+Before outputting the trigger, answer YES/NO to each:
+- Has `count`? 
+- Has `project_id` with ternary lookup (NOT direct reference)?
+- Has `channel_id` with ternary lookup (NOT direct reference)?
+- Has `lifecycle { prevent_destroy = true }`?
+- Has `depends_on` pointing to `octopusdeploy_process_steps_order`?
+
+If any answer is NO, fix the resource before outputting.
 
 ## Account Instructions
 
@@ -1840,6 +1868,40 @@ resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
 
 **MANDATORY SELF-CHECK before finalizing channels**: Before outputting any `octopusdeploy_channel` resource, verify that it has: (1) a `count` attribute using the project's data source length pattern (`"${length(data.octopusdeploy_projects...) != 0 ? 0 : 1}"`), (2) `project_id` using the ternary lookup pattern, (3) a `lifecycle { prevent_destroy = true }` block. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
 
+**Negative example — `octopusdeploy_channel` resource missing `count`, ternary `project_id`, and `lifecycle` (VERY COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_channel" "channel_my_project_application" {
+  # WRONG: missing count attribute
+  name       = "Application"
+  project_id = "${octopusdeploy_project.project_my_project.id}"   # WRONG: direct reference, no ternary guard
+  is_default = false
+  # WRONG: missing lifecycle { prevent_destroy = true }
+}
+```
+
+**Correct output — channel with ALL required attributes**:
+```hcl
+data "octopusdeploy_channels" "channel_my_project_application" {
+  ids          = []
+  partial_name = "Application"
+  project_id   = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_channel" "channel_my_project_application" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"   # REQUIRED
+  name       = "Application"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"   # REQUIRED: ternary
+  is_default = false
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]   # REQUIRED
+  lifecycle {
+    prevent_destroy = true   # REQUIRED
+  }
+}
+```
+
+* **CRITICAL — every `octopusdeploy_channel` resource associated with an external feed trigger MUST include `depends_on = [octopusdeploy_process_steps_order.<project>]`** to ensure the channel is created after the deployment process is fully configured. Without this dependency, the external feed trigger may be created before the channel is fully associated with the project, causing deployment issues. You will be penalized for omitting `depends_on` from any `octopusdeploy_channel` resource that is referenced by an `octopusdeploy_external_feed_create_release_trigger`.
+
 Here is an example of a channel resource with a "rule" block that applies when the release version matches the tag hotfix (using the regex ^hotfix$), and it targets specific deployment actions (steps):
 
 ```
@@ -2512,7 +2574,7 @@ data "octopusdeploy_community_step_template" "my_community_step_template" {
 
 resource "octopusdeploy_community_step_template" "my_community_step_template" {
   community_action_template_id = "${length(data.octopusdeploy_community_step_template.my_community_step_template.steps) != 0 ? data.octopusdeploy_community_step_template.my_community_step_template.steps[0].id : null}"
-  count                        = "${data.octopusdeploy_step_template.my_community_step_template.step_template != null ? 0 : 1}"
+  count                        = "${length(data.octopusdeploy_community_step_template.my_community_step_template.steps) != 0 ? 0 : 1}"
 }
 ```
 * You will be penalized for referencing a "octopusdeploy_step_template" data source "actions" property, for example:

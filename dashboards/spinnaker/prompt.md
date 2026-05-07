@@ -818,6 +818,36 @@ Create a project called "Deploy cronjob example to dev" in the "Default Project 
 * **CRITICAL — execution-resolved `templatedPipeline` JSON may be incomplete even when `stages` are present**: When `_resolvedFrom` indicates an execution-derived view and a template reference is present, the visible `stages` array may describe only the resolved deployment steps while template-defined trigger/feed behavior remains hidden. In that case, if trigger-related templated variables are present but `triggers` is absent or empty, you MUST add the placeholder step after the variables to preserve that missing behavior for manual review.
 * **EXCEPTION — do NOT add the "Review template-derived pipeline behavior" step when `enableAutomatedTrigger` is explicitly `false` or the string `"false"`**: When the pipeline's `variables` object contains `"enableAutomatedTrigger": false` or `"enableAutomatedTrigger": "false"`, the variable explicitly states that automated triggering is disabled. In this case, the missing trigger is intentional — do NOT add the review step for the purpose of warning about missing trigger behaviour. This exception applies even when other trigger-related variables (such as `pubsubName`, `dockerRegistryAcc`, or `tag`) are present. If the pipeline has a template reference AND `enableAutomatedTrigger` is `false` AND `triggers` is empty (`[]`) AND the pipeline HAS concrete non-notification stages, omit the review step entirely. The review step is only required when `triggers` is completely absent (null/missing field) regardless of `enableAutomatedTrigger`, OR when `enableAutomatedTrigger` is `true` or absent and `triggers` is empty.
 
+**Negative example — missing "Review template-derived pipeline behavior" step when `enableAutomatedTrigger: true` and `triggers: []` (COMMON MISTAKE)**:
+
+Given a `templatedPipeline` with `_resolvedFrom: "execution"`, a `_templateRef` present, `variables: {"enableAutomatedTrigger": true, "manifestURL": "gs://example-bucket/storage-2575", "pubsubName": "notifications-topic"}`, and `triggers: []`:
+
+The **WRONG** output omits the "Review template-derived pipeline behavior" step:
+```
+Create a project called "Deploy Web to DEV" in the "Default Project Group" project group with no steps.
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Deploy Kubernetes YAML" step ... (deployment steps)
+* Add a project variable called "enableAutomatedTrigger" with the value "true".
+* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-2575".
+* Add a project variable called "pubsubName" with the value "notifications-topic".
+* Add a sensitive project variable called "Project.Slack.WebhookUrl" ...
+* The project must be disabled.
+```
+← WRONG: `enableAutomatedTrigger` is `true` and `triggers` is empty `[]` — the review step IS REQUIRED even though concrete deployment stages exist.
+
+The **CORRECT** output adds "Review template-derived pipeline behavior" after all variables:
+```
+Create a project called "Deploy Web to DEV" in the "Default Project Group" project group with no steps.
+* Add a community step template step with the name "Slack Notification - Start" ...
+* Add a "Deploy Kubernetes YAML" step ... (deployment steps)
+* Add a project variable called "enableAutomatedTrigger" with the value "true".
+* Add a project variable called "manifestURL" with the value "gs://example-bucket/storage-2575".
+* Add a project variable called "pubsubName" with the value "notifications-topic".
+* Add a sensitive project variable called "Project.Slack.WebhookUrl" ...
+* Add a "Run a Script" step with the name "Review template-derived pipeline behavior". Set the script to: `# TODO: This pipeline was derived from a Spinnaker template. Review the template variables and re-enable any disabled steps after configuring the manifest sources.`
+* The project must be disabled.
+```
+
 **IMPORTANT — `templatedPipeline` notifications are REQUIRED**: When a `templatedPipeline` has a `notifications` array, you MUST generate Slack notification steps for it. Do NOT skip notifications just because the pipeline `type` is `templatedPipeline`. The Finish and Complete steps must appear in the correct order: all Slack Notification - Start steps first (if `pipeline.starting` is in `when`), followed by the deployment steps, then Slack Notification - Finish steps (if `pipeline.failed` is in `when`), then Slack Notification - Complete steps (if `pipeline.complete` is in `when`), then the `variables` prompts.
 
 * A `templatedPipeline` entry may contain a `variables` object with deployment configuration. These are added as variables to the project.
@@ -2001,6 +2031,8 @@ Stages with `"type": "runJobManifest"` represent Kubernetes job executions and m
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 
 The resulting prompt must follow exactly the same rules as a `deployManifest` stage, including the stage name transformation rules.
+
+* **`runJobManifest` stages with inline `manifests` array**: When a `runJobManifest` stage has a non-empty `manifests` array (instead of a `manifestArtifactId` or `manifestArtifact` reference), apply the SAME inline YAML serialization rules as `deployManifest` stages with inline manifests. Serialize each manifest in the `manifests` array into a YAML block; apply all multi-document, complex nested structure, and TODO placeholder rules as for `deployManifest` stages. If the manifests are too complex to serialize inline, use `# TODO: replace with correctly indented manifest` as the YAML content and add `The step must be disabled.` to the step prompt.
 
 **IMPORTANT**: The `<stage name>` placeholder must follow the same rules as `deployManifest` stages: if the stage name contains parentheses `()`, replace them with dashes `-` (e.g., `Run Job (Manifest)` becomes `Run Job -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage type: runJobManifest. Original Spinnaker stage name: <original name>"` to the step prompt.
 
@@ -3520,6 +3552,18 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"job job-denpyo-checker"` and `location` is `"app-0251-dev"`, the command is `kubectl delete job job-denpyo-checker -n app-0251-dev`.
 * **`mode: "label"` deleteManifest stages**: When the `mode` field is `"label"` (instead of `"static"`), the stage uses `labelSelectors` to identify resources to delete rather than a specific `manifestName`. In this case, build the kubectl command using `-l` label selectors. Iterate over the `labelSelectors.selectors` array and convert each selector to a label expression (e.g., `{key: "app", kind: "EQUALS", values: ["server"]}` → `app=server`). Combine multiple selectors with commas. Also use the `kinds` array to specify the resource types to delete. For example, a stage with `kinds: ["deployment", "replicaSet", "pod"]` and selectors `app=server,stack=canary,version=v1` in namespace `app-0220-prod` generates: `kubectl delete deployment,replicaSet,pod -l app=server,stack=canary,version=v1 -n app-0220-prod`. The `kinds` list should be comma-joined with no spaces.
 * **CRITICAL — Spinnaker SpEL expressions in `deleteManifest` label selector values must be converted to Octopus variable syntax**: Label selector `values` may contain Spinnaker Spring Expression Language (SpEL) expressions such as `${ parameters.model_version }` that reference pipeline parameters. These Spinnaker SpEL expressions do NOT evaluate in Octopus Deploy. You MUST convert them to Octopus variable syntax by replacing `${ parameters.<name> }` with `#{<name>}`. For example, `${ parameters.model_version }` becomes `#{model_version}` in the generated kubectl command. If any such conversions are made, append the following parenthetical note to the step's description: `(NOTE: Spinnaker SpEL parameter references were converted to Octopus variable syntax, e.g. #{model_version}.)`. The pipeline's `parameterConfig` entries (if any) should correspond to Octopus project variables that provide the runtime values.
+* **`mode: "label"` deleteManifest stages with absent or empty `kinds` array**: When the `mode` field is `"label"` but the `kinds` array is absent, `null`, or empty, omit the resource type prefix from the kubectl command entirely. The command becomes `kubectl delete -l <selectors> -n <namespace>` (without resource types). For example, a stage with no `kinds` field and selectors `jobName=quick-shipper-migration-prod` in namespace `app-0241-prod` generates: `kubectl delete -l jobName=quick-shipper-migration-prod -n app-0241-prod`.
+
+**Negative example — `deleteManifest` with `mode: "label"`, absent `kinds`, but resource types added anyway (COMMON MISTAKE)**:
+```
+* Add a "Run a kubectl script" step ... Set the script to inline Bash with the code `kubectl delete all -l jobName=quick-shipper-migration-prod -n app-0241-prod`. ...
+```
+← WRONG: when `kinds` is absent, do NOT add a resource type (`all`, `deployment`, etc.) to the command.
+
+The **CORRECT** output omits the resource type prefix when `kinds` is absent:
+```
+* Add a "Run a kubectl script" step ... Set the script to inline Bash with the code `kubectl delete -l jobName=quick-shipper-migration-prod -n app-0241-prod`. ...
+```
 
 **Negative example — `deleteManifest` with SpEL parameter reference passed verbatim (COMMON MISTAKE)**:
 
@@ -3559,6 +3603,7 @@ Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource
 * Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages. **CRITICAL**: if the stage `name` contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the step name (e.g., `Scale (Manifest)` → `Scale -Manifest-`). When the original name contained those characters, append `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<code>` with a Bash script to call `kubectl` to scale the resource in the `manifestName` field to the value in the `replicas` field (which may be a string or a number — use it as-is).
+* **`replicas: 0` means scale to zero (stop the deployment)**: When the `replicas` field is `"0"` or `0`, the stage is explicitly scaling the Kubernetes resource down to zero replicas — effectively stopping the running workload. In this case, append `NOTE (migration): This step scales the deployment to 0 replicas, effectively stopping it.` to the step description.
 * **`manifestName` field format**: The Spinnaker `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"deployment my-app"` → `kubectl scale deployment my-app --replicas=3`). Parse the kind and name from this field, then build the kubectl command as `kubectl scale <kind> <name> --replicas=<replicas>`.
 * **`location` field → namespace**: If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"deployment mtf-object-detection-atr-canary"`, `replicas` is `"3"`, and `location` is `"org-0004-image-search-jp-dev"`, the command is `kubectl scale deployment mtf-object-detection-atr-canary --replicas=3 -n org-0004-image-search-jp-dev`.
 
@@ -4446,6 +4491,33 @@ The **CORRECT** output (follows topological order, stages 1 and 4 run in paralle
 ```
 
 **ABSOLUTE RULE — Every stage MUST appear in the output exactly once.** Before outputting the final result, verify that every stage from the pipeline's `stages` array is represented by at least one step. A stage may NEVER be silently dropped.
+
+**Worked example — pipeline where a lower-indexed stage depends on a higher-indexed stage (COMMON MISTAKE)**:
+
+Consider a pipeline whose stages in JSON order are:
+
+| JSON position | refId | requisiteStageRefIds | type |
+|---|---|---|---|
+| 1 | 1 | `["3"]` | runJobManifest |
+| 2 | 2 | `[]` | manualJudgment |
+| 3 | 3 | `["2"]` | deleteManifest |
+
+The execution DAG is: manualJudgment (refId 2, root) → deleteManifest (refId 3) → runJobManifest (refId 1).
+
+The **WRONG** output follows JSON array order (stage 1 first):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Run Job -Manifest-" ...    ← WRONG: stage 1 placed first but it requires stage 3
+* Add a "Manual Intervention" step ... "Manual Judgment" ...
+* Add a "Run a kubectl script" step ... "Delete -Manifest-" ...
+```
+← WRONG: JSON array position is NOT the execution order. Stage 1 depends on stage 3 which depends on stage 2.
+
+The **CORRECT** output places stages in topological order:
+```
+* Add a "Manual Intervention" step ... "Manual Judgment" ...              ← refId 2, root, no prerequisites
+* Add a "Run a kubectl script" step ... "Delete -Manifest-" ...           ← refId 3, requires refId 2
+* Add a "Deploy Kubernetes YAML" step ... "Run Job -Manifest-" ...        ← refId 1, requires refId 3
+```
 
 ### Worked example: stages with `[]` appearing late in JSON
 
