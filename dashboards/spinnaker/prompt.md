@@ -575,6 +575,8 @@ The project name MUST be the exact verbatim value of the pipeline `name` field. 
 
 The `limitConcurrent` property of the Spinnaker pipeline has no equivalent setting in Octopus. When `limitConcurrent` is `true`, add the following migration note as part of the project description: `NOTE (migration): The original Spinnaker pipeline had limitConcurrent=true, which prevented concurrent pipeline executions. Configure a suitable deployment mutex or concurrency limit in Octopus if required.`. Append this note to the existing description if one is present, or set it as the description if none exists.
 
+The `keepWaitingPipelines` property of the Spinnaker pipeline has no equivalent setting in Octopus. When `keepWaitingPipelines` is `false`, add the following migration note as part of the project description: `NOTE (migration): The original Spinnaker pipeline had keepWaitingPipelines=false, which discarded queued executions when a new trigger fired. Octopus does not have a direct equivalent; configure a suitable concurrency policy if required.`. Append this note to the existing description if one is present, or set it as the description if none exists.
+
 If the Spinnaker pipeline has a non-empty `roles` array, append the following note to the project description: `NOTE (migration): The original Spinnaker pipeline required the following roles for execution: <roles>.`. Replace `<roles>` with the comma-separated list of role names from the `roles` array. Append this note to any existing description or migration notes.
 
 Other prompts are then appended to the base prompt to create the equivalent project in Octopus Deploy, for example:
@@ -1420,7 +1422,7 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.s
 
   | Spinnaker SpEL expression | Octopus variable equivalent |
   |---|---|
-  | `${execution.name}` | `#{Octopus.Release.Number}` (release number that triggered the deployment) |
+  | `${execution.name}` | `#{Octopus.Project.Name}` (name of the Octopus project — `${execution.name}` is the pipeline name in Spinnaker, which corresponds to the project name in Octopus) |
   | `${trigger.user}` | `#{Octopus.Deployment.CreatedBy.DisplayName}` |
   | `${trigger['user']}` | `#{Octopus.Deployment.CreatedBy.DisplayName}` (bracket notation equivalent to `${trigger.user}`) |
   | `${trigger.type}` | `#{Octopus.Deployment.Trigger.Name}` |
@@ -3767,7 +3769,30 @@ The variable must not be required.
 ```
 
 * If `hasOptions` is `true` and the `options` array contains one or more non-empty `value` entries, append the following sentence to the end of the variable prompt: `The variable must have the following selectable options: <option1>, <option2>, ...`.
-* Copy the selectable option values verbatim from `options[].value`, preserve their original order, and omit any option entries whose `value` is absent or the empty string.
+* Copy the selectable option values verbatim from `options[].value`, preserve their original order, and omit any option entries whose `value` is absent or the empty string **unless** `required` is `false`, in which case include an option with the display name `(none)` and an empty value at the beginning of the list. This ensures that non-required Select variables have an explicit "no selection" choice.
+
+**Example — non-required selectable variable with empty string option**:
+
+Given a `parameterConfig` entry:
+```json
+{
+  "name": "isretry",
+  "label": "Is Retry",
+  "description": "Whether this is a retry run",
+  "default": "-is_retry=true",
+  "required": false,
+  "hasOptions": true,
+  "options": [
+    { "value": "" },
+    { "value": "-is_retry=true" }
+  ]
+}
+```
+
+The **CORRECT** output includes the `(none)` option for the empty-string entry:
+```
+* Add a project variable called "isretry", with a default value of "-is_retry=true", the description "Whether this is a retry run", and the label "Is Retry". The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: (none), -is_retry=true.
+```
 
 * **CRITICAL — the `required` flag MUST always be applied**: When `required` is `true`, the phrase "The variable must be required." MUST be appended to the variable prompt. Do not omit this phrase even when other fields like `default` or `label` are missing. Both "The variable must be prompted for when creating a release." and "The variable must be required." (or "must not be required.") are ALWAYS required parts of every `parameterConfig` variable prompt.
 
@@ -3791,6 +3816,8 @@ The **WRONG** output (missing "The variable must be required." — this is a com
 ```
 * Add a project variable called "ModelPVC", with a default value of "", the description "PVC to download the model into", and the label "ModelPVC". The variable must be prompted for when creating a release.
 ```
+
+* The `pinned` property on a `parameterConfig` entry is a Spinnaker UI hint that controls whether the parameter is expanded/visible in the trigger form. It has no equivalent in Octopus — all prompted variables are always visible. Ignore `pinned` during migration and do not add any note or special handling for it.
 
 * **IMPORTANT**: Generating `parameterConfig` variable prompts does **not** replace or cancel stage generation. After processing all `parameterConfig` entries, you **must** continue and convert every entry in the `stages` array to its equivalent Octopus step prompt. Do not stop after outputting variables — all deployment stages must be converted even when `parameterConfig` is present.
 

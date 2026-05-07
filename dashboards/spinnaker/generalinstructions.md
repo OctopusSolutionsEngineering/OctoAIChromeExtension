@@ -3556,6 +3556,7 @@ The **CORRECT** Terraform uses `label = "dryRun"` (same as the variable name):
 resource "octopusdeploy_variable" "variable_dryrun" {
   name         = "dryRun"
   type         = "String"
+  description  = "dry run without making changes"
   value        = "false"
   is_sensitive = false
   prompt {
@@ -3591,6 +3592,7 @@ resource "octopusdeploy_variable" "variable_key" {
   owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) == 0 ? octopusdeploy_project.project_my_project[0].id : data.octopusdeploy_projects.project_my_project.projects[0].id}"
   name         = "key"
   type         = "String"
+  description  = "Identifier of the job"
   value        = ""
   is_sensitive = false
   prompt {
@@ -3614,7 +3616,11 @@ resource "octopusdeploy_variable" "variable_key" {
   # WRONG: no prompt block, so this variable won't be prompted during release creation
 }
 ```
-* Preserve the option order from the prompt exactly and ignore any empty option strings.
+* Preserve the option order from the prompt exactly.
+* When the prompt includes an option named `(none)`, generate a `select_option` block with `display_name = "(none)"` and `value = ""`. The value MUST be an empty string `""` — do NOT use `"_none_"` or any other placeholder. Do NOT ignore or skip `(none)` options — they represent a valid empty-string choice for non-required variables.
+* You will be penalized for generating `value = "_none_"` — use `value = ""` for the `(none)` option.
+* Ignore any empty option strings that are NOT represented as `(none)` in the prompt (i.e., empty strings that were never included in the prompt in the first place).
+* The top-level `description` attribute on `octopusdeploy_variable` MUST be set to the variable description from the prompt instruction. This is separate from the `description` field inside the `prompt` block. Both must be populated with the same value. Omitting the top-level `description` attribute is a bug.
 * If the prompt does NOT include a selectable options instruction, use `control_type = "SingleLineText"` in the `display_settings` block (the default).
 * You will be penalized for using `control_type = "SingleLineText"` when the prompt specifies selectable options.
 * You will be penalized for omitting any `select_option` block when selectable options are specified.
@@ -3630,6 +3636,7 @@ The **CORRECT** Terraform uses `control_type = "Select"` and includes `select_op
 ```
 resource "octopusdeploy_variable" "variable_account_purpose" {
   ...
+  description = "account purpose name"
   prompt {
     description = "account purpose name"
     label       = "account-purpose"
@@ -3651,6 +3658,40 @@ resource "octopusdeploy_variable" "variable_account_purpose" {
       select_option {
         display_name = "partner_invoice"
         value        = "partner_invoice"
+      }
+    }
+  }
+}
+```
+
+**Example — non-required selectable variable with `(none)` option (empty-string choice)**:
+
+Given a prompt:
+```
+* Add a project variable called "isretry", with a default value of "-is_retry=true", the description "Whether this is a retry run", and the label "Is Retry". The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: (none), -is_retry=true.
+```
+
+The **CORRECT** Terraform includes a `select_option` with `value = ""` for the `(none)` entry:
+```hcl
+resource "octopusdeploy_variable" "variable_isretry" {
+  name         = "isretry"
+  type         = "String"
+  description  = "Whether this is a retry run"
+  value        = "-is_retry=true"
+  is_sensitive = false
+  prompt {
+    description = "Whether this is a retry run"
+    label       = "Is Retry"
+    is_required = false
+    display_settings {
+      control_type = "Select"
+      select_option {
+        display_name = "(none)"
+        value        = ""
+      }
+      select_option {
+        display_name = "-is_retry=true"
+        value        = "-is_retry=true"
       }
     }
   }
