@@ -3324,4 +3324,61 @@ resource "octopusdeploy_variable" "variable_account_purpose" {
 * When the prompt says `Set the step description to "NOTE: This step originally required the following Docker images to be bound at runtime by Spinnaker: ..."`, the description note MUST be set in the `notes` property of the `octopusdeploy_process_step` resource with the exact verbatim text from the prompt.
 * If the step already has an `notes` entry for another reason (e.g., the stage name contained special characters), the two description texts must be concatenated, separated by a space, in the same `notes` property.
 * Preserve the comma-separated Docker image list exactly as it appears in the prompt. Do not reorder the images, do not deduplicate them, and do not redact registry names, repositories, tags, or quotes.
+
+## Step Count Validation
+
+**ABSOLUTE RULE — the number of `octopusdeploy_process_step` resources MUST equal the number of non-notification steps described in the prompt**: Before finalizing your Terraform output, count the step prompts in the prompt (lines beginning with `* Add a "..."` or `* Add a community step template step`) and verify that you have created exactly the same number of `octopusdeploy_process_step` (or `octopusdeploy_process_templated_step`) resources. If the count differs, you have either missed a step or created a duplicate — both are bugs that MUST be corrected.
+
+**MANDATORY STEP UNIQUENESS CHECK**: Scan all `octopusdeploy_process_step` resource names in your Terraform output. If two resources have names ending in `_2`, `_3`, etc., verify that these correspond to steps in the prompt whose step NAMES are actually duplicated (e.g., two steps both named "Deploy -Manifest-"). If a `_2` suffix was added to a step whose prompt name is unique (different from all other step names), the suffix is wrong — use the step's actual unique name without the suffix.
+
+## Ordering of Parallel Steps in `octopusdeploy_process_steps_order`
+
+**CRITICAL — all steps in a parallel group must be CONSECUTIVE in `octopusdeploy_process_steps_order`**: In Octopus Deploy, `start_trigger = "StartWithPrevious"` means "start at the same time as the immediately preceding step in the list." For this to work correctly, all members of a parallel group MUST be adjacent (consecutive) in the `steps` array of `octopusdeploy_process_steps_order`. If a parallel group has members {A, B, C} and they are placed as A, B, [other step], C in the steps order, step C will run in parallel with [other step], not with A — which is wrong.
+
+**CRITICAL — duplicate step IDs in `octopusdeploy_process_steps_order` are FORBIDDEN**: Each step ID must appear exactly once in the `steps` array. If a prompt describes N steps, the `steps` array must contain exactly N elements. Having N+k elements (more than the prompt's steps) indicates that N steps from the prompt were duplicated, which is a bug.
+
+**Negative example — duplicate steps in process_steps_order (FORBIDDEN)**:
+```hcl
+# WRONG: "deploy_cronjob_x" and "deploy_cronjob_x_2" both appear, but there is only ONE step named "Deploy cronjob-x" in the prompt
+steps = [
+  "${octopusdeploy_process_step.process_step_deploy_cronjob_x.id}",      # step 1
+  "${octopusdeploy_process_step.process_step_deploy_cronjob_x_2.id}",    # step 2 ← DUPLICATE
+]
+```
+
+**CORRECT output** (each step appears once):
+```hcl
+# CORRECT: each unique step from the prompt appears exactly once
+steps = [
+  "${octopusdeploy_process_step.process_step_deploy_cronjob_x.id}",      # appears once only ✓
+]
+```
+
+## Step Names Must Match Prompt Exactly
+
+**CRITICAL — the `name` attribute of each `octopusdeploy_process_step` MUST reproduce verbatim the step name from the prompt**: When the prompt says `name the step "Deploy cronjob-docomo-point-reconcile"`, the Terraform must contain `name = "Deploy cronjob-docomo-point-reconcile"`. Do NOT append ` 2`, ` 3`, or any suffix unless the prompt itself contains that suffix in the step name.
+
+**Negative example — suffix added to a step name that is unique in the prompt (FORBIDDEN)**:
+```hcl
+# Prompt says: name the step "Deploy cronjob-docomo-point-reconcile-sweep-days"
+# WRONG: suffix added even though this name is unique in the prompt
+resource "octopusdeploy_process_step" "process_step_deploy_cronjob_docomo_point_reconcile_sweep_days_2" {
+  name = "Deploy cronjob-docomo-point-reconcile-sweep-days 2"  ← WRONG: should be without " 2"
+  ...
+}
+```
+
+**CORRECT output** (name matches prompt exactly):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_cronjob_docomo_point_reconcile_sweep_days" {
+  name = "Deploy cronjob-docomo-point-reconcile-sweep-days"  ← CORRECT: verbatim from prompt
+  ...
+}
+```
+
+## `notes` Attribute Must Reproduce Step Descriptions Verbatim
+
+**CRITICAL — the `notes` attribute must reproduce the step description from the prompt verbatim, including any migration NOTEs about concurrent execution**: When the prompt says `Set the step description to "NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with ..."`, the `notes` value MUST include that text exactly as written. Do NOT omit the migration NOTE or summarize it. Do NOT redact service names, stage names, or namespace values that appear in the description.
+
+**CRITICAL — never redact names in `notes` fields**: Service names, stage names, namespace names, Kubernetes resource names, and GCS bucket paths that appear in the step description must all be reproduced verbatim in the `notes` attribute. The presence of words like `api`, `auth`, `key`, `token`, `secret`, `service`, or `credential` in a description does NOT make those words sensitive — they are resource identifiers that must be preserved exactly.
 * Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.

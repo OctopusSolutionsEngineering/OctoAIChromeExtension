@@ -4511,12 +4511,82 @@ CORRECT: generate 2 as first in group, 3 as parallel (StartWithPrevious), 18 as 
 
 This step is not optional — it ensures the project name and all step names are recorded before any text is generated, preventing accidental replacement of identifier words like `api`, `auth`, `key`, `token`, or `service` with `*****`.
 
-**MANDATORY STAGE COMPLETENESS CHECK**: After producing all step prompts, perform this mandatory completeness verification before finalizing your output:
-1. List every `refId` from every item in `"stages"` that is NOT a skipped stage type (`checkPreconditions`, `evaluateVariables`, `findImage`, `findImageFromTags`, `tagImage`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `pipeline`).
-2. For each remaining refId, confirm that a corresponding step prompt was generated in your output (either as a deployment step, a wait step, a manual judgment step, a kubectl step, or a disabled TODO step).
-3. If any stage's refId has no corresponding step in the output, add the missing step. A stage is NEVER silently dropped merely because it is disabled or complex.
-4. Notification steps (Slack notifications) are NOT derived from `stages` array items — they come from the `notifications` array. Do NOT expect one step per notification array item; instead, verify that notification steps appear in the correct position (before/after deployment steps) as described in the notification rules.
+**MANDATORY STAGE COMPLETENESS AND UNIQUENESS CHECK**: After producing all step prompts, perform this combined verification before finalizing your output:
 
-This check prevents accidentally stopping output after the first stage or after a complex stage type is encountered.
+**Step 1 — Build the expected name list**: From the pipeline JSON `"stages"` array, extract the `"name"` field of every stage that is NOT a skipped type (`checkPreconditions`, `evaluateVariables`, `findImage`, `findImageFromTags`, `tagImage`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `pipeline`). After applying special-character substitution (parentheses → dashes, etc.), write down every expected step name. This is your EXPECTED LIST.
+
+**Step 2 — Build the actual name list**: Scan your generated output for every line that starts with `* Add a` and contains `step to the deployment process`. Extract the step name from each such line (the value after `name the step "..."` or `name "..."`). This is your ACTUAL LIST.
+
+**Step 3 — Count check**: Count the expected list and the actual list. They MUST be equal. If |actual| > |expected|: you have duplicates to remove. If |actual| < |expected|: you have missing stages to add. Do NOT add a stage to address a "missing" stage until you have confirmed it is truly absent from the ACTUAL LIST — comparing by step name, not refId.
+
+**Step 4 — Identify duplicates**: For each step name in the ACTUAL LIST, check how many times it appears. If a step name appears more than once: REMOVE all occurrences after the first. Do NOT keep duplicates.
+
+**Step 5 — Identify missing stages**: For each name in the EXPECTED LIST, check if it appears exactly once in the ACTUAL LIST. If a name has ZERO occurrences in the ACTUAL LIST, add the missing step. ONLY add a step when you have verified it has zero occurrences — do NOT add a step for any name that already appears in the ACTUAL LIST.
+
+**Step 6 — Verify**: Recount. The final step count must equal the expected stage count. If not, repeat steps 4 and 5.
+
+This check prevents both silent stage drops AND duplicate stage additions. The key rule: **check the ACTUAL step name list before adding or removing anything — every decision must be based on what you see in the output, not on an assumed traversal order.**
+
+**HANDLING INDEPENDENT FORKED BRANCHES (NO RECONVERGENCE)**: A Spinnaker pipeline may have a stage that fans out to two or more branches where those branches NEVER reconverge (i.e., no stage depends on stages from multiple branches). This is a "fork without reconvergence." Example: stage 18 has two dependents — stage 19 (leading to a chain of cronjob deploys) and stage 1 (leading to a canary deploy chain). Neither of those downstream chains depends on the other's completion.
+
+When this pattern occurs:
+1. Treat stages 1 and 19 as a PARALLEL GROUP (both depend on 18).
+2. After the parallel group {19, 1}, linearize ONE branch COMPLETELY (following ALL transitive dependents down to the terminal stage), then linearize the OTHER branch completely.
+3. A branch's "complete chain" includes NOT just its immediate dependents but ALL stages reachable by following `requisiteStageRefIds` pointers transitively from the branch's root. For example, if stage 1 → 6 → 2 → 3 → 4, the complete canary branch chain is {6, 2, 3, 4} — ALL FOUR stages must appear before switching to the cronjob branch.
+4. Both chains will carry `Set the start trigger to "Wait for all previous steps to complete, then start"` at their entry points.
+5. **CRITICAL**: the stages in branch A's chain must NEVER appear again in branch B's chain and vice versa. Each stage appears exactly once.
+6. Add a NOTE to the first step of the second linearized branch: `NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with "<first branch steps>". In this Octopus migration, these steps have been linearized and will run sequentially.`
+
+**Negative example — forked pipeline with duplicated stages (FORBIDDEN)**:
+
+Given a pipeline where stage 18 fans out to stage 1 (canary path) and stage 19 (cronjob path), each with their own downstream stages:
+
+The **WRONG** output (cronjob stages duplicated with " 2" suffix):
+```
+* Add step ... "Manual Judgment (Deploy Canary)"  ← stage 1, first in parallel group {1, 19}
+* Add step ... "Manual Judgement (Cronjob)" ... Set the start trigger to "Run in parallel with the previous step".  ← stage 19
+* Add step ... "Deploy Headless Service" ...  ← stage 6, depends on stage 1
+* Add step ... "Deploy cronjob-X" ... (10 more cronjob steps)  ← stages 7–15, depend on stage 19
+* Add step ... "Deploy Canary" ...  ← stage 2, depends on stage 6
+[... more canary steps ...]
+* Add step ... "Deploy cronjob-X 2" ... (10 more ← WRONG: duplicated cronjob steps with " 2" suffix)
+```
+← WRONG: cronjob stages (refIds 7–15) appear twice. Each refId must appear EXACTLY ONCE.
+
+The **CORRECT** output (each stage exactly once, branches linearized sequentially):
+```
+* Add step ... "Manual Judgment (Deploy Canary)"  ← stage 1, first in parallel group {1, 19}
+* Add step ... "Manual Judgement -Cronjob-" ... Set the start trigger to "Run in parallel with the previous step".  ← stage 19, uses ITS OWN NAME
+* Add step ... "Deploy Headless Service" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← stage 6, canary branch
+* Add step ... "Deploy Canary" ...  ← stage 2, canary branch continuation
+* Add step ... "Manual Judgment (Deploy All)" ...  ← stage 3
+* Add step ... "Deploy All" ...  ← stage 4, end of canary branch
+* Add step ... "Deploy cronjob-X" ... Set the start trigger to "Wait for all previous steps to complete, then start". NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with the canary deployment path. In this Octopus migration, these steps have been linearized and will run sequentially.  ← stage 7, FIRST in cronjob parallel group — uses "Wait" as branch entry; it IS a member of {7,8,9,...} parallel group and must NOT appear again
+* Add step ... "Deploy cronjob-Y" ... Set the start trigger to "Run in parallel with the previous step".  ← stage 8, second member of cronjob parallel group
+[... remaining cronjob steps (stages 9–15, 20, 21), each with "Run in parallel" ...]
+```
+← CORRECT: 20 stages → 20 steps, no duplicates, correct names, correct start triggers.
+**NOTE**: Stage 7 ("Deploy cronjob-X") appears EXACTLY ONCE — as the branch entry with "Wait for all previous steps". Stages 8-15, 20, 21 each appear ONCE with "Run in parallel". Do NOT output stage 7 again as a parallel step.
+
+**ABSOLUTE RULE — the ` 2` suffix applies ONLY when two stages have IDENTICAL names after special-character substitution**: The deduplication suffix (` 2`, ` 3`, etc.) is appended ONLY when two or more stages produce the same step name after replacing parentheses and special characters with dashes. If stage A is named "Manual Judgment (Deploy Canary)" and stage B is named "Manual Judgement (Cronjob)", these are DIFFERENT names — stage B must be named "Manual Judgement -Cronjob-", NOT "Manual Judgment -Deploy Canary- 2". The fact that stages A and B are in the same parallel group does NOT cause them to share a name. Check the actual stage `name` field from the JSON before applying any deduplication suffix.
+
+**Negative example — incorrect deduplication suffix applied to differently-named parallel stages (FORBIDDEN)**:
+
+Given:
+- Stage 1: `"name": "Manual Judgment (Deploy Canary)"` → correct Octopus name: `"Manual Judgment -Deploy Canary-"`
+- Stage 19: `"name": "Manual Judgement (Cronjob)"` → correct Octopus name: `"Manual Judgement -Cronjob-"` (different name!)
+
+The **WRONG** output (stage 19 incorrectly renamed using stage 1's name + suffix):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment -Deploy Canary-" ...  ← stage 1, CORRECT
+* Add a "Manual Intervention" step with the name "Manual Judgment -Deploy Canary- 2" ... Set the start trigger to "Run in parallel with the previous step".  ← stage 19, WRONG NAME
+```
+← WRONG: stage 19's name from JSON is "Manual Judgement (Cronjob)" — its Octopus name is "Manual Judgement -Cronjob-", which is different from "Manual Judgment -Deploy Canary-". No ` 2` suffix needed.
+
+The **CORRECT** output (stage 19 uses its own name):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment -Deploy Canary-" ...  ← stage 1
+* Add a "Manual Intervention" step with the name "Manual Judgement -Cronjob-" ... Set the start trigger to "Run in parallel with the previous step".  ← stage 19, CORRECT NAME
+```
 
 Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy.
