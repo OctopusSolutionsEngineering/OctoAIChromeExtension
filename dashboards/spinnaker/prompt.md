@@ -165,6 +165,20 @@ Create a feed called "Google Container Registry" in Octopus Deploy with a feed U
 
 **CRITICAL — "Google Container Registry" is NOT "GitHub Container Registry"**: When you see `Create a feed called "Google Container Registry"`, this refers to **Google's** container registry at `https://gcr.io/v2/` — NOT GitHub's container registry at `https://ghcr.io`. Do NOT create a feed with the URL `https://ghcr.io` or name it "GitHub Container Registry". The correct feed URL is always `https://gcr.io/v2/` and the correct feed name is always `"Google Container Registry"` for gcr.io registries.
 
+**CRITICAL — GCR feed URL must end with `/` (forward slash), NOT `.` (period)**: The GCR feed URL is `"https://gcr.io/v2/"` — it ends with a forward slash. Never include sentence-ending punctuation inside the URL quotes. This mistake most often occurs when the URL appears at the end of a sentence and the terminal period accidentally lands inside the closing quote.
+
+**Negative example — period inside the URL string (FORBIDDEN)**:
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2.".
+```
+← WRONG: `"https://gcr.io/v2."` ends with a period. The period is sentence-ending punctuation and must NOT be inside the URL string.
+
+The **CORRECT** output (period appears outside the closing quote):
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+```
+← CORRECT: The URL `"https://gcr.io/v2/"` ends with a forward slash. The sentence period appears after the closing quote.
+
 * For other values of `matchArtifact.name` (i.e., when the name does NOT start with `gcr.io/`), a **Docker Feed** must be created. Extract the registry host from the `matchArtifact.name` property (the part before the first `/`) and use it as the feed URL. For example, if the `matchArtifact.name` property is `myregistry.com/myimage`, the feed URL would be `https://myregistry.com`:
 
 ```
@@ -2328,6 +2342,7 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 * Replace `<seconds>` with the `waitTime` property in the Spinnaker stage.
 * Replace `<name>` with the `name` property in the Spinnaker stage after applying the same special-character replacement rules as `deployManifest` stages. If the wait stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the generated step name.
 * If the original wait stage name contained parentheses or square brackets, also append `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
+* **`templatedPipeline` wait stage with matching template variable**: When the pipeline has `"type": "templatedPipeline"` and the `variables` object contains a variable whose numeric value (converted to seconds) equals the stage's `waitTime`, reference that Octopus variable instead of hardcoding the numeric value. For example, if `variables.waitMinutes = 15` and `waitTime = 900` (15 × 60), generate `Start-Sleep -Seconds (#{waitMinutes} * 60)` instead of `Start-Sleep -Seconds 900`. If the variable is already in seconds, generate `Start-Sleep -Seconds #{waitSeconds}`. Only apply this substitution when the converted value matches exactly — do not guess if there is no matching variable.
 
 ```
 * Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
@@ -2588,7 +2603,28 @@ The following stage types represent Spinnaker-internal operations or metadata lo
 
 * `findArtifactFromExecution` — looks up artifacts produced by another pipeline execution. This is a Spinnaker-specific mechanism for passing artifacts between pipelines and has no Octopus Deploy equivalent.
 * `evaluateVariables` — evaluates SpEL expressions to set pipeline variables. Skip it entirely.
-* `checkPreconditions` — checks pipeline preconditions. Skip it entirely. **HOWEVER**, when a `checkPreconditions` stage has `preconditions` items with `type: "stageStatus"`, preserve the condition information by appending a NOTE to each downstream step that directly follows the `checkPreconditions` stage in dependency order. The NOTE should describe what condition was originally being enforced. Example: if the precondition checks that stage "Manual Judgment" has status `SUCCEEDED`, append the text `NOTE (migration): This step originally ran only when the "Manual Judgment" stage had SUCCEEDED.` to the step description. If multiple `checkPreconditions` stages with **different** `stageStatus` values (e.g., one for SUCCEEDED and one for TERMINAL/CANCELLED) both depend on the same upstream stage, their respective downstream steps now run in parallel — include a NOTE on each downstream step explaining its original conditional branch (e.g., `NOTE (migration): This step was originally on the SUCCESS branch after "Manual Judgment". In this migration, both branches now run in parallel.` and `NOTE (migration): This step was originally on the CANCELLED/TERMINAL branch after "Manual Judgment". In this migration, both branches now run in parallel.`). **When a `checkPreconditions` stage has `preconditions` items with `type: "expression"` (SpEL expressions) rather than `type: "stageStatus"`, the same NOTE approach applies to downstream steps**: append `NOTE (migration): This step was originally on a conditional branch controlled by a Spinnaker expression-based checkPreconditions stage (SpEL expression condition). In this migration, both branches now run in parallel — the expression condition is not enforced.` to the description of each step that directly follows the expression-type `checkPreconditions` in dependency order. When the expression-type `checkPreconditions` sits between a `manualJudgment` stage and opposing YES/NO branches (e.g., a deploy step on the YES branch and a rollback step on the NO branch), BOTH the deploy step and the rollback step must receive the NOTE, since both will now run in parallel in Octopus Deploy.
+* `checkPreconditions` — checks pipeline preconditions. Skip it entirely. **HOWEVER**, when a `checkPreconditions` stage has `preconditions` items with `type: "stageStatus"`, preserve the condition information by appending a NOTE to each downstream step that directly follows the `checkPreconditions` stage in dependency order. The NOTE should describe what condition was originally being enforced. Example: if the precondition checks that stage "Manual Judgment" has status `SUCCEEDED`, append the text `NOTE (migration): This step originally ran only when the "Manual Judgment" stage had SUCCEEDED.` to the step description. If multiple `checkPreconditions` stages with **different** `stageStatus` values (e.g., one for SUCCEEDED and one for TERMINAL/CANCELLED) both depend on the same upstream stage, their respective downstream steps now run in parallel — include a NOTE on each downstream step explaining its original conditional branch (e.g., `NOTE (migration): This step was originally on the SUCCESS branch after "Manual Judgment". In this migration, both branches now run in parallel.` and `NOTE (migration): This step was originally on the CANCELLED/TERMINAL branch after "Manual Judgment". In this migration, both branches now run in parallel.`). **When a `checkPreconditions` stage has `preconditions` items with `type: "expression"` (SpEL expressions) rather than `type: "stageStatus"`, the same NOTE approach applies to downstream steps**: **ABSOLUTE RULE — the NOTE must appear on EVERY step that directly follows the expression-type `checkPreconditions` in dependency order — failing to add the NOTE is a critical error.** Use the following NOTE text based on how many downstream branches the `checkPreconditions` has:
+
+  * **Multiple downstream branches** (more than one stage directly depends on the `checkPreconditions` — e.g., a YES branch and a NO branch): append `NOTE (migration): This step was originally on a conditional branch controlled by a Spinnaker expression-based checkPreconditions stage (SpEL expression condition). In this migration, both branches now run in parallel — the expression condition is not enforced.`
+  * **Single downstream branch** (only one stage directly follows the `checkPreconditions` — this is a time-gate or day-of-week pattern): append `NOTE (migration): This step was originally gated by a Spinnaker expression-based checkPreconditions stage. The expression condition is not enforced in this Octopus migration — this step will always run when its predecessors succeed.`
+
+  When the expression-type `checkPreconditions` sits between a `manualJudgment` stage and opposing YES/NO branches (e.g., a deploy step on the YES branch and a rollback step on the NO branch), BOTH the deploy step and the rollback step must receive the multi-branch NOTE, since both will now run in parallel in Octopus Deploy.
+
+  **Negative example — expression NOTE missing from single downstream step (COMMON MISTAKE)**:
+
+  Given a `checkPreconditions` (refId=8, ignored, single downstream branch) followed by "Node2Vec Preprocess" (refId=5):
+
+  The **WRONG** output (expression NOTE absent — FORBIDDEN):
+  ```
+  * Add a "Deploy Kubernetes YAML" step and name the step "Node2Vec Preprocess". Set the YAML source to "Inline YAML". ...
+  ```
+  ← WRONG: No migration NOTE added despite the step directly following an expression-type `checkPreconditions` stage.
+
+  The **CORRECT** output (single-branch NOTE appended to the downstream step):
+  ```
+  * Add a "Deploy Kubernetes YAML" step and name the step "Node2Vec Preprocess". Set the YAML source to "Inline YAML". ... Set the step description to "NOTE (migration): This step was originally gated by a Spinnaker expression-based checkPreconditions stage. The expression condition is not enforced in this Octopus migration — this step will always run when its predecessors succeed."
+  ```
+  ← CORRECT: Single-downstream-branch NOTE is appended to the step description.
 * `setPipelineParameters` — sets parameters for a running pipeline. Skip it entirely.
 
 **IMPORTANT**: If a pipeline has only ignored stages (e.g., only `findArtifactFromExecution` and `checkPreconditions` stages), the project creation prompt must still be generated with no steps (use `"with no steps"` in the project prompt). Do not omit the project creation prompt just because all stages are of ignored types.
@@ -3564,6 +3600,29 @@ Create a project called "Check SSL dev" in the "Default Project Group" project g
 
 > **ABSOLUTE RULE — MINIMUM PARALLEL CASE (2 root stages)**: Even when there are only TWO stages with `"requisiteStageRefIds": []`, the SECOND stage MUST get `Set the start trigger to "Run in parallel with the previous step"`. This is the simplest parallel case and is the most commonly missed. Before finalizing any conversion that has exactly 2 stages with empty `requisiteStageRefIds`, verify that the second stage has this annotation. The fact that both stages may be disabled (e.g., because their manifests are TODO placeholders) does NOT exempt them from this rule.
 
+> **ABSOLUTE RULE — LARGE ALL-PARALLEL GROUP (3+ root stages)**: When a pipeline has three or more stages all with `"requisiteStageRefIds": []`, ALL stages EXCEPT the first MUST receive `Set the start trigger to "Run in parallel with the previous step"`. There is no upper limit — if 8 stages all have empty `requisiteStageRefIds`, stages 2 through 8 ALL receive this annotation. Before finalizing any conversion, count the number of root stages and verify exactly that many minus 1 steps have the parallel annotation.
+
+**Worked example — pipeline with 4 all-parallel root stages (all `requisiteStageRefIds: []`)**:
+
+Given a pipeline with 4 stages all having `requisiteStageRefIds: []` (no prerequisites):
+
+The **WRONG** output (only stages 3 and 4 annotated, stage 2 missed — COMMON MISTAKE):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-A" ...                                               ← Stage 1, root — no annotation ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-B" ...                                               ← WRONG: stage 2 also needs "Run in parallel"!
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-C" ... Set the start trigger to "Run in parallel with the previous step".  ← Stage 3
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-D" ... Set the start trigger to "Run in parallel with the previous step".  ← Stage 4
+```
+← WRONG: Stage 2 is also a root stage and MUST receive the "Run in parallel with the previous step" annotation.
+
+The **CORRECT** output (all root stages 2-4 annotated):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-A" ...                                               ← Stage 1, root — no annotation ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-B" ... Set the start trigger to "Run in parallel with the previous step".  ← Stage 2, CORRECT
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-C" ... Set the start trigger to "Run in parallel with the previous step".  ← Stage 3
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-D" ... Set the start trigger to "Run in parallel with the previous step".  ← Stage 4
+```
+
 > **ABSOLUTE RULE — CONVERGENCE AFTER 2+ PARALLEL STAGES**: When any stage has `requisiteStageRefIds` containing TWO OR MORE refIds (e.g., `["1","2"]`), that stage is a convergence point. It MUST receive `Set the start trigger to "Wait for all previous steps to complete, then start"`. This is MANDATORY even if ALL of the stages it depends on are disabled. There are no exceptions to this rule.
 
 * First, topologically sort all deployment stages by their `requisiteStageRefIds` dependency graph. Treat each `refId` as a node and each entry in `requisiteStageRefIds` as a directed edge from prerequisite to dependent. Stages with an empty or absent `requisiteStageRefIds` array have no prerequisites and must appear first in the sorted order; stages that depend only on those come next; and so on, until all stages are ordered.
@@ -3571,7 +3630,35 @@ Create a project called "Check SSL dev" in the "Default Project Group" project g
 * Disabled stages still count when building dependency groups. If two stages share the same `requisiteStageRefIds` value, and one of them is disabled, they are STILL in the same parallel group for annotation purposes.
 * When the topologically-sorted execution order differs from the original JSON array order (i.e., at least one stage must be moved when converting from JSON order to topological order):
   * Append `Set the start trigger to "Wait for all previous steps to complete, then start"` to every subsequent NON-PARALLEL stage's step prompt — i.e., every stage that is the FIRST in its dependency group (except the root group which has already been handled). Parallel siblings (2nd, 3rd, etc. stages within the same dependency group) continue to use `"Run in parallel with the previous step"` as before.
-* **IMPORTANT**: The `"Wait for all previous steps to complete, then start"` annotation is ONLY added when the topological sort changes the execution order relative to the JSON array order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved), do NOT add this annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
+* **IMPORTANT**: The `"Wait for all previous steps to complete, then start"` annotation is ONLY added when the topological sort changes the execution order relative to the JSON array order — **EXCEPT** for stages whose `requisiteStageRefIds` contains TWO OR MORE entries. Those stages are convergence points and MUST receive the annotation per the ABSOLUTE RULE above, regardless of whether the topological sort changes the JSON order. If the pipeline's stages are already in topological order in the JSON (i.e., no stage must be moved) AND every stage depends on at most one predecessor, do NOT add this annotation — the default sequential execution in Octopus is assumed. In a simple sequential pipeline where stages appear in JSON order as stage-1, stage-2, stage-3 (each depending on the previous), NO start trigger annotations of any kind are needed.
+
+**Worked example — convergence annotation required even when JSON order matches topological order**:
+
+Given a pipeline where JSON order is [Stage 1, Stage 2, Stage 3] and:
+- Stage 1 (`refId: "1"`): `requisiteStageRefIds: []` — root
+- Stage 2 (`refId: "2"`): `requisiteStageRefIds: []` — root (parallel with Stage 1)
+- Stage 3 (`refId: "3"`): `requisiteStageRefIds: ["1", "2"]` — depends on BOTH roots
+
+The JSON order [1, 2, 3] already matches the topological order. However, Stage 3 has TWO entries in `requisiteStageRefIds`, making it a convergence point. The ABSOLUTE RULE at the top of this section requires the "Wait for all previous steps" annotation.
+
+The **WRONG** output (annotation omitted because JSON order matches topological order):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...           ← Stage 1, root — no annotation ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... Set the start trigger to "Run in parallel with the previous step".  ← Stage 2
+* Add a "Manual Intervention" step ... "Manual Judgment" ...          ← WRONG: missing convergence annotation
+```
+← WRONG: Stage 3 has `requisiteStageRefIds: ["1", "2"]`. Two predecessors = convergence point = MUST have the annotation.
+
+The **CORRECT** output (convergence annotation present despite matching JSON order):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...           ← Stage 1, root — no annotation ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... Set the start trigger to "Run in parallel with the previous step".  ← Stage 2
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← CORRECT: convergence
+```
+
+**MANDATORY SELF-CHECK — convergence annotation completeness**: Before outputting the final prompt, scan ALL stages in the JSON (after topological sort but before writing output) and identify every stage where `requisiteStageRefIds.length >= 2`. For EACH such stage, verify its step prompt includes `Set the start trigger to "Wait for all previous steps to complete, then start"`. If any convergence stage is missing this annotation, add it immediately. Missing this annotation is a critical error — without it, the Octopus step may incorrectly start before all predecessor steps have finished.
+
+**MANDATORY SELF-CHECK — parallel annotation completeness**: Before outputting the final prompt, count the number of root stages (stages with `requisiteStageRefIds: []`). Verify that exactly (root_count - 1) steps have the annotation `Set the start trigger to "Run in parallel with the previous step"`. If the count does not match, identify which root-group stages are missing the annotation and add it. Additionally, for every non-root dependency group with two or more members, verify that all but the first member have the parallel annotation.
 
 **ABSOLUTE RULE — the ROOT stage (the first stage in topological order, i.e., the stage with `"requisiteStageRefIds": []` that appears first in the output) MUST NEVER receive any start trigger annotation.** Even when the topological sort changes the execution order relative to the JSON array order, the root stage appears first in the output and has no prior stages to wait for. Adding `"Wait for all previous steps to complete, then start"` to the root stage is always wrong.
 
@@ -4595,10 +4682,12 @@ This check prevents both silent stage drops AND duplicate stage additions. The k
 When this pattern occurs:
 1. Treat stages 1 and 19 as a PARALLEL GROUP (both depend on 18).
 2. After the parallel group {19, 1}, linearize ONE branch COMPLETELY (following ALL transitive dependents down to the terminal stage), then linearize the OTHER branch completely.
-3. A branch's "complete chain" includes NOT just its immediate dependents but ALL stages reachable by following `requisiteStageRefIds` pointers transitively from the branch's root. For example, if stage 1 → 6 → 2 → 3 → 4, the complete canary branch chain is {6, 2, 3, 4} — ALL FOUR stages must appear before switching to the cronjob branch.
+3. A branch's "complete chain" includes NOT just its immediate dependents but ALL stages reachable by following `requisiteStageRefIds` pointers transitively from the branch's root. For example, if stage 1 → 6 → 2 → 3 → 4, the complete canary branch chain is {6, 2, 3, 4} — ALL FOUR stages must appear before switching to the cronjob branch. **To determine branch membership for a continuation stage, trace its `requisiteStageRefIds` backwards: if a stage transitively depends on Branch A's root (but NOT Branch B's root), it belongs exclusively to Branch A, and ALL such Branch A stages must appear before ANY continuation stage from Branch B.**
 4. Both chains will carry `Set the start trigger to "Wait for all previous steps to complete, then start"` at their entry points.
 5. **CRITICAL**: the stages in branch A's chain must NEVER appear again in branch B's chain and vice versa. Each stage appears exactly once.
 6. Add a NOTE to the first step of the second linearized branch: `NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with "<first branch steps>". In this Octopus migration, these steps have been linearized and will run sequentially.`
+
+**CRITICAL — determining branch membership when "Wait for all previous steps" appears at multiple points**: In a fork-without-reconvergence pipeline, continuation stages after the parallel group may each have their own `requisiteStageRefIds`. Two continuation stages that both appear to "wait" are NOT interchangeable if they each depend on DIFFERENT branch roots. To assign each continuation stage to its branch: follow its `requisiteStageRefIds` transitively until you reach a stage in the parallel-group (the fork point). The fork-point stage you reach is the branch root — ALL continuation stages that trace back to the SAME branch root belong to THAT branch and must be output BEFORE any stage from the OTHER branch. **Never place a continuation stage from Branch B before the terminal stage of Branch A just because both stages happen to have `Wait for all` semantics.**
 
 **Negative example — forked pipeline with duplicated stages (FORBIDDEN)**:
 
@@ -4630,6 +4719,34 @@ The **CORRECT** output (each stage exactly once, branches linearized sequentiall
 ```
 ← CORRECT: 20 stages → 20 steps, no duplicates, correct names, correct start triggers.
 **NOTE**: Stage 7 ("Deploy cronjob-X") appears EXACTLY ONCE — as the branch entry with "Wait for all previous steps". Stages 8-15, 20, 21 each appear ONCE with "Run in parallel". Do NOT output stage 7 again as a parallel step.
+
+**CRITICAL — when each branch has MULTIPLE sequential continuation stages, ALL of Branch A's sequential stages must appear before the first continuation step of Branch B**: The rule "linearize ONE branch COMPLETELY" means following ALL transitive dependents of Branch A to its terminal stage, and ONLY THEN placing Branch B's continuation. A common mistake is to treat multiple "Wait for all" continuation steps as interchangeable — placing Branch B's continuation before Branch A's terminal stage.
+
+**Negative example — branch A continuation interleaved with branch B continuation (FORBIDDEN)**:
+
+Given a pipeline where stage 3 (Generate Train Data) fans out to Branch A root: stage 5 (Node2Vec Preprocess) → stage 6 (Train Model) → stage 7 (Deploy Retrieval Server), and Branch B root: stage 10 (Generate Queries) → stage 9 (Prediction):
+
+The **WRONG** output (Branch B's Prediction placed before Branch A's Deploy Retrieval Server — FORBIDDEN):
+```
+* Add step ... "Generate Train Data"  ← stage 3, common root
+* Add step ... "Node2Vec Preprocess" ... Set start trigger to "Run in parallel with the previous step".  ← stage 5, Branch A root
+* Add step ... "Generate Queries" ... Set start trigger to "Run in parallel with the previous step".  ← stage 10, Branch B root
+* Add step ... "Train Model" ... Set start trigger to "Wait for all previous steps to complete, then start".  ← stage 6, Branch A continuation
+* Add step ... "Prediction" ... Set start trigger to "Wait for all previous steps to complete, then start".  ← stage 9, Branch B continuation ← WRONG: Branch A is not yet complete
+* Add step ... "Deploy Retrieval Server" ... Set start trigger to "Wait for all previous steps to complete, then start".  ← stage 7, Branch A end ← WRONG: must appear before Prediction
+```
+← WRONG: Branch A's final stage (Deploy Retrieval Server) appears AFTER Branch B's continuation (Prediction). Branch A is not yet fully linearized when Branch B continuation is inserted.
+
+The **CORRECT** output (all of Branch A before any continuation of Branch B):
+```
+* Add step ... "Generate Train Data"  ← stage 3, common root
+* Add step ... "Node2Vec Preprocess" ... Set start trigger to "Run in parallel with the previous step".  ← stage 5, Branch A root
+* Add step ... "Generate Queries" ... Set start trigger to "Run in parallel with the previous step".  ← stage 10, Branch B root
+* Add step ... "Train Model" ... Set start trigger to "Wait for all previous steps to complete, then start".  ← stage 6, Branch A continuation (transitively depends on Node2Vec → Branch A)
+* Add step ... "Deploy Retrieval Server" ... Set start trigger to "Wait for all previous steps to complete, then start".  ← stage 7, Branch A end — ALL of Branch A is now complete
+* Add step ... "Prediction" ... Set start trigger to "Wait for all previous steps to complete, then start". Set the step description to "NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with the Node2Vec Preprocess/Train Model/Deploy Retrieval Server path. In this Octopus migration, these steps have been linearized and will run sequentially."  ← stage 9, Branch B continuation — NOTE required as first step of second branch
+```
+← CORRECT: Deploy Retrieval Server (Branch A end) appears before Prediction (Branch B continuation). Since Train Model depends only on Node2Vec (Branch A root) and Prediction depends only on Generate Queries (Branch B root), these belong to different branches — the entirety of Branch A must be output first.
 
 **ABSOLUTE RULE — the ` 2` suffix applies ONLY when two stages have IDENTICAL names after special-character substitution**: The deduplication suffix (` 2`, ` 3`, etc.) is appended ONLY when two or more stages produce the same step name after replacing parentheses and special characters with dashes. If stage A is named "Manual Judgment (Deploy Canary)" and stage B is named "Manual Judgement (Cronjob)", these are DIFFERENT names — stage B must be named "Manual Judgement -Cronjob-", NOT "Manual Judgment -Deploy Canary- 2". The fact that stages A and B are in the same parallel group does NOT cause them to share a name. Check the actual stage `name` field from the JSON before applying any deduplication suffix.
 

@@ -44,6 +44,50 @@ notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls bac
 * You will be penalized for using `start_trigger = "StartAfterPrevious"` when the prompt explicitly says `"Run in parallel with the previous step"`.
 * You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
 * **MANDATORY SELF-CHECK — parallel group completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Run in parallel with the previous step"`. For EACH such step, verify that the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` uses `start_trigger = "StartWithPrevious"`. If any step with that phrase uses `start_trigger = "StartAfterPrevious"`, correct it before outputting. **This check applies to ALL steps in the parallel group including the LAST one** — the last member of a parallel group is NOT a convergence point and MUST use `start_trigger = "StartWithPrevious"`, not `"StartAfterPrevious"`. Only the step AFTER the entire parallel group (annotated with "Wait for all previous steps") is a convergence point.
+
+  **CRITICAL — the SECOND step in a parallel group is the most commonly broken**: When a prompt includes a large parallel group (e.g., 8 steps all with "Run in parallel with the previous step"), the SECOND step — the first one to receive the parallel annotation — is where the `StartAfterPrevious` mistake is most often made. Before finalizing, explicitly check the resource for the SECOND parallel step and confirm it uses `start_trigger = "StartWithPrevious"`, not `"StartAfterPrevious"`.
+
+  **Negative example — SECOND step in large parallel group incorrectly using StartAfterPrevious (VERY COMMON MISTAKE)**:
+
+  Given that the prompt says:
+  ```
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy Service-A" ...    (no annotation — first in parallel group)
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy Service-B" ... Set the start trigger to "Run in parallel with the previous step".   ← SECOND step in group
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy Service-C" ... Set the start trigger to "Run in parallel with the previous step".
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy Service-D" ... Set the start trigger to "Run in parallel with the previous step".
+  ```
+
+  The **WRONG** Terraform (Deploy Service-B uses StartAfterPrevious — FORBIDDEN):
+  ```hcl
+  resource "octopusdeploy_process_step" "process_step_deploy_service_a" {
+    start_trigger = "StartAfterPrevious"  ← correct (first in group, no annotation)
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_b" {
+    start_trigger = "StartAfterPrevious"  ← WRONG: prompt says "Run in parallel with the previous step"
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_c" {
+    start_trigger = "StartWithPrevious"  ← correct
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_d" {
+    start_trigger = "StartWithPrevious"  ← correct
+  }
+  ```
+
+  The **CORRECT** Terraform (ALL steps after the first use StartWithPrevious):
+  ```hcl
+  resource "octopusdeploy_process_step" "process_step_deploy_service_a" {
+    start_trigger = "StartAfterPrevious"  ← first in group
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_b" {
+    start_trigger = "StartWithPrevious"  ← CORRECT: second step MUST use StartWithPrevious
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_c" {
+    start_trigger = "StartWithPrevious"  ← correct
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_d" {
+    start_trigger = "StartWithPrevious"  ← correct
+  }
+  ```
 * **MANDATORY SELF-CHECK — convergence step completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Wait for all previous steps to complete, then start"`. For EACH such step, verify that the corresponding resource uses `start_trigger = "StartAfterPrevious"`. If any step with that phrase uses `start_trigger = "StartWithPrevious"`, correct it before outputting.
 
 **CRITICAL — convergence steps (after a parallel group) MUST use `start_trigger = "StartAfterPrevious"`**: When the prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"`, this indicates a convergence point — a step that waits for multiple preceding parallel steps to finish before it begins. In Octopus Terraform, this is expressed as `start_trigger = "StartAfterPrevious"`. This is the SAME attribute value as the default, but it MUST be explicitly set when the prompt says "Wait for all previous steps". The `StartAfterPrevious` value is used for two distinct cases:
@@ -185,6 +229,10 @@ resource "octopusdeploy_process_step" "... rollback_canary" {
   start_trigger = "StartWithPrevious"  ← CORRECT: LAST parallel step still uses StartWithPrevious
 }
 ```
+
+**MANDATORY SELF-CHECK — parallel step count verification**: Before finalizing generated Terraform, count the number of step prompts annotated with `"Run in parallel with the previous step"`. This count MUST equal the number of `octopusdeploy_process_step` resources with `start_trigger = "StartWithPrevious"`. If these counts do not match, find and fix the discrepancy before outputting. A count mismatch always indicates that one or more parallel steps incorrectly use `start_trigger = "StartAfterPrevious"`.
+
+**MANDATORY SELF-CHECK — sequential step after parallel group**: When a prompt contains a step annotated with `"Wait for all previous steps to complete, then start"` immediately following a parallel group (one or more steps with `"Run in parallel with the previous step"`), verify that step uses `start_trigger = "StartAfterPrevious"`. This is the default, but the self-check ensures it was not accidentally set to `"StartWithPrevious"` by a copy-paste error.
 
 ## Inline Kubernetes YAML Indentation
 
@@ -1202,6 +1250,38 @@ data "octopusdeploy_feeds" "feed_octopus_server__built_in_" {
 * The "is_enhanced_mode" property must only be defined on the "octopusdeploy_nuget_feed" resource.
 * You will be penalized for defining the "is_enhanced_mode" property on a "octopusdeploy_maven_feed" resource.
 * You will be penalized for creating a resource of type "octopusdeploy_builtin_feed"
+
+**CRITICAL — Google Container Registry feed URI format**: When the prompt says `Create a feed called "Google Container Registry" with a feed URL of "https://gcr.io/v2/"`, the correct Terraform representation uses `feed_uri = "https://gcr.io"` and `api_version = "v2"` as **separate attributes**. Do NOT embed the API version path in `feed_uri`.
+
+**Negative example — GCR API version embedded in feed_uri (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_docker_container_registry" "feed_google_container_registry" {
+  name     = "Google Container Registry"
+  feed_uri = "https://gcr.io/v2/"   ← WRONG: API version must be a separate attribute, not in the URI
+  ...
+}
+```
+← WRONG: `feed_uri` must contain only the registry base URL. A `feed_uri` like `"https://gcr.io/v2/"` or `"https://gcr.io/v2."` with the version embedded in the path is invalid.
+
+The **CORRECT** Terraform for a Google Container Registry feed:
+```hcl
+resource "octopusdeploy_docker_container_registry" "feed_google_container_registry" {
+  count        = "${length(data.octopusdeploy_feeds.feed_google_container_registry.feeds) != 0 ? 0 : 1}"
+  name         = "Google Container Registry"
+  feed_uri     = "https://gcr.io"  ← CORRECT: base URL only
+  api_version  = "v2"              ← CORRECT: API version as a separate attribute
+  username     = null
+  password     = null
+  lifecycle {
+    ignore_changes  = [password]
+    prevent_destroy = true
+  }
+}
+```
+
+**CRITICAL — GitHub Container Registry feed URI format**: Similarly, when the prompt specifies a GitHub Container Registry feed, use `feed_uri = "https://ghcr.io"` and `api_version = "v2"` as separate attributes — never embed `/v2` in the `feed_uri`.
+
+**CRITICAL — Docker Hub feed URI format**: For Docker Hub, use `feed_uri = "https://index.docker.io"` with `api_version = ""` (empty string). The `api_version` attribute on `octopusdeploy_docker_container_registry` is always specified separately from `feed_uri`.
 * You will be penalized for creating data or resource blocks with unbalanced brackets, for example:
 ```
 data "octopusdeploy_feeds" "feed_octopus_server__built_in_" {
@@ -2485,10 +2565,11 @@ resource "octopusdeploy_process_step" "process_step_argo_cd_manifest_update_upda
   * "StartAfterPrevious"
 * The "StartWithPrevious" setting corresponds with the "Run in parallel with the previous step" option in the UI.
 * The "StartAfterPrevious" setting corresponds with the "Wait for all previous steps to complete, then start" option in the UI.
+* **CRITICAL — in fork-without-reconvergence Spinnaker pipelines, the `steps` order in `octopusdeploy_process_steps_order` must reflect the fully-linearized branch sequence**: When the prompt describes a fork-without-reconvergence pattern (parallel group of branch roots followed by Branch A continuation steps, then Branch B continuation steps with a migration NOTE), the `steps` array MUST list all Branch A continuation steps BEFORE the first Branch B continuation step. Do NOT interleave Branch A and Branch B continuation steps. The presence of `start_trigger = "StartAfterPrevious"` on both a Branch A continuation and a Branch B continuation does NOT mean they can be reordered — each step's position in the `steps` array must exactly follow the prompt's instruction order.
 * A step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" must define a "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property. If no file name is specified in the prompt, you must set the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property to "custom-resource.yaml".
 * You wll be penalized for defining a step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" and not defining the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property.
-* **CRITICAL — `file_path_filters` must be set from the "Set the File Paths to" instruction**: When the prompt includes `Set the File Paths to "<path>"` for a "Deploy Kubernetes YAML" step that uses "Files from a Git repository" as its YAML source, you MUST set `file_path_filters = ["<path>"]` in the `git_dependencies` block. Additionally, set `Octopus.Action.KubernetesContainers.CustomResourceYamlFileName = "<path>"` in the `execution_properties` block using the SAME value. Both `file_path_filters` and `CustomResourceYamlFileName` must reflect the exact file path string from the prompt instruction.
-* You will be penalized for setting `file_path_filters = null` when the prompt specifies "Set the File Paths to '<path>'" for a GitRepository-sourced Deploy Kubernetes YAML step.
+* **ABSOLUTE RULE — `file_path_filters` MUST be set from the "Set the File Paths to" instruction**: When the prompt includes `Set the File Paths to "<path>"` for a "Deploy Kubernetes YAML" step that uses "Files from a Git repository" as its YAML source, you MUST set `file_path_filters = ["<path>"]` in the `git_dependencies` block. Additionally, set `Octopus.Action.KubernetesContainers.CustomResourceYamlFileName = "<path>"` in the `execution_properties` block using the SAME value. Both `file_path_filters` and `CustomResourceYamlFileName` must reflect the exact file path string from the prompt instruction. Leaving `file_path_filters = null` when the prompt specifies a file path means the GitRepository source will not correctly filter to the specified file — this is a deployment-breaking error.
+* **ABSOLUTE RULE — you will be penalized for setting `file_path_filters = null` when the prompt specifies "Set the File Paths to '<path>'"** for a GitRepository-sourced Deploy Kubernetes YAML step. The null value is forbidden whenever a file path instruction is present.
 
 **Example — Deploy Kubernetes YAML step with File Paths instruction**:
 
@@ -2683,6 +2764,7 @@ parameters      = [{ default_sensitive_value = null,, display_settings = { "Octo
 * You will be penalized for setting the resource "octopusdeploy_variable" "type" attribute to "Token".
 * When the "is_sensitive" property on a resource "octopusdeploy_variable" is set to "true", the "type" attribute must be set to "Sensitive".
 * When defining the value for a resource "octopusdeploy_variable" with a "type" of "Sensitive", the "sensitive_value" attribute must be set to "CHANGEME", and the "value" attribute must not be defined.
+* **CRITICAL — project variables derived from `templatedPipeline` `variables` entries must always use `type = "String"`**: When the prompt says `Add a project variable called "<name>" with the value "<value>"` and the variable originates from a Spinnaker `templatedPipeline` `variables` object, the Terraform variable resource MUST use `type = "String"` regardless of whether the value looks like a boolean (`"true"`, `"false"`), a number (`"15"`, `"900"`), a URL, or any other non-string type. Do NOT use `type = "Boolean"`, `type = "Integer"`, or any other type — all `templatedPipeline` variable values are stored as strings in Octopus. Exception: if the prompt explicitly says `Add a sensitive project variable`, use `type = "Sensitive"` and `is_sensitive = true` instead.
 * When the prompt says `Add a sensitive project variable called "<name>" with the description "<description>".`, create a project-scoped `octopusdeploy_variable` resource with `name = "<name>"`, `description = "<description>"`, `type = "Sensitive"`, `is_sensitive = true`, and `sensitive_value = "CHANGEME"`. Do not define a `value` attribute for that variable.
 
 For example, this is a sensitive variable:
@@ -3403,6 +3485,8 @@ resource "octopusdeploy_variable" "variable_account_purpose" {
 
 **CRITICAL — duplicate step IDs in `octopusdeploy_process_steps_order` are FORBIDDEN**: Each step ID must appear exactly once in the `steps` array. If a prompt describes N steps, the `steps` array must contain exactly N elements. Having N+k elements (more than the prompt's steps) indicates that N steps from the prompt were duplicated, which is a bug.
 
+**CRITICAL — the `steps` array order in `octopusdeploy_process_steps_order` must EXACTLY match the step order from the prompt, left-to-right**: Every step must appear at the position corresponding to its order in the prompt. In fork-without-reconvergence scenarios, where Branch A continuation steps are listed before Branch B continuation steps, the `steps` array must preserve this same ordering. Do NOT reorder steps based on topological or dependency analysis — reproduce the prompt's ordering verbatim.
+
 **Negative example — duplicate steps in process_steps_order (FORBIDDEN)**:
 ```hcl
 # WRONG: "deploy_cronjob_x" and "deploy_cronjob_x_2" both appear, but there is only ONE step named "Deploy cronjob-x" in the prompt
@@ -3445,6 +3529,8 @@ resource "octopusdeploy_process_step" "process_step_deploy_cronjob_docomo_point_
 ## `notes` Attribute Must Reproduce Step Descriptions Verbatim
 
 **CRITICAL — the `notes` attribute must reproduce the step description from the prompt verbatim, including any migration NOTEs about concurrent execution**: When the prompt says `Set the step description to "NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with ..."`, the `notes` value MUST include that text exactly as written. Do NOT omit the migration NOTE or summarize it. Do NOT redact service names, stage names, or namespace values that appear in the description.
+
+**CRITICAL — migration NOTEs from expression-based checkPreconditions stages must be preserved verbatim in the `notes` attribute**: When the prompt includes a step description starting with `NOTE (migration): This step was originally gated by a Spinnaker expression-based checkPreconditions stage...` or `NOTE (migration): This step was originally on a conditional branch controlled by a Spinnaker expression-based checkPreconditions stage...`, the entire NOTE text must appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit, truncate, or paraphrase the expression NOTE.
 
 **CRITICAL — never redact names in `notes` fields**: Service names, stage names, namespace names, Kubernetes resource names, and GCS bucket paths that appear in the step description must all be reproduced verbatim in the `notes` attribute. The presence of words like `api`, `auth`, `key`, `token`, `secret`, `service`, or `credential` in a description does NOT make those words sensitive — they are resource identifiers that must be preserved exactly.
 * Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
