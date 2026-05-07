@@ -10,6 +10,8 @@
 
 **ABSOLUTE RULE — every YAML block in the output must be VALIDLY INDENTED YAML, or it must be replaced with a TODO placeholder instead.** Flat YAML is forbidden. If you cannot preserve parent/child indentation for a cached `manifests` array or inline `manifest` object, do NOT guess and do NOT emit malformed YAML. Instead, keep the step and use a single-line placeholder comment such as `# TODO: replace with correctly indented manifest serialized from the cached Spinnaker manifests array`.
 
+**ABSOLUTE RULE — for multi-document manifests (3 or more Kubernetes resources separated by `---`), if you are not able to verify that EVERY document in the manifest uses correct 2-space indentation, you MUST replace the entire multi-document block with a single TODO placeholder comment.** Do not attempt to output some documents correctly and others flat. A multi-document YAML block where even ONE document uses flat (column-0) indentation is ENTIRELY INVALID. Use: `# TODO: replace with correctly indented multi-document manifest serialized from the cached Spinnaker manifests array`. It is far better to produce a placeholder that engineers can fill in than to produce malformed YAML that will fail at deployment time.
+
 **ABSOLUTE RULE — pipeline `name` fields and stage `name` fields are resource identifiers, NEVER secrets, and MUST NEVER be redacted.** The pipeline's top-level `name` property (e.g., `"[PROD] api-syncer canary"`, `"deploy-to-prod"`, `"run-job-load-service-cr-tag"`) and every stage's `name` property (e.g., `"Deploy api-syncer"`, `"Delete api-sync-job"`, `"Scale Down Canary"`) are deployment resource identifiers. Words such as `api`, `key`, `token`, `service`, `auth`, `credential`, and similar terms that appear in these name fields are part of service and component names — they are NOT secrets, API keys, or credentials. NEVER replace ANY portion of a pipeline name or stage name with `*****` or any other anonymization placeholder unless the source JSON already contains `*****` at that exact location.
 
 **CRITICAL — the Spinnaker pipeline JSON provided to you has ALREADY been pre-anonymized.** Actual secrets such as the Kubernetes cluster name and repository owner have been replaced with specific placeholders like `<redacted-cluster>`, `<redacted-owner>`, and `<redacted-secret-name>`. All other values — including service names like `api-syncer`, `bq-syncer`, `publisher`, `server`, `auth-service`, `key-manager` — are intentionally preserved and are safe to use verbatim. Do NOT apply additional redaction to any value that was not already anonymized in the source JSON with a `<redacted-*>` placeholder.
@@ -782,7 +784,7 @@ The following snippet is an example of a Docker trigger in Spinnaker:
   "triggers": [
     {
       "account": "org-0004-appboy-worker-us-dev",
-      "enabled": false,
+      "enabled": true,
       "organization": "org-0004-appboy-worker-us-dev",
       "registry": "gcr.io",
       "repository": "org-0004-appboy-worker-us-dev/appboy-integration",
@@ -798,13 +800,19 @@ The equivalent trigger in an Octopus Deploy project is created with the prompt:
 Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be enabled.
 ```
 
-* If the Docker trigger has `"enabled": false`, use `The trigger must be disabled.` instead of `The trigger must be enabled.`
+* If the Docker trigger has `"enabled": false` AND there is no other enabled trigger (such as a pubsub trigger with `"enabled": true`) that also watches for Docker image pushes, use `The trigger must be disabled.` instead of `The trigger must be enabled.` See the **combined Docker + Pubsub worked example** later in this section for the correct behavior when both trigger types are present.
 * **CRITICAL — an "Application" channel prompt MUST ALWAYS be included immediately before every external feed trigger prompt**: Without an explicit channel instruction, the Terraform generator will fall back to a hard-coded channel ID (`"Channels-1"`) which is invalid. You MUST always emit the channel line.
-  * If the Docker trigger has a **non-empty `tag`** value, emit the channel instruction with a version rule:
-    ```
-    * Add a channel called "Application" to the project and configure a version rule that matches the regex "<tag>" for every step that deploys a Docker image.
-    ```
-    Replace `<tag>` with the exact verbatim value of the Docker trigger's `tag` property. Do not modify the regex, do not strip anchors like `^` or `$`, and do not add or remove escaping.
+  * If the Docker trigger has a **non-empty `tag`** value, determine whether the qualifying stages have actual Docker image package steps:
+    * **If at least one qualifying stage has inline Docker image packages** (e.g., a `runJob` stage with `containers[].imageDescription`, or a `deployManifest` stage with a rendered `manifests` array containing `image:` fields referencing Docker images as packages), emit the channel instruction with a version rule:
+      ```
+      * Add a channel called "Application" to the project and configure a version rule that matches the regex "<tag>" for every step that deploys a Docker image.
+      ```
+      Replace `<tag>` with the exact verbatim value of the Docker trigger's `tag` property. Do not modify the regex, do not strip anchors like `^` or `$`, and do not add or remove escaping.
+    * **CRITICAL EXCEPTION — If ALL qualifying stages are `runJobManifest` or `deployManifest` stages with GCS/GitHub manifest artifacts and qualify for Docker ONLY via runtime-bound artifacts (`requiredArtifactIds`/`requiredArtifacts` resolving to `docker/image`)**, emit the channel instruction WITHOUT a version rule even when the trigger has a non-empty `tag`:
+      ```
+      * Add a channel called "Application" to the project.
+      ```
+      These stages produce `Octopus.KubernetesDeployRawYaml` steps that have no package references. Octopus requires channel version rules to reference a package step (`action_package`). Since there are no package steps, a version rule cannot be created and must be omitted to avoid the API error "Version rules must specify a package step".
   * If the Docker trigger has **no `tag`** (the property is absent, `null`, or an empty string `""`), emit the channel instruction without a version rule:
     ```
     * Add a channel called "Application" to the project.
@@ -878,7 +886,7 @@ Add a single external feed trigger that creates a new release for each step that
 }
 ```
 
-The **CORRECT** output preserves the trigger because the stage still binds a Docker image at runtime:
+The **CORRECT** output preserves the trigger because the stage still binds a Docker image at runtime. However, because the only qualifying stage is a GCS manifest stage (producing a `KubernetesDeployRawYaml` step with no package references), the channel must be created **without a version rule** even though the Docker trigger has a non-empty `tag`:
 ```
 Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
 
@@ -886,9 +894,11 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
 
 Create a project called "Deploy Orders" in the "Default Project Group" project group with no steps.
 * Add a "Deploy Kubernetes YAML" step...
-* Add a channel called "Application" to the project and configure a version rule that matches the regex "^master.*" for every step that deploys a Docker image.
+* Add a channel called "Application" to the project.
 * Add a single external feed trigger that creates a new release for each step that deploys a Docker image. The trigger must be disabled.
 ```
+
+← Note: The channel has **no version rule** because the `KubernetesDeployRawYaml` step has no package references. Octopus requires version rules to reference a package step (`action_package`). A channel without a version rule is valid and avoids the API error "Version rules must specify a package step".
 
 **Negative example — GCS-only stage with no rendered images and no runtime-bound Docker artifacts**:
 
@@ -1112,6 +1122,7 @@ The following snippet is an example of a Slack notification in Spinnaker:
 * **CRITICAL**: The presence or absence of message text determines ONLY whether the `ssn_Message` property is included inside the step prompt — it does **NOT** determine whether the step itself is generated. If `pipeline.starting` is in `when`, always generate the Start step (with or without `ssn_Message`). If `pipeline.failed` is in `when`, always generate the Finish step. If `pipeline.complete` is in `when`, always generate the Complete step. Do NOT skip a step because its corresponding message text is missing or because only some events have message text defined.
 * When the `notifications` array contains multiple pipeline-level entries, each entry independently generates its own set of Start, Finish, and Complete steps. Process every entry in the array — do not stop at the first entry.
 * If the `message` property is absent entirely from the notification object, all notification steps are generated without any `ssn_Message` property.
+* **IMPORTANT — empty string message text must NOT generate `ssn_Message`**: When `message.pipeline.starting.text`, `message.pipeline.failed.text`, or `message.pipeline.complete.text` is present but is an empty string `""`, treat it the same as absent text — do NOT include `ssn_Message` in the step prompt for that event. An empty `text` value provides no useful notification content and must not be passed through as `ssn_Message = ""`.
 
 **CRITICAL — when `message` is absent, ALL steps in `when` are STILL generated (without `ssn_Message`)**. The absence of `message` only removes the `ssn_Message` line — it does NOT reduce the number of steps generated. If `when` contains `pipeline.starting`, `pipeline.failed`, AND `pipeline.complete`, you MUST still generate all three steps (Start, Finish, Complete), just without any `ssn_Message`. Dropping Finish and/or Complete because `message` is absent is a **common mistake** and is strictly forbidden.
 
@@ -1634,6 +1645,27 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
 3. If `defaultArtifact.type` is `"gcs/object"`, **STOP** — do NOT use "Files from a Git repository". Apply the **GCS inline YAML rules** instead.
 4. If `defaultArtifact.type` is `"github/file"`, use **"Files from a Git repository"** — use `defaultArtifact.reference` as the Repository URL and `defaultArtifact.name` as the File Paths. If `defaultArtifact.name` is absent, empty, or `null`, use `"custom-resource.yaml"` as the File Paths value. NEVER use "Inline YAML" for a `github/file` artifact. If `defaultArtifact.version` is present and non-empty, also include `Set the Repository Branch to "<version>".` in the step prompt to preserve the configured git branch.
 
+**CRITICAL — check EVERY `deployManifest` stage for `defaultArtifact.version` — do NOT check only the first stage (COMMON MISTAKE)**: When a pipeline has multiple `deployManifest` stages, EACH stage must be checked independently. For each stage, look up its `manifestArtifactId` in `expectedArtifacts`, then check whether the resolved `defaultArtifact.version` is non-empty. If it is, include `Set the Repository Branch to "<version>".` for THAT step. Do NOT stop after processing the first stage — every subsequent stage must be individually inspected.
+
+**Negative example — branch omitted for a later stage (COMMON MISTAKE)**:
+
+Given a pipeline with two `deployManifest` stages:
+- Stage A resolves to `defaultArtifact.version = "master"` → branch **included** ✓
+- Stage B resolves to `defaultArtifact.version = "master"` → branch **omitted** ✗ ← WRONG
+
+The **WRONG** output (branch checked for Stage A but skipped for Stage B):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Stage A" ... Set the Repository Branch to "master". ...
+* Add a "Deploy Kubernetes YAML" step ... "Stage B" ... Set the File Paths to "path/b.yaml". Set the target tag to Kubernetes.
+```
+← WRONG: Stage B has `defaultArtifact.version = "master"` but the branch instruction was omitted.
+
+The **CORRECT** output (branch checked and set for BOTH stages):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Stage A" ... Set the Repository Branch to "master". ...
+* Add a "Deploy Kubernetes YAML" step ... "Stage B" ... Set the File Paths to "path/b.yaml". Set the Repository Branch to "master". Set the target tag to Kubernetes.
+```
+
 **CRITICAL — `github/file` artifacts ALWAYS use "Files from a Git repository"**: Whether the artifact is referenced via `manifestArtifactId` (resolving to an `expectedArtifacts` entry) or directly via `manifestArtifact`, if `type` is `"github/file"`, the step MUST ALWAYS use `YAML Source: "Files from a Git repository"`. NEVER use "Inline YAML" for a `github/file` artifact. The URL `https://...` in a `github/file` reference is a GitHub URL, NOT a Google Cloud Storage path — do NOT treat it as GCS, do NOT generate a GCS TODO placeholder, and do NOT append a "Google Cloud Storage" NOTE.
 
 **Negative example — `manifestArtifactId` resolving to `github/file` incorrectly treated as GCS (COMMON MISTAKE)**:
@@ -1790,6 +1822,7 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 
 * Replace `<stage name>` with the `name` property of the stage after applying the same step-name character rules as other stages. If the original `manualJudgment` stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the generated step name and add `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * Replace `<instructions>` with the `instructions` property of the stage. If the `instructions` property is absent or empty, use `"Please review and approve."` as the default instructions text.
+* **IMPORTANT — `stageTimeoutMs` preservation**: When a `manualJudgment` stage has a `stageTimeoutMs` property, convert the value from milliseconds to minutes (divide by 60000) and append `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a Manual Intervention timeout in Octopus if required.` to the step description. If the stage already has a description (because the name contained special characters), append this note after the existing description text, separated by a space. For example, a `stageTimeoutMs` of `1800000` (30 minutes) becomes: `NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.`
 
 **Negative example — `manualJudgment` stage name keeps invalid parentheses (COMMON MISTAKE)**:
 
@@ -2386,6 +2419,20 @@ Some Spinnaker stages have a `restrictExecutionDuringTimeWindow` property combin
   Replace `<days>` with the numeric day numbers from `restrictedExecutionWindow.days` (1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday) and `<startHour>:<startMin>-<endHour>:<endMin>` from the first whitelist entry.
 
   If `restrictExecutionDuringTimeWindow` is `false` or absent, do NOT append any NOTE.
+
+## Continue-on-Failure (`continuePipeline`)
+
+Some Spinnaker stages have `"continuePipeline": true` which means the pipeline continues to run even if the stage fails. Octopus Deploy does not have an exact equivalent for this behavior at the step level.
+
+* When a stage has `"continuePipeline": true`, convert the stage normally but append the following text to the step description. If the step already has a description, append this text separated by a single space; do NOT emit a second independent description instruction:
+
+  ```
+  Set the step description to include: `NOTE (migration): The original Spinnaker stage had continuePipeline=true, meaning the pipeline continued even on failure. Manually review whether this step should use an Octopus run condition to replicate this behavior.`
+  ```
+
+* When `continuePipeline` is `false` (the default) or absent, do NOT append any NOTE. The default pipeline failure behavior in Octopus Deploy already stops the deployment on step failure.
+
+* **IMPORTANT**: Do NOT add `continuePipeline` notes for EVERY stage. Only add the note when `"continuePipeline": true` is explicitly set in the stage JSON. A stage with no `continuePipeline` key must NOT receive the note.
 
 ## Ignored Stage Types
 
@@ -3055,6 +3102,20 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * The `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"job my-job"` → `kubectl delete job my-job`). Parse the kind and name from this field.
 * If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"job job-denpyo-checker"` and `location` is `"app-0251-dev"`, the command is `kubectl delete job job-denpyo-checker -n app-0251-dev`.
 * **`mode: "label"` deleteManifest stages**: When the `mode` field is `"label"` (instead of `"static"`), the stage uses `labelSelectors` to identify resources to delete rather than a specific `manifestName`. In this case, build the kubectl command using `-l` label selectors. Iterate over the `labelSelectors.selectors` array and convert each selector to a label expression (e.g., `{key: "app", kind: "EQUALS", values: ["server"]}` → `app=server`). Combine multiple selectors with commas. Also use the `kinds` array to specify the resource types to delete. For example, a stage with `kinds: ["deployment", "replicaSet", "pod"]` and selectors `app=server,stack=canary,version=v1` in namespace `app-0220-prod` generates: `kubectl delete deployment,replicaSet,pod -l app=server,stack=canary,version=v1 -n app-0220-prod`. The `kinds` list should be comma-joined with no spaces.
+* **CRITICAL — Spinnaker SpEL expressions in `deleteManifest` label selector values must be converted to Octopus variable syntax**: Label selector `values` may contain Spinnaker Spring Expression Language (SpEL) expressions such as `${ parameters.model_version }` that reference pipeline parameters. These Spinnaker SpEL expressions do NOT evaluate in Octopus Deploy. You MUST convert them to Octopus variable syntax by replacing `${ parameters.<name> }` with `#{<name>}`. For example, `${ parameters.model_version }` becomes `#{model_version}` in the generated kubectl command. If any such conversions are made, append the following parenthetical note to the step's description: `(NOTE: Spinnaker SpEL parameter references were converted to Octopus variable syntax, e.g. #{model_version}.)`. The pipeline's `parameterConfig` entries (if any) should correspond to Octopus project variables that provide the runtime values.
+
+**Negative example — `deleteManifest` with SpEL parameter reference passed verbatim (COMMON MISTAKE)**:
+
+Given a `deleteManifest` stage with `mode: "label"` and a selector `values: ["${ parameters.model_version }"]`:
+```
+* Add a "Run a kubectl script" step ... Set the script to inline Bash with the code `kubectl delete deployment,pod -l model-version=${ parameters.model_version } -n app-prod`. Set the target tag to Kubernetes.
+```
+← WRONG: The Spinnaker SpEL expression `${ parameters.model_version }` will NOT evaluate in Octopus. This must be converted to `#{model_version}`.
+
+The **CORRECT** output converts the SpEL expression to Octopus variable syntax:
+```
+* Add a "Run a kubectl script" step ... Set the script to inline Bash with the code `kubectl delete deployment,pod -l model-version=#{model_version} -n app-prod`. Set the target tag to Kubernetes. Set the step description to "(NOTE: Spinnaker SpEL parameter references were converted to Octopus variable syntax, e.g. #{model_version}.)".
+```
 * **IMPORTANT — step name special character replacement and step description**: The same rules as `deployManifest` stages apply. If the stage `name` contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the step name (e.g., `Delete (canary)` → `Delete -canary-`). For every `deleteManifest` step where the stage name contained parentheses or other special characters, ALSO set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
 
 **Negative example — `deleteManifest` stage with parentheses and no step description (COMMON MISTAKE)**:

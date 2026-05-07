@@ -235,6 +235,7 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * You will be penalized for placing the `notes` attribute inside `execution_properties` — `notes` is a top-level attribute of the `octopusdeploy_process_step` resource.
 * **CRITICAL — never add backslash-escaping to GCS paths or other URLs in step descriptions.** When a step description contains a GCS path like `gs://example-bucket/path/to/file.yaml`, reproduce it verbatim in the `notes` string without adding backslashes or extra quotation marks around the URL. For example, `notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."` — NOT `notes = "... at \"gs://example-bucket/path\"."`.
 * **CRITICAL — `NOTE (migration):` text must be preserved verbatim**: When a step description includes text of the form `NOTE (migration): ...`, this text MUST appear verbatim in the `notes` attribute. Do NOT drop, summarize, or rephrase migration notes. These notes communicate important information about conditional branching or preconditions that were lost during migration. For example, if the prompt says `Set the step description to "...; NOTE (migration): This step was originally on the SUCCESS branch after \"Manual Judgment\". In this migration, both branches now run in parallel."`, the `notes` value MUST include the full NOTE (migration) sentence.
+* **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` must be preserved verbatim**: When a `manualJudgment` stage had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit or shorten the timeout note.
 **Negative example — GCS URL with incorrect backslash escaping in notes (FORBIDDEN)**:
 ```hcl
 notes = "This step originally loaded its manifest from Google Cloud Storage at \"gs://example-bucket/storage-3209\". The manifest must be inlined."
@@ -276,6 +277,35 @@ resource "octopusdeploy_process_step" "process_step_deploy_staging" {
 * A `wait` stage converted to `Start-Sleep -Seconds <N>` must be implemented as an `octopusdeploy_process_step` of type `"Octopus.Script"` with `execution_properties` containing `"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds <N>"`, `"Octopus.Action.Script.Syntax" = "PowerShell"`, and `"Octopus.Action.Script.ScriptSource" = "Inline"`.
 * The step name must match the dash-replaced form from the prompt (e.g., `"Wait -15min-"`) — parentheses in the original Spinnaker stage name have been replaced with dashes.
 * You will be penalized for using a type other than `"Octopus.Script"` for wait steps.
+
+## Multiple Description Fragments in `notes` (CRITICAL)
+
+When a step receives MULTIPLE description fragments from the prompt (e.g., an original stage name plus a stageTimeoutMs migration note), you MUST concatenate ALL fragments into one single `notes` value. Do NOT drop any fragment.
+
+For example, if the prompt says:
+```
+* Set the step name to "Review -Approval-".
+* Set the step description to "Original Spinnaker stage name: Review and Approval."
+* Append to the step description: "NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required."
+```
+
+The **WRONG** output includes only the first fragment:
+```hcl
+resource "octopusdeploy_process_step" "process_step_review_approval" {
+  name  = "Review -Approval-"
+  notes = "Original Spinnaker stage name: Review and Approval."   # WRONG: second fragment dropped
+  ...
+}
+```
+
+The **CORRECT** output concatenates all fragments in order, separated by a space:
+```hcl
+resource "octopusdeploy_process_step" "process_step_review_approval" {
+  name  = "Review -Approval-"
+  notes = "Original Spinnaker stage name: Review and Approval. NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required."
+  ...
+}
+```
 
 ## kubectl Script Steps (KubernetesRunScript)
 
@@ -1211,9 +1241,28 @@ resource "octopusdeploy_external_feed_create_release_trigger" "example" {
 }
 ```
 * If the prompt specifies `Add a channel called "Application" to the project and configure a version rule that matches the regex "<regex>" for every step that deploys a Docker image.`, create an `octopusdeploy_channel` resource named "Application" with a `rule` block whose `tag` property is set to the exact regex from the prompt.
-* When that regex-based channel rule applies to steps that expose package metadata, add one `action_package` block per matching deployment action. If the matching steps are `Octopus.KubernetesDeployRawYaml` steps without `primary_package` or `packages` blocks, still create the channel and still set the `rule.tag` property. Do not drop the channel just because `action_package` blocks cannot be emitted for placeholder Docker-image triggers.
+* When that regex-based channel rule applies to steps that expose package metadata, add one `action_package` block per matching deployment action. **CRITICAL — if the matching steps are `Octopus.KubernetesDeployRawYaml` steps without `primary_package` or `packages` blocks, you MUST create the channel WITHOUT any `rule` block.** The Octopus API rejects `rule` blocks that have no `action_package` entries with the error "Version rules must specify a package step". Since `KubernetesDeployRawYaml` steps have no package references, do NOT add any `rule` block to the channel — create the channel as a bare named channel with no version rules. Do not drop the channel entirely.
 * If the prompt specifies both a regex-based `Application` channel and an external feed trigger, the `octopusdeploy_external_feed_create_release_trigger` resource must reference that regex-based channel instead of creating or linking to a second bare `Application` channel.
 * If the prompt specifies an external feed trigger for a project whose deployment steps are `Octopus.KubernetesDeployRawYaml` steps without a `primary_package` or `packages` block, create the `octopusdeploy_external_feed_create_release_trigger` resource without a `package` block. Do not drop the trigger merely because the referenced deployment step has no package metadata.
+* **CRITICAL — when the prompt says the external feed trigger must be disabled**, set `is_disabled = true` on the `octopusdeploy_external_feed_create_release_trigger` resource. The prompt will say something like `"The trigger must be disabled."` for migrated Spinnaker pipelines with Docker triggers that were originally disabled. You will be penalized for omitting `is_disabled = true` when the prompt explicitly disables the trigger.
+
+**Negative example — disabled trigger without `is_disabled = true` (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  ...
+  name       = "External Feed Trigger"
+  # WRONG: is_disabled attribute is missing even though prompt says "The trigger must be disabled."
+}
+```
+
+**Correct output — disabled trigger with `is_disabled = true`**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  ...
+  name        = "External Feed Trigger"
+  is_disabled = true   # Required because the prompt says "The trigger must be disabled."
+}
+```
 * You will be penalized for setting the "channel_id" attribute to a fixed value like "Channels-1".
 
 **Negative example — `channel_id` set to a hard-coded value (COMMON MISTAKE)**:
@@ -1430,6 +1479,7 @@ resource "octopusdeploy_channel" "channel_every_step_project_hotfix" {
 }
 ```
 
+* **ABSOLUTE RULE — every `rule` block in an `octopusdeploy_channel` resource MUST have at least one `action_package` block**: The Octopus API enforces this requirement and rejects channels with `rule` blocks that have no `action_package` entries, returning the error "Version rules must specify a package step". If there are no package-based deployment steps to reference (e.g., all steps are `Octopus.KubernetesDeployRawYaml` without package blocks), do NOT add any `rule` block to the channel at all. A channel without a `rule` block is valid and serves as a named channel for triggers.
 * You will be penalized for defining a "octopusdeploy_channel" resource with a "rule" block with an empty version, for example: 
 
 ```
@@ -1456,6 +1506,11 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
 * The "end" property of the "octopusdeploy_deployment_freeze" resource must be in the future.
 
 ## Octopus Deployment Process Instructions
+
+* **CRITICAL — Spinnaker SpEL parameter references in script bodies must be converted to Octopus variable syntax**: Inline script bodies (in `Octopus.Action.Script.ScriptBody` or kubectl commands) generated from Spinnaker `deleteManifest`, `scaleManifest`, or `runJob` stages may contain Spinnaker Spring Expression Language (SpEL) expressions that reference pipeline parameters, such as `${ parameters.model_version }`. These expressions use the `${ }` syntax which does NOT evaluate in Octopus Deploy. You MUST convert them to Octopus variable syntax: replace `${ parameters.<name> }` with `#{<name>}`. For example:
+  * `${ parameters.model_version }` → `#{model_version}`
+  * `${ parameters.namespace }` → `#{namespace}`
+  This conversion ensures the script uses the correct Octopus variable reference at runtime. If the script contains any such converted references, add a comment at the top of the script or in the step notes: `# NOTE: Spinnaker SpEL parameter references have been converted to Octopus variable syntax (#{variable_name}).`
 
 * You must consider the attributes in the "execution_properties" block and the "properties" block of the example steps to be mandatory, unless otherwise specified (the properties on script steps that define inline scripts or those sourced from packages is an example where example properties should not be considered mandatory).
 * Every "octopusdeploy_project" resource must have an associated "octopusdeploy_process" resource.
@@ -2779,6 +2834,38 @@ data "octopusdeploy_projects" "project1" { ... }
 * When the prompt says `Set the Repository Branch to "<branch>"` for a "Deploy Kubernetes YAML" step, the `git_dependencies` block of the corresponding `octopusdeploy_process_step` resource MUST set `default_branch = "<branch>"` using the exact branch name from the prompt.
 * If the prompt does NOT include a `Set the Repository Branch to` instruction for a step, use `default_branch = "main"` as the default value.
 * You will be penalized for setting `default_branch = "main"` when the prompt explicitly specifies a different branch.
+* **CRITICAL — each step's `default_branch` must be set INDEPENDENTLY**: In a project with multiple "Deploy Kubernetes YAML" steps, each step may have a DIFFERENT branch. You MUST read the `Set the Repository Branch to` instruction for EACH step individually and apply it to THAT step's `git_dependencies` block only. Do NOT assume all steps in the same project share the same branch. Do NOT copy the branch from one step to another.
+
+**Negative example — branch copied from step 1 to all other steps (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_service" {
+  name = "Deploy Service"
+  ...
+  git_dependencies = { "" = { default_branch = "master", ... } }
+}
+
+resource "octopusdeploy_process_step" "process_step_deploy_worker" {
+  name = "Deploy Worker"
+  ...
+  # WRONG: "master" was copied from step 1, but the prompt said Set the Repository Branch to "develop" for this step
+  git_dependencies = { "" = { default_branch = "master", ... } }
+}
+```
+
+**Correct output — each step uses its own branch from the prompt**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_service" {
+  name = "Deploy Service"
+  ...
+  git_dependencies = { "" = { default_branch = "master", ... } }   # prompt said: Set the Repository Branch to "master"
+}
+
+resource "octopusdeploy_process_step" "process_step_deploy_worker" {
+  name = "Deploy Worker"
+  ...
+  git_dependencies = { "" = { default_branch = "develop", ... } }  # prompt said: Set the Repository Branch to "develop"
+}
+```
 
 **Example — step prompt with explicit branch**:
 
