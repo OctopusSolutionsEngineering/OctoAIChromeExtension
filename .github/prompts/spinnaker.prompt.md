@@ -75,7 +75,9 @@ Compare the Terraform configuration of the space to the original array item from
 
 Update the `prompt.md` file to address the 5 most significant issues found as part of the migration.
 
-Update the `generalinstructions.md` file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
+Update the `generalinstructions.md` file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects. The instructions in the `generalinstructions.md` file must focus on improving the Terraform configuration for Octopus projects, rather than improving the prompt for converting Spinnaker pipelines to Octopus projects.
+
+You will be penalized for adding Spinnaker specific instructions to the `generalinstructions.md` file.
 
 The directory `/Users/matthewcasperson/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. You can refer to these files when making improvements to the `generalinstructions.md` file.
 
