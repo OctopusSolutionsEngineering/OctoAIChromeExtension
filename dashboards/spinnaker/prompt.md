@@ -16,6 +16,21 @@
 
 **ABSOLUTE RULE — for single-document manifests (exactly ONE Kubernetes resource) that contain complex nested structures (any of: `containers`, `env`, `envFrom`, `volumeMounts`, `tolerations`, `nodeSelector`, `imagePullSecrets`, `volumes`, `livenessProbe`, `readinessProbe`, `initContainers`), you MUST ALSO replace the entire YAML block with a TODO placeholder comment.** Single-document Deployment, StatefulSet, DaemonSet, Job, or CronJob manifests with pod-spec fields are just as prone to flat-YAML serialization errors as multi-document manifests. Do NOT attempt to serialize them inline. Use: `# TODO: replace with correctly indented manifest serialized from the cached Spinnaker manifests array`. When a `manifestURL` helper variable is available for the pipeline (see the "Templated Pipelines" section), prefer: `# TODO: replace with manifest downloaded from <manifestURL>`. You MUST also add `The step must be disabled.` to the step prompt. The only exception is a single-document manifest that contains ONLY simple flat key-value fields (e.g., a ConfigMap or a Namespace resource) — in that case, attempt inline serialization with careful indentation verification.
 
+**ABSOLUTE RULE — when a `deployManifest` stage has `"source": "artifact"` AND its `manifestArtifactId` resolves to an `expectedArtifacts` entry whose `defaultArtifact.type` is `"github/file"`, the inline `manifests` array in the stage JSON MUST be completely IGNORED for YAML serialization purposes.** The inline `manifests` array in these stages represents a _cached snapshot_ of a previously-rendered manifest — it is NOT the authoritative source. The `github/file` artifact reference is the authoritative source. You MUST use `"Files from a Git repository"` regardless of how many documents are in `manifests` and regardless of how complex the nested structures are. The ABSOLUTE RULES about multi-document, 2-document, and single-document complex manifests apply ONLY to `source: "text"` stages (where the inline `manifests` array IS the source) or to `gcs/object` artifacts. They do NOT apply when `source: "artifact"` resolves to a `github/file` type.
+
+**Negative example — `github/file` artifact stage incorrectly applying TODO due to complex inline manifests (FORBIDDEN)**:
+
+Given a `deployManifest` stage with `"source": "artifact"`, `manifestArtifactId` resolving to a `github/file` artifact, AND an inline `manifests` array containing a Deployment with `containers`, `env`, and `volumeMounts`:
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with correctly indented manifest...`. The step must be disabled.
+```
+← WRONG: The complex-manifest ABSOLUTE RULE was applied even though the stage uses a `github/file` artifact. The `manifests` array is irrelevant.
+
+**Correct output** (`github/file` artifact always uses "Files from a Git repository"):
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". ...
+```
+
 **ABSOLUTE RULE — pipeline `name` fields and stage `name` fields are resource identifiers, NEVER secrets, and MUST NEVER be redacted.** The pipeline's top-level `name` property (e.g., `"[PROD] api-syncer canary"`, `"deploy-to-prod"`, `"run-job-load-service-cr-tag"`) and every stage's `name` property (e.g., `"Deploy api-syncer"`, `"Delete api-sync-job"`, `"Scale Down Canary"`) are deployment resource identifiers. Words such as `api`, `key`, `token`, `service`, `auth`, `credential`, and similar terms that appear in these name fields are part of service and component names — they are NOT secrets, API keys, or credentials. NEVER replace ANY portion of a pipeline name or stage name with `*****` or any other anonymization placeholder unless the source JSON already contains `*****` at that exact location.
 
 **CRITICAL — the Spinnaker pipeline JSON provided to you has ALREADY been pre-anonymized.** Actual secrets such as the Kubernetes cluster name and repository owner have been replaced with specific placeholders like `<redacted-cluster>`, `<redacted-owner>`, and `<redacted-secret-name>`. All other values — including service names like `api-syncer`, `bq-syncer`, `publisher`, `server`, `auth-service`, `key-manager` — are intentionally preserved and are safe to use verbatim. Do NOT apply additional redaction to any value that was not already anonymized in the source JSON with a `<redacted-*>` placeholder.
@@ -1429,6 +1444,19 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 
 **CRITICAL — use dashes `-` NOT underscores `_` when replacing parentheses**: Although underscores are technically valid Octopus step name characters, they are also Markdown formatting characters (e.g., `_text_` renders as italic and strips the underscores). Using underscores in step names that are generated as part of Markdown text causes the underscores to be silently stripped. You MUST use dashes `-` instead. For example, `Deploy (Manifest)` MUST become `Deploy -Manifest-` (with dashes), NOT `Deploy _Manifest_` (with underscores).
 
+**CRITICAL — `deployManifest` steps MUST NOT include "Original Spinnaker stage type: deployManifest." in their description.** Unlike `runJobManifest` stages (where the type distinction between a one-time Job and a long-running Deployment is operationally significant and MUST be stated), `deployManifest` is the default and most common stage type. Including "Original Spinnaker stage type: deployManifest." in the step description adds noise and inconsistency. Only `runJobManifest` and `undoRolloutManifest` stages require the stage type in their description. If a step description is needed for a `deployManifest` stage (e.g., because the name contained special characters, or the manifest came from GCS), the description MUST NOT begin with or include "Original Spinnaker stage type: deployManifest.".
+
+**Negative example — `deployManifest` stage type incorrectly included in description (FORBIDDEN)**:
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the step description to "Original Spinnaker stage type: deployManifest. Original Spinnaker stage name: Deploy (Manifest)."
+```
+← WRONG: "Original Spinnaker stage type: deployManifest." must NEVER appear in a step description.
+
+**Correct output** (`deployManifest` stage type omitted — only the original name is preserved):
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the step description to "Original Spinnaker stage name: Deploy (Manifest)."
+```
+
 **CRITICAL — duplicate step names must be made unique**: Spinnaker allows multiple stages to share the same `name` within a pipeline, but Octopus requires every step name to be unique. After applying the special-character replacement rules to each stage's `name`, scan the generated step names for duplicates. If two or more stages would produce the same step name, append ` 2`, ` 3`, etc. to the second and subsequent occurrences (in the topological/output order) to make them unique. For example, if three stages are each named `Deploy (Manifest)`, the generated Octopus steps must be named `Deploy -Manifest-`, `Deploy -Manifest- 2`, and `Deploy -Manifest- 3`. Apply the same deduplication for all stage types (`deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, etc.).
 
 * **IMPORTANT — Repository Branch from `defaultArtifact.version`**: When the `defaultArtifact` of the resolved `expectedArtifacts` entry has a `version` field that is non-empty, include `Set the Repository Branch to "<version>".` in the step prompt. This preserves the exact git branch that the Spinnaker pipeline was configured to pull the manifest from. If `defaultArtifact.version` is absent, null, or an empty string, omit the Repository Branch instruction and let the step use the default branch (`main`).
@@ -2560,7 +2588,7 @@ The following stage types represent Spinnaker-internal operations or metadata lo
 
 * `findArtifactFromExecution` — looks up artifacts produced by another pipeline execution. This is a Spinnaker-specific mechanism for passing artifacts between pipelines and has no Octopus Deploy equivalent.
 * `evaluateVariables` — evaluates SpEL expressions to set pipeline variables. Skip it entirely.
-* `checkPreconditions` — checks pipeline preconditions. Skip it entirely. **HOWEVER**, when a `checkPreconditions` stage has `preconditions` items with `type: "stageStatus"`, preserve the condition information by appending a NOTE to each downstream step that directly follows the `checkPreconditions` stage in dependency order. The NOTE should describe what condition was originally being enforced. Example: if the precondition checks that stage "Manual Judgment" has status `SUCCEEDED`, append the text `NOTE (migration): This step originally ran only when the "Manual Judgment" stage had SUCCEEDED.` to the step description. If multiple `checkPreconditions` stages with **different** `stageStatus` values (e.g., one for SUCCEEDED and one for TERMINAL/CANCELLED) both depend on the same upstream stage, their respective downstream steps now run in parallel — include a NOTE on each downstream step explaining its original conditional branch (e.g., `NOTE (migration): This step was originally on the SUCCESS branch after "Manual Judgment". In this migration, both branches now run in parallel.` and `NOTE (migration): This step was originally on the CANCELLED/TERMINAL branch after "Manual Judgment". In this migration, both branches now run in parallel.`).
+* `checkPreconditions` — checks pipeline preconditions. Skip it entirely. **HOWEVER**, when a `checkPreconditions` stage has `preconditions` items with `type: "stageStatus"`, preserve the condition information by appending a NOTE to each downstream step that directly follows the `checkPreconditions` stage in dependency order. The NOTE should describe what condition was originally being enforced. Example: if the precondition checks that stage "Manual Judgment" has status `SUCCEEDED`, append the text `NOTE (migration): This step originally ran only when the "Manual Judgment" stage had SUCCEEDED.` to the step description. If multiple `checkPreconditions` stages with **different** `stageStatus` values (e.g., one for SUCCEEDED and one for TERMINAL/CANCELLED) both depend on the same upstream stage, their respective downstream steps now run in parallel — include a NOTE on each downstream step explaining its original conditional branch (e.g., `NOTE (migration): This step was originally on the SUCCESS branch after "Manual Judgment". In this migration, both branches now run in parallel.` and `NOTE (migration): This step was originally on the CANCELLED/TERMINAL branch after "Manual Judgment". In this migration, both branches now run in parallel.`). **When a `checkPreconditions` stage has `preconditions` items with `type: "expression"` (SpEL expressions) rather than `type: "stageStatus"`, the same NOTE approach applies to downstream steps**: append `NOTE (migration): This step was originally on a conditional branch controlled by a Spinnaker expression-based checkPreconditions stage (SpEL expression condition). In this migration, both branches now run in parallel — the expression condition is not enforced.` to the description of each step that directly follows the expression-type `checkPreconditions` in dependency order. When the expression-type `checkPreconditions` sits between a `manualJudgment` stage and opposing YES/NO branches (e.g., a deploy step on the YES branch and a rollback step on the NO branch), BOTH the deploy step and the rollback step must receive the NOTE, since both will now run in parallel in Octopus Deploy.
 * `setPipelineParameters` — sets parameters for a running pipeline. Skip it entirely.
 
 **IMPORTANT**: If a pipeline has only ignored stages (e.g., only `findArtifactFromExecution` and `checkPreconditions` stages), the project creation prompt must still be generated with no steps (use `"with no steps"` in the project prompt). Do not omit the project creation prompt just because all stages are of ignored types.
@@ -2639,6 +2667,39 @@ The **CORRECT** output (stages 6 and 13 are parallel, both effectively depend on
 * Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← refId 6, FIRST in {6,13} parallel group
 * Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".            ← refId 13, SECOND in {6,13} parallel group ✓
 * Add a "Manual Intervention" step ... "Judge -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".      ← refId 7, depends on 6
+```
+
+**CRITICAL — parallel groups can contain MORE than 2 stages**: The "first gets no annotation, all others get `Run in parallel`" rule applies to ANY number of stages in the same parallel group, not just pairs. When three or more stages all effectively depend on the same predecessor (after ignored stages are removed), ALL stages after the first must receive `"Run in parallel with the previous step"`.
+
+**Worked example — 3-stage parallel group through multiple ignored checkPreconditions**:
+
+Given a pipeline where three stages (Deploy -main-, Rollback -internal-, Rollback -canary-) ALL effectively depend on stage 4 (Judge -main-) because two separate checkPreconditions stages (refIds 11 and 12) both depend on stage 4 and are then skipped:
+
+| refId | type | requisiteStageRefIds | effective deps (after ignoring) |
+|---|---|---|---|
+| 4 | manualJudgment | `[...]` | `[...]` |
+| 11 | checkPreconditions **(SKIP)** | `["4"]` | — |
+| 12 | checkPreconditions **(SKIP)** | `["4"]` | — |
+| 6 | deployManifest | `["11"]` → effectively `["4"]` | `["4"]` |
+| 13 | runKubectl | `["11"]` → effectively `["4"]` | `["4"]` |
+| 15 | undoRolloutManifest | `["12"]` → effectively `["4"]` | `["4"]` |
+
+All three of stages 6, 13, and 15 effectively depend on stage 4 → they are in the SAME 3-stage parallel group.
+
+The **WRONG** output (stage 15 placed after only stages 6 and 13 run — FORBIDDEN):
+```
+* Add a "Manual Intervention" step ... "Judge -main-" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Run a kubectl script" step ... "Rollback -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← WRONG: should also be parallel
+```
+
+The **CORRECT** output (all 3 stages in the parallel group, only the first gets "Wait for all previous"):
+```
+* Add a "Manual Intervention" step ... "Judge -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← FIRST in {6,13,15} parallel group
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".            ← SECOND in {6,13,15} parallel group ✓
+* Add a "Run a kubectl script" step ... "Rollback -canary-" ... Set the start trigger to "Run in parallel with the previous step".             ← THIRD in {6,13,15} parallel group ✓
 ```
 
 Stages with `"type": "shiftTrafficProd"` (and the analogous `"type": "shiftTrafficStaging"`) represent canary traffic-shifting operations that run a Kubernetes Job to redistribute traffic between service versions. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
@@ -3176,10 +3237,12 @@ The following snippet is an example of an `undoRolloutManifest` stage in Spinnak
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `kubectl rollout undo <kind>/<name> -n <namespace>`. Set the target tag to <account>. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back <kind>/<name> to the previous revision in namespace <namespace>."
 ```
 
-**Example** — converting the stage above produces:
+**IMPORTANT — `undoRolloutManifest` steps on conditional branches**: When an `undoRolloutManifest` stage is downstream of a `checkPreconditions` stage (i.e., it represents the NO/failure/rollback branch of a judge gate), append the following migration note to the step description: `NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually.` This note is required whenever the `undoRolloutManifest` stage's `requisiteStageRefIds` reference a `checkPreconditions` stage (rather than depending directly on a `deployManifest`, `manualJudgment`, or other non-ignored stage). It helps engineers understand why a rollback step appears to run in parallel with deploy steps in the migrated Octopus project.
+
+**Example** — converting the stage above when the stage's `requisiteStageRefIds` reference a `checkPreconditions` stage (conditional branch rollback) produces:
 
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Rollback -internal-". Set the script to inline Bash with the code `kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod."
+* Add a "Run a kubectl script" step to the deployment process and name the step "Rollback -internal-". Set the script to inline Bash with the code `kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod. NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually."
 ```
 
 ## Unknown Stage Types

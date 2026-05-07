@@ -43,7 +43,7 @@ notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls bac
 * If the prompt says `The step must be disabled.`, you must still keep that step in the `octopusdeploy_process_steps_order` resource and preserve any explicit `start_trigger` annotation from the prompt. Disabled steps still participate in process ordering.
 * You will be penalized for using `start_trigger = "StartAfterPrevious"` when the prompt explicitly says `"Run in parallel with the previous step"`.
 * You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
-* **MANDATORY SELF-CHECK — parallel group completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Run in parallel with the previous step"`. For EACH such step, verify that the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` uses `start_trigger = "StartWithPrevious"`. If any step with that phrase uses `start_trigger = "StartAfterPrevious"`, correct it before outputting.
+* **MANDATORY SELF-CHECK — parallel group completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Run in parallel with the previous step"`. For EACH such step, verify that the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` uses `start_trigger = "StartWithPrevious"`. If any step with that phrase uses `start_trigger = "StartAfterPrevious"`, correct it before outputting. **This check applies to ALL steps in the parallel group including the LAST one** — the last member of a parallel group is NOT a convergence point and MUST use `start_trigger = "StartWithPrevious"`, not `"StartAfterPrevious"`. Only the step AFTER the entire parallel group (annotated with "Wait for all previous steps") is a convergence point.
 * **MANDATORY SELF-CHECK — convergence step completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Wait for all previous steps to complete, then start"`. For EACH such step, verify that the corresponding resource uses `start_trigger = "StartAfterPrevious"`. If any step with that phrase uses `start_trigger = "StartWithPrevious"`, correct it before outputting.
 
 **CRITICAL — convergence steps (after a parallel group) MUST use `start_trigger = "StartAfterPrevious"`**: When the prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"`, this indicates a convergence point — a step that waits for multiple preceding parallel steps to finish before it begins. In Octopus Terraform, this is expressed as `start_trigger = "StartAfterPrevious"`. This is the SAME attribute value as the default, but it MUST be explicitly set when the prompt says "Wait for all previous steps". The `StartAfterPrevious` value is used for two distinct cases:
@@ -146,6 +146,43 @@ resource "octopusdeploy_process_step" "... deploy_canary" {
 resource "octopusdeploy_process_step" "... rollback_internal" {
   start_trigger = "StartWithPrevious"  ← CORRECT: matches "Run in parallel with the previous step"
   ...
+}
+```
+
+**CRITICAL — in a 3-or-more-step parallel group, ALL steps after the first MUST use `start_trigger = "StartWithPrevious"`**: When three or more consecutive steps all have `Set the start trigger to "Run in parallel with the previous step"` (or the second and subsequent steps in a group do), every step except the first MUST use `StartWithPrevious`. The last step in the group is NOT a convergence point — it is still part of the parallel group. Only the step AFTER the entire group (the one with "Wait for all previous steps") is the convergence point.
+
+**Negative example — 3-step parallel group where the LAST parallel step incorrectly uses StartAfterPrevious (COMMON MISTAKE)**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Run a kubectl script" step ... "Rollback -canary-" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **WRONG** Terraform (Rollback -canary- uses StartAfterPrevious — FORBIDDEN):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_main" {
+  start_trigger = "StartAfterPrevious"  ← correct (first in parallel group)
+}
+resource "octopusdeploy_process_step" "... rollback_internal" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "... rollback_canary" {
+  start_trigger = "StartAfterPrevious"  ← WRONG: "Run in parallel" means StartWithPrevious, NOT StartAfterPrevious
+}
+```
+
+The **CORRECT** Terraform (all parallel steps except the first use StartWithPrevious):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_main" {
+  start_trigger = "StartAfterPrevious"  ← first in group
+}
+resource "octopusdeploy_process_step" "... rollback_internal" {
+  start_trigger = "StartWithPrevious"  ← CORRECT
+}
+resource "octopusdeploy_process_step" "... rollback_canary" {
+  start_trigger = "StartWithPrevious"  ← CORRECT: LAST parallel step still uses StartWithPrevious
 }
 ```
 
@@ -427,6 +464,7 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * You will be penalized for placing the `notes` attribute inside `execution_properties` — `notes` is a top-level attribute of the `octopusdeploy_process_step` resource.
 * **CRITICAL — never add backslash-escaping to GCS paths or other URLs in step descriptions.** When a step description contains a GCS path like `gs://example-bucket/path/to/file.yaml`, reproduce it verbatim in the `notes` string without adding backslashes or extra quotation marks around the URL. For example, `notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."` — NOT `notes = "... at \"gs://example-bucket/path\"."`.
 * **CRITICAL — `NOTE (migration):` text must be preserved verbatim**: When a step description includes text of the form `NOTE (migration): ...`, this text MUST appear verbatim in the `notes` attribute. Do NOT drop, summarize, or rephrase migration notes. These notes communicate important information about conditional branching or preconditions that were lost during migration. For example, if the prompt says `Set the step description to "...; NOTE (migration): This step was originally on the SUCCESS branch after \"Manual Judgment\". In this migration, both branches now run in parallel."`, the `notes` value MUST include the full NOTE (migration) sentence.
+* **CRITICAL — `NOTE (migration):` text for rollback/rejection branches must be preserved verbatim**: When a prompt description for an `undoRolloutManifest` step includes `NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually.`, this ENTIRE sentence MUST appear verbatim in the `notes` attribute. Do NOT drop this note, do NOT shorten it, and do NOT replace it with a generic migration note. This note is critical for engineers to understand that a rollback step running in parallel with a deploy step was originally a conditional branch that only ran on the NO/rejection path of a manual judgment.
 * **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` must be preserved verbatim**: When a `manualJudgment` stage had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit or shorten the timeout note.
 
 * **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` on non-`manualJudgment` stages must also be preserved verbatim**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`) had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute. Never omit or shorten this migration note even for non-manualJudgment steps.
@@ -2480,6 +2518,34 @@ git_dependencies = { "" = { default_branch = "master", file_path_filters = null,
 * If the prompt includes a Deployment document followed by a HorizontalPodAutoscaler document in one inline YAML block, both documents must remain in the same `Octopus.Action.KubernetesContainers.CustomResourceYaml` value and both documents must preserve their own nested indentation after the `---` separator.
 * When the prompt explicitly says `The step must be disabled.`, set `is_disabled = true` on the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource. Do not omit the resource and do not change the step order to compensate.
 * **ABSOLUTE RULE — steps whose inline YAML content is a TODO placeholder comment MUST have `is_disabled = true`, regardless of whether the prompt explicitly says "The step must be disabled."**: Whenever the `Octopus.Action.KubernetesContainers.CustomResourceYaml` property value begins with `# TODO:`, you MUST set `is_disabled = true` on that step resource. Do NOT wait for the prompt to say "The step must be disabled." — the presence of a TODO placeholder in YAML is sufficient on its own to require disabling. A disabled step with a TODO YAML body is preserved in the deployment process so engineers can see it, but it will not execute until the TODO is resolved and the step is re-enabled.
+* **CRITICAL — "Files from a Git repository" steps MUST NOT be disabled unless the prompt explicitly says so**: When the prompt says `Set the YAML Source to "Files from a Git repository"`, the step does NOT have a TODO placeholder — it has a real git source. Such a step MUST NOT have `is_disabled = true` unless the prompt includes an explicit `The step must be disabled.` instruction. Do NOT apply the `is_disabled = true` rule for TODO placeholders to GitRepository steps — the two cases are distinct. Similarly, the `Octopus.Action.Script.ScriptSource` for a GitRepository step MUST be `"GitRepository"` — NEVER `"Inline"`. Using `"Inline"` for a git-sourced step is forbidden even if the step also has `Octopus.Action.KubernetesContainers.CustomResourceYaml` defined.
+
+**Negative example — GitRepository step incorrectly disabled and using "Inline" ScriptSource (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_manifest" {
+  name        = "Deploy -canary-"
+  is_disabled = true  # WRONG: the prompt did not say "The step must be disabled." and there is no TODO YAML
+  execution_properties = {
+    "Octopus.Action.Script.ScriptSource" = "Inline"  # WRONG: should be "GitRepository" for a git-sourced step
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = ""
+    ...
+  }
+}
+```
+
+**Correct output — GitRepository step enabled with correct ScriptSource**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_manifest" {
+  name        = "Deploy -canary-"
+  # No is_disabled — step is enabled by default because it has a real git source
+  git_dependencies = { "" = { default_branch = "main", file_path_filters = ["deploy-to-prod-canary.yaml"], git_credential_type = "Anonymous", repository_uri = "https://example.invalid/url-0034" } }
+  execution_properties = {
+    "Octopus.Action.Script.ScriptSource"                          = "GitRepository"  ← CORRECT
+    "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" = "deploy-to-prod-canary.yaml"
+    ...
+  }
+}
+```
 
 **Positive example — disabled step with TODO YAML**:
 ```hcl
