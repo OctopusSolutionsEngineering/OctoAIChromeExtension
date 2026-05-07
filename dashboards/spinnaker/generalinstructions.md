@@ -45,6 +45,36 @@ notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls bac
 * You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
 * **MANDATORY SELF-CHECK — parallel group completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Run in parallel with the previous step"`. For EACH such step, verify that the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` uses `start_trigger = "StartWithPrevious"`. If any step with that phrase uses `start_trigger = "StartAfterPrevious"`, correct it before outputting.
 
+**CRITICAL — a step with BOTH `is_disabled = true` AND `start_trigger = "StartWithPrevious"` is VALID and REQUIRED when a disabled stage is a parallel group member**: When the prompt says `The step must be disabled. Set the start trigger to "Run in parallel with the previous step"`, the corresponding Terraform resource MUST have both attributes set. Setting `is_disabled = true` does NOT override or cancel the `start_trigger` annotation.
+
+**Negative example — disabled parallel step incorrectly using StartAfterPrevious (COMMON MISTAKE)**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... The step must be disabled. Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **WRONG** Terraform (Deploy Staging uses StartAfterPrevious — FORBIDDEN when prompt says parallel):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_staging" {
+  name          = "Deploy Staging"
+  is_disabled   = true
+  start_trigger = "StartAfterPrevious"  ← WRONG: prompt says "Run in parallel with the previous step"
+  ...
+}
+```
+
+The **CORRECT** Terraform (disabled step still uses StartWithPrevious):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_staging" {
+  name          = "Deploy Staging"
+  is_disabled   = true
+  start_trigger = "StartWithPrevious"  ← CORRECT: disabled + parallel are independent attributes
+  ...
+}
+```
+
 **CRITICAL — the `start_trigger` on the FIRST step in a project is always `"StartAfterPrevious"`**: The first step in `octopusdeploy_process_steps_order` always uses `start_trigger = "StartAfterPrevious"` (or the equivalent default). For the first step, `"StartAfterPrevious"` means "start immediately" since there are no previous steps. This is correct behavior and must NOT be changed to `"StartWithPrevious"`.
 
 **CRITICAL — steps that appear CONSECUTIVE in the `octopusdeploy_process_steps_order` list and should run in parallel MUST use `start_trigger = "StartWithPrevious"` for the SECOND and subsequent steps in the parallel group.** If the prompt says `Set the start trigger to "Run in parallel with the previous step"` for a step, you must set `start_trigger = "StartWithPrevious"` — even if the step appears AFTER a step that itself uses `"StartAfterPrevious"`. The `start_trigger` on each step is evaluated independently: it controls how THAT step starts relative to the step immediately before it in the ordered list.
@@ -93,10 +123,134 @@ resource "octopusdeploy_process_step" "... rollback_internal" {
 * **CRITICAL — if the prompt provides YAML that is already flat (all keys at column 0)**, you MUST re-indent it with proper 2-space nesting before embedding it as the value of `Octopus.Action.KubernetesContainers.CustomResourceYaml`. Flat YAML from the prompt is NOT a valid reason to emit flat YAML in Terraform. If you cannot correctly reconstruct the proper indentation from the flat input, use a TODO placeholder comment instead.
 * You will be penalized for embedding flat (column-0) YAML into any `execution_properties` value even when the source prompt also showed flat YAML.
 
+**MANDATORY CONTAINERS COLUMN CHECK**: Before finalizing any `Octopus.Action.KubernetesContainers.CustomResourceYaml` value for a Deployment resource, count the leading spaces on the `containers:` key:
+- In a standard Deployment (kind: Deployment), `containers:` must be at **6 spaces** (`spec.template.spec.containers` = depth 3, in a `<<-EOT` heredoc where each line has 2 extra spaces from the heredoc indent, the actual Kubernetes indent is 4 spaces but Terraform adds 2 leading spaces making it `      containers:`)
+- **The simplest check**: does the `containers:` line start at column 0 (no leading spaces)? If YES, the YAML is FLAT and WRONG. You MUST re-indent or replace with a TODO placeholder.
+- A `containers:` line at column 0 indicates that the entire pod-spec is flat. This is always wrong for a Deployment and must be corrected before outputting.
+- If you cannot correctly re-indent a flat Deployment+HPA or any multi-document manifest, replace it with `# TODO: replace with correctly indented manifest` and set `is_disabled = true` on the step.
+
 **CRITICAL — flat YAML re-indentation algorithm**: When the prompt provides flat YAML and you must reconstruct the correct indentation, use the following depth-tracking approach:
 1. Parse the flat keys by their Kubernetes schema knowledge. For a Deployment, `apiVersion`, `kind`, `metadata`, `spec` are at depth 0 (column 0). Keys inside `metadata` (`name`, `namespace`, `labels`, `annotations`) are at depth 1 (2 spaces). Keys inside `spec` are at depth 1 (2 spaces), unless they are inside `template` (depth 2, 4 spaces) or deeper.
-2. For lists (`containers`, `env`, `envFrom`, `volumeMounts`, `imagePullSecrets`, `ports`), the list key itself is at its schema depth, the `-` marker appears at the same column as the list key, and the child fields of each list item appear at 2 spaces deeper than the `-`.
+2. For lists (`containers`, `env`, `envFrom`, `volumeMounts`, `imagePullSecrets`, `ports`, `tolerations`, `volumes`), the list key itself is at its schema depth, the `-` marker appears at the same column as the list key, and the child fields of each list item appear at 2 spaces deeper than the `-`.
 3. Always verify: does each key appear at a deeper column than its parent key? If not, it is wrong.
+
+**Extended Deployment YAML depth table** (including complex pod-spec fields):
+* `apiVersion`, `kind`, `metadata`, `spec` → depth 0, column 0
+* `metadata.name`, `metadata.namespace`, `metadata.labels` → depth 1, 2 spaces
+* `spec.replicas`, `spec.selector`, `spec.template` → depth 1, 2 spaces
+* `spec.template.metadata`, `spec.template.spec` → depth 2, 4 spaces
+* `spec.template.spec.containers` (list key) → depth 3, 6 spaces
+* `spec.template.spec.containers[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.containers[0].name`, `.image`, `.env`, `.envFrom`, `.volumeMounts`, `.resources`, `.ports`, `.livenessProbe`, `.readinessProbe` → depth 4, 8 spaces
+* `spec.template.spec.containers[0].env[-]` (dash) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].env[0].name`, `.value` → depth 5, 10 spaces
+* `spec.template.spec.containers[0].envFrom[-]` (dash) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].envFrom[0].secretRef`, `.configMapRef` → depth 5, 10 spaces
+* `spec.template.spec.containers[0].envFrom[0].secretRef.name` → depth 6, 12 spaces
+* `spec.template.spec.containers[0].volumeMounts[-]` (dash) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].volumeMounts[0].name`, `.mountPath`, `.subPath` → depth 5, 10 spaces
+* `spec.template.spec.tolerations` (list key) → depth 3, 6 spaces
+* `spec.template.spec.tolerations[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.tolerations[0].key`, `.operator`, `.effect`, `.tolerationSeconds` → depth 4, 8 spaces
+* `spec.template.spec.nodeSelector` → depth 3, 6 spaces
+* `spec.template.spec.nodeSelector.cloud.google.com/gke-nodepool` → depth 4, 8 spaces
+* `spec.template.spec.imagePullSecrets` (list key) → depth 3, 6 spaces
+* `spec.template.spec.imagePullSecrets[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.imagePullSecrets[0].name` → depth 4, 8 spaces
+* `spec.template.spec.volumes` (list key) → depth 3, 6 spaces
+* `spec.template.spec.volumes[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.volumes[0].name`, `.secret`, `.configMap` → depth 4, 8 spaces
+* `spec.template.spec.volumes[0].secret.secretName` → depth 5, 10 spaces
+
+**Example — reconstructing a flat Deployment with tolerations, nodeSelector, and imagePullSecrets**:
+
+If the prompt says (flat YAML from conversion step):
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: worker
+namespace: app-0117-dev
+spec:
+replicas: 2
+template:
+spec:
+containers:
+- name: worker
+image: registry.example.invalid/image-0250
+envFrom:
+- secretRef:
+name: worker-secrets
+resources:
+requests:
+cpu: "100m"
+memory: "128Mi"
+limits:
+cpu: "500m"
+memory: "512Mi"
+volumeMounts:
+- name: config-volume
+mountPath: /config
+tolerations:
+- key: dedicated
+operator: Equal
+value: worker
+effect: NoSchedule
+nodeSelector:
+cloud.google.com/gke-nodepool: worker-pool
+imagePullSecrets:
+- name: registry-creds
+volumes:
+- name: config-volume
+configMap:
+name: worker-config
+```
+
+The **CORRECT** Terraform value re-indents each key based on schema depth:
+```hcl
+"Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: worker
+    namespace: app-0117-dev
+  spec:
+    replicas: 2
+    template:
+      spec:
+        containers:
+          - name: worker
+            image: registry.example.invalid/image-0250
+            envFrom:
+              - secretRef:
+                  name: worker-secrets
+            resources:
+              requests:
+                cpu: "100m"
+                memory: "128Mi"
+              limits:
+                cpu: "500m"
+                memory: "512Mi"
+            volumeMounts:
+              - name: config-volume
+                mountPath: /config
+        tolerations:
+          - key: dedicated
+            operator: Equal
+            value: worker
+            effect: NoSchedule
+        nodeSelector:
+          cloud.google.com/gke-nodepool: worker-pool
+        imagePullSecrets:
+          - name: registry-creds
+        volumes:
+          - name: config-volume
+            configMap:
+              name: worker-config
+  EOT
+```
+
+Note: `tolerations`, `nodeSelector`, `imagePullSecrets`, and `volumes` are direct children of `spec.template.spec`, NOT of the container. They sit at depth 3 (6 spaces) alongside `containers`.
 
 **CronJob YAML re-indentation**: CronJob has an extra `jobTemplate` nesting level compared to Deployment. The key depths are:
 * `apiVersion`, `kind`, `metadata`, `spec` → depth 0, column 0
@@ -1537,6 +1691,17 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
   * When the prompt says `Always run the step.` for a step, set `condition = "Always"` on that step.
   * When neither phrase is present (default), set `condition = "Success"` on that step.
   * This mapping applies to both `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources.
+
+**Quick reference — condition value mapping table**:
+
+| Prompt phrase | `condition` value |
+|---|---|
+| `Only run the step when the previous step has failed.` | `"Failure"` |
+| `Always run the step.` | `"Always"` |
+| *(no condition phrase)* | `"Success"` ← default |
+| `Set condition to "Variable"` with expression | `"Variable"` |
+
+**MANDATORY SELF-CHECK — after generating all step resources, verify completeness of `octopusdeploy_process_steps_order`**: Before finalizing any Terraform output, scan every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource you created. For EACH such resource, confirm its ID appears in the `steps` array of the corresponding `octopusdeploy_process_steps_order` resource. If any step resource is missing from the steps order array, add it immediately. This applies to ALL steps including disabled steps, parallel steps, and notification steps. A step resource that exists in Terraform but does not appear in `octopusdeploy_process_steps_order` will not execute at deployment time.
 * When the "condition"attribute is set to "Variable", the "properties" block must include the "Octopus.Step.ConditionVariableExpression" property.
 * You will be penalized for setting the "condition" attribute to "Variable" without defining the "Octopus.Step.ConditionVariableExpression" property in the "properties" block.
 * Adding a step requires a new "octopusdeploy_process_step" resource to be defined and then added to the "octopusdeploy_process_steps_order" resource in the "steps" array. For example, if this is the initial set of steps:

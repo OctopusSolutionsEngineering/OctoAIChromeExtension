@@ -12,6 +12,8 @@
 
 **ABSOLUTE RULE — for multi-document manifests (3 or more Kubernetes resources separated by `---`), you MUST ALWAYS replace the entire multi-document block with a single TODO placeholder comment.** Do NOT attempt to output the manifests inline, regardless of whether you believe the indentation is correct. Multi-document manifests are too large and complex to serialize reliably in this context. A multi-document YAML block where even ONE document uses flat (column-0) indentation is ENTIRELY INVALID. Use: `# TODO: replace with correctly indented multi-document manifest serialized from the cached Spinnaker manifests array`. It is far better to produce a placeholder that engineers can fill in than to produce malformed YAML that will fail at deployment time. **When this TODO placeholder is used, you MUST also add `The step must be disabled.` to the step prompt.** A TODO YAML placeholder is not valid Kubernetes YAML and will fail at deployment time if the step is enabled.
 
+**ABSOLUTE RULE — for 2-document manifests where EITHER document contains complex nested structures (any of: `containers`, `env`, `envFrom`, `volumeMounts`, `tolerations`, `nodeSelector`, `imagePullSecrets`, `volumes`, `livenessProbe`, `readinessProbe`, `metrics`, `scaleTargetRef`), you MUST ALSO replace the entire block with a TODO placeholder comment.** A 2-document YAML with deeply nested content (such as a Deployment with pod-spec fields paired with an HPA or Service) is equally unreliable to serialize inline. Use: `# TODO: replace with correctly indented multi-document manifest serialized from the cached Spinnaker manifests array`. You MUST also add `The step must be disabled.` to the step prompt. The only exception is when both documents are simple (e.g., a ConfigMap with flat key-value pairs paired with a Service with only `metadata` and `spec.selector`) — in that case, attempt inline serialization with careful indentation verification.
+
 **ABSOLUTE RULE — pipeline `name` fields and stage `name` fields are resource identifiers, NEVER secrets, and MUST NEVER be redacted.** The pipeline's top-level `name` property (e.g., `"[PROD] api-syncer canary"`, `"deploy-to-prod"`, `"run-job-load-service-cr-tag"`) and every stage's `name` property (e.g., `"Deploy api-syncer"`, `"Delete api-sync-job"`, `"Scale Down Canary"`) are deployment resource identifiers. Words such as `api`, `key`, `token`, `service`, `auth`, `credential`, and similar terms that appear in these name fields are part of service and component names — they are NOT secrets, API keys, or credentials. NEVER replace ANY portion of a pipeline name or stage name with `*****` or any other anonymization placeholder unless the source JSON already contains `*****` at that exact location.
 
 **CRITICAL — the Spinnaker pipeline JSON provided to you has ALREADY been pre-anonymized.** Actual secrets such as the Kubernetes cluster name and repository owner have been replaced with specific placeholders like `<redacted-cluster>`, `<redacted-owner>`, and `<redacted-secret-name>`. All other values — including service names like `api-syncer`, `bq-syncer`, `publisher`, `server`, `auth-service`, `key-manager` — are intentionally preserved and are safe to use verbatim. Do NOT apply additional redaction to any value that was not already anonymized in the source JSON with a `<redacted-*>` placeholder.
@@ -701,6 +703,7 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * **CRITICAL — when the multi-document TODO placeholder rule applies AND a `manifestURL` helper variable is available**, prefer the GCS URL from the helper variable over a generic TODO placeholder. Instead of `# TODO: replace with correctly indented multi-document manifest serialized from the cached Spinnaker manifests array`, use `# TODO: replace with manifest downloaded from <manifestURL>` (substituting the concrete GCS path). This gives engineers a specific URL to retrieve the manifest from, making the placeholder more actionable. The step must still be disabled.
 * **CRITICAL — when the resolved manifest URL helper variable has the string literal value `"null"` (or a JSON null)**, the stage's manifest URL is not configured in this template instance. In that case: set the YAML Source to "Inline YAML", set the YAML content to `# TODO: manifest URL not configured — set variable to a valid GCS or GitHub path`, set the step description to "The manifest URL for this stage is not configured in this pipeline template instance (variable resolved to null). Configure the manifest URL variable and update the YAML source before deploying.", and **add `The step must be disabled.`** to the step prompt. Do NOT write "loaded from Google Cloud Storage at null" — the word "null" is not a valid GCS path.
 * For each key-value pair in `variables`, all values must be converted to quoted strings in the output, including booleans (e.g., `true` → `"true"`, `false` → `"false"`) and numbers (e.g., `3` → `"3"`).
+* **CRITICAL — when a `variables` entry has a JSON `null` value or the literal string value `"null"`, output the variable with the string value `"null"`.** Do NOT skip or omit variables with null values — they are still configuration entries that engineers need to review and configure. For example, `"canaryProdManifestURL": null` becomes `* Add a project variable called "canaryProdManifestURL" with the value "null".` This preserves all template variable slots in the Octopus project so engineers know which variables need to be configured.
 * This is an example of the prompt added to the project to define a project variable.
 * Replace `<variable name>` with the name of the variable and `<variable value>` with the string value of the variable:
 
@@ -1588,6 +1591,13 @@ Some `deployManifest` stages do not use `manifestArtifactId` to reference an ent
                 - name: <redacted-secret-name>
     ```
     * **ABSOLUTE RULE — after writing the YAML block, visually verify that every nested key is indented deeper than its parent and that every list item is indented under its list key.** If any nested key such as `metadata.name`, `spec.concurrencyPolicy`, `jobTemplate.spec`, `containers`, `envFrom`, or `imagePullSecrets` appears at the same indentation level as its parent key, the YAML is wrong and must be rewritten before finalizing the output.
+
+    * **MANDATORY COLUMN CHECK — for Deployment manifests, verify these exact column positions before finalizing**: After writing any Deployment manifest YAML, count the number of leading spaces on these specific keys and confirm they match the expected columns:
+      - `containers:` key must be at column 10 (10 leading spaces) — if it's at column 0, the YAML is flat and WRONG
+      - `- name:` (container list item) must be at column 10 (same as `containers`)
+      - `image:` inside a container must be at column 12 (12 leading spaces)
+      - If `containers:` appears at column 0, you MUST either rewrite the YAML with correct indentation OR replace the block with `# TODO: replace with correctly indented manifest` and add `The step must be disabled.`
+      - This check is MANDATORY and MUST be performed before outputting any inline Deployment YAML.
   * **Negative example — Deployment manifest with `envFrom.secretRef.name` flattened and redacted (FORBIDDEN)**:
 
     Given a stage with a `manifests` array containing:
@@ -4322,6 +4332,15 @@ Create a project called "Deploy api-server to org-0003-2g-prod-tokyo-01" in the 
 3. Mark the FIRST stage in each group (by JSON order) as the group leader. ALL other stages in the group (second, third, etc.) MUST get `Set the start trigger to "Run in parallel with the previous step"`.
 4. Verify your group map is complete: for example, if stages at JSON positions 2, 3, and 16 all have `"requisiteStageRefIds": ["1"]`, all three belong to the SAME parallel group — the stage at position 16 is NOT in a separate group.
 
+**MANDATORY POST-GENERATION PARALLEL ANNOTATION SELF-CHECK**: After producing ALL step prompts, perform this mandatory verification before finalizing output:
+1. List every stage in the pipeline with `"requisiteStageRefIds": []` (empty array). These all belong to the ROOT parallel group.
+2. Identify the first stage in this list (by JSON order) — this is the root group leader, which must NOT have any start-trigger annotation.
+3. For every OTHER stage in this list (2nd, 3rd, etc.), confirm that its corresponding step prompt contains the phrase `Set the start trigger to "Run in parallel with the previous step"`. If any such stage is missing this annotation, add it immediately — even if the stage is disabled (disabled stages in parallel groups still get the annotation).
+4. Repeat the same verification for every non-root parallel group: for each unique non-empty `requisiteStageRefIds` value that appears 2+ times, confirm that all members EXCEPT the first have the parallel annotation.
+5. If any parallel annotation is missing, correct it before outputting.
+
+**WHY THIS MATTERS**: A disabled stage (e.g., `"stageEnabled": {"expression": false}`) in the ROOT group still participates in parallel execution layout. If stages A and B both have `"requisiteStageRefIds": []` and B is disabled, B's step prompt MUST still contain BOTH `The step must be disabled.` AND `Set the start trigger to "Run in parallel with the previous step"`. Omitting the parallel annotation for a disabled root-group member is a critical error that will cause the Octopus deployment process to run steps sequentially instead of in parallel when the step is re-enabled.
+
 **Negative example — scattered parallel group member missed (CRITICAL MISTAKE)**:
 Given stages: refId 2 (`requisiteStageRefIds: ["1"]`, JSON pos 2), refId 3 (`requisiteStageRefIds: ["1"]`, JSON pos 3), refId 18 (`requisiteStageRefIds: ["1"]`, JSON pos 16):
 ```
@@ -4336,5 +4355,13 @@ CORRECT: generate 2 as first in group, 3 as parallel (StartWithPrevious), 18 as 
 4. Only AFTER completing steps 1–3, begin writing your output.
 
 This step is not optional — it ensures the project name and all step names are recorded before any text is generated, preventing accidental replacement of identifier words like `api`, `auth`, `key`, `token`, or `service` with `*****`.
+
+**MANDATORY STAGE COMPLETENESS CHECK**: After producing all step prompts, perform this mandatory completeness verification before finalizing your output:
+1. List every `refId` from every item in `"stages"` that is NOT a skipped stage type (`checkPreconditions`, `evaluateVariables`, `findImage`, `findImageFromTags`, `tagImage`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `pipeline`).
+2. For each remaining refId, confirm that a corresponding step prompt was generated in your output (either as a deployment step, a wait step, a manual judgment step, a kubectl step, or a disabled TODO step).
+3. If any stage's refId has no corresponding step in the output, add the missing step. A stage is NEVER silently dropped merely because it is disabled or complex.
+4. Notification steps (Slack notifications) are NOT derived from `stages` array items — they come from the `notifications` array. Do NOT expect one step per notification array item; instead, verify that notification steps appear in the correct position (before/after deployment steps) as described in the notification rules.
+
+This check prevents accidentally stopping output after the first stage or after a complex stage type is encountered.
 
 Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy.
