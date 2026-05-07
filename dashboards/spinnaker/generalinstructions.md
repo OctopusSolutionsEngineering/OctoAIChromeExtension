@@ -22,16 +22,16 @@ name = "[PROD] ***** canary"   ← WRONG: "api-syncer" from the prompt was repla
 name = "[PROD] api-syncer canary"   ← CORRECT: verbatim project name from the prompt
 ```
 
-**CRITICAL — step notes (descriptions) must also reproduce any service names verbatim**: When a step description says `"Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/api-syncer to the previous revision in namespace app-0004-prod."`, the value of the `notes` attribute MUST be reproduced verbatim — including the service name `api-syncer`. Never replace any part of a step description with `*****`.
+**CRITICAL — step notes (descriptions) must also reproduce any service names verbatim**: When a step description says `"Original stage type: undoRolloutManifest. This step rolls back deployment/api-syncer to the previous revision in namespace app-0004-prod."`, the value of the `notes` attribute MUST be reproduced verbatim — including the service name `api-syncer`. Never replace any part of a step description with `*****`.
 
 **Negative example — step notes incorrectly redacted (FORBIDDEN)**:
 ```hcl
-notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/***** to the previous revision in namespace app-0004-prod."
+notes = "Original stage type: undoRolloutManifest. This step rolls back deployment/***** to the previous revision in namespace app-0004-prod."
 ← WRONG: "api-syncer" in the notes was replaced with "*****"
 ```
 **Correct output**:
 ```hcl
-notes = "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/api-syncer to the previous revision in namespace app-0004-prod."
+notes = "Original stage type: undoRolloutManifest. This step rolls back deployment/api-syncer to the previous revision in namespace app-0004-prod."
 ← CORRECT: verbatim reproduction of the step description
 ```
 
@@ -514,10 +514,10 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * You will be penalized for placing the `notes` attribute inside `execution_properties` — `notes` is a top-level attribute of the `octopusdeploy_process_step` resource.
 * **CRITICAL — never add backslash-escaping to GCS paths or other URLs in step descriptions.** When a step description contains a GCS path like `gs://example-bucket/path/to/file.yaml`, reproduce it verbatim in the `notes` string without adding backslashes or extra quotation marks around the URL. For example, `notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."` — NOT `notes = "... at \"gs://example-bucket/path\"."`.
 * **CRITICAL — `NOTE (migration):` text must be preserved verbatim**: When a step description includes text of the form `NOTE (migration): ...`, this text MUST appear verbatim in the `notes` attribute. Do NOT drop, summarize, or rephrase migration notes. These notes communicate important information about conditional branching or preconditions that were lost during migration. For example, if the prompt says `Set the step description to "...; NOTE (migration): This step was originally on the SUCCESS branch after \"Manual Judgment\". In this migration, both branches now run in parallel."`, the `notes` value MUST include the full NOTE (migration) sentence.
-* **CRITICAL — `NOTE (migration):` text for rollback/rejection branches must be preserved verbatim**: When a prompt description for an `undoRolloutManifest` step includes `NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually.`, this ENTIRE sentence MUST appear verbatim in the `notes` attribute. Do NOT drop this note, do NOT shorten it, and do NOT replace it with a generic migration note. This note is critical for engineers to understand that a rollback step running in parallel with a deploy step was originally a conditional branch that only ran on the NO/rejection path of a manual judgment.
-* **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` must be preserved verbatim**: When a `manualJudgment` stage had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit or shorten the timeout note.
+* **CRITICAL — `NOTE (migration):` text for rollback/rejection branches must be preserved verbatim**: When a prompt description for an `undoRolloutManifest` step includes `NOTE (migration): This step was originally on the rollback/rejection branch of a pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually.`, this ENTIRE sentence MUST appear verbatim in the `notes` attribute. Do NOT drop this note, do NOT shorten it, and do NOT replace it with a generic migration note. This note is critical for engineers to understand that a rollback step running in parallel with a deploy step was originally a conditional branch that only ran on the NO/rejection path of a manual judgment.
+* **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` must be preserved verbatim**: When a `manualJudgment` stage had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit or shorten the timeout note.
 
-* **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` on non-`manualJudgment` stages must also be preserved verbatim**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`) had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute. Never omit or shorten this migration note even for non-manualJudgment steps.
+* **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` on non-`manualJudgment` stages must also be preserved verbatim**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`) had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute. Never omit or shorten this migration note even for non-manualJudgment steps.
 **Negative example — GCS URL with incorrect backslash escaping in notes (FORBIDDEN)**:
 ```hcl
 notes = "This step originally loaded its manifest from Google Cloud Storage at \"gs://example-bucket/storage-3209\". The manifest must be inlined."
@@ -557,13 +557,13 @@ resource "octopusdeploy_process_step" "process_step_deploy_staging" {
 ## Wait Steps (Script Steps with Start-Sleep)
 
 * A `wait` stage converted to `Start-Sleep -Seconds <N>` must be implemented as an `octopusdeploy_process_step` of type `"Octopus.Script"` with `execution_properties` containing `"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds <N>"`, `"Octopus.Action.Script.Syntax" = "PowerShell"`, and `"Octopus.Action.Script.ScriptSource" = "Inline"`.
-* The step name must match the dash-replaced form from the prompt (e.g., `"Wait -15min-"`) — parentheses in the original Spinnaker stage name have been replaced with dashes.
+* The step name must match the dash-replaced form from the prompt (e.g., `"Wait -15min-"`) — parentheses in the original stage name have been replaced with dashes.
 * You will be penalized for using a type other than `"Octopus.Script"` for wait steps.
 
 ## "Review Template-Derived Pipeline Behavior" Script Step
 
 * When the prompt includes `Add a "Run a Script" step with the name "Review template-derived pipeline behavior"`, create an `octopusdeploy_process_step` resource of type `"Octopus.Script"` with `execution_properties` containing:
-  * `"Octopus.Action.Script.ScriptBody"` — the inline PowerShell comment from the prompt (e.g., `# TODO: expand the Spinnaker pipeline template "spinnaker://basic-gcs" using the templatedPipeline variables before considering this conversion complete.`)
+  * `"Octopus.Action.Script.ScriptBody"` — the inline PowerShell comment from the prompt (e.g., `# TODO: expand the pipeline template "pipeline://basic-gcs" using the templatedPipeline variables before considering this conversion complete.`)
   * `"Octopus.Action.Script.Syntax" = "PowerShell"`
   * `"Octopus.Action.Script.ScriptSource" = "Inline"`
 * This step does NOT require a `properties` block with `Octopus.Action.TargetRoles` — it runs on the server, not on a Kubernetes target.
@@ -583,7 +583,7 @@ resource "octopusdeploy_process_step" "process_step_review_template_derived_pipe
     "Octopus.Action.RunOnServer"         = "true"
     "Octopus.Action.Script.ScriptSource" = "Inline"
     "Octopus.Action.Script.Syntax"       = "PowerShell"
-    "Octopus.Action.Script.ScriptBody"   = "# TODO: expand the Spinnaker pipeline template \"spinnaker://basic-gcs\" using the templatedPipeline variables before considering this conversion complete."
+    "Octopus.Action.Script.ScriptBody"   = "# TODO: expand the pipeline template \"pipeline://basic-gcs\" using the templatedPipeline variables before considering this conversion complete."
   }
 }
 ```
@@ -595,15 +595,15 @@ When a step receives MULTIPLE description fragments from the prompt (e.g., an or
 For example, if the prompt says:
 ```
 * Set the step name to "Review -Approval-".
-* Set the step description to "Original Spinnaker stage name: Review and Approval."
-* Append to the step description: "NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required."
+* Set the step description to "Original stage name: Review and Approval."
+* Append to the step description: "NOTE (migration): The original stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required."
 ```
 
 The **WRONG** output includes only the first fragment:
 ```hcl
 resource "octopusdeploy_process_step" "process_step_review_approval" {
   name  = "Review -Approval-"
-  notes = "Original Spinnaker stage name: Review and Approval."   # WRONG: second fragment dropped
+  notes = "Original stage name: Review and Approval."   # WRONG: second fragment dropped
   ...
 }
 ```
@@ -612,14 +612,14 @@ The **CORRECT** output concatenates all fragments in order, separated by a space
 ```hcl
 resource "octopusdeploy_process_step" "process_step_review_approval" {
   name  = "Review -Approval-"
-  notes = "Original Spinnaker stage name: Review and Approval. NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required."
+  notes = "Original stage name: Review and Approval. NOTE (migration): The original stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required."
   ...
 }
 ```
 
 ## kubectl Script Steps (KubernetesRunScript)
 
-* Steps of type `"Octopus.KubernetesRunScript"` (generated from Spinnaker `deleteManifest`, `scaleManifest`, and `undoRolloutManifest` stages) MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. These steps run `kubectl` commands on Linux Kubernetes workers where Bash is the idiomatic shell.
+* Steps of type `"Octopus.KubernetesRunScript"` (generated from `deleteManifest`, `scaleManifest`, and `undoRolloutManifest` stage types) MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. These steps run `kubectl` commands on Linux Kubernetes workers where Bash is the idiomatic shell.
 * You will be penalized for using `"Octopus.Action.Script.Syntax" = "PowerShell"` on an `"Octopus.KubernetesRunScript"` step.
 * The `execution_properties` for an `"Octopus.KubernetesRunScript"` step must include:
   * `"Octopus.Action.RunOnServer" = "true"`
@@ -652,7 +652,7 @@ resource "octopusdeploy_process_step" "process_step_rollback_internal" {
   type                 = "Octopus.KubernetesRunScript"   ← CORRECT
   process_id           = octopusdeploy_process.process_myproject[0].id
   condition            = "Success"
-  notes                = "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod."
+  notes                = "Original stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod."
   package_requirement  = "LetOctopusDecide"
   start_trigger        = "StartAfterPrevious"
   properties           = {
@@ -677,7 +677,7 @@ resource "octopusdeploy_process_step" "process_step_delete_manifest" {
   type                  = "Octopus.KubernetesRunScript"
   process_id            = octopusdeploy_process.process_myproject[0].id
   condition             = "Success"
-  notes                 = "Original Spinnaker stage name: Delete (Manifest)"
+  notes                 = "Original stage name: Delete (Manifest)"
   package_requirement   = "LetOctopusDecide"
   start_trigger         = "StartAfterPrevious"
   properties            = {
@@ -694,7 +694,7 @@ resource "octopusdeploy_process_step" "process_step_delete_manifest" {
 }
 ```
 
-* A `Octopus.KubernetesRunScript` step must NOT include a `container` block unless the prompt explicitly requests a specific container image. Spinnaker `deleteManifest` and `scaleManifest` stages run kubectl using the worker's native environment, not a containerized image.
+* A `Octopus.KubernetesRunScript` step must NOT include a `container` block unless the prompt explicitly requests a specific container image. `deleteManifest` and `scaleManifest` stage types run kubectl using the worker's native environment, not a containerized image.
 * When the prompt specifies a Kubernetes namespace in the step (e.g., `Set the step namespace to "my-namespace"`), set `"Octopus.Action.KubernetesContainers.Namespace" = "my-namespace"` in `execution_properties`. When no namespace is specified, omit this property entirely — do NOT set it to an empty string or null.
 * You will be penalized for adding a `container` block to an `Octopus.KubernetesRunScript` step when the prompt does not explicitly request one.
 
@@ -1594,7 +1594,7 @@ resource "octopusdeploy_external_feed_create_release_trigger" "example" {
 * When that regex-based channel rule applies to steps that expose package metadata, add one `action_package` block per matching deployment action. **CRITICAL — if the matching steps are `Octopus.KubernetesDeployRawYaml` steps without `primary_package` or `packages` blocks, you MUST create the channel WITHOUT any `rule` block.** The Octopus API rejects `rule` blocks that have no `action_package` entries with the error "Version rules must specify a package step". Since `KubernetesDeployRawYaml` steps have no package references, do NOT add any `rule` block to the channel — create the channel as a bare named channel with no version rules. Do not drop the channel entirely.
 * If the prompt specifies both a regex-based `Application` channel and an external feed trigger, the `octopusdeploy_external_feed_create_release_trigger` resource must reference that regex-based channel instead of creating or linking to a second bare `Application` channel.
 * If the prompt specifies an external feed trigger for a project whose deployment steps are `Octopus.KubernetesDeployRawYaml` steps without a `primary_package` or `packages` block, create the `octopusdeploy_external_feed_create_release_trigger` resource without a `package` block. Do not drop the trigger merely because the referenced deployment step has no package metadata.
-* **CRITICAL — when the prompt says the external feed trigger must be disabled**, set `is_disabled = true` on the `octopusdeploy_external_feed_create_release_trigger` resource. The prompt will say something like `"The trigger must be disabled."` for migrated Spinnaker pipelines with Docker triggers that were originally disabled. You will be penalized for omitting `is_disabled = true` when the prompt explicitly disables the trigger.
+* **CRITICAL — when the prompt says the external feed trigger must be disabled**, set `is_disabled = true` on the `octopusdeploy_external_feed_create_release_trigger` resource. The prompt will say something like `"The trigger must be disabled."` for migrated pipelines with Docker triggers that were originally disabled. You will be penalized for omitting `is_disabled = true` when the prompt explicitly disables the trigger.
 
 **Negative example — disabled trigger without `is_disabled = true` (COMMON MISTAKE)**:
 ```hcl
@@ -1923,12 +1923,12 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
 
 ## Octopus Deployment Process Instructions
 
-* **CRITICAL — Spinnaker SpEL parameter references in script bodies must be converted to Octopus variable syntax**: Inline script bodies (in `Octopus.Action.Script.ScriptBody` or kubectl commands) generated from Spinnaker `deleteManifest`, `scaleManifest`, or `runJob` stages may contain Spinnaker Spring Expression Language (SpEL) expressions that reference pipeline parameters, such as `${ parameters.model_version }`. These expressions use the `${ }` syntax which does NOT evaluate in Octopus Deploy. You MUST convert them to Octopus variable syntax: replace `${ parameters.<name> }` with `#{<name>}`. For example:
+* **CRITICAL — source system parameter references in script bodies must be converted to Octopus variable syntax**: Inline script bodies (in `Octopus.Action.Script.ScriptBody` or kubectl commands) generated from `deleteManifest`, `scaleManifest`, or `runJob` stage types may contain Spring Expression Language (SpEL) expressions that reference pipeline parameters, such as `${ parameters.model_version }`. These expressions use the `${ }` syntax which does NOT evaluate in Octopus Deploy. You MUST convert them to Octopus variable syntax: replace `${ parameters.<name> }` with `#{<name>}`. For example:
   * `${ parameters.model_version }` → `#{model_version}`
   * `${ parameters.namespace }` → `#{namespace}`
-  This conversion ensures the script uses the correct Octopus variable reference at runtime. If the script contains any such converted references, add a comment at the top of the script or in the step notes: `# NOTE: Spinnaker SpEL parameter references have been converted to Octopus variable syntax (#{variable_name}).`
+  This conversion ensures the script uses the correct Octopus variable reference at runtime. If the script contains any such converted references, add a comment at the top of the script or in the step notes: `# NOTE: Source system parameter references have been converted to Octopus variable syntax (#{variable_name}).`
 
-* **CRITICAL — Spinnaker SpEL expressions in Terraform string values must escape the `$` character**: When a Terraform string value (e.g., in `parameters`, `notes`, or `execution_properties`) must contain a Spinnaker SpEL expression verbatim (because it could not be converted to Octopus variable syntax), the `$` character MUST be escaped as `$$` to prevent Terraform from treating it as a string interpolation sequence. For example, if the prompt contains the notification message text `${execution.name} has started.` and this text cannot be converted, the Terraform string must be `"$${execution.name} has started."`. Do NOT emit `"${execution.name} has started."` as Terraform will attempt to evaluate the expression and produce an error. Where the prompt provides already-converted Octopus variable syntax (e.g., `#{Octopus.Release.Number}`), no escaping is needed — only `${}` patterns require `$$`.
+* **CRITICAL — SpEL expressions in Terraform string values must escape the `$` character**: When a Terraform string value (e.g., in `parameters`, `notes`, or `execution_properties`) must contain a SpEL expression verbatim (because it could not be converted to Octopus variable syntax), the `$` character MUST be escaped as `$$` to prevent Terraform from treating it as a string interpolation sequence. For example, if the prompt contains the notification message text `${execution.name} has started.` and this text cannot be converted, the Terraform string must be `"$${execution.name} has started."`. Do NOT emit `"${execution.name} has started."` as Terraform will attempt to evaluate the expression and produce an error. Where the prompt provides already-converted Octopus variable syntax (e.g., `#{Octopus.Release.Number}`), no escaping is needed — only `${}` patterns require `$$`.
 
 * You must consider the attributes in the "execution_properties" block and the "properties" block of the example steps to be mandatory, unless otherwise specified (the properties on script steps that define inline scripts or those sourced from packages is an example where example properties should not be considered mandatory).
 * Every "octopusdeploy_project" resource must have an associated "octopusdeploy_process" resource.
@@ -1938,7 +1938,7 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
 * Steps are defined in the "octopusdeploy_process_step" and "octopusdeploy_process_child_step" resources.
 * The order of the steps are defined in the "octopusdeploy_process_steps_order" resource.
 * The order of child steps are defined in the "octopusdeploy_process_child_steps_order" resource.
-* If the prompt indicates that a Spinnaker stage was skipped because it was hard-disabled, do not create any placeholder step resource for it and do not include it in the "octopusdeploy_process_steps_order" resource.
+* If the prompt indicates that a stage was skipped because it was hard-disabled, do not create any placeholder step resource for it and do not include it in the "octopusdeploy_process_steps_order" resource.
 * When a skipped or ignored stage is removed from the dependency graph, the Terraform step order must reflect the rewritten dependency chain from the prompt. Do not preserve an order that still assumes the skipped stage exists.
 * You will be penalized for using asterisks, for example "*****", as placeholders in step properties.
 * The "Octopus.Step.ConditionVariableExpression" property can only be defined in the "properties" block.
@@ -2558,8 +2558,8 @@ packages = {
 * Steps of type "Octopus.Manual" must have a "Octopus.Action.Manual.Instructions" property in the "execution_properties" block.
 * Steps of type "Octopus.Manual" must set `"Octopus.Action.RunOnServer" = "true"` in the `execution_properties` block.
 * You will be penalized for defining the "Octopus.Step.Manual.Instructions" property in the "execution_properties" block.
-* When the prompt defines manual-intervention instructions, the value of "Octopus.Action.Manual.Instructions" must preserve the prompt text exactly. Do not rewrite `${ ... }` Spinnaker expressions into Octopus `#{...}` syntax, do not normalize punctuation, and do not strip or replace Unicode characters.
-* If the prompt appends a NOTE explaining that the instructions contain Spinnaker expressions, include that NOTE verbatim at the end of the same "Octopus.Action.Manual.Instructions" string. Do not "fix" the embedded expression text.
+* When the prompt defines manual-intervention instructions, the value of "Octopus.Action.Manual.Instructions" must preserve the prompt text exactly. Do not rewrite `${ ... }` SpEL expressions into Octopus `#{...}` syntax, do not normalize punctuation, and do not strip or replace Unicode characters.
+* If the prompt appends a NOTE explaining that the instructions contain SpEL expressions, include that NOTE verbatim at the end of the same "Octopus.Action.Manual.Instructions" string. Do not "fix" the embedded expression text.
 * You will be penalized for defining a value in the "execution_properties" block with `jsonencode({})` and then ending with a double quote, for example:
 `"Octopus.Action.Azure.ResourceGroupTemplateParameters" = jsonencode({})"`
 * You must define a value in the "execution_properties" block with `jsonencode({})` without ending with a double quote or new line, for example:
@@ -2641,7 +2641,7 @@ resource "octopusdeploy_process_step" "process_step_argo_cd_manifest_update_upda
   * "StartAfterPrevious"
 * The "StartWithPrevious" setting corresponds with the "Run in parallel with the previous step" option in the UI.
 * The "StartAfterPrevious" setting corresponds with the "Wait for all previous steps to complete, then start" option in the UI.
-* **CRITICAL — in fork-without-reconvergence Spinnaker pipelines, the `steps` order in `octopusdeploy_process_steps_order` must reflect the fully-linearized branch sequence**: When the prompt describes a fork-without-reconvergence pattern (parallel group of branch roots followed by Branch A continuation steps, then Branch B continuation steps with a migration NOTE), the `steps` array MUST list all Branch A continuation steps BEFORE the first Branch B continuation step. Do NOT interleave Branch A and Branch B continuation steps. The presence of `start_trigger = "StartAfterPrevious"` on both a Branch A continuation and a Branch B continuation does NOT mean they can be reordered — each step's position in the `steps` array must exactly follow the prompt's instruction order.
+* **CRITICAL — in fork-without-reconvergence pipelines, the `steps` order in `octopusdeploy_process_steps_order` must reflect the fully-linearized branch sequence**: When the prompt describes a fork-without-reconvergence pattern (parallel group of branch roots followed by Branch A continuation steps, then Branch B continuation steps with a migration NOTE), the `steps` array MUST list all Branch A continuation steps BEFORE the first Branch B continuation step. Do NOT interleave Branch A and Branch B continuation steps. The presence of `start_trigger = "StartAfterPrevious"` on both a Branch A continuation and a Branch B continuation does NOT mean they can be reordered — each step's position in the `steps` array must exactly follow the prompt's instruction order.
 * A step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" must define a "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property. If no file name is specified in the prompt, you must set the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property to "custom-resource.yaml".
 * You wll be penalized for defining a step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" and not defining the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property.
 * **ABSOLUTE RULE — `file_path_filters` MUST be set from the "Set the File Paths to" instruction**: When the prompt includes `Set the File Paths to "<path>"` for a "Deploy Kubernetes YAML" step that uses "Files from a Git repository" as its YAML source, you MUST set `file_path_filters = ["<path>"]` in the `git_dependencies` block. Additionally, set `Octopus.Action.KubernetesContainers.CustomResourceYamlFileName = "<path>"` in the `execution_properties` block using the SAME value. Both `file_path_filters` and `CustomResourceYamlFileName` must reflect the exact file path string from the prompt instruction. Leaving `file_path_filters = null` when the prompt specifies a file path means the GitRepository source will not correctly filter to the specified file — this is a deployment-breaking error.
@@ -2712,7 +2712,7 @@ resource "octopusdeploy_process_step" "process_step_my_project_run_job_manifest"
   process_id            = "${octopusdeploy_process.process_my_project.id}"
   is_disabled           = true   # Required because the YAML content is a TODO placeholder
   condition             = "Success"
-  notes                 = "Original Spinnaker stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path."
+  notes                 = "Original stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path."
   properties = {
     "Octopus.Action.TargetRoles" = "Kubernetes"
   }
@@ -2779,8 +2779,8 @@ parameters = {
 Create a project called "Deploy Workers (dev&prod) and Cronjobs (dev&prod)" in the "Default Project Group" project group with no steps.
 * Set the project description to "Deploys all workers except the custom-attribute-backfill worker".
 * Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "us-release".
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-profile worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1626`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy user-profile worker (dev). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1626. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-track worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1627`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage name: Deploy user-track worker (dev). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1627. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-profile worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1626`. Set the target tag to Kubernetes. Set the step description to "Original stage name: Deploy user-profile worker (dev). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1626. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-track worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1627`. Set the target tag to Kubernetes. Set the step description to "Original stage name: Deploy user-track worker (dev). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1627. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
 ```
 
 * You will be penalized for not maintaining the order of the steps as defined in the prompt in the "octopusdeploy_process_steps_order" resource.
@@ -2788,18 +2788,18 @@ Create a project called "Deploy Workers (dev&prod) and Cronjobs (dev&prod)" in t
 * This is an example of an incorrectly escaped value:
 
 ```
-"ssn_Message" = "*Triggered by:* ${ trigger.user }\n*Container image:* ${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
+"ssn_Message" = "*Triggered by:* ${ trigger.user }\n*Container image:* ${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
 ```
 
 * This is an example of a correctly escaped value:
 
 ```
-"ssn_Message" = "*Triggered by:* $${ trigger.user }\n*Container image:* $${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
+"ssn_Message" = "*Triggered by:* $${ trigger.user }\n*Container image:* $${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
 ```
 
-* **CRITICAL — Spinnaker SpEL expressions MUST be escaped in ALL Terraform string values, not just ssn_Message**: Any Terraform property value (including `notes`, `"Octopus.Action.Manual.Instructions"`, and any other `execution_properties` value) that contains `${...}` Spinnaker SpEL syntax must escape the dollar sign as `$${...}`. Failure to do so causes Terraform to attempt to interpolate the expression and produce a Terraform validation error.
+* **CRITICAL — SpEL expressions MUST be escaped in ALL Terraform string values, not just ssn_Message**: Any Terraform property value (including `notes`, `"Octopus.Action.Manual.Instructions"`, and any other `execution_properties` value) that contains `${...}` SpEL syntax must escape the dollar sign as `$${...}`. Failure to do so causes Terraform to attempt to interpolate the expression and produce a Terraform validation error.
 * You will be penalized for generating Terraform where any execution_property value or notes value contains unescaped `${...}` expressions that are not Terraform variables.
-* **CRITICAL — when a prompt instruction contains Spinnaker SpEL expressions that have already been converted to Octopus variable syntax (e.g., `#{Octopus.Release.Number}`), do NOT re-escape them as `$${...}`**. Only apply the `$${...}` escaping to SpEL expressions that remain in `${...}` form. Octopus variable syntax using `#{...}` does not require any escaping in Terraform string values.
+* **CRITICAL — when a prompt instruction contains SpEL expressions that have already been converted to Octopus variable syntax (e.g., `#{Octopus.Release.Number}`), do NOT re-escape them as `$${...}`**. Only apply the `$${...}` escaping to SpEL expressions that remain in `${...}` form. Octopus variable syntax using `#{...}` does not require any escaping in Terraform string values.
 * **CRITICAL — step descriptions with embedded string content**: When a `notes` attribute value is derived from a prompt instruction containing phrases like `at gs://...` or other path/URL references, do NOT add quotation marks around the URL or path inside the Terraform string value. The URL must appear without surrounding quotes in the `notes` string. For example:
   * **WRONG**: `notes = "This step loaded its manifest from Google Cloud Storage at \"gs://my-bucket/path\". The manifest must be inlined."`
   * **CORRECT**: `notes = "This step loaded its manifest from Google Cloud Storage at gs://my-bucket/path. The manifest must be inlined."`
@@ -2840,7 +2840,7 @@ parameters      = [{ default_sensitive_value = null,, display_settings = { "Octo
 * You will be penalized for setting the resource "octopusdeploy_variable" "type" attribute to "Token".
 * When the "is_sensitive" property on a resource "octopusdeploy_variable" is set to "true", the "type" attribute must be set to "Sensitive".
 * When defining the value for a resource "octopusdeploy_variable" with a "type" of "Sensitive", the "sensitive_value" attribute must be set to "CHANGEME", and the "value" attribute must not be defined.
-* **CRITICAL — project variables derived from `templatedPipeline` `variables` entries must always use `type = "String"`**: When the prompt says `Add a project variable called "<name>" with the value "<value>"` and the variable originates from a Spinnaker `templatedPipeline` `variables` object, the Terraform variable resource MUST use `type = "String"` regardless of whether the value looks like a boolean (`"true"`, `"false"`), a number (`"15"`, `"900"`), a URL, or any other non-string type. Do NOT use `type = "Boolean"`, `type = "Integer"`, or any other type — all `templatedPipeline` variable values are stored as strings in Octopus. Exception: if the prompt explicitly says `Add a sensitive project variable`, use `type = "Sensitive"` and `is_sensitive = true` instead.
+* **CRITICAL — project variables derived from `templatedPipeline` `variables` entries must always use `type = "String"`**: When the prompt says `Add a project variable called "<name>" with the value "<value>"` and the variable originates from a `templatedPipeline` `variables` object, the Terraform variable resource MUST use `type = "String"` regardless of whether the value looks like a boolean (`"true"`, `"false"`), a number (`"15"`, `"900"`), a URL, or any other non-string type. Do NOT use `type = "Boolean"`, `type = "Integer"`, or any other type — all `templatedPipeline` variable values are stored as strings in Octopus. Exception: if the prompt explicitly says `Add a sensitive project variable`, use `type = "Sensitive"` and `is_sensitive = true` instead.
 * When the prompt says `Add a sensitive project variable called "<name>" with the description "<description>".`, create a project-scoped `octopusdeploy_variable` resource with `name = "<name>"`, `description = "<description>"`, `type = "Sensitive"`, `is_sensitive = true`, and `sensitive_value = "CHANGEME"`. Do not define a `value` attribute for that variable.
 
 For example, this is a sensitive variable:
@@ -3428,7 +3428,7 @@ git_dependencies {
 * When the prompt says `The variable must not be required.`, set `is_required = false` in the `prompt` block.
 * The `description` attribute in the `prompt` block must match the variable description from the prompt instruction.
 * The `label` attribute in the `prompt` block must match the label from the prompt instruction.
-* **IMPORTANT — when the prompt specifies a label that equals the variable name**: This is the correct behavior when the original Spinnaker `parameterConfig` entry had an empty `label` field — the variable name is used as a fallback label. In Terraform, set `label = "<variable name>"` using the exact variable name string. Do NOT set an empty string for label in this case.
+* **IMPORTANT — when the prompt specifies a label that equals the variable name**: This is the correct behavior when the original `parameterConfig` entry had an empty `label` field — the variable name is used as a fallback label. In Terraform, set `label = "<variable name>"` using the exact variable name string. Do NOT set an empty string for label in this case.
 
 **Example — prompted variable whose label equals the variable name (empty label fallback)**:
 
@@ -3545,7 +3545,7 @@ resource "octopusdeploy_variable" "variable_account_purpose" {
 
 ## Step Description Notes from Runtime Artifact Binding
 
-* When the prompt says `Set the step description to "NOTE: This step originally required the following Docker images to be bound at runtime by Spinnaker: ..."`, the description note MUST be set in the `notes` property of the `octopusdeploy_process_step` resource with the exact verbatim text from the prompt.
+* When the prompt says `Set the step description to "NOTE: This step originally required the following Docker images to be bound at runtime: ..."`, the description note MUST be set in the `notes` property of the `octopusdeploy_process_step` resource with the exact verbatim text from the prompt.
 * If the step already has an `notes` entry for another reason (e.g., the stage name contained special characters), the two description texts must be concatenated, separated by a space, in the same `notes` property.
 * Preserve the comma-separated Docker image list exactly as it appears in the prompt. Do not reorder the images, do not deduplicate them, and do not redact registry names, repositories, tags, or quotes.
 
@@ -3604,9 +3604,9 @@ resource "octopusdeploy_process_step" "process_step_deploy_cronjob_docomo_point_
 
 ## `notes` Attribute Must Reproduce Step Descriptions Verbatim
 
-**CRITICAL — the `notes` attribute must reproduce the step description from the prompt verbatim, including any migration NOTEs about concurrent execution**: When the prompt says `Set the step description to "NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with ..."`, the `notes` value MUST include that text exactly as written. Do NOT omit the migration NOTE or summarize it. Do NOT redact service names, stage names, or namespace values that appear in the description.
+**CRITICAL — the `notes` attribute must reproduce the step description from the prompt verbatim, including any migration NOTEs about concurrent execution**: When the prompt says `Set the step description to "NOTE (migration): In the original pipeline, this step ran concurrently with ..."`, the `notes` value MUST include that text exactly as written. Do NOT omit the migration NOTE or summarize it. Do NOT redact service names, stage names, or namespace values that appear in the description.
 
-**CRITICAL — migration NOTEs from expression-based checkPreconditions stages must be preserved verbatim in the `notes` attribute**: When the prompt includes a step description starting with `NOTE (migration): This step was originally gated by a Spinnaker expression-based checkPreconditions stage...` or `NOTE (migration): This step was originally on a conditional branch controlled by a Spinnaker expression-based checkPreconditions stage...`, the entire NOTE text must appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit, truncate, or paraphrase the expression NOTE.
+**CRITICAL — migration NOTEs from expression-based checkPreconditions stages must be preserved verbatim in the `notes` attribute**: When the prompt includes a step description starting with `NOTE (migration): This step was originally gated by an expression-based checkPreconditions stage...` or `NOTE (migration): This step was originally on a conditional branch controlled by an expression-based checkPreconditions stage...`, the entire NOTE text must appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit, truncate, or paraphrase the expression NOTE.
 
 **CRITICAL — never redact names in `notes` fields**: Service names, stage names, namespace names, Kubernetes resource names, and GCS bucket paths that appear in the step description must all be reproduced verbatim in the `notes` attribute. The presence of words like `api`, `auth`, `key`, `token`, `secret`, `service`, or `credential` in a description does NOT make those words sensitive — they are resource identifiers that must be preserved exactly.
 * Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
