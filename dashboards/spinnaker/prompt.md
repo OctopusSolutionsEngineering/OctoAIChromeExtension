@@ -156,7 +156,42 @@ The following snippet is an example of an artifact in Spinnaker that is expected
 ```
 
 * A feed in Octopus must be created to represent the expected artifact in Spinnaker.
-* When the `matchArtifact.type` property is `docker/image`, a feed must be created based on the `matchArtifact.name` property.
+* When the `matchArtifact.type` property is `docker/image`, a feed must be created based on the `matchArtifact.name` property — **but ONLY when the artifact is actually consumed by at least one deployment stage**.
+
+**CRITICAL — only create Docker feeds for artifacts that are used in deployment stages**: A `docker/image` entry in `expectedArtifacts` must have its artifact `id` appear in the `requiredArtifactIds` array of at least one deployment stage (`deployManifest` or `runJobManifest`) in the `stages` array. If the docker/image artifact is listed in `expectedArtifacts` but its `id` does NOT appear in ANY stage's `requiredArtifactIds`, skip feed creation for that artifact. Creating feeds for unused artifacts pollutes the Octopus space with orphaned resources that are never referenced.
+
+**How to check**: For each `docker/image` entry in `expectedArtifacts`, note its `id`. Scan all `stages[]` entries of type `deployManifest` or `runJobManifest`. If none of them have that `id` in their `requiredArtifactIds` array, do NOT create a feed for that artifact.
+
+**Negative example — Docker feed created for unused artifact (FORBIDDEN)**:
+
+Given a pipeline where:
+- `expectedArtifacts[0].id = "abc-123"`, `matchArtifact.type = "docker/image"`, `matchArtifact.name = "registry.example.invalid/image-0206"`
+- `stages[0].type = "deployManifest"`, `stages[0].requiredArtifactIds = []` (empty — the artifact is NOT bound to this stage)
+
+The **WRONG** output:
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
+← WRONG: The Docker image artifact is never referenced by any deployment stage, so no feed should be created.
+
+The **CORRECT** output (no feed section, and a NOTE added to the project description):
+```
+Create a project called "..." ...
+* Set the project description to "... NOTE (migration): The Docker image artifact registry.example.invalid/image-0206 was listed in expectedArtifacts but is not bound to any deployment stage (requiredArtifactIds is empty for all stages). No Docker feed was created. Add a Docker feed and reconfigure the pipeline trigger manually if required."
+```
+
+**Positive example — Docker feed correctly created when artifact IS used in a stage**:
+
+Given a pipeline where:
+- `expectedArtifacts[0].id = "def-456"`, `matchArtifact.type = "docker/image"`, `matchArtifact.name = "registry.example.invalid/image-0685"`
+- `stages[0].type = "deployManifest"`, `stages[0].requiredArtifactIds = ["def-456"]` (the artifact IS bound)
+
+The **CORRECT** output (feed IS created):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
+← CORRECT: The Docker image artifact is referenced in a deployment stage's `requiredArtifactIds`.
+
 * If the `matchArtifact.name` property starts with `gcr.io/`, a feed must be created with the "Google Container Registry" feed type in Octopus:
 
 ```
@@ -219,6 +254,39 @@ The **CORRECT** output (uses matchArtifact.name from expectedArtifacts):
 Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
 ```
 
+**ABSOLUTE RULE — when `expectedArtifacts` contains ANY entry with `matchArtifact.type = "docker/image"`, the Docker trigger `registry` field is COMPLETELY IGNORED for feed creation, even if the Docker trigger points to a DIFFERENT registry (e.g., gcr.io) than what appears in `expectedArtifacts`.** The presence of any docker/image in `expectedArtifacts` disables the Docker trigger registry fallback entirely. Do NOT emit a GCR feed section from the Docker trigger registry when docker/image entries already exist in expectedArtifacts.
+
+**Additional negative example — Docker trigger with gcr.io incorrectly processed despite expectedArtifacts having docker/image (FORBIDDEN)**:
+
+Given a pipeline with:
+```json
+{
+  "expectedArtifacts": [
+    { "id": "abc", "matchArtifact": { "name": "registry.example.invalid/image-0685", "type": "docker/image" } }
+  ],
+  "triggers": [
+    { "registry": "gcr.io", "type": "docker" },
+    { "payloadConstraints": { "tag": "registry.example.invalid/image-0687" }, "type": "pubsub" }
+  ]
+}
+```
+
+The **WRONG** output (creates BOTH a GCR feed from Docker trigger AND a Docker feed from expectedArtifacts — FORBIDDEN):
+```
+Create a feed called "Google Container Registry" in Octopus Deploy with a feed URL of "https://gcr.io/v2/".
+
+---
+
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
+← WRONG: `expectedArtifacts` has a `docker/image` entry, so the Docker trigger `registry` field (`gcr.io`) must be completely ignored. Only the expectedArtifacts entries drive feed creation.
+
+The **CORRECT** output (only the expectedArtifacts docker/image drives the feed, Pubsub tag is deduplicated):
+```
+Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://registry.example.invalid".
+```
+← CORRECT: The Docker Feed comes from the `registry.example.invalid/image-0685` expectedArtifact. The Docker trigger's `gcr.io` is ignored. The Pubsub trigger's `registry.example.invalid/image-0687` produces the same URL as Source 1, so it is deduplicated.
+
 * Feed prompts must appear before the base project prompt in the output.
 * You must separate the prompts for feeds with a blank line, three dashes (`---`), and a new blank line.
 * Each unique feed URL must only be created once in the output, even if multiple pipelines reference the same registry. Do not emit duplicate feed creation prompts for the same feed URL.
@@ -254,6 +322,7 @@ Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https:/
   * For any other `registry` value, create a Docker Feed using that value as the host URL: `Create a feed called "Docker Feed" in Octopus Deploy with a feed URL of "https://<registry>".`
 * **NOTE**: An `expectedArtifacts` array that is present but empty (`[]`) satisfies the condition "NO `docker/image` entries". A pipeline with `"expectedArtifacts": []` and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field. Do not skip feed creation just because `expectedArtifacts` is an empty array rather than absent.
 * **NOTE**: When `expectedArtifacts` is **absent entirely** (the key does not exist in the pipeline JSON), treat it identically to an empty array `[]`. A pipeline with no `expectedArtifacts` key at all and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field.
+* **NOTE**: When `expectedArtifacts` is explicitly set to `null` (i.e., the key exists but its value is the JSON `null`), treat it identically to an absent key or an empty array `[]`. A pipeline with `"expectedArtifacts": null` has NO `docker/image` entries and a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field. Additionally, when a `deployManifest` stage has a `manifestArtifactId` that cannot be resolved because `expectedArtifacts` is `null`, fall back to the inline `manifests` array exactly as if the stage had `"source": "text"` — apply the same single-document, 2-document, and multi-document complex manifest rules to the inline `manifests` content.
 * **NOTE**: When `expectedArtifacts` contains entries of types OTHER than `docker/image` (e.g., `"github/file"`, `"gcs/object"`) but NO entries of type `"docker/image"`, this still satisfies the condition "NO `docker/image` entries". A pipeline where `expectedArtifacts` has only github/file or gcs/object entries AND has a Docker trigger **must still** have feed creation applied from the Docker trigger's `registry` field.
 
 **ABSOLUTE RULE — `expectedArtifacts: []` (empty array) with Docker trigger MUST produce a feed section**: When the pipeline has `"expectedArtifacts": []` (empty array — NOT absent, but explicitly empty) and a Docker trigger with a `registry` field, a feed section MUST be generated from the Docker trigger's `registry` field. The empty array means there are no docker/image entries, so the fallback to the Docker trigger applies.
@@ -1339,6 +1408,7 @@ The equivalent step in an Octopus Deploy project that replicates the `pipeline.f
 ```
 
 * The `ssn_Message` value for the Finish step must come from `notifications[].message.pipeline.failed.text`. If `message.pipeline.failed.text` is absent or empty, omit the `ssn_Message` property entirely.
+* **IMPORTANT — set `ssn_Color` to `"danger"` for the Slack Notification - Finish step**: The Finish step corresponds to a pipeline failure. Add `Set the "ssn_Color" property to "danger".` to the Finish step prompt so the Slack message is visually marked as a failure (red). Do NOT use "good" (green) or "warning" (yellow) for failure steps.
 
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.complete` event is created with the prompt:
 
@@ -3345,9 +3415,73 @@ Set the step description to "Original Spinnaker stage type: webhook. Sends an HT
 
 **SpEL conversion rule**: All Spinnaker Spring Expression Language (SpEL) expressions in the webhook URL, headers, and payload (e.g., `${parameters.version}`, `${ parameters.oauthToken }`) MUST be converted to Octopus variable syntax by replacing `${parameters.<name>}` or `${ parameters.<name> }` with `#{<name>}`. Never leave raw SpEL expressions in the generated script.
 
+## Patch Manifest Stage
+
+A `patchManifest` stage patches an existing Kubernetes resource (e.g., a Deployment or StatefulSet) using a strategic merge patch or JSON merge patch. There is no direct Octopus Deploy equivalent. Represent it as a disabled "Run a Script" step that preserves all the original patch context so engineers can reconstruct the operation manually.
+
+The following snippet is an example of a `patchManifest` stage in Spinnaker:
+
+```json
+{
+  "account": "<redacted-cluster>",
+  "cloudProvider": "kubernetes",
+  "location": "my-namespace",
+  "manifestName": "deployment my-service",
+  "mode": "static",
+  "name": "Patch (Manifest) my-service",
+  "options": {
+    "mergeStrategy": "strategic",
+    "record": true
+  },
+  "patchBody": [
+    {
+      "spec": {
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "env": [
+                  {
+                    "name": "FEATURE_FLAG",
+                    "value": "${ parameters.feature_flag }"
+                  }
+                ],
+                "name": "my-service"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "type": "patchManifest"
+}
+```
+
+The equivalent Octopus prompt for a `patchManifest` stage is a disabled "Run a Script" step whose PowerShell body encodes the full patch context as comments so engineers can act on it:
+
+```
+* Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code:
+```powershell
+# TODO: convert Spinnaker patchManifest stage — no direct Octopus Deploy equivalent.
+# Target resource: <manifestName>
+# Namespace: <location>
+# Merge strategy: <options.mergeStrategy>
+# Patch body (convert SpEL #{variable} references to Octopus variable syntax first):
+# <patchBody JSON serialized as a comment>
+```
+Set the step description to "Original Spinnaker stage name: <stage name>. This step patches the Kubernetes resource <manifestName> using a <mergeStrategy> merge patch. Review the patchBody comment in the script and implement using kubectl patch or an equivalent mechanism." The step must be disabled.
+```
+
+**SpEL conversion rule for `patchManifest`**: All Spinnaker Spring Expression Language (SpEL) expressions in the `patchBody` values (e.g., `${ parameters.limit_credit }`, `${ parameters.feature_flag }`) MUST be converted to Octopus variable syntax by replacing `${parameters.<name>}` or `${ parameters.<name> }` with `#{<name>}`. Apply this substitution inside the patchBody comment so engineers can see the final Octopus expression.
+
+**CRITICAL — always use the stage `name` field (not the type) as the step name**, replacing parentheses with dashes as required by Octopus step naming rules (e.g., `"Patch (Manifest) my-service"` → `"Patch -Manifest- my-service"`).
+
+**ABSOLUTE RULE — every `patchManifest` step MUST be disabled.** The generated script body is a TODO comment and cannot execute the patch — the step must always include `The step must be disabled.`
+
 ## Unknown Stage Types
 
-If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `webhook`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
+If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `patchManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `webhook`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
 
 ```
 * Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: convert Spinnaker stage of type "<type>" — this stage type has no direct Octopus Deploy equivalent and requires manual conversion.`

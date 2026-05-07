@@ -3661,4 +3661,129 @@ resource "octopusdeploy_process_step" "process_step_deploy_cronjob_docomo_point_
 **CRITICAL — migration NOTEs from expression-based checkPreconditions stages must be preserved verbatim in the `notes` attribute**: When the prompt includes a step description starting with `NOTE (migration): This step was originally gated by an expression-based checkPreconditions stage...` or `NOTE (migration): This step was originally on a conditional branch controlled by an expression-based checkPreconditions stage...`, the entire NOTE text must appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit, truncate, or paraphrase the expression NOTE.
 
 **CRITICAL — never redact names in `notes` fields**: Service names, stage names, namespace names, Kubernetes resource names, and GCS bucket paths that appear in the step description must all be reproduced verbatim in the `notes` attribute. The presence of words like `api`, `auth`, `key`, `token`, `secret`, `service`, or `credential` in a description does NOT make those words sensitive — they are resource identifiers that must be preserved exactly.
+
+## Slack Notification Step: Reproducing Explicit `ssn_Color` Instructions
+
+When the prompt explicitly says `Set the "ssn_Color" property to "danger"` (or any other value), the `parameters` block of the corresponding `octopusdeploy_process_templated_step` MUST include `"ssn_Color" = "danger"` (or the specified value). This is consistent with the general rule that all prompt-specified parameters must be reproduced.
+
+**CRITICAL — when the prompt says `Set the "ssn_Color" property to "danger"`, reproduce it exactly in the `parameters` block.** Do NOT substitute a different value or omit it.
+
+```hcl
+resource "octopusdeploy_process_templated_step" "process_step_my_project_slack_notification_finish" {
+  condition = "Failure"
+  ...
+  parameters = {
+    "ssn_Color"   = "danger"   ← CORRECT: verbatim from prompt — "Set the ssn_Color property to danger"
+    "ssn_HookUrl" = "#{Project.Slack.WebhookUrl}"
+    "ssn_Channel" = "my-channel"
+  }
+}
+```
+
+**NOTE**: Do NOT add `ssn_Color` unless the prompt explicitly mentions it. The prompt controls whether `ssn_Color` appears. If the prompt does not say `Set the "ssn_Color" property to "..."`, omit `ssn_Color` from the `parameters` block entirely.
+
+## Disabled TODO Script Steps (patchManifest and Unknown Stage Types)
+
+When the prompt includes a "Run a Script" step that must be disabled (i.e., the prompt contains `The step must be disabled.`), the generated `octopusdeploy_process_step` resource MUST include `is_disabled = true`. This applies to:
+
+* `patchManifest` stage TODO steps (which always must be disabled)
+* Any other stage type where the prompt says the step must be disabled
+
+**CRITICAL — `is_disabled = true` is REQUIRED when the prompt says `The step must be disabled.`**: Do not omit this attribute.
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_patch_manifest_my_service" {
+  name          = "Patch -Manifest- my-service"
+  type          = "Octopus.Script"
+  process_id    = "${octopusdeploy_process.process_my_project[0].id}"
+  is_disabled   = true    ← REQUIRED when prompt says "The step must be disabled."
+  condition     = "Success"
+  start_trigger = "StartAfterPrevious"
+  execution_properties = {
+    "Octopus.Action.RunOnServer"         = "true"
+    "OctopusUseBundledTooling"           = "False"
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.Syntax"       = "PowerShell"
+    "Octopus.Action.Script.ScriptBody"   = <<-EOT
+      # TODO: convert Spinnaker patchManifest stage — no direct Octopus Deploy equivalent.
+      # Target resource: deployment my-service
+      # Namespace: my-namespace
+      # Merge strategy: strategic
+      # Patch body:
+      # spec:
+      #   template:
+      #     spec:
+      #       containers:
+      #         - name: my-service
+      #           env:
+      #             - name: FEATURE_FLAG
+      #               value: "#{feature_flag}"
+    EOT
+  }
+  properties = {}
+}
+```
+
+## `octopusdeploy_process_step` `properties` Block for Server-Side Script Steps
+
+Server-side "Run a Script" steps (`Octopus.Script`) that are generic TODO placeholders (not targeting a specific Kubernetes cluster) do NOT need `"Octopus.Action.TargetRoles"` in the `properties` block. These steps run on the Octopus server worker pool, not on a Kubernetes target.
+
+* For `Octopus.Script` steps that are generic TODO placeholders (e.g., `patchManifest` conversions, unknown stage type placeholders): use `properties = {}` (empty map) and do NOT include `"Octopus.Action.TargetRoles"`.
+* For `Octopus.KubernetesRunScript` steps (e.g., `deleteManifest`, `scaleManifest`, `undoRolloutManifest`): use `properties = { "Octopus.Action.TargetRoles" = "Kubernetes" }`.
+
+**Negative example — adding TargetRoles to a generic TODO script step (UNNECESSARY)**:
+```hcl
+resource "octopusdeploy_process_step" "..." {
+  type = "Octopus.Script"
+  properties = {
+    "Octopus.Action.TargetRoles" = "Kubernetes"   ← WRONG for generic Octopus.Script TODO steps
+  }
+}
+```
+
+**Correct output** (generic TODO script step has empty properties):
+```hcl
+resource "octopusdeploy_process_step" "..." {
+  type       = "Octopus.Script"
+  properties = {}   ← CORRECT for server-side generic script steps
+}
+```
+
+## `octopusdeploy_variable` Prompt Block for Prompted Variables with Select Options
+
+When the prompt says `The variable must have the following selectable options: <option1>, <option2>, ...`, the `octopusdeploy_variable` resource must include a `prompt` block with a `display_settings` block using `control_type = "Select"` and one `select_option` sub-block per option.
+
+```hcl
+resource "octopusdeploy_variable" "my_project_limit_credit_1" {
+  owner_id     = "${octopusdeploy_project.my_project[0].id}"
+  name         = "limit_credit"
+  type         = "String"
+  value        = "false"
+  is_sensitive = false
+
+  prompt {
+    label       = "limit_credit"
+    is_required = true
+
+    display_settings {
+      control_type = "Select"
+
+      select_option {
+        display_name = "false"
+        value        = "false"
+      }
+      select_option {
+        display_name = "true"
+        value        = "true"
+      }
+    }
+  }
+  lifecycle {
+    ignore_changes = [sensitive_value]
+  }
+  depends_on = []
+}
+```
+
+**CRITICAL — `control_type = "Select"` is REQUIRED when the prompt says the variable must have selectable options.** Do not use `control_type = "SingleLineText"` or omit the `display_settings` block when the prompt explicitly lists selectable options.
 * Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
