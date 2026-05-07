@@ -2214,7 +2214,7 @@ git_dependencies = { "" = { default_branch = "master", file_path_filters = null,
 * For inline YAML copied from the prompt, treat the prompt's indentation as authoritative. Never left-shift nested keys such as `labels`, `annotations`, `containers`, `env`, `ports`, `metrics`, or `scaleTargetRef` to the same column as their parent key.
 * If the prompt includes a Deployment document followed by a HorizontalPodAutoscaler document in one inline YAML block, both documents must remain in the same `Octopus.Action.KubernetesContainers.CustomResourceYaml` value and both documents must preserve their own nested indentation after the `---` separator.
 * When the prompt explicitly says `The step must be disabled.`, set `is_disabled = true` on the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource. Do not omit the resource and do not change the step order to compensate.
-* **CRITICAL — steps whose inline YAML content is a TODO placeholder comment must also have `is_disabled = true`**: When the prompt says both `Set the YAML content to \`# TODO: ...\`` AND `The step must be disabled.`, you MUST set `is_disabled = true`. A disabled step with a TODO YAML body is preserved in the deployment process so engineers can see it, but it will not execute until the TODO is resolved and the step is re-enabled.
+* **ABSOLUTE RULE — steps whose inline YAML content is a TODO placeholder comment MUST have `is_disabled = true`, regardless of whether the prompt explicitly says "The step must be disabled."**: Whenever the `Octopus.Action.KubernetesContainers.CustomResourceYaml` property value begins with `# TODO:`, you MUST set `is_disabled = true` on that step resource. Do NOT wait for the prompt to say "The step must be disabled." — the presence of a TODO placeholder in YAML is sufficient on its own to require disabling. A disabled step with a TODO YAML body is preserved in the deployment process so engineers can see it, but it will not execute until the TODO is resolved and the step is re-enabled.
 
 **Positive example — disabled step with TODO YAML**:
 ```hcl
@@ -2247,11 +2247,43 @@ resource "octopusdeploy_process_step" "process_step_my_project_run_job_manifest"
   }
 }
 ```
+
+**Negative example — TODO YAML step missing `is_disabled` entirely (ALSO A COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  name                  = "Deploy"
+  type                  = "Octopus.KubernetesDeployRawYaml"
+  # WRONG: is_disabled = true is MISSING. Any step with a # TODO: YAML value must have is_disabled = true
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with correctly indented multi-document manifest..."
+  }
+}
+```
 * You will be penalized for defining the properties "Octopus.Action.GitRepository.ExternalRepositoryUrl" or "Octopus.Action.GitRepository.FilePathFilters" on a step of type "Octopus.KubernetesDeployRawYaml".
 * All steps must have a unique name. If two steps have the same name, add a number at the end of the step name to make it unique, for example "Deploy a Kubernetes Web App via YAML 2".
 * Any "octopusdeploy_process_templated_step" resource based on the community step template with the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" (which is the "Slack - Send Simple Notification" community step template) must set "Octopus.Action.RunOnServer" = "true" in the "execution_properties" block.
 * **CRITICAL — omit `ssn_Message` when the prompt does not specify a message value**: If the prompt instruction for a Slack notification step does NOT include `Set the "ssn_Message" property to "..."`, do NOT add an `"ssn_Message"` key to the `parameters` block at all. Only include `"ssn_Message"` when the prompt explicitly provides a message string. An absent `ssn_Message` is different from an empty string — do not substitute an empty string placeholder.
-* **CRITICAL — do NOT add extra Slack notification parameters that are not mentioned in the prompt**: The only parameters to include in a Slack notification `parameters` block are those explicitly mentioned in the step prompt (e.g., `ssn_HookUrl`, `ssn_Channel`, `ssn_Message`). Do not add `ssn_IconUrl`, `ssn_Username`, `ssn_Color`, or any other parameter unless the prompt explicitly requests it.
+* **ABSOLUTE RULE — do NOT add extra Slack notification parameters that are not mentioned in the prompt**: The only parameters to include in a Slack notification `parameters` block are those explicitly mentioned in the step prompt (e.g., `ssn_HookUrl`, `ssn_Channel`, `ssn_Message`). Do NOT add `ssn_IconUrl`, `ssn_Username`, `ssn_Color`, or any other parameter unless the prompt explicitly requests it. Adding unrequested parameters is a common mistake that causes review failures. If the prompt only says `Set the "ssn_HookUrl" property to "..."` and `Set the "ssn_Channel" property to "..."`, the resulting `parameters` block must contain ONLY `ssn_HookUrl` and `ssn_Channel` — nothing else.
+
+**Negative example — extra Slack parameters added without being in the prompt (COMMON MISTAKE AND FORBIDDEN)**:
+```hcl
+# Prompt only says: Set "ssn_HookUrl" and "ssn_Channel"
+parameters = {
+  "ssn_HookUrl"  = "#{Project.Slack.WebhookUrl}"
+  "ssn_Channel"  = "my-channel"
+  "ssn_IconUrl"  = "https://octopus.com/content/resources/favicon.png"  # WRONG: not in prompt
+  "ssn_Username" = "Octopus Deploy"                                        # WRONG: not in prompt
+  "ssn_Color"    = "good"                                                  # WRONG: not in prompt
+}
+```
+
+**Correct output — only parameters mentioned in the prompt**:
+```hcl
+parameters = {
+  "ssn_HookUrl" = "#{Project.Slack.WebhookUrl}"
+  "ssn_Channel" = "my-channel"
+}
+```
 * It is CRITICAL that the order of the steps in the prompt is maintained in the Terraform configurations. You MUST add each step, one by one, from top to bottom and left to right, as defined in the prompt.
 * The following prompt must define the "Slack Notification - Start" step first, then the "Deploy user-profile worker -dev-" step, and then the "Deploy user-track worker -dev-" step, in that specific order, in the "octopusdeploy_process_steps_order" resource:
 
@@ -2279,6 +2311,7 @@ Create a project called "Deploy Workers (dev&prod) and Cronjobs (dev&prod)" in t
 
 * **CRITICAL — Spinnaker SpEL expressions MUST be escaped in ALL Terraform string values, not just ssn_Message**: Any Terraform property value (including `notes`, `"Octopus.Action.Manual.Instructions"`, and any other `execution_properties` value) that contains `${...}` Spinnaker SpEL syntax must escape the dollar sign as `$${...}`. Failure to do so causes Terraform to attempt to interpolate the expression and produce a Terraform validation error.
 * You will be penalized for generating Terraform where any execution_property value or notes value contains unescaped `${...}` expressions that are not Terraform variables.
+* **CRITICAL — when a prompt instruction contains Spinnaker SpEL expressions that have already been converted to Octopus variable syntax (e.g., `#{Octopus.Release.Number}`), do NOT re-escape them as `$${...}`**. Only apply the `$${...}` escaping to SpEL expressions that remain in `${...}` form. Octopus variable syntax using `#{...}` does not require any escaping in Terraform string values.
 * **CRITICAL — step descriptions with embedded string content**: When a `notes` attribute value is derived from a prompt instruction containing phrases like `at gs://...` or other path/URL references, do NOT add quotation marks around the URL or path inside the Terraform string value. The URL must appear without surrounding quotes in the `notes` string. For example:
   * **WRONG**: `notes = "This step loaded its manifest from Google Cloud Storage at \"gs://my-bucket/path\". The manifest must be inlined."`
   * **CORRECT**: `notes = "This step loaded its manifest from Google Cloud Storage at gs://my-bucket/path. The manifest must be inlined."`
