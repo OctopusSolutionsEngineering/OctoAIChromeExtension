@@ -392,10 +392,11 @@ Create a project called "my-service deploy to dev" in the "Default Project Group
 
 **CRITICAL — stage-level `requiredArtifacts` and `requiredArtifactIds` MUST NEVER generate feed prompts**: Stages may have a `requiredArtifacts` property (containing artifact objects directly, distinct from `requiredArtifactIds` which contains ID references) that reference Docker images. These are binding hints telling Spinnaker which images must be available before the stage runs. They are NOT feed sources. Feeding from stage-level `requiredArtifacts` or `requiredArtifactIds` is FORBIDDEN — even if the artifact has `"type": "docker/image"` and a recognisable registry hostname. Octopus has no equivalent for the `requiredArtifacts` or `requiredArtifactIds`.
 
-**ALGORITHM — exactly three valid feed sources (scan ONLY these, ignore everything else)**:
+**ALGORITHM — four valid feed sources (scan ALL of these, apply deduplication)**:
 1. **`expectedArtifacts[]`** (pipeline-level array): entries where `matchArtifact.type == "docker/image"` → use `matchArtifact.name` to derive the registry host
-2. **Docker trigger `registry` field**: used ONLY when `expectedArtifacts` has NO `docker/image` entries (absent, empty `[]`, or contains only non-docker types)
-3. **Pubsub trigger `payloadConstraints.tag`**: extract the hostname from the tag value
+2. **Docker trigger `registry` field (primary fallback)**: used ONLY when `expectedArtifacts` has NO `docker/image` entries (absent, empty `[]`, or contains only non-docker types)
+3. **Docker trigger `registry` field (additional feed when registries differ)**: when `expectedArtifacts` DOES have `docker/image` entries but the Docker trigger's `registry` resolves to a DIFFERENT hostname from ALL the `expectedArtifacts` docker/image registries, ALSO create an additional feed for the Docker trigger's registry. For example, if `expectedArtifacts` has `registry.example.invalid/image-X` (resolves to host `registry.example.invalid`) and the Docker trigger has `registry: "gcr.io"`, you MUST create BOTH feeds: `https://registry.example.invalid` AND `https://gcr.io/v2/`.
+4. **Pubsub trigger `payloadConstraints.tag`**: extract the hostname from the tag value
 
 **Everything else is NOT a feed source**, including:
 - `manifestArtifact` on stages
@@ -503,7 +504,9 @@ Create a project called "My Project" in the "Default Project Group" project grou
 
 The project name MUST be the exact verbatim value of the pipeline `name` field. **CRITICAL — do NOT redact or anonymize the pipeline `name` when using it as the project name**: Words such as `api`, `key`, `token`, `service`, `syncer`, `auth`, or `credential` in the pipeline name are microservice names and deployment identifiers — they are NOT secrets or API keys. For example, a pipeline `"name": "[PROD] api-syncer canary"` must produce `Create a project called "[PROD] api-syncer canary"` verbatim. NEVER replace any portion of the pipeline name with `*****`.
 
-The `limitConcurrent` property of the Spinnaker pipeline has no equivalent setting in Octopus. This value MUST be ignored.  
+The `limitConcurrent` property of the Spinnaker pipeline has no equivalent setting in Octopus. When `limitConcurrent` is `true`, add the following migration note as part of the project description: `NOTE (migration): The original Spinnaker pipeline had limitConcurrent=true, which prevented concurrent pipeline executions. Configure a suitable deployment mutex or concurrency limit in Octopus if required.`. Append this note to the existing description if one is present, or set it as the description if none exists.
+
+If the Spinnaker pipeline has a non-empty `roles` array, append the following note to the project description: `NOTE (migration): The original Spinnaker pipeline required the following roles for execution: <roles>.`. Replace `<roles>` with the comma-separated list of role names from the `roles` array. Append this note to any existing description or migration notes.
 
 Other prompts are then appended to the base prompt to create the equivalent project in Octopus Deploy, for example:
 
@@ -924,6 +927,8 @@ Add a single external feed trigger that creates a new release for each step that
       * Add a channel called "Application" to the project.
       ```
       These stages produce `Octopus.KubernetesDeployRawYaml` steps that have no package references. Octopus requires channel version rules to reference a package step (`action_package`). Since there are no package steps, a version rule cannot be created and must be omitted to avoid the API error "Version rules must specify a package step".
+      **After emitting the channel instruction, you MUST STILL emit the external feed trigger prompt** — the trigger is required even in this case. Both the channel instruction and the external feed trigger prompt are mandatory; omitting the trigger is WRONG.
+      **ADDITIONALLY — when no version rule can be created but the Docker trigger had a non-empty `tag`, add the following migration note to the project description**: `NOTE (migration): The original Spinnaker Docker trigger only fired for image tags matching the pattern "<tag>". Octopus does not support tag-pattern filtering on external feed triggers for Kubernetes YAML steps — all new releases will trigger this project.` Replace `<tag>` with the verbatim value of the Docker trigger's `tag` property.
   * If the Docker trigger has **no `tag`** (the property is absent, `null`, or an empty string `""`), emit the channel instruction without a version rule:
     ```
     * Add a channel called "Application" to the project.
@@ -957,9 +962,12 @@ Add a single external feed trigger that creates a new release for each step that
 
 * **CRITICAL — `requiredArtifactIds` / `requiredArtifacts` only qualify when they resolve to Docker images**: Do not treat every required artifact as a Docker image deployment. The stage qualifies only when at least one required artifact resolves to a Docker image artifact. If the required artifacts are empty or resolve only to non-Docker artifacts, the stage does NOT qualify.
 
-* **IMPORTANT**: Creating a feed from a Docker trigger's `registry` field (because `expectedArtifacts` is absent or empty) does **NOT** imply that an external feed trigger should be generated. The two decisions are independent. Even when a GCR or Docker feed is created solely from the trigger's `registry` field, you must still verify that at least one deployment stage qualifies as deploying a Docker image before emitting the external feed trigger prompt.
+* **IMPORTANT — feed creation from the Docker trigger's `registry` field is INDEPENDENT of the external feed trigger decision**: This applies to BOTH feed-creation scenarios:
+  * **Source 2** (fallback): a Docker feed created because `expectedArtifacts` has no `docker/image` entries.
+  * **Source 3** (additional): a second Docker feed created because the Docker trigger's `registry` host differs from the `expectedArtifacts` registries.
+  In BOTH cases, the feed creation decision does NOT imply that an external feed trigger should be generated. You must STILL verify independently that at least one deployment stage qualifies as deploying a Docker image (via inline `image:` content, `containers[].imageDescription`, or `requiredArtifactIds`/`requiredArtifacts` resolving to `docker/image`) before emitting the external feed trigger prompt. The feed tells Octopus where to pull the image FROM — the trigger decision is based on whether any deployment step actually uses a Docker image.
 
-**ABSOLUTE RULE — omit the external feed trigger when no step deploys or binds a Docker image**: If every `deployManifest`, `runJobManifest`, and `runJob` stage lacks rendered `image:` content, lacks `containers[].imageDescription`, and lacks any `requiredArtifactIds` / `requiredArtifacts` that resolve to `docker/image`, the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger.
+**ABSOLUTE RULE — omit the external feed trigger when no step deploys or binds a Docker image**: If every `deployManifest`, `runJobManifest`, and `runJob` stage lacks rendered `image:` content, lacks `containers[].imageDescription`, and lacks any `requiredArtifactIds` / `requiredArtifacts` that resolve to `docker/image`, the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger. **However, when the external feed trigger is omitted and the pipeline DID have a Docker or Pubsub trigger watching Docker images**, you MUST add the following migration note to the project description: `NOTE (migration): The original Spinnaker pipeline was triggered by Docker image pushes to <registry/repository>. No equivalent Octopus external feed trigger was created because no deployment steps directly bind Docker images. Add an external feed trigger manually if required.` Replace `<registry/repository>` with the relevant Docker trigger's registry and repository (or the pubsub trigger's `payloadConstraints.tag` value).
 
 **IMPORTANT — external feed trigger IS generated even when ALL qualifying stages produce TODO YAML steps**: When stages qualify for the external feed trigger via `requiredArtifactIds` / `requiredArtifacts` resolving to `docker/image` (rather than via inline manifests with `image:` fields), the resulting Octopus steps will have TODO YAML placeholder content and will be disabled. Despite this, the external feed trigger **MUST STILL BE GENERATED** — it acts as a placeholder that preserves the original Spinnaker intent to trigger on Docker image pushes. The trigger will become functional once the TODO steps are resolved and re-enabled.
 

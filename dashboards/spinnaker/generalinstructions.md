@@ -891,6 +891,7 @@ resource "octopusdeploy_project" "project_<name>" {
 * The "count" parameters must be in the format "${length(data.<data type>.<data resource>.<collection>) != 0 ? 0 : 1}"
 * You will be penalized for using count arguments like this: "${length(data.<data type>.<data resource>.<collection>) != 0 ? 1 : 1}"
 * You will be penalized for using ternary operators that return the same value for both cases.
+* **MANDATORY SELF-CHECK before finalizing external feed triggers**: Before outputting an `octopusdeploy_external_feed_create_release_trigger` resource, verify that it has: (1) a `count` attribute matching the project's count pattern, (2) `project_id` using the ternary lookup pattern, (3) `channel_id` using the ternary lookup pattern, (4) a `lifecycle { prevent_destroy = true }` block, (5) a `depends_on` referencing `octopusdeploy_process_steps_order`. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
 
 ## Account Instructions
 
@@ -1607,6 +1608,8 @@ resource "octopusdeploy_external_feed_create_release_trigger" "example" {
 ```
 * You will be penalized for setting the "channel_id" attribute to a fixed value like "Channels-1".
 
+**CRITICAL — `channel_id` on ALL triggers MUST use the ternary lookup pattern, even when the channel was just created in the same Terraform configuration**: When a channel `octopusdeploy_channel.channel_application` is created in the same Terraform file, the external feed trigger's `channel_id` MUST still use the ternary pattern `"${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"`. Using the direct reference `"${octopusdeploy_channel.channel_application.id}"` is FORBIDDEN even when the channel resource exists in the same file.
+
 **Negative example — `channel_id` set to a hard-coded value (COMMON MISTAKE)**:
 
 ```hcl
@@ -1630,6 +1633,25 @@ resource "octopusdeploy_external_feed_create_release_trigger" "example" {
 ```
 
 * The `project_id` attribute on an `octopusdeploy_external_feed_create_release_trigger` resource MUST use the ternary lookup pattern, just like the `project_id` on any other resource. You will be penalized for setting `project_id` to a direct resource reference such as `octopusdeploy_project.project_foo.id` without the ternary guard.
+
+**Negative example — `project_id` set to a direct resource reference WITHOUT ternary guard (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  project_id = "${octopusdeploy_project.project_foo.id}"   ← WRONG: no ternary guard
+  channel_id = "${octopusdeploy_channel.channel_application.id}"  ← WRONG: no ternary guard
+  ...
+}
+```
+
+**Correct output — both `project_id` and `channel_id` MUST use ternary lookup**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  channel_id = "${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"
+  ...
+}
+```
+
 * Every `octopusdeploy_external_feed_create_release_trigger` resource MUST include a `lifecycle { prevent_destroy = true }` block. You will be penalized for omitting this block.
 * The "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must have a "deployment_action_slug" property that references a deployment action in the associated project.
 * You will be penalized for setting the "deployment_action_slug" property in the "package" block of a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string or null when the step it references has no primary package.
@@ -1678,6 +1700,36 @@ resource "octopusdeploy_external_feed_create_release_trigger" "project_trigger" 
 * You will be penalized for setting the "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string when the referenced step is of type "Octopus.KubernetesDeployRawYaml", as this step has no primary package.
 * You will be penalized for creating resources of type "octopusdeploy_project_automatic_release_trigger".
 * When creating a "octopusdeploy_external_feed_create_release_trigger" resource, but none of the project's steps define a "primary_package" or "packages" block, do not define the "package" block in the "octopusdeploy_external_feed_create_release_trigger" resource. This creates a placeholder trigger.
+
+**CRITICAL — placeholder triggers (no `package` block) MUST still follow ALL resource conventions**: A placeholder `octopusdeploy_external_feed_create_release_trigger` (created without a `package` block because the steps have no package references) is still a full Octopus resource and must include all required attributes. The absence of a `package` block does NOT exempt a trigger from the `lifecycle { prevent_destroy = true }` requirement, the ternary lookup requirement for `project_id` and `channel_id`, the `count` convention, or the `depends_on` requirement.
+
+**Negative example — placeholder trigger missing required attributes (VERY COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${octopusdeploy_project.project_my_project.id}"        ← WRONG: no ternary guard
+  name       = "External Feed Trigger"
+  channel_id = "${octopusdeploy_channel.channel_my_project_application.id}"  ← WRONG: no ternary guard
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]
+  # WRONG: missing count attribute
+  # WRONG: missing lifecycle { prevent_destroy = true }
+}
+```
+
+**Correct output — placeholder trigger with ALL required attributes**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  name       = "External Feed Trigger"
+  channel_id = "${length(data.octopusdeploy_channels.channel_my_project_application.channels) != 0 ? data.octopusdeploy_channels.channel_my_project_application.channels[0].id : octopusdeploy_channel.channel_my_project_application[0].id}"
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
 
 ## Tenant Variable Instructions
 
