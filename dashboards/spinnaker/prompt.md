@@ -14,6 +14,8 @@
 
 **ABSOLUTE RULE — for 2-document manifests where EITHER document contains complex nested structures (any of: `containers`, `env`, `envFrom`, `volumeMounts`, `tolerations`, `nodeSelector`, `imagePullSecrets`, `volumes`, `livenessProbe`, `readinessProbe`, `metrics`, `scaleTargetRef`), you MUST ALSO replace the entire block with a TODO placeholder comment.** A 2-document YAML with deeply nested content (such as a Deployment with pod-spec fields paired with an HPA or Service) is equally unreliable to serialize inline. Use: `# TODO: replace with correctly indented multi-document manifest serialized from the cached Spinnaker manifests array`. You MUST also add `The step must be disabled.` to the step prompt. The only exception is when both documents are simple (e.g., a ConfigMap with flat key-value pairs paired with a Service with only `metadata` and `spec.selector`) — in that case, attempt inline serialization with careful indentation verification.
 
+**ABSOLUTE RULE — for single-document manifests (exactly ONE Kubernetes resource) that contain complex nested structures (any of: `containers`, `env`, `envFrom`, `volumeMounts`, `tolerations`, `nodeSelector`, `imagePullSecrets`, `volumes`, `livenessProbe`, `readinessProbe`, `initContainers`), you MUST ALSO replace the entire YAML block with a TODO placeholder comment.** Single-document Deployment, StatefulSet, DaemonSet, Job, or CronJob manifests with pod-spec fields are just as prone to flat-YAML serialization errors as multi-document manifests. Do NOT attempt to serialize them inline. Use: `# TODO: replace with correctly indented manifest serialized from the cached Spinnaker manifests array`. When a `manifestURL` helper variable is available for the pipeline (see the "Templated Pipelines" section), prefer: `# TODO: replace with manifest downloaded from <manifestURL>`. You MUST also add `The step must be disabled.` to the step prompt. The only exception is a single-document manifest that contains ONLY simple flat key-value fields (e.g., a ConfigMap or a Namespace resource) — in that case, attempt inline serialization with careful indentation verification.
+
 **ABSOLUTE RULE — pipeline `name` fields and stage `name` fields are resource identifiers, NEVER secrets, and MUST NEVER be redacted.** The pipeline's top-level `name` property (e.g., `"[PROD] api-syncer canary"`, `"deploy-to-prod"`, `"run-job-load-service-cr-tag"`) and every stage's `name` property (e.g., `"Deploy api-syncer"`, `"Delete api-sync-job"`, `"Scale Down Canary"`) are deployment resource identifiers. Words such as `api`, `key`, `token`, `service`, `auth`, `credential`, and similar terms that appear in these name fields are part of service and component names — they are NOT secrets, API keys, or credentials. NEVER replace ANY portion of a pipeline name or stage name with `*****` or any other anonymization placeholder unless the source JSON already contains `*****` at that exact location.
 
 **CRITICAL — the Spinnaker pipeline JSON provided to you has ALREADY been pre-anonymized.** Actual secrets such as the Kubernetes cluster name and repository owner have been replaced with specific placeholders like `<redacted-cluster>`, `<redacted-owner>`, and `<redacted-secret-name>`. All other values — including service names like `api-syncer`, `bq-syncer`, `publisher`, `server`, `auth-service`, `key-manager` — are intentionally preserved and are safe to use verbatim. Do NOT apply additional redaction to any value that was not already anonymized in the source JSON with a `<redacted-*>` placeholder.
@@ -701,6 +703,7 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * If one of those helper variables is present and its value is a non-empty, non-null string other than the literal `"null"`, treat its value as the authoritative manifest reference for the stage. For example, `gs://...` values use the existing GCS placeholder or cached-manifest rules, while `https://...` values use the existing `github/file` rules.
 * **ABSOLUTE RULE — never emit a TODO placeholder that says `downloaded from manifestArtifactId <id>` when a templated manifest URL helper variable is available**. Prefer the concrete helper-variable URL. The opaque artifact ID is not actionable enough for a migration prompt.
 * **CRITICAL — when the multi-document TODO placeholder rule applies AND a `manifestURL` helper variable is available**, prefer the GCS URL from the helper variable over a generic TODO placeholder. Instead of `# TODO: replace with correctly indented multi-document manifest serialized from the cached Spinnaker manifests array`, use `# TODO: replace with manifest downloaded from <manifestURL>` (substituting the concrete GCS path). This gives engineers a specific URL to retrieve the manifest from, making the placeholder more actionable. The step must still be disabled.
+* **CRITICAL — when the single-document complex nested structures TODO placeholder rule applies AND a `manifestURL` (or `deploymentManifestURL`, `jobManifestURL`, or a stage-name-specific helper variable) is available**, prefer the GCS URL from the helper variable over a generic TODO placeholder. Instead of `# TODO: replace with correctly indented manifest serialized from the cached Spinnaker manifests array`, use `# TODO: replace with manifest downloaded from <manifestURL>` (substituting the concrete GCS path). The step must still be disabled.
 * **CRITICAL — when the resolved manifest URL helper variable has the string literal value `"null"` (or a JSON null)**, the stage's manifest URL is not configured in this template instance. In that case: set the YAML Source to "Inline YAML", set the YAML content to `# TODO: manifest URL not configured — set variable to a valid GCS or GitHub path`, set the step description to "The manifest URL for this stage is not configured in this pipeline template instance (variable resolved to null). Configure the manifest URL variable and update the YAML source before deploying.", and **add `The step must be disabled.`** to the step prompt. Do NOT write "loaded from Google Cloud Storage at null" — the word "null" is not a valid GCS path.
 * For each key-value pair in `variables`, all values must be converted to quoted strings in the output, including booleans (e.g., `true` → `"true"`, `false` → `"false"`) and numbers (e.g., `3` → `"3"`).
 * **CRITICAL — when a `variables` entry has a JSON `null` value or the literal string value `"null"`, output the variable with the string value `"null"`.** Do NOT skip or omit variables with null values — they are still configuration entries that engineers need to review and configure. For example, `"canaryProdManifestURL": null` becomes `* Add a project variable called "canaryProdManifestURL" with the value "null".` This preserves all template variable slots in the Octopus project so engineers know which variables need to be configured.
@@ -2451,6 +2454,14 @@ Some Spinnaker stages have a `restrictExecutionDuringTimeWindow` property combin
 
 Some Spinnaker stages have `"continuePipeline": true` which means the pipeline continues to run even if the stage fails. Octopus Deploy does not have an exact equivalent for this behavior at the step level.
 
+**CRITICAL — when multiple description sources apply to a single step (for example: a GCS manifest note, a `stageEnabled.expression` note, a `continuePipeline` note, a `restrictedExecutionWindow` note, and/or an original-stage-name note), you MUST combine them ALL into a SINGLE `Set the step description to "..."` instruction.** Multiple separate `Set the step description to "..."` instructions for the same step are FORBIDDEN — each subsequent instruction silently overwrites the previous one, causing description information to be lost. Concatenate all description fragments with a single space separator and emit ONE instruction only. For example, if a step has both an original name note and a `stageEnabled.expression` note and a `continuePipeline` note, the combined output would be:
+
+```
+Set the step description to "Original Spinnaker stage name: Deploy (Manifest). This step has a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent: stageEnabled.expression = \"${ #judgment(\"Manual Judgment\").equals(\"Continue\")}\". Manually review whether this step should be conditionally disabled or use an Octopus run condition. NOTE (migration): The original Spinnaker stage had continuePipeline=true, meaning the pipeline continued even on failure. Manually review whether this step should use an Octopus run condition to replicate this behavior."
+```
+
+
+
 * When a stage has `"continuePipeline": true`, convert the stage normally but append the following text to the step description. If the step already has a description, append this text separated by a single space; do NOT emit a second independent description instruction:
 
   ```
@@ -3169,8 +3180,34 @@ Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource
 * Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages. **CRITICAL**: if the stage `name` contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the step name (e.g., `Scale (Manifest)` → `Scale -Manifest-`). When the original name contained those characters, append `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<code>` with a Bash script to call `kubectl` to scale the resource in the `manifestName` field to the value in the `replicas` field (which may be a string or a number — use it as-is).
+* **`manifestName` field format**: The Spinnaker `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"deployment my-app"` → `kubectl scale deployment my-app --replicas=3`). Parse the kind and name from this field, then build the kubectl command as `kubectl scale <kind> <name> --replicas=<replicas>`.
+* **`location` field → namespace**: If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"deployment mtf-object-detection-atr-canary"`, `replicas` is `"3"`, and `location` is `"org-0004-image-search-jp-dev"`, the command is `kubectl scale deployment mtf-object-detection-atr-canary --replicas=3 -n org-0004-image-search-jp-dev`.
 
-**Negative example — `scaleManifest` stage name with parentheses not converted (COMMON MISTAKE)**:
+**Worked example — `scaleManifest` stage with `location` and `manifestName`**:
+
+Given a `scaleManifest` stage:
+```json
+{
+  "account": "<redacted-cluster>",
+  "location": "org-0004-image-search-jp-dev",
+  "manifestName": "deployment mtf-object-detection-atr-canary",
+  "name": "Scale Canary",
+  "replicas": "3",
+  "type": "scaleManifest"
+}
+```
+
+The **CORRECT** output (manifestName parsed to kind+name, location added as -n namespace):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale Canary". Set the script to inline Bash with the code `kubectl scale deployment mtf-object-detection-atr-canary --replicas=3 -n org-0004-image-search-jp-dev`. Set the target tag to Kubernetes.
+```
+
+The **WRONG** output (missing namespace, wrong command format):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale Canary". Set the script to inline Bash with the code `kubectl scale mtf-object-detection-atr-canary 3`. Set the target tag to Kubernetes.
+```
+
+
 
 Given a `scaleManifest` stage with `"name": "Scale (Manifest)"`, the following is **WRONG**:
 ```
