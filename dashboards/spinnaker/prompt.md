@@ -70,7 +70,14 @@ Given a `deployManifest` stage with `"source": "artifact"`, `manifestArtifactId`
 
 **ABSOLUTE RULE — pipeline `name` fields and stage `name` fields are resource identifiers, NEVER secrets, and MUST NEVER be redacted.** The pipeline's top-level `name` property (e.g., `"[PROD] api-syncer canary"`, `"deploy-to-prod"`, `"run-job-load-service-cr-tag"`) and every stage's `name` property (e.g., `"Deploy api-syncer"`, `"Delete api-sync-job"`, `"Scale Down Canary"`) are deployment resource identifiers. Words such as `api`, `key`, `token`, `service`, `auth`, `credential`, and similar terms that appear in these name fields are part of service and component names — they are NOT secrets, API keys, or credentials. NEVER replace ANY portion of a pipeline name or stage name with `*****` or any other anonymization placeholder unless the source JSON already contains `*****` at that exact location.
 
-**CRITICAL — the Spinnaker pipeline JSON provided to you has ALREADY been pre-anonymized.** Actual secrets such as the Kubernetes cluster name and repository owner have been replaced with specific placeholders like `<redacted-cluster>`, `<redacted-owner>`, and `<redacted-secret-name>`. All other values — including service names like `api-syncer`, `bq-syncer`, `publisher`, `server`, `auth-service`, `key-manager` — are intentionally preserved and are safe to use verbatim. Do NOT apply additional redaction to any value that was not already anonymized in the source JSON with a `<redacted-*>` placeholder.
+**CRITICAL — compound service names that combine technical words are ALWAYS safe to use verbatim.** The following patterns are common microservice naming conventions where two words are joined with a hyphen. NONE of these contain secrets:
+- `api-syncer` — an application synchronizer microservice (NOT an API key)
+- `bq-syncer` — a BigQuery synchronizer microservice (NOT a secret)
+- `auth-service` — an authentication microservice (NOT a credential)
+- `key-manager` — an encryption key management microservice (NOT a secret key)
+- `token-processor` — a token processing microservice (NOT an authentication token)
+- `pub-syncer` — a Pub/Sub synchronizer microservice (NOT a secret)
+A name like `"[PROD] api-syncer canary"` is a Kubernetes Deployment identifier, not an API key. The presence of `api` in a hyphenated compound name is a MICROSERVICE CATEGORY, not an indicator of sensitive content.
 
 **Negative example — pipeline name containing "api" incorrectly redacted (FORBIDDEN)**:
 ```
@@ -723,6 +730,25 @@ Example — pipeline WITHOUT `disabled` field: when the pipeline JSON contains n
 ```
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
 ```
+
+**Negative example — all stages load manifests from GCS (TODO placeholders) but pipeline has no `disabled: true` (COMMON MISTAKE)**:
+
+When a Spinnaker pipeline has all `deployManifest` stages loading from Google Cloud Storage (producing TODO placeholder steps that are individually disabled), the FOLLOWING output is WRONG:
+```
+Create a project called "my-pipeline" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML content to `# TODO: replace with manifest downloaded from gs://...`. The step must be disabled.
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML content to `# TODO: replace with manifest downloaded from gs://...`. The step must be disabled.
+* The project must be disabled.   ← WRONG: all steps having TODO placeholders does NOT mean the project is disabled
+```
+← WRONG: `* The project must be disabled.` must NOT appear unless `"disabled": true` is at the **top level** of the pipeline JSON. Steps being individually disabled (because they have TODO YAML placeholders) has NO effect on whether the project itself is disabled.
+
+**CORRECT output** (disabled steps, but project NOT disabled — the project disabled line is absent):
+```
+Create a project called "my-pipeline" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML content to `# TODO: replace with manifest downloaded from gs://...`. The step must be disabled.
+* Add a "Deploy Kubernetes YAML" step ... Set the YAML content to `# TODO: replace with manifest downloaded from gs://...`. The step must be disabled.
+```
+← CORRECT: No `* The project must be disabled.` line because the pipeline JSON has no top-level `"disabled": true`.
 
 **Negative example — `disabled: false` (explicitly false) still triggers the disabled line (COMMON MISTAKE)**:
 
@@ -1607,7 +1633,7 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 * Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
-* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores or hashes. If the stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` (e.g., `Deploy (Manifest)` becomes `Deploy -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt.
+* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores or hashes. If the stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` (e.g., `Deploy (Manifest)` becomes `Deploy -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt. **IMPORTANT — do NOT add the "Original Spinnaker stage name:" prefix when the stage name required NO character transformation**: If the stage name contains NO parentheses, square brackets, or other invalid Octopus characters (so the step name is identical to the stage name), do NOT add `Set the step description to "Original Spinnaker stage name: ..."`. The name note is ONLY needed when transformation was applied. For example, stage name `"Deploy Canary"` (no special chars) requires NO description note; stage name `"Deploy (Manifest)"` DOES require `Set the step description to "Original Spinnaker stage name: Deploy (Manifest)."` because parentheses were replaced.
 * **CRITICAL — do NOT redact or anonymize the stage `name` value when generating the step name**: Words such as `api`, `dev`, `prod`, `key`, `token`, `service`, `syncer`, `auth`, `credential`, or similar terms in stage names are microservice and deployment identifiers — they are NOT secrets. For example, `"Deploy org-0004-api-syncer"` must produce the step name `"Deploy org-0004-api-syncer"` verbatim. NEVER replace any portion of a stage name with `*****`.
 
 **CRITICAL — use dashes `-` NOT underscores `_` when replacing parentheses**: Although underscores are technically valid Octopus step name characters, they are also Markdown formatting characters (e.g., `_text_` renders as italic and strips the underscores). Using underscores in step names that are generated as part of Markdown text causes the underscores to be silently stripped. You MUST use dashes `-` instead. For example, `Deploy (Manifest)` MUST become `Deploy -Manifest-` (with dashes), NOT `Deploy _Manifest_` (with underscores).
@@ -5219,6 +5245,14 @@ Create a project called "Deploy api-server to org-0003-2g-prod-tokyo-01" in the 
 
 **MANDATORY SELF-CHECK BEFORE COMPLETING YOUR RESPONSE**: Before finalizing your output, scan every line for the five-character sequence `*****`. If you find `*****` in any `Create a project called "..."` sentence, any step name (e.g., `name the step "..."`), any YAML value, or any step description — and the source JSON at that location did NOT already contain `*****` — you have incorrectly redacted a resource name. Go back to the source JSON, copy the original text, and replace the incorrect `*****` with the original text verbatim. The only valid `*****` values in your output are those that were literally present as `*****` in the source JSON input. Anything else is a bug that MUST be corrected before outputting.
 
+**MANDATORY SELF-CHECK BEFORE COMPLETING YOUR RESPONSE — disabled flag verification**: Before finalizing your output, check whether you have written `* The project must be disabled.` anywhere. If you have, locate the literal text `"disabled": true` in the top-level JSON object you were given. If you cannot find the exact string `"disabled": true` at the root level of the pipeline JSON, you MUST remove the `* The project must be disabled.` line from your output — it was incorrectly added. The following do NOT justify adding `* The project must be disabled.`:
+- All steps having TODO placeholder YAML (steps being individually disabled)
+- A trigger with `"enabled": false`
+- A parameter named `suspend` or `disabled`
+- The pipeline name containing words like "inactive", "disabled", or "deprecated"
+- Any other field or inference — ONLY the literal `"disabled": true` at the **top level** of the pipeline JSON justifies this line.
+If in doubt, omit the line. A project that should have been disabled but wasn't is easier to fix than a project that was incorrectly disabled.
+
 **WHY "api" IS NEVER AN API KEY**: In this organization's microservice naming convention, `api` is a short form of "application" (as in "application synchronizer" = `api-syncer`, "application server" = `api-server`). It is a CATEGORY of microservice, not an indicator that the name is a credential. Other examples: `auth-service` = authentication microservice, `key-manager` = encryption key management service, `token-processor` = authentication token processing service. The presence of these words in a service name makes the name a MICROSERVICE IDENTIFIER — it never makes the name a secret, API key, or credential. If you ever feel the urge to replace a service name with `*****`, STOP: the name is an identifier and must be preserved verbatim.
 
 **PRE-GENERATION PARALLEL GROUP ENUMERATION STEP**: Before writing any step prompts, perform this mandatory enumeration:
@@ -5390,6 +5424,20 @@ The **CORRECT** output (stage 19 uses its own name):
 ```
 
 Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy.
+
+**FINAL VERIFICATION CHECKLIST — complete ALL checks before writing your response**:
+
+Before outputting your final response, verify the following items. A single FAIL means you must correct the output before proceeding:
+
+1. **Name redaction check**: Scan your output for the sequence `*****`. If found in any project name, step name, YAML value, or step description where the source JSON did NOT contain `*****`, you have incorrectly redacted an identifier. Fix it by copying the original value from the source JSON verbatim. PASS = no `*****` that wasn't in the source JSON.
+
+2. **Project disabled check**: If your output contains `* The project must be disabled.`, locate the literal text `"disabled": true` in the TOP-LEVEL of the pipeline JSON object you were given. If you cannot find it, remove the disabled line. PASS = the disabled line is absent OR `"disabled": true` exists at the top level.
+
+3. **Stage count check**: Count the number of stages in the pipeline `stages` array. Count the number of "Add a ... step" instructions in your output (excluding Slack notification steps). For most pipelines these should be equal or close. A significant discrepancy indicates a missing or duplicated stage. PASS = no stages were silently dropped.
+
+4. **Parallel group check**: Count the stages with `"requisiteStageRefIds": []` (root group). Verify that all but the FIRST root-group stage have the annotation `Set the start trigger to "Run in parallel with the previous step"`. PASS = all non-leader root stages have the annotation.
+
+5. **Section separator check**: If the output has multiple sections (feed creation + project creation), verify that each section is separated by `\n\n---\n\n` (a blank line, three dashes, a blank line). PASS = all section separators are formatted correctly.
 
 ---END OF INSTRUCTIONS---
 

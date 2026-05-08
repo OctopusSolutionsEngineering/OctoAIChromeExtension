@@ -1543,6 +1543,23 @@ resource "octopusdeploy_project" "project_my_project" {
   is_disabled                          = false   # WRONG: prompt says "The project must be disabled." — this must be true
 }
 ```
+**MANDATORY SELF-CHECK — project `is_disabled` must only come from the prompt**: Before finalizing the `octopusdeploy_project` resource, check whether the prompt contains the EXACT line `* The project must be disabled.`. If and ONLY IF that exact line is present, set `is_disabled = true` on the project. The following do NOT justify `is_disabled = true` on the project resource:
+- Individual steps having `The step must be disabled.` instructions
+- All steps being disabled (e.g., all having TODO YAML placeholders)
+- Any trigger being disabled (`is_disabled` on the trigger resource)
+- Any parameter or variable named `suspend`, `disabled`, or similar
+If you added `is_disabled = true` to the project resource without finding the exact line `* The project must be disabled.` in the prompt, remove it. You will be penalized for incorrectly disabling a project.
+
+**CRITICAL — `octopusdeploy_project_versioning_strategy` MUST use count and ternary `project_id`**: When creating an `octopusdeploy_project_versioning_strategy` resource, it MUST follow the same count+ternary pattern as the project. Use `count` matching the project, and use a ternary expression for `project_id` that references either the existing project from the data source or the newly created project resource:
+```hcl
+resource "octopusdeploy_project_versioning_strategy" "project_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  template   = "#{Octopus.Version.LastMajor}.#{Octopus.Version.LastMinor}.#{Octopus.Version.NextPatch}"
+}
+```
+A versioning strategy resource without `count` will fail on idempotent re-apply. Do NOT create `octopusdeploy_project_versioning_strategy` without the count and ternary `project_id` pattern.
+
 * Every project tenant variable must have a "template" block in the "octopusdeploy_project" resource defining the variable.
 * You will be penalized for creating a resource of type "octopusdeploy_project_deployment_settings".
 * You will be penalized for adding whitespace to the "description" attribute of a resource "octopusdeploy_project", for example:
@@ -2889,7 +2906,7 @@ container = { feed_id = "${octopusdeploy_docker_container_registry.feed_github_c
 ```
 ← WRONG: no count means duplicate resource creation fails on re-apply; `.id` (not `[0].id`) is inconsistent with the required ternary pattern.
 
-**Correct output — feed_github_container_registry with count and data source**:
+**Correct output — feed_github_container_registry with count, data source, and lifecycle**:
 ```hcl
 data "octopusdeploy_feeds" "feed_github_container_registry" {
   feed_type    = "Docker"
@@ -2903,7 +2920,13 @@ resource "octopusdeploy_docker_container_registry" "feed_github_container_regist
   name        = "GitHub Container Registry"
   feed_uri    = "https://ghcr.io"
   api_version = "v2"
+  username    = null
+  password    = null
   package_acquisition_location_options = ["ExecutionTarget", "NotAcquired"]
+  lifecycle {
+    ignore_changes  = [password]
+    prevent_destroy = true
+  }
 }
 # feed_id ternary (uses [0] index, requires count above):
 container = {
@@ -2911,6 +2934,15 @@ container = {
   image   = "ghcr.io/octopusdeploylabs/k8s-workertools"
 }
 ```
+
+**MANDATORY SELF-CHECK before finalizing `feed_github_container_registry`**: Before outputting an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource, verify that it has ALL of the following. A single NO means the resource is incomplete and MUST be fixed:
+1. `count` attribute using the data source length ternary pattern (`"${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"`)
+2. Matching `data "octopusdeploy_feeds" "feed_github_container_registry"` data source block
+3. `username = null` and `password = null` attributes
+4. `lifecycle { ignore_changes = [password]; prevent_destroy = true }` block
+5. `container` blocks in all `Octopus.KubernetesDeployRawYaml` steps referencing this feed use `[0]` index in the ternary `feed_id` expression
+
+If any answer is NO, fix the resource before outputting. You will be penalized for omitting any of these attributes.
 * A step of type "Octopus.KubernetesDeployRawYaml" must have property indented YAML content in the "Octopus.Action.KubernetesContainers.CustomResourceYaml" property if the YAML source is set to "Inline YAML".
 * When the prompt provides an inline YAML block for `Octopus.Action.KubernetesContainers.CustomResourceYaml`, copy that YAML content verbatim into the Terraform string while preserving its structure, list items, and indentation. Do not flatten nested keys, regenerate the YAML from a lossy intermediate representation, or remove `image`, `namespace`, `initContainers`, or other fields present in the prompt.
 * If the prompt's inline YAML block contains multiple YAML documents separated by standalone `---` lines, keep the ENTIRE multi-document payload in the single `Octopus.Action.KubernetesContainers.CustomResourceYaml` value. Do not split the YAML into multiple Terraform resources, multiple step resources, or separate prompt sections.
