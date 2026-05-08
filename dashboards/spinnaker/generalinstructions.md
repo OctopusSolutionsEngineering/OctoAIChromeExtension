@@ -1149,7 +1149,40 @@ Before outputting the trigger, answer YES/NO to each:
 
 If any answer is NO, fix the resource before outputting.
 
-## Account Instructions
+**Negative example — external feed trigger with missing required attributes (FORBIDDEN)**:
+
+The following is an example of an **INCORRECT** `octopusdeploy_external_feed_create_release_trigger` that is missing `count`, `lifecycle`, and uses direct references instead of ternary lookups. This MUST NEVER be generated:
+
+```hcl
+# WRONG: this trigger will fail on idempotent re-apply and is missing required attributes
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  space_id    = "${trimspace(var.octopus_space_id)}"
+  project_id  = "${octopusdeploy_project.project_my_project.id}"   ← WRONG: direct reference, must be ternary
+  name        = "External Feed Trigger"
+  channel_id  = "${octopusdeploy_channel.channel_my_project_application.id}"   ← WRONG: direct reference, must be ternary
+  is_disabled = true
+  depends_on  = [octopusdeploy_process_steps_order.process_step_order_my_project]
+  # MISSING: count
+  # MISSING: lifecycle { prevent_destroy = true }
+}
+```
+
+The **CORRECT** version includes ALL required attributes:
+
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  name       = "External Feed Trigger"
+  channel_id = "${length(data.octopusdeploy_channels.channel_my_project_application.channels) != 0 ? data.octopusdeploy_channels.channel_my_project_application.channels[0].id : octopusdeploy_channel.channel_my_project_application[0].id}"
+  is_disabled = true
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
 
 * You will be penalized for defining a "session_token" attribute on a "octopusdeploy_aws_account" resource.
 
@@ -2822,6 +2855,10 @@ resource "octopusdeploy_process_step" "process_step_every_step_project_deploy_a_
 * When the prompt says `Set the "Wait for deployment to complete" property to false`, add `"Octopus.Action.DeployRelease.WaitForDeployment" = "False"` to the `execution_properties` block of the `Octopus.DeployRelease` step.
 * When the prompt does not specify a "Wait for deployment to complete" value for a `Octopus.DeployRelease` step, default to `"Octopus.Action.DeployRelease.WaitForDeployment" = "True"`.
 
+**CRITICAL — when the prompt says `Set the start trigger to "Run in parallel with the previous step"` for an `Octopus.DeployRelease` step**, set `start_trigger = "StartWithPrevious"` on that resource. When multiple "Deploy a Release" steps run in parallel (e.g., an orchestrator project triggering several child deployments simultaneously), the FIRST step gets `start_trigger = "StartAfterPrevious"` and ALL subsequent parallel steps get `start_trigger = "StartWithPrevious"`. This pattern mirrors how other parallel steps are handled in Octopus Terraform.
+
+**CRITICAL — each `Octopus.DeployRelease` step referencing a child project requires its own `data "octopusdeploy_projects"` data source lookup for that child project.** When an orchestrator project has N "Deploy a Release" steps, there must be N separate `data "octopusdeploy_projects"` data source blocks — one per child project. Each data source uses the child project name as its `partial_name`. Do NOT share a single data source lookup across multiple child project references.
+
 * The "Octopus.Action.DeployRelease.ProjectId" and "package_id" properties must reference only a data source.
 * You will be penalized for setting the "Octopus.Action.DeployRelease.ProjectId" or "package_id" property to something like `"${length(data.octopusdeploy_projects.project_reporting_microservice.projects) != 0 ? data.octopusdeploy_projects.project_reporting_microservice.projects[0].id : octopusdeploy_project.project_reporting_microservice[0].id}"`
 * You will be penalized for setting the "Octopus.Action.DeployRelease.ProjectId" property to a fixed value like "Projects-8916", "Projects-8915", and "Projects-8917".
@@ -2831,8 +2868,96 @@ resource "octopusdeploy_process_step" "process_step_every_step_project_deploy_a_
     * resource "octopusdeploy_project" "project_child_project"
 * You must always include the `data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_"` data source.
 * The "feed_id" attribute in the "primary_package" block of a step of type "Octopus.DeployRelease" must always be set to the built-in Octopus Server Releases feed found in the `data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_"` data source.
-* The template path for a cloud formation step must be defined in the "Octopus.Action.Aws.CloudFormationTemplate" property in the "execution_properties" block.
+
+**CRITICAL — negative example for `Octopus.DeployRelease` step — DO NOT generate this pattern**: The following Terraform is **INCORRECT** because it shares a single `data "octopusdeploy_projects"` block for multiple children and omits required attributes. This MUST NEVER be generated:
+
+```hcl
+# WRONG: one data source used for multiple children
+data "octopusdeploy_projects" "project_child" {
+  partial_name = "Child Project"
+  skip         = 0
+  take         = 1
+}
+
+# WRONG: package_id references wrong data source, count omitted, process_id set to null unconditionally
+resource "octopusdeploy_process_step" "process_step_deploy_child_a" {
+  name       = "Deploy Child A"
+  type       = "Octopus.DeployRelease"
+  process_id = "${octopusdeploy_process.process_orchestrator[0].id}"   # WRONG: no ternary count guard
+  primary_package = {
+    acquisition_location = "NotAcquired",
+    feed_id    = "${data.octopusdeploy_feeds.feed_octopus_server_releases__built_in_.feeds[0].id}",
+    id         = null,
+    package_id = "${data.octopusdeploy_projects.project_child.projects[0].id}",   # WRONG: reused data source
+    properties = null
+  }
+  # MISSING: count, execution_properties.Octopus.Action.DeployRelease.ProjectId
+}
+```
+
+The **CORRECT** pattern for N child deployments requires N separate data source lookups, one per child project:
+
+```hcl
+data "octopusdeploy_projects" "project_child_a" {
+  ids = null; partial_name = "Child A"; skip = 0; take = 1
+}
+data "octopusdeploy_projects" "project_child_b" {
+  ids = null; partial_name = "Child B"; skip = 0; take = 1
+}
+resource "octopusdeploy_process_step" "process_step_deploy_child_a" {
+  count      = "${length(data.octopusdeploy_projects.project_orchestrator.projects) != 0 ? 0 : 1}"
+  name       = "Deploy Child A"
+  type       = "Octopus.DeployRelease"
+  process_id = "${length(data.octopusdeploy_projects.project_orchestrator.projects) != 0 ? null : octopusdeploy_process.process_orchestrator[0].id}"
+  primary_package = {
+    acquisition_location = "NotAcquired",
+    feed_id    = "${data.octopusdeploy_feeds.feed_octopus_server_releases__built_in_.feeds[0].id}",
+    id         = null,
+    package_id = "${data.octopusdeploy_projects.project_child_a.projects[0].id}",
+    properties = null
+  }
+  start_trigger        = "StartAfterPrevious"
+  execution_properties = {
+    "Octopus.Action.DeployRelease.ProjectId"            = "${data.octopusdeploy_projects.project_child_a.projects[0].id}"
+    "Octopus.Action.DeployRelease.DeploymentCondition"  = "Always"
+    "Octopus.Action.DeployRelease.WaitForDeployment"    = "True"
+    "Octopus.Action.RunOnServer"                        = "true"
+  }
+  # ... other required attributes
+}
+resource "octopusdeploy_process_step" "process_step_deploy_child_b" {
+  count      = "${length(data.octopusdeploy_projects.project_orchestrator.projects) != 0 ? 0 : 1}"
+  name       = "Deploy Child B"
+  type       = "Octopus.DeployRelease"
+  process_id = "${length(data.octopusdeploy_projects.project_orchestrator.projects) != 0 ? null : octopusdeploy_process.process_orchestrator[0].id}"
+  primary_package = {
+    acquisition_location = "NotAcquired",
+    feed_id    = "${data.octopusdeploy_feeds.feed_octopus_server_releases__built_in_.feeds[0].id}",
+    id         = null,
+    package_id = "${data.octopusdeploy_projects.project_child_b.projects[0].id}",   # separate data source
+    properties = null
+  }
+  start_trigger        = "StartAfterPrevious"   # or "StartWithPrevious" if parallel
+  execution_properties = {
+    "Octopus.Action.DeployRelease.ProjectId"            = "${data.octopusdeploy_projects.project_child_b.projects[0].id}"
+    "Octopus.Action.DeployRelease.DeploymentCondition"  = "Always"
+    "Octopus.Action.DeployRelease.WaitForDeployment"    = "True"
+    "Octopus.Action.RunOnServer"                        = "true"
+  }
+  # ... other required attributes
+}
+```
 * You must only define attributes on "execution_properties" and "properties" blocks that appear in the supplied examples.
+
+**MANDATORY SELF-CHECK — orchestrator project completeness**: When a project has one or more `Octopus.DeployRelease` steps, before finalizing the Terraform, answer YES/NO to ALL of the following. A single NO means the Terraform is incomplete and MUST be corrected before outputting:
+
+1. Is there exactly ONE `data "octopusdeploy_projects"` data source per child project (the count must equal the number of `Octopus.DeployRelease` steps)? **If NO → add the missing data source blocks.**
+2. Is the `data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_"` data source included? **If NO → add it.**
+3. Does each `Octopus.DeployRelease` step have `"Octopus.Action.DeployRelease.ProjectId"` set to the CHILD project's data source (NOT the orchestrator project's data source)? **If NO → correct the references.**
+4. Does each `Octopus.DeployRelease` step's `primary_package.package_id` reference the CORRECT child project's data source (one unique data source per child, NOT reused across multiple children)? **If NO → assign the correct per-child data source.**
+5. Does each `Octopus.DeployRelease` step appear in the `octopusdeploy_process_steps_order` `steps` list? **If NO → add the missing step IDs.**
+
+If any answer is NO, correct the issue before outputting the Terraform.
 * You will be penalized for defining attributes in the "execution_properties" and "properties" blocks that do not exist in the examples.
 * You will be penalized for defining properties that start with "Octopus.Action.Aws.CloudFormation" that do not exist in the examples.
 * You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.Template".

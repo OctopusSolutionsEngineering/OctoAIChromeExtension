@@ -1659,6 +1659,24 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
 * **IMPORTANT**: The `<stage name>` placeholder must be replaced with the exact value of the `name` property from the Spinnaker stage, taking into account the Octopus limitation that step names can only contain letters, numbers, periods, commas, dashes, underscores or hashes. If the stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` (e.g., `Deploy (Manifest)` becomes `Deploy -Manifest-`). For every step where the stage name contained parentheses or other special characters, also set the step description to preserve the original name: append `Set the step description to "Original Spinnaker stage name: <original name>"` to the step prompt. **IMPORTANT — do NOT add the "Original Spinnaker stage name:" prefix when the stage name required NO character transformation**: If the stage name contains NO parentheses, square brackets, or other invalid Octopus characters (so the step name is identical to the stage name), do NOT add `Set the step description to "Original Spinnaker stage name: ..."`. The name note is ONLY needed when transformation was applied. For example, stage name `"Deploy Canary"` (no special chars) requires NO description note; stage name `"Deploy (Manifest)"` DOES require `Set the step description to "Original Spinnaker stage name: Deploy (Manifest)."` because parentheses were replaced.
+
+**CRITICAL — the TEXT INSIDE parentheses or square brackets MUST be preserved verbatim in the step name**: When replacing `()` or `[]` with dashes `-`, the text that was INSIDE those brackets is kept intact. For example, `Deploy (CronJob v1)` MUST become `Deploy -CronJob v1-`, NOT `Deploy -Manifest-` or any other generic substitution. The replacement rule is: `(X)` → `-X-` where `X` is the EXACT text from inside the parentheses. Do NOT replace `X` with the Kubernetes resource type, the stage type, or any other invented string.
+
+**Negative example — parenthetical content incorrectly replaced with a generic word (FORBIDDEN)**:
+
+Given a stage with `"name": "Deploy (CronJob v1)"`:
+
+The **WRONG** output:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -Manifest-". Set the step description to "Original Spinnaker stage name: Deploy (CronJob v1).".
+```
+← WRONG: The step name uses "Manifest" which is not in the original stage name. The parenthetical content "CronJob v1" was replaced with an invented word.
+
+The **CORRECT** output:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy -CronJob v1-". Set the step description to "Original Spinnaker stage name: Deploy (CronJob v1).".
+```
+← CORRECT: The text inside the parentheses ("CronJob v1") is preserved verbatim; only the `(` and `)` characters are replaced with `-`.
 * **CRITICAL — do NOT redact or anonymize the stage `name` value when generating the step name**: Words such as `api`, `dev`, `prod`, `key`, `token`, `service`, `syncer`, `auth`, `credential`, or similar terms in stage names are microservice and deployment identifiers — they are NOT secrets. For example, `"Deploy org-0004-api-syncer"` must produce the step name `"Deploy org-0004-api-syncer"` verbatim. NEVER replace any portion of a stage name with `*****`.
 
 **CRITICAL — use dashes `-` NOT underscores `_` when replacing parentheses**: Although underscores are technically valid Octopus step name characters, they are also Markdown formatting characters (e.g., `_text_` renders as italic and strips the underscores). Using underscores in step names that are generated as part of Markdown text causes the underscores to be silently stripped. You MUST use dashes `-` instead. For example, `Deploy (Manifest)` MUST become `Deploy -Manifest-` (with dashes), NOT `Deploy _Manifest_` (with underscores).
@@ -2195,6 +2213,23 @@ Given a stage with `"type": "manualJudgment"` that also contains `"manifests": [
 * Add a "Manual Intervention" step with the name "Manual Judgment Production" ...
 ```
 
+**ABSOLUTE RULE — a `manualJudgment` stage MUST NEVER be converted to a "Run a kubectl script" step or any other script step, even when it follows a `checkPreconditions` stage or is surrounded by `deleteManifest` stages.** The presence of a `checkPreconditions` stage immediately before a `manualJudgment` stage in the dependency chain does NOT change the step type. A `manualJudgment` stage with name "Manual Judgment(Final confirmation for deployment)" MUST produce a "Manual Intervention" step named "Manual Judgment -Final confirmation for deployment-", NOT a kubectl script step running `kubectl delete`.
+
+**Negative example — `manualJudgment` stage incorrectly converted to a kubectl step (FORBIDDEN)**:
+
+Given a pipeline with `"type": "manualJudgment"`, `"name": "Manual Judgment(Final confirmation for deployment)"`, `"refId": "9"`, `"requisiteStageRefIds": ["7"]` where stage 7 is an ignored `checkPreconditions` stage:
+
+The **WRONG** output (kubectl script step generated from a manualJudgment stage):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Manual Judgment-Final confirmation for deployment-". Set the script to inline Bash with the code `kubectl delete ...`
+```
+← WRONG: A `manualJudgment` stage MUST produce a "Manual Intervention" step, never a script step.
+
+The **CORRECT** output (Manual Intervention step, because `"type": "manualJudgment"`):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment -Final confirmation for deployment-" to the deployment process. Set the step description to "NOTE (migration): This step was originally gated by a Spinnaker expression-based checkPreconditions stage. The expression condition is not enforced in this Octopus migration — this step will always run when its predecessors succeed."
+```
+
 The following is an example of a `manualJudgment` stage in Spinnaker:
 
 ```json
@@ -2530,6 +2565,10 @@ spec:
 
 ## Run Pipeline Stage
 
+**ABSOLUTE RULE — `pipeline` stage type MUST be converted, NOT skipped**: Stages with `"type": "pipeline"` (stages that run another Spinnaker pipeline) are NOT ignored stages. They are NOT in the ignored stage type list. They MUST be converted to "Deploy a Release" steps. Even when the same pipeline contains ignored stages (e.g., `findArtifactFromExecution`, `checkPreconditions`), the `pipeline` type stages MUST still be converted to "Deploy a Release" steps. Do NOT confuse `pipeline` type stages with pipeline-level properties — the `"type": "pipeline"` inside a stage object means "run another pipeline", which maps to a "Deploy a Release" step in Octopus.
+
+**ABSOLUTE RULE — when N stages have `"type": "pipeline"`, the output MUST contain exactly N child project creation prompts AND N "Deploy a Release" step prompts.** Every child project creation prompt must appear in its own section separated by `---` before the main project section.
+
 * The following snippet is an example of a "Run Pipeline" stage in Spinnaker:
 
 ```json
@@ -2561,6 +2600,19 @@ spec:
 
 * You must attempt to extract the name of the child project from the `name` property of the stage. In the example above, the child project name is "[DEV] Deploy Sandbox API".
 
+* **Step name for "Deploy a Release" steps**: The step name should be derived from the `name` property of the Spinnaker `pipeline` stage (e.g., `"Run \"[DEV] Deploy Sandbox API\""` → strip leading `Run ` and outer quotes → `"[DEV] Deploy Sandbox API"` → apply special character replacement → `"-DEV- Deploy Sandbox API"`). The same special-character replacement rules that apply to other steps apply here: replace `[` and `]` with `-`, replace `(` and `)` with `-`. Do NOT use the project name verbatim as the step name if it contains brackets or special characters.
+
+**Negative example — step name contains literal brackets (INVALID)**:
+```
+* Add a "Deploy a Release" step with the name "Deploy [DEV] Deploy Sandbox API" ...
+```
+The above is WRONG because `[` and `]` are invalid in Octopus step names. Octopus will reject this with "contains invalid characters".
+
+**Correct output**:
+```
+* Add a "Deploy a Release" step with the name "Deploy -DEV- Deploy Sandbox API" ...
+```
+
 * **`waitForCompletion` handling**: When the `waitForCompletion` property is `false`, set the "Wait for deployment to complete" property to `false` in the generated prompt (replace `true` with `false` in the example above). When `waitForCompletion` is `true` or absent, use `true`.
 
 * **`failPipeline: false` handling**: When the `failPipeline` property is `false`, append the following sentence to the step description (or create one if none exists): `NOTE (migration): The original Spinnaker pipeline stage had failPipeline=false, meaning the parent pipeline continued even if this child pipeline failed. In Octopus, a failed child deployment will still fail this step — review whether to configure subsequent steps to always run.`
@@ -2574,6 +2626,29 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 ```
 
 * You must separate the prompts for each child project with a blank line, three dashes (`---`), and a new blank line.
+
+**CRITICAL — correct output structure for a pipeline with many `pipeline` type stages**: When a pipeline has N stages with `"type": "pipeline"`, the output must have exactly N+1 sections separated by `---`. The first N sections each create one child project. The last section creates the main project with N "Deploy a Release" steps. For example, with 3 `pipeline` type stages:
+
+```
+Create a project called "Child Project A" in Octopus Deploy with no steps.
+
+---
+
+Create a project called "Child Project B" in Octopus Deploy with no steps.
+
+---
+
+Create a project called "Child Project C" in Octopus Deploy with no steps.
+
+---
+
+Create a project called "Main Orchestrator" in Octopus Deploy.
+* Add a "Deploy a Release" step with the name "Deploy Child Project A". Set the "Project" property to "Child Project A". ...
+* Add a "Deploy a Release" step with the name "Deploy Child Project B". Set the "Project" property to "Child Project B". ...
+* Add a "Deploy a Release" step with the name "Deploy Child Project C". Set the "Project" property to "Child Project C". ...
+```
+
+**ABSOLUTE RULE — the MANDATORY STAGE COMPLETENESS CHECK must include all `pipeline` type stages**: When performing the mandatory completeness check, `pipeline` type stages count toward the expected stage total just like `deployManifest`, `runJobManifest`, `manualJudgment`, and `wait` stages. Each `pipeline` type stage must appear in the output as exactly one "Deploy a Release" step.
 
 ## Wait Stage
 
@@ -5406,7 +5481,7 @@ This scan is ABSOLUTE and MANDATORY — it applies even if you believe the `****
 
 **MANDATORY STAGE COMPLETENESS AND UNIQUENESS CHECK**: After producing all step prompts, perform this combined verification before finalizing your output:
 
-**Step 1 — Build the expected name list**: From the pipeline JSON `"stages"` array, extract the `"name"` field of every stage that is NOT a skipped type (`checkPreconditions`, `evaluateVariables`, `findImage`, `findImageFromTags`, `tagImage`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `pipeline`). After applying special-character substitution (parentheses → dashes, etc.), write down every expected step name. This is your EXPECTED LIST.
+**Step 1 — Build the expected name list**: From the pipeline JSON `"stages"` array, extract the `"name"` field of every stage that is NOT a skipped type (`checkPreconditions`, `evaluateVariables`, `findArtifactFromExecution`, `findImage`, `findImageFromTags`, `tagImage`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`). **CRITICAL — `pipeline` type stages are NOT skipped**: stages of `"type": "pipeline"` MUST appear in the expected name list because they each produce a "Deploy a Release" step. The step name for a `pipeline` stage is derived from the child project name extracted from the stage `"name"` field (e.g., stage `"name": "Run \"[DEV] Deploy API\""` → child project name `[DEV] Deploy API` → step name derived from the stage `name` after applying special-character substitution). After applying special-character substitution (parentheses → dashes, etc.), write down every expected step name. This is your EXPECTED LIST.
 
 **Step 2 — Build the actual name list**: Scan your generated output for every line that starts with `* Add a` and contains `step to the deployment process`. Extract the step name from each such line (the value after `name the step "..."` or `name "..."`). This is your ACTUAL LIST.
 
