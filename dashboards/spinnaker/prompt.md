@@ -8,6 +8,41 @@
 
 **ABSOLUTE RULE — you MUST convert ALL stages in the pipeline before stopping.** Do not output just one stage's YAML and stop. Every stage in the `stages` array must appear in the output as a step prompt. After producing the last step, continue with notification steps, variable prompts, and the disabled line (if applicable).
 
+**CRITICAL — for large pipelines with many stages (10+), it is especially easy to accidentally stop before converting all stages.** Large pipelines with parallel branches (multiple stages sharing `requisiteStageRefIds: ["X"]`) may have 8 or more post-convergence stages — ALL of them must appear in the output. Stages that appear late in the JSON array (e.g., refIds 20-30 that appear at positions 15-30 in the array) are just as required as the first few stages. Do NOT stop generating steps after the first convergence point; continue until the last stage in the topological order is output.
+
+**ABSOLUTE RULE — every `"type": "wait"` stage in the pipeline JSON MUST appear in your output as a "Run a Script" step.** You MUST NOT omit wait stages — even if they appear between two large parallel fan-out groups (e.g., a wait that bridges ROOT stages and post-wait stages). Before finalizing your output, count every `"type": "wait"` entry in the stages array and verify that your output has the same number of "Run a Script" `Start-Sleep` steps. If ANY wait stage is missing, add it before the post-wait stages that depend on it.
+
+**ABSOLUTE RULE — stages that appear EARLY in the JSON array but depend on stages that appear LATER in the JSON array must still be included in the output.** Spinnaker stages are not always listed in topological order. For example, if stage at JSON position 1 has `"requisiteStageRefIds": ["6"]` but stage refId "6" is at JSON position 3, the stage at position 1 MUST still appear in the output (placed AFTER refId 6 in topological order). Never skip a stage just because it would require the topological sort to "reach back" to an earlier JSON position. ALL stages must appear in the output regardless of their position in the JSON array.
+
+**ABSOLUTE RULE — canary and primary variants of the same service are ALWAYS two separate stages and BOTH must be included.** A pipeline may have both "Deploy prod HTTP server canary" (ROOT stage) and "Deploy prod HTTP server primary" (post-wait stage). These are TWO DIFFERENT steps — the canary deploys to a subset of traffic, the primary deploys to all traffic. NEVER omit the primary stage because the canary is already present. Similarly, "dev" and "prod" variants of the same service are ALWAYS separate stages. For example, "Deploy dev worker" (ROOT) and "Deploy prod worker" (post-wait) MUST BOTH appear in the output.
+
+**CRITICAL — canary and primary variants have DIFFERENT `requisiteStageRefIds` and must be placed in their CORRECT topological position.** The canary stage may be a ROOT stage (`"requisiteStageRefIds": []`) while the primary stage may depend on a wait stage (`"requisiteStageRefIds": ["6"]`). NEVER place the primary stage in the ROOT group just because you also included the canary. Always check each stage's `requisiteStageRefIds` to determine its correct position:
+- If `requisiteStageRefIds` is empty (`[]`), the stage is ROOT and runs in the first parallel group.
+- If `requisiteStageRefIds` refers to a wait stage, the stage runs after the wait step.
+Do NOT assume that "canary" and "primary" stages share the same prerequisites — they almost always have different dependency chains.
+
+**Negative example — primary stage incorrectly placed in ROOT group (FORBIDDEN)**:
+
+Given:
+- "Deploy prod gRPC server canary", `requisiteStageRefIds: []` (ROOT)
+- "Deploy prod gRPC server primary", `requisiteStageRefIds: ["6"]` (depends on wait)
+
+The **WRONG** output (primary placed in ROOT group alongside canary):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod gRPC server canary" ... (ROOT)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod gRPC server primary" ... Set the start trigger to "Run in parallel with the previous step". ← WRONG: placed in ROOT group
+[... wait step ...]
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod gRPC server" ... Set the start trigger to "Run in parallel with the previous step". ← WRONG: truncated name, and this is a ghost step
+```
+
+The **CORRECT** output (primary placed after wait):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod gRPC server canary" ... (ROOT)
+[... other ROOT stages ...]
+* Add a "Run a Script" step ... "Wait -20 min-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod gRPC server primary" ... Set the start trigger to "Run in parallel with the previous step". ← CORRECT: placed after wait
+```
+
 **ABSOLUTE RULE — the output MUST be a complete prompt describing how to build Octopus Deploy projects. Raw YAML alone is NEVER a valid output.** Every response must begin with a `Create a project called "..."` sentence (or a feed creation sentence followed by `---` and then a project sentence). YAML content may only appear embedded inside a `* Set the step YAML to:` block that is itself part of a step bullet inside a project prompt. Outputting a bare YAML block — with no surrounding `Create a project...` sentence and step bullets — is strictly forbidden regardless of the pipeline content.
 
 **ABSOLUTE RULE — every YAML block in the output must be VALIDLY INDENTED YAML, or it must be replaced with a TODO placeholder instead.** Flat YAML is forbidden. If you cannot preserve parent/child indentation for a cached `manifests` array or inline `manifest` object, do NOT guess and do NOT emit malformed YAML. Instead, keep the step and use a single-line placeholder comment such as `# TODO: replace with correctly indented manifest serialized from the cached Spinnaker manifests array`.
@@ -1055,6 +1090,11 @@ Add a single external feed trigger that creates a new release for each step that
 
 * Place the external feed trigger prompt **after** all deployment step prompts (including Slack notification steps) and all variable prompts, but **before** the `* The project must be disabled.` line.
 
+* **CRITICAL — mandatory Terraform attributes reminder**: When generating an external feed trigger prompt, always append the following line after the trigger instruction to remind the Terraform generator of required attributes:
+  ```
+  The external feed trigger Terraform resource MUST include: (1) a count attribute matching the project's count pattern; (2) project_id using a ternary lookup (NOT a direct resource reference); (3) channel_id using a ternary lookup (NOT a direct resource reference); (4) lifecycle { prevent_destroy = true }; (5) depends_on pointing to octopusdeploy_process_steps_order.
+  ```
+
 * **CRITICAL**: A Docker trigger in the pipeline JSON does NOT automatically mean the external feed trigger prompt should be generated. The external feed trigger is only valid when at least one deployment step in the project actually deploys a Docker image. Before emitting the external feed trigger prompt, check every deployment stage (`deployManifest`, `runJobManifest`, `runJob`) in the pipeline:
   * A `runJob` stage qualifies if its `containers` array contains an `imageDescription` field.
   * A `deployManifest` or `runJobManifest` stage qualifies if its manifest artifact has `type: "docker/image"`.
@@ -1070,7 +1110,7 @@ Add a single external feed trigger that creates a new release for each step that
   * **Source 3** (additional): a second Docker feed created because the Docker trigger's `registry` host differs from the `expectedArtifacts` registries.
   In BOTH cases, the feed creation decision does NOT imply that an external feed trigger should be generated. You must STILL verify independently that at least one deployment stage qualifies as deploying a Docker image (via inline `image:` content, `containers[].imageDescription`, or `requiredArtifactIds`/`requiredArtifacts` resolving to `docker/image`) before emitting the external feed trigger prompt. The feed tells Octopus where to pull the image FROM — the trigger decision is based on whether any deployment step actually uses a Docker image.
 
-**ABSOLUTE RULE — omit the external feed trigger when no step deploys or binds a Docker image**: If every `deployManifest`, `runJobManifest`, and `runJob` stage lacks rendered `image:` content, lacks `containers[].imageDescription`, and lacks any `requiredArtifactIds` / `requiredArtifacts` that resolve to `docker/image`, the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger. **However, when the external feed trigger is omitted and the pipeline DID have a Docker or Pubsub trigger watching Docker images**, you MUST add the following migration note to the project description: `NOTE (migration): The original Spinnaker pipeline was triggered by Docker image pushes to <registry/repository>. No equivalent Octopus external feed trigger was created because no deployment steps directly bind Docker images. Add an external feed trigger manually if required.` Replace `<registry/repository>` with the relevant Docker trigger's registry and repository (or the pubsub trigger's `payloadConstraints.tag` value).
+**ABSOLUTE RULE — omit the external feed trigger when no step deploys or binds a Docker image**: If every `deployManifest`, `runJobManifest`, and `runJob` stage lacks rendered `image:` content, lacks `containers[].imageDescription`, and lacks any `requiredArtifactIds` / `requiredArtifacts` that resolve to `docker/image`, the external feed trigger prompt **MUST NOT** appear in the output — even when a Docker or Pubsub trigger is present, and even when a feed creation prompt is emitted for that trigger. **However, when the external feed trigger is omitted and the pipeline DID have a Docker or Pubsub trigger watching Docker images**, you MUST add the following migration note to the project description listing ALL omitted triggers. When only ONE trigger existed: `NOTE (migration): The original Spinnaker pipeline was triggered by Docker image pushes to <registry/repository>. No equivalent Octopus external feed trigger was created because no deployment steps directly bind Docker images. Add an external feed trigger manually if required.` Replace `<registry/repository>` with the Docker trigger's registry and repository or the pubsub trigger's `payloadConstraints.tag` value. **When MULTIPLE Docker or Pubsub triggers existed**, list each one separately: `NOTE (migration): The original Spinnaker pipeline had multiple Docker/Pubsub triggers. No equivalent Octopus external feed trigger was created because no deployment steps directly bind Docker images. Original triggers: (1) <type1> trigger watching <registry/repo1> (enabled: <true/false>); (2) <type2> trigger watching <registry/repo2> (enabled: <true/false>). Add an external feed trigger manually if required.`
 
 **IMPORTANT — external feed trigger IS generated even when ALL qualifying stages produce TODO YAML steps**: When stages qualify for the external feed trigger via `requiredArtifactIds` / `requiredArtifacts` resolving to `docker/image` (rather than via inline manifests with `image:` fields), the resulting Octopus steps will have TODO YAML placeholder content and will be disabled. Despite this, the external feed trigger **MUST STILL BE GENERATED** — it acts as a placeholder that preserves the original Spinnaker intent to trigger on Docker image pushes. The trigger will become functional once the TODO steps are resolved and re-enabled.
 
@@ -1572,6 +1612,8 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 
 **CRITICAL — use dashes `-` NOT underscores `_` when replacing parentheses**: Although underscores are technically valid Octopus step name characters, they are also Markdown formatting characters (e.g., `_text_` renders as italic and strips the underscores). Using underscores in step names that are generated as part of Markdown text causes the underscores to be silently stripped. You MUST use dashes `-` instead. For example, `Deploy (Manifest)` MUST become `Deploy -Manifest-` (with dashes), NOT `Deploy _Manifest_` (with underscores).
 
+**IMPORTANT — stage `comments` field preservation**: When a stage JSON object contains a non-null and non-empty `comments` property, this contains human-authored documentation about the stage's purpose or behavior. Preserve this information by appending it to the step description: `NOTE (comments): <comments value>`. If the step already has a description for another reason (e.g., special characters in stage name or GCS artifact note), append the comments note after the existing description text, separated by a single space. Do NOT create a separate `Set the step description` instruction — combine all description fragments into ONE instruction.
+
 **CRITICAL — `deployManifest` steps MUST NOT include "Original Spinnaker stage type: deployManifest." in their description.** Unlike `runJobManifest` stages (where the type distinction between a one-time Job and a long-running Deployment is operationally significant and MUST be stated), `deployManifest` is the default and most common stage type. Including "Original Spinnaker stage type: deployManifest." in the step description adds noise and inconsistency. Only `runJobManifest` and `undoRolloutManifest` stages require the stage type in their description. If a step description is needed for a `deployManifest` stage (e.g., because the name contained special characters, or the manifest came from GCS), the description MUST NOT begin with or include "Original Spinnaker stage type: deployManifest.".
 
 **Negative example — `deployManifest` stage type incorrectly included in description (FORBIDDEN)**:
@@ -2066,6 +2108,28 @@ The **CORRECT** output converts parentheses to dashes and includes both the stag
 
 **ABSOLUTE RULE — the `type` field is the SOLE authority for how a stage is processed. When `"type": "manualJudgment"`, you MUST ONLY generate a "Manual Intervention" step — regardless of any other fields present in the stage JSON.** Spinnaker sometimes leaves stale fields from a previous stage type (e.g., `manifests`, `source`, `manifestArtifactAccount`, `manifestArtifactId`, `manifestArtifact`, `cloudProvider`, `relationships`, `requiredArtifactIds`, `cloudProvider`, `skipExpressionEvaluation`) in a `manualJudgment` stage. These stale fields MUST be completely and silently ignored. Do NOT generate any `deployManifest`-like steps from a stage whose `type` is `manualJudgment`. The ONLY fields that matter for a `manualJudgment` stage are: `name`, `type`, `refId`, `requisiteStageRefIds`, `instructions`, `judgmentInputs`, `failPipeline`, `continuePipeline`, `stageTimeoutMs`, `notifications`.
 
+**ABSOLUTE RULE — NEVER generate a "Manual Intervention" step for a stage whose `type` is NOT `"manualJudgment"`.** The stage name does NOT determine the step type. A `deployManifest` stage named "Deploy canary", "Deploy prod canary", or "Review canary" MUST produce a "Deploy Kubernetes YAML" step — NOT a "Manual Intervention" step. The word "canary", "approval", "review", "check", or "gate" in a stage name does NOT imply a human approval gate unless `"type": "manualJudgment"` is present. ONLY `"type": "manualJudgment"` produces a "Manual Intervention" step.
+
+**Negative example — `deployManifest` stage name containing "canary" incorrectly produces Manual Intervention (FORBIDDEN)**:
+```json
+{
+  "name": "Deploy prod HTTP server canary",
+  "type": "deployManifest",
+  "refId": "5",
+  "requisiteStageRefIds": []
+}
+```
+```
+[WRONG output]:
+* Add a "Manual Intervention" step with the name "Deploy prod HTTP server canary" ...
+```
+← WRONG: The stage type is `deployManifest`, not `manualJudgment`. The word "canary" in the name does NOT trigger a Manual Intervention step.
+
+**Correct output** (deployManifest always produces a Deploy Kubernetes YAML step):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod HTTP server canary" ...
+```
+
 **Negative example — stale `manifests` field in a `manualJudgment` stage creates a spurious deploy step (FORBIDDEN)**:
 
 Given a stage with `"type": "manualJudgment"` that also contains `"manifests": [{"kind": "Deployment", ...}]` and `"source": "text"`:
@@ -2106,6 +2170,7 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 
 * Replace `<stage name>` with the `name` property of the stage after applying the same step-name character rules as other stages. If the original `manualJudgment` stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the generated step name and add `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * Replace `<instructions>` with the `instructions` property of the stage. If the `instructions` property is absent or empty, use `"Please review and approve."` as the default instructions text.
+* **IMPORTANT — SpEL expression migration**: When the `instructions` field contains Spinnaker Expression Language (SpEL) expressions in the format `${...}`, these expressions reference Spinnaker runtime variables (e.g., `${trigger['artifacts'][0]['version']}`) that are not available in Octopus Deploy. Preserve the SpEL expression text verbatim in the instructions but append the following to the step description: `NOTE (migration): The Manual Intervention instructions contain Spinnaker SpEL expressions (${...}) that reference Spinnaker runtime context. Convert these to equivalent Octopus variable syntax (#{...}) or remove them before deploying.` If the step already has a description, append this note after the existing description text, separated by a space.
 * **IMPORTANT — `stageTimeoutMs` preservation**: When a `manualJudgment` stage has a `stageTimeoutMs` property, convert the value from milliseconds to minutes (divide by 60000) and append `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a Manual Intervention timeout in Octopus if required.` to the step description. If the stage already has a description (because the name contained special characters), append this note after the existing description text, separated by a space. For example, a `stageTimeoutMs` of `1800000` (30 minutes) becomes: `NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.`
 
 * **IMPORTANT — `stageTimeoutMs` on non-`manualJudgment` stages**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`, `runJob`) has a `stageTimeoutMs` property, Octopus Deploy has no direct equivalent step-level timeout. Preserve the intent by appending `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` to the step description, where `<N>` is the value in milliseconds divided by 60000 (rounded down). If the step already has a description, append this note after the existing description text, separated by a space.
@@ -2536,6 +2601,47 @@ The **WRONG** output preserves the invalid step name characters:
 The **CORRECT** output uses the dash-replaced step name and preserves the original in the description:
 ```
 * Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 900`. Set the step description to "Original Spinnaker stage name: Wait (15min)".
+```
+
+**ABSOLUTE RULE — a `wait` stage MUST produce a "Run a Script" step, NEVER a "Deploy Kubernetes YAML" step.** The step type is `"Run a Script"` — NOT `"Deploy Kubernetes YAML"`, `"Deploy Kubernetes YAML step"`, or any Kubernetes-related step type. A wait stage uses `Start-Sleep` PowerShell code, which is a server-side script, not a Kubernetes deployment action.
+
+**Negative example — wait stage incorrectly output as "Deploy Kubernetes YAML" (FORBIDDEN)**:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Wait -20 min-". Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 1200`.
+```
+← WRONG: The step type is "Deploy Kubernetes YAML" but should be "Run a Script". A wait stage NEVER produces a Kubernetes deploy step.
+
+**Correct output** (wait stage always produces "Run a Script"):
+```
+* Add a "Run a Script" step with the name "Wait -20 min-" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 1200`. Set the step description to "Original Spinnaker stage name: Wait (20 min)".
+```
+
+**ABSOLUTE RULE — wait stages in a fan-in/fan-out pattern must NOT be omitted.** When multiple ROOT stages (e.g., 8 parallel deploy stages) all converge into a single wait stage, and then the wait stage fans out to more stages (e.g., 12 post-wait deploy stages), ALL THREE groups must appear in the output:
+1. The 8 ROOT stages (first in topological order, parallel with each other using `Start with previous`)
+2. The wait stage (positioned after the ROOT group as a "Run a Script" step with `Set the start trigger to "Wait for all previous steps to complete, then start"`)
+3. The 12 post-wait stages (positioned after the wait stage, parallel with each other using `Start with previous`)
+
+**Negative example — wait stage completely omitted from fan-in/fan-out pipeline (CRITICAL MISTAKE)**:
+
+Given a pipeline with 8 ROOT stages and 12 post-wait stages bridged by a `"type": "wait"` stage:
+
+The **WRONG** output (wait stage entirely absent):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod HTTP server canary" ... (ROOT)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy dev worker" ... Set the start trigger to "Run in parallel with the previous step". (ROOT parallel)
+[... 6 more ROOT stages ...]
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod pubsub workers" ... Set the start trigger to "Run in parallel with the previous step". (post-wait, but NO wait step before this!)
+[... more post-wait stages ...]
+```
+← WRONG: There is no "Run a Script" wait step between the ROOT stages and the post-wait stages. The wait stage must ALWAYS be included.
+
+The **CORRECT** output includes the wait step between the ROOT and post-wait groups:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod HTTP server canary" ... (ROOT)
+[... other ROOT stages with "Run in parallel with the previous step" ...]
+* Add a "Run a Script" step with the name "Wait -20 min-" ... `Start-Sleep -Seconds 1200`. Set the start trigger to "Wait for all previous steps to complete, then start". Set the step description to "Original Spinnaker stage name: Wait (20 min)".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy prod HTTP server primary" ... Set the start trigger to "Run in parallel with the previous step". (post-wait)
+[... other post-wait stages with "Run in parallel with the previous step" ...]
 ```
 
 ## Stage Conditions (`stageEnabled`)
@@ -4015,6 +4121,12 @@ Create a project called "Batch Retry Dead Letter" in the "Default Project Group"
 
 ## Running steps in parallel
 
+**CRITICAL — start trigger annotation to Terraform mapping**: The two start trigger annotations used in step prompts map directly to Terraform `start_trigger` values. When generating step prompts, use these exact phrases and know that the Octopus AI MUST map them as follows:
+- `Set the start trigger to "Run in parallel with the previous step"` → Terraform: `start_trigger = "StartWithPrevious"` — Use this for the 2nd, 3rd, etc. steps in a parallel group.
+- `Set the start trigger to "Wait for all previous steps to complete, then start"` → Terraform: `start_trigger = "StartAfterPrevious"` — Use this for the FIRST step of each sequential group (including the first step of each parallel group) and for convergence points.
+
+When generating prompts, append `(Terraform: start_trigger = "StartWithPrevious")` after `Set the start trigger to "Run in parallel with the previous step"` to reduce ambiguity for the downstream Terraform generator. Similarly, append `(Terraform: start_trigger = "StartAfterPrevious")` after `Set the start trigger to "Wait for all previous steps to complete, then start"`.
+
 > **ABSOLUTE RULE — JSON position is irrelevant to execution order.** A stage's topological group is determined **exclusively** by its `requisiteStageRefIds` value. A stage with `"requisiteStageRefIds": []` is **always** in the root group, even if it appears as the last item in the JSON array. Never use the position of a stage in the JSON array to decide its topological group or whether it runs before or after another stage. When you identify the root group, scan the **entire** `stages` array and collect ALL stages whose `requisiteStageRefIds` is empty or absent regardless of where they appear in the JSON.
 
 > **ABSOLUTE RULE — MINIMUM PARALLEL CASE (2 root stages)**: Even when there are only TWO stages with `"requisiteStageRefIds": []`, the SECOND stage MUST get `Set the start trigger to "Run in parallel with the previous step"`. This is the simplest parallel case and is the most commonly missed. Before finalizing any conversion that has exactly 2 stages with empty `requisiteStageRefIds`, verify that the second stage has this annotation. The fact that both stages may be disabled (e.g., because their manifests are TODO placeholders) does NOT exempt them from this rule.
@@ -4659,6 +4771,38 @@ The **CORRECT** output (follows topological order, stages 1 and 4 run in paralle
 ```
 
 **ABSOLUTE RULE — Every stage MUST appear in the output exactly once.** Before outputting the final result, verify that every stage from the pipeline's `stages` array is represented by at least one step. A stage may NEVER be silently dropped.
+
+**ABSOLUTE RULE — NEVER DUPLICATE a stage.** Each Spinnaker stage (identified by its unique `refId`) MUST produce EXACTLY ONE step in the output. A stage appearing as a `requisiteStageRefIds` prerequisite of another stage does NOT mean that stage needs to be output again. Before outputting the final result, perform this mandatory self-check:
+1. Count the stages in the pipeline's `stages` array (call this `N`).
+2. Count the "Add a step" lines in your output (not counting variables, triggers, or disabled lines — only `* Add a ... step` lines).
+3. The output step count MUST equal `N` plus the number of notification steps (Slack Start/Finish). If output_step_count > N + notification_steps, you have created duplicate steps. Identify the duplicated stages (those with the same name appearing twice) and REMOVE the duplicates, keeping only the first occurrence.
+
+**Negative example — stages duplicated due to multi-prereq convergence (FORBIDDEN)**:
+
+Given a pipeline where a Wait stage (refId=6) has `requisiteStageRefIds: ["5", "16"]`, and post-wait stages (refIds 2, 12, 14) all have `requisiteStageRefIds: ["6"]`:
+
+```
+[WRONG output — post-wait stages appear twice]:
+* Add a "Deploy Kubernetes YAML" step ... "Deploy canary" ...         ← refId 5, correct first occurrence
+* Add a "Deploy Kubernetes YAML" step ... "Deploy gRPC canary" ...    ← refId 16, correct
+* Add a "Run a Script" step ... "Wait -20 min-" ...                   ← refId 6, correct
+* Add a "Deploy Kubernetes YAML" step ... "Deploy primary" ...        ← refId 2, correct first occurrence
+* Add a "Deploy Kubernetes YAML" step ... "Deploy worker" ...         ← refId 12, correct first occurrence
+[Now the AI WRONGLY creates a second pass through refIds 2 and 12:]
+* Add a "Manual Intervention" step ... "Deploy canary" ...            ← WRONG: refId 5 was already output
+* Add a "Deploy Kubernetes YAML" step ... "Deploy primary" ...        ← WRONG DUPLICATE: refId 2 already output
+* Add a "Deploy Kubernetes YAML" step ... "Deploy worker" ...         ← WRONG DUPLICATE: refId 12 already output
+```
+← WRONG: Each refId was output twice. The Wait stage's two prerequisites (refIds 5 and 16) do NOT trigger a second execution pass.
+
+```
+[CORRECT output — each refId appears exactly once]:
+* Add a "Deploy Kubernetes YAML" step ... "Deploy canary" ...         ← refId 5, once
+* Add a "Deploy Kubernetes YAML" step ... "Deploy gRPC canary" ... Set the start trigger to "Run in parallel with the previous step".  ← refId 16
+* Add a "Run a Script" step ... "Wait -20 min-" ... Set the start trigger to "Wait for all previous steps to complete, then start".     ← refId 6
+* Add a "Deploy Kubernetes YAML" step ... "Deploy primary" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← refId 2, once
+* Add a "Deploy Kubernetes YAML" step ... "Deploy worker" ... Set the start trigger to "Run in parallel with the previous step".        ← refId 12, once
+```
 
 **Worked example — pipeline where a lower-indexed stage depends on a higher-indexed stage (COMMON MISTAKE)**:
 

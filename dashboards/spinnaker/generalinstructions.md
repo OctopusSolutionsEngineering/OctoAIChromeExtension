@@ -9,7 +9,7 @@
   * When given the prompt `Create a project called 'Example Project'. The current project is 'My Web App'. The current space is 'Default'.`, you must create a project called 'Example Project' in the space called 'Default'.
 * You must create valid Terraform.
 * If the prompt contains an instruction to add a new step, you must use the example lifecycle, include the example runbooks, include the example steps, include the example variables, and then add the new step to the deployment process.
-* Instructions to create projects "with no steps" overrides instructions to add steps to the project. When a project is created with no steps, there must not be any "octopusdeploy_process_step" resources defined for that project.
+* The phrase "with no steps" in a project creation prompt is a **template placeholder** that is always present in migration prompts. When the prompt lists explicit "Add a step" instructions after the project creation line, those explicit step instructions take **absolute precedence** and ALL listed steps MUST be created — even if the project creation line says "with no steps". The phrase "with no steps" should only be interpreted literally when there are **zero** subsequent "Add a step" instructions in the entire prompt. **CRITICAL: Do NOT use the presence of "with no steps" to suppress step creation when explicit "Add a step" instructions follow it.** You will be penalized for creating a project with no `octopusdeploy_process_step` resources when the prompt contains one or more "Add a step" instructions.
 
 **CRITICAL — project names and step names from the prompt are resource identifiers and MUST be reproduced verbatim in Terraform.** A project name like `"[PROD] api-syncer canary"` and step names like `"Deploy api-syncer"` or `"Scale Down Canary"` are deployment resource identifiers. The presence of words such as `api`, `key`, `token`, `service`, `auth`, or `credential` in these names does NOT make them sensitive. NEVER omit, shorten, or replace any portion of a project name or step name from the prompt with `*` or any other placeholder when generating Terraform.
 
@@ -43,6 +43,7 @@ notes = "Original stage type: undoRolloutManifest. This step rolls back deployme
 * If the prompt says `The step must be disabled.`, you must still keep that step in the `octopusdeploy_process_steps_order` resource and preserve any explicit `start_trigger` annotation from the prompt. Disabled steps still participate in process ordering.
 * You will be penalized for using `start_trigger = "StartAfterPrevious"` when the prompt explicitly says `"Run in parallel with the previous step"`.
 * You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
+* **MANDATORY — every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource defined for a project MUST appear in that project's `octopusdeploy_process_steps_order` resource's `steps` list.** A step that exists in Terraform but is absent from the `steps` list is silently ignored by Octopus and will not execute. Before finalizing, count the `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources for a project and verify the same count of step IDs appears in the `octopusdeploy_process_steps_order` `steps` list. If any are missing, add them in the correct topological order. You will be penalized for omitting any step from the `steps` list.
 * **MANDATORY SELF-CHECK — parallel group completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Run in parallel with the previous step"`. For EACH such step, verify that the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` uses `start_trigger = "StartWithPrevious"`. If any step with that phrase uses `start_trigger = "StartAfterPrevious"`, correct it before outputting. **This check applies to ALL steps in the parallel group including the LAST one** — the last member of a parallel group is NOT a convergence point and MUST use `start_trigger = "StartWithPrevious"`, not `"StartAfterPrevious"`. Only the step AFTER the entire parallel group (annotated with "Wait for all previous steps") is a convergence point.
 
   **CRITICAL — the SECOND step in a parallel group is the most commonly broken**: When a prompt includes a large parallel group (e.g., 8 steps all with "Run in parallel with the previous step"), the SECOND step — the first one to receive the parallel annotation — is where the `StartAfterPrevious` mistake is most often made. Before finalizing, explicitly check the resource for the SECOND parallel step and confirm it uses `start_trigger = "StartWithPrevious"`, not `"StartAfterPrevious"`.
@@ -235,6 +236,13 @@ resource "octopusdeploy_process_step" "... rollback_canary" {
 **MANDATORY SELF-CHECK — parallel step count verification**: Before finalizing generated Terraform, count the number of step prompts annotated with `"Run in parallel with the previous step"`. This count MUST equal the number of `octopusdeploy_process_step` resources with `start_trigger = "StartWithPrevious"`. If these counts do not match, find and fix the discrepancy before outputting. A count mismatch always indicates that one or more parallel steps incorrectly use `start_trigger = "StartAfterPrevious"`.
 
 **MANDATORY SELF-CHECK — sequential step after parallel group**: When a prompt contains a step annotated with `"Wait for all previous steps to complete, then start"` immediately following a parallel group (one or more steps with `"Run in parallel with the previous step"`), verify that step uses `start_trigger = "StartAfterPrevious"`. This is the default, but the self-check ensures it was not accidentally set to `"StartWithPrevious"` by a copy-paste error.
+
+**MANDATORY FINAL ANNOTATION SCAN — every "Run in parallel" annotation must map to StartWithPrevious**: After generating ALL `octopusdeploy_process_step` resources, perform a final line-by-line scan. For each step in the `octopusdeploy_process_steps_order` list, look up its corresponding prompt annotation:
+- If the prompt says `Set the start trigger to "Run in parallel with the previous step"` → the step's `start_trigger` MUST be `"StartWithPrevious"`. If you find `"StartAfterPrevious"`, **change it immediately** before outputting.
+- If the prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"` → the step's `start_trigger` MUST be `"StartAfterPrevious"`. If you find `"StartWithPrevious"`, change it immediately.
+- If the prompt has NO start trigger annotation for a step → `"StartAfterPrevious"` is correct (the default).
+
+**This scan is MANDATORY and must catch the common mistake where a step annotated `"Run in parallel"` accidentally receives `start_trigger = "StartAfterPrevious"` because the preceding step also uses `"StartAfterPrevious"` (as the first step in its own parallel group).** The `start_trigger` of each step is evaluated independently — the fact that the PREVIOUS step uses `"StartAfterPrevious"` does NOT mean the current step should also use `"StartAfterPrevious"`. They are independent attributes.
 
 ## Inline Kubernetes YAML Indentation
 
@@ -919,6 +927,16 @@ resource "octopusdeploy_project" "project_<name>" {
 * You will be penalized for using count arguments like this: "${length(data.<data type>.<data resource>.<collection>) != 0 ? 1 : 1}"
 * You will be penalized for using ternary operators that return the same value for both cases.
 * **MANDATORY SELF-CHECK before finalizing external feed triggers**: Before outputting an `octopusdeploy_external_feed_create_release_trigger` resource, verify that it has: (1) a `count` attribute matching the project's count pattern, (2) `project_id` using the ternary lookup pattern, (3) `channel_id` using the ternary lookup pattern, (4) a `lifecycle { prevent_destroy = true }` block, (5) a `depends_on` referencing `octopusdeploy_process_steps_order`. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
+
+**ABSOLUTE RULE — external feed trigger output gate — DO NOT OUTPUT until this checklist passes**: Before writing an `octopusdeploy_external_feed_create_release_trigger` resource to output, you MUST answer YES to ALL of the following. A single NO means the resource is incomplete and MUST be fixed first:
+
+1. Does the resource have a `count` attribute using the `"${length(data...) != 0 ? 0 : 1}"` pattern? **If NO → add it.**
+2. Does the resource have `project_id` using a ternary lookup (NOT a direct `octopusdeploy_project.<name>.id` reference)? **If NO → replace with ternary.**
+3. Does the resource have `channel_id` using a ternary lookup (NOT a direct `octopusdeploy_channel.<name>.id` reference)? **If NO → replace with ternary.**
+4. Does the resource have a `lifecycle { prevent_destroy = true }` block? **If NO → add it.**
+5. Does the resource have `depends_on` pointing to `octopusdeploy_process_steps_order`? **If NO → add it.**
+
+A direct reference like `"${octopusdeploy_project.project_foo.id}"` for `project_id` is WRONG — it must use the ternary pattern. A direct reference like `"${octopusdeploy_channel.channel_foo_application.id}"` for `channel_id` is WRONG — it must use the ternary pattern. You will be penalized for each missing or incorrect attribute.
 
 **STOP — verify external feed trigger before outputting**: An `octopusdeploy_external_feed_create_release_trigger` resource MUST contain ALL of the following attributes. If any are missing, the Terraform will fail on idempotent re-apply. Check each:
 
@@ -4036,8 +4054,37 @@ When the prompt includes a "Run a Script" step that must be disabled (i.e., the 
 
 * `patchManifest` stage TODO steps (which always must be disabled)
 * Any other stage type where the prompt says the step must be disabled
+* `"Deploy Kubernetes YAML"` steps whose YAML is a `# TODO:` placeholder (these must also have `is_disabled = true`)
 
 **CRITICAL — `is_disabled = true` is REQUIRED when the prompt says `The step must be disabled.`**: Do not omit this attribute.
+
+**CRITICAL — `is_disabled = true` applies equally to `Octopus.KubernetesDeployRawYaml` steps with TODO YAML**: When a "Deploy Kubernetes YAML" step has its `Octopus.Action.KubernetesContainers.CustomResourceYaml` set to a `# TODO:` placeholder, the step MUST have `is_disabled = true`. This is not optional — a TODO YAML step that is enabled will fail at deployment time.
+
+**Negative example — Kubernetes YAML step with TODO placeholder missing is_disabled (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_prod_server" {
+  name        = "Deploy prod server"
+  type        = "Octopus.KubernetesDeployRawYaml"
+  is_disabled = false   ← WRONG: step has TODO YAML and must be disabled
+  ...
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with manifest"
+  }
+}
+```
+
+**Correct output** (TODO YAML steps must be disabled):
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_prod_server" {
+  name        = "Deploy prod server"
+  type        = "Octopus.KubernetesDeployRawYaml"
+  is_disabled = true    ← CORRECT: TODO YAML means the step must be disabled
+  ...
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with manifest"
+  }
+}
+```
 
 ```hcl
 resource "octopusdeploy_process_step" "process_step_patch_manifest_my_service" {
@@ -4134,4 +4181,49 @@ resource "octopusdeploy_variable" "my_project_limit_credit_1" {
 ```
 
 **CRITICAL — `control_type = "Select"` is REQUIRED when the prompt says the variable must have selectable options.** Do not use `control_type = "SingleLineText"` or omit the `display_settings` block when the prompt explicitly lists selectable options.
+
+## Step Count and Type Verification
+
+**MANDATORY SELF-CHECK — step count verification**: Before finalizing Terraform, count the number of "Add a ... step" instructions in the prompt (including community step template instructions). Count the `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources generated. These counts MUST match. If the generated count exceeds the prompt's step count, you have created duplicate step resources — identify and remove the duplicates.
+
+**CRITICAL — step type mapping**: The type of `octopusdeploy_process_step` MUST accurately reflect the step type named in the prompt:
+- `"Add a 'Run a Script' step"` → `type = "Octopus.Script"` — NEVER use `Octopus.KubernetesDeployRawYaml` or `Octopus.KubernetesRunScript` for steps described as "Run a Script".
+- `"Add a 'Deploy Kubernetes YAML' step"` → `type = "Octopus.KubernetesDeployRawYaml"`
+- `"Add a 'Run a kubectl script' step"` → `type = "Octopus.KubernetesRunScript"`
+- `"Add a 'Manual Intervention' step"` → `type = "Octopus.Manual"`
+
+**Negative example — "Run a Script" step incorrectly using KubernetesDeployRawYaml type (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_wait_20_min" {
+  name = "Wait -20 min-"
+  type = "Octopus.KubernetesDeployRawYaml"   ← WRONG: prompt says "Run a Script", must be "Octopus.Script"
+  ...
+  execution_properties = {
+    "Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds 1200"
+    ...
+  }
+}
+```
+
+**Correct output** ("Run a Script" step uses Octopus.Script type):
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_wait_20_min" {
+  name = "Wait -20 min-"
+  type = "Octopus.Script"   ← CORRECT: "Run a Script" maps to Octopus.Script
+  ...
+  execution_properties = {
+    "Octopus.Action.RunOnServer"         = "true"
+    "OctopusUseBundledTooling"           = "False"
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.Syntax"       = "PowerShell"
+    "Octopus.Action.Script.ScriptBody"   = "Start-Sleep -Seconds 1200"
+  }
+}
+```
+
+**MANDATORY — every step in the prompt must appear as a resource**: When the prompt contains N "Add a ... step" instructions, the Terraform MUST contain exactly N `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resources. A step that appears in the prompt but is missing from Terraform will not execute. You will be penalized for each missing step resource.
+
+**MANDATORY — duplicate step resources are FORBIDDEN**: When the prompt lists "Deploy prod HTTP server primary" once, there must be EXACTLY ONE `process_step_..._deploy_prod_http_server_primary` resource in the Terraform. A step resource named `process_step_..._deploy_prod_http_server_primary_2` is only valid when the PROMPT explicitly lists a SECOND step with the same name (after deduplication rules). Do NOT create `_2` suffix resources based on your own interpretation — only create them when the prompt explicitly requests a second step with the same name.
+
+**MANDATORY — "Run a Script" wait steps must appear in Terraform as `Octopus.Script` resources**: When the prompt includes a step like `Add a "Run a Script" step with the name "Wait -20 min-" ... Set the script to the following inline PowerShell code: Start-Sleep -Seconds 1200`, it MUST produce an `octopusdeploy_process_step` resource with `type = "Octopus.Script"` and `execution_properties["Octopus.Action.Script.ScriptBody"] = "Start-Sleep -Seconds 1200"`. Never omit wait-script steps. If the prompt has a wait step, the Terraform MUST have a matching `Octopus.Script` resource.
 * Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
