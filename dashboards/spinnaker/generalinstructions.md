@@ -35,6 +35,8 @@ notes = "Original stage type: undoRolloutManifest. This step rolls back deployme
 ← CORRECT: verbatim reproduction of the step description
 ```
 
+**MANDATORY SELF-CHECK before finalizing Terraform output — redaction scan**: Before outputting any Terraform, scan EVERY string value in the generated `name`, `notes`, and `description` attributes for the character sequence `*****`. For each occurrence found, compare against the prompt: if the prompt's original text at that location does NOT contain `*****`, REPLACE the `*****` with the verbatim original text from the prompt before outputting. You MUST NOT output Terraform with `*****` in any attribute value that was not literally `*****` in the prompt. You will be penalized for each occurrence of `*****` in a resource `name`, `notes`, or `description` that was not `*****` in the original prompt.
+
 ## Step Execution Order and Parallel Steps
 
 * When a step prompt says `Set the start trigger to "Run in parallel with the previous step"`, the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource MUST have `start_trigger = "StartWithPrevious"`.
@@ -368,6 +370,41 @@ In the CORRECT version: A gets `start_trigger = "StartAfterPrevious"` (convergen
 4. If your count of `StartWithPrevious` steps in this group is less than N-1, you have set one or more parallel members to `StartAfterPrevious` — fix them immediately.
 
 **CRITICAL — do NOT confuse the LAST parallel group member with the convergence step**: When a parallel group has N members (positions 1 through N in the steps list), the step at position N is the LAST PARALLEL MEMBER — it still uses `start_trigger = "StartWithPrevious"`. The convergence step is the step at position N+1 (the one annotated "Wait for all previous steps to complete, then start") — it uses `start_trigger = "StartAfterPrevious"`. NEVER set the last parallel group member to `StartAfterPrevious` just because it is the last step before the convergence point.
+
+## Process Step Terraform Resource Creation Order
+
+* **`octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources MUST NOT be created with uncontrolled parallelism.** When Terraform applies a configuration without explicit `depends_on` between step resources, it may attempt to create all step resources concurrently. This can cause API rate limit errors or race conditions on the Octopus Deploy API. To ensure correct sequential creation order, each process step resource MUST include a `depends_on` attribute pointing to the IMMEDIATELY PRECEDING step resource in the deployment process.
+
+* The first step in a project's deployment process does NOT need a `depends_on` for step ordering (it only needs to wait for the `octopusdeploy_process` resource to be created, which is handled by `process_id`).
+
+* For subsequent steps (steps 2, 3, 4, etc. in the deployment process order), add `depends_on` pointing to the PREVIOUS step resource in the ordered sequence.
+
+**Example — step dependency chain for a 3-step project**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_step_1" {
+  name       = "Step 1"
+  process_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  # ... other attributes ...
+}
+
+resource "octopusdeploy_process_step" "process_step_my_project_step_2" {
+  name       = "Step 2"
+  process_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  depends_on = [octopusdeploy_process_step.process_step_my_project_step_1]
+  # ... other attributes ...
+}
+
+resource "octopusdeploy_process_step" "process_step_my_project_step_3" {
+  name       = "Step 3"
+  process_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  depends_on = [octopusdeploy_process_step.process_step_my_project_step_2]
+  # ... other attributes ...
+}
+```
+
+* For **parallel step groups** (steps with `start_trigger = "StartWithPrevious"`), all steps in the parallel group can share `depends_on` pointing to the last sequential step before the group (the group's "entry step"). They do NOT need to depend on each other since they will be created concurrently.
+
+* `octopusdeploy_process_templated_step` resources follow the same `depends_on` pattern as `octopusdeploy_process_step` resources.
 
 ## Inline Kubernetes YAML Indentation
 
@@ -1060,6 +1097,19 @@ resource "octopusdeploy_project" "project_<name>" {
 * The "count" parameters must be in the format "${length(data.<data type>.<data resource>.<collection>) != 0 ? 0 : 1}"
 * You will be penalized for using count arguments like this: "${length(data.<data type>.<data resource>.<collection>) != 0 ? 1 : 1}"
 * You will be penalized for using ternary operators that return the same value for both cases.
+
+**CRITICAL — `octopusdeploy_process` resource MUST include `depends_on` for any tag sets, tags, or other space-level resources it references**: When a deployment process references tenant tag sets or other space-level resources, the `octopusdeploy_process` resource MUST include a `depends_on` list pointing to those resources. This ensures the tag sets exist before the process is created. If the process does not reference any tag sets or other resources, `depends_on` may be omitted or set to an empty list.
+
+**Example — `octopusdeploy_process` with `depends_on` for tag sets**:
+```hcl
+resource "octopusdeploy_process" "process_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  depends_on = [octopusdeploy_tag_set.tagset_regions, octopusdeploy_tag.tagset_regions_tag_us_east]
+}
+```
+
+If the deployment process does not use tenant tag sets or other space resources, `depends_on` can be omitted from the `octopusdeploy_process` resource entirely.
 * **MANDATORY SELF-CHECK before finalizing external feed triggers**: Before outputting an `octopusdeploy_external_feed_create_release_trigger` resource, verify that it has: (1) a `count` attribute matching the project's count pattern, (2) `project_id` using the ternary lookup pattern, (3) `channel_id` using the ternary lookup pattern, (4) a `lifecycle { prevent_destroy = true }` block, (5) a `depends_on` referencing `octopusdeploy_process_steps_order`. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
 
 **ABSOLUTE RULE — external feed trigger output gate — DO NOT OUTPUT until this checklist passes**: Before writing an `octopusdeploy_external_feed_create_release_trigger` resource to output, you MUST answer YES to ALL of the following. A single NO means the resource is incomplete and MUST be fixed first:
@@ -1693,6 +1743,19 @@ resource "octopusdeploy_project_versioning_strategy" "project_my_project" {
 }
 ```
 A versioning strategy resource without `count` will fail on idempotent re-apply. Do NOT create `octopusdeploy_project_versioning_strategy` without the count and ternary `project_id` pattern.
+
+**CRITICAL — `octopusdeploy_project_versioning_strategy` MUST NOT include `lifecycle { prevent_destroy = true }`**: Unlike feed resources and channel resources (which are space-scoped shared resources), the versioning strategy is a project-scoped sub-resource and does NOT require the `prevent_destroy` lifecycle guard. Adding `lifecycle { prevent_destroy = true }` to a versioning strategy resource causes unnecessary resource locks that prevent the project from being cleanly destroyed during testing. The correct pattern has `count` and ternary `project_id` but NO `lifecycle` block:
+
+```hcl
+resource "octopusdeploy_project_versioning_strategy" "project_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  template   = "#{Octopus.Version.LastMajor}.#{Octopus.Version.LastMinor}.#{Octopus.Version.NextPatch}"
+  # NO lifecycle block — this is project-scoped and does not need prevent_destroy
+}
+```
+
+You will be penalized for adding `lifecycle { prevent_destroy = true }` to an `octopusdeploy_project_versioning_strategy` resource.
 
 * Every project tenant variable must have a "template" block in the "octopusdeploy_project" resource defining the variable.
 * You will be penalized for creating a resource of type "octopusdeploy_project_deployment_settings".
@@ -3254,9 +3317,19 @@ parameters      = [{ default_sensitive_value = null,, display_settings = { "Octo
   * "Sensitive"
   * "String"
   * "WorkerPool"
-* You will be penalized for defining the "lifecycle" block on a resource "octopusdeploy_variable".
 * You will be penalized for setting the resource "octopusdeploy_variable" "type" attribute to "Token".
 * When the "is_sensitive" property on a resource "octopusdeploy_variable" is set to "true", the "type" attribute must be set to "Sensitive".
+* **CRITICAL — `octopusdeploy_variable` resources MUST include `lifecycle { ignore_changes = [sensitive_value]; prevent_destroy = true }`**: Every project variable resource must include this lifecycle block to prevent Terraform from destroying variables when re-applying (which would lose any runtime values that have been set). The `ignore_changes = [sensitive_value]` prevents Terraform from detecting changes to sensitive variable values (since Octopus does not return them). Both `prevent_destroy` and `ignore_changes` are REQUIRED. Do NOT omit this lifecycle block. Every `octopusdeploy_variable` resource must look like:
+```hcl
+resource "octopusdeploy_variable" "example" {
+  # ... other attributes ...
+  lifecycle {
+    ignore_changes  = [sensitive_value]
+    prevent_destroy = true
+  }
+  depends_on = []
+}
+```
 * When defining the value for a resource "octopusdeploy_variable" with a "type" of "Sensitive", the "sensitive_value" attribute must be set to "CHANGEME", and the "value" attribute must not be defined.
 * **CRITICAL — project variables derived from `templatedPipeline` `variables` entries must always use `type = "String"`**: When the prompt says `Add a project variable called "<name>" with the value "<value>"` and the variable originates from a `templatedPipeline` `variables` object, the Terraform variable resource MUST use `type = "String"` regardless of whether the value looks like a boolean (`"true"`, `"false"`), a number (`"15"`, `"900"`), a URL, or any other non-string type. Do NOT use `type = "Boolean"`, `type = "Integer"`, or any other type — all `templatedPipeline` variable values are stored as strings in Octopus. Exception: if the prompt explicitly says `Add a sensitive project variable`, use `type = "Sensitive"` and `is_sensitive = true` instead.
 * When the prompt says `Add a sensitive project variable called "<name>" with the description "<description>".`, create a project-scoped `octopusdeploy_variable` resource with `name = "<name>"`, `description = "<description>"`, `type = "Sensitive"`, `is_sensitive = true`, and `sensitive_value = "CHANGEME"`. Do not define a `value` attribute for that variable.

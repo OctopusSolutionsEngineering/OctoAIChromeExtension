@@ -77,7 +77,13 @@ Given a `deployManifest` stage with `"source": "artifact"`, `manifestArtifactId`
 - `key-manager` — an encryption key management microservice (NOT a secret key)
 - `token-processor` — a token processing microservice (NOT an authentication token)
 - `pub-syncer` — a Pub/Sub synchronizer microservice (NOT a secret)
-A name like `"[PROD] api-syncer canary"` is a Kubernetes Deployment identifier, not an API key. The presence of `api` in a hyphenated compound name is a MICROSERVICE CATEGORY, not an indicator of sensitive content.
+- `api-gateway` — an API gateway microservice (NOT an API key)
+- `auth-proxy` — an authentication proxy microservice (NOT a credential)
+- `credential-store` — a credential storage microservice (NOT actual credentials)
+- `secret-store` — a secret management microservice (NOT an actual secret)
+- `api-handler` — an API request handler microservice (NOT an API key)
+- `token-service` — a token-issuing microservice (NOT an authentication token)
+A name like `"[PROD] api-syncer canary"` is a Kubernetes Deployment identifier, not an API key. The presence of `api` in a hyphenated compound name is a MICROSERVICE CATEGORY, not an indicator of sensitive content. **ANY hyphenated compound name containing `api`, `auth`, `key`, `token`, `credential`, or `secret` is a microservice name and MUST be preserved verbatim.**
 
 **Negative example — pipeline name containing "api" incorrectly redacted (FORBIDDEN)**:
 ```
@@ -617,11 +623,29 @@ Create a project called "My Project" in the "Default Project Group" project grou
 
 The project name MUST be the exact verbatim value of the pipeline `name` field. **CRITICAL — do NOT redact or anonymize the pipeline `name` when using it as the project name**: Words such as `api`, `key`, `token`, `service`, `syncer`, `auth`, or `credential` in the pipeline name are microservice names and deployment identifiers — they are NOT secrets or API keys. For example, a pipeline `"name": "[PROD] api-syncer canary"` must produce `Create a project called "[PROD] api-syncer canary"` verbatim. NEVER replace any portion of the pipeline name with `*****`.
 
+**ABSOLUTE OUTPUT GATE — project name must NEVER contain `*****`**: Before writing the `Create a project called "..."` line, confirm that the project name you are about to write is IDENTICAL (character-for-character) to the pipeline's top-level `"name"` field value. If you observe any asterisks (`*`) in your intended project name that were NOT in the original pipeline `"name"` field, STOP and replace them with the original characters before writing. This gate applies even if you believe the characters are sensitive — pipeline names are resource identifiers and are NEVER sensitive.
+
 The `limitConcurrent` property of the Spinnaker pipeline has no equivalent setting in Octopus. When `limitConcurrent` is `true`, add the following migration note as part of the project description: `NOTE (migration): The original Spinnaker pipeline had limitConcurrent=true, which prevented concurrent pipeline executions. Configure a suitable deployment mutex or concurrency limit in Octopus if required.`. Append this note to the existing description if one is present, or set it as the description if none exists.
 
 The `keepWaitingPipelines` property of the Spinnaker pipeline has no equivalent setting in Octopus. When `keepWaitingPipelines` is `false`, add the following migration note as part of the project description: `NOTE (migration): The original Spinnaker pipeline had keepWaitingPipelines=false, which discarded queued executions when a new trigger fired. Octopus does not have a direct equivalent; configure a suitable concurrency policy if required.`. Append this note to the existing description if one is present, or set it as the description if none exists.
 
 If the Spinnaker pipeline has a non-empty `roles` array, append the following note to the project description: `NOTE (migration): The original Spinnaker pipeline required the following roles for execution: <roles>.`. Replace `<roles>` with the comma-separated list of role names from the `roles` array. Append this note to any existing description or migration notes.
+
+**MANDATORY SELF-CHECK — description notes completeness**: Before finalizing the project creation prompt, explicitly and INDEPENDENTLY check ALL THREE of the following conditions:
+1. Is `limitConcurrent` equal to `true`? If YES, add the limitConcurrent migration note.
+2. Is `keepWaitingPipelines` equal to `false`? If YES, add the keepWaitingPipelines migration note.
+3. Is the `roles` array non-empty? If YES, add the roles migration note.
+
+These checks are CUMULATIVE and INDEPENDENT — if two or three conditions are true, ALL corresponding notes MUST be appended to the description. It is NOT sufficient to add only one note when multiple conditions apply. For example, if BOTH `limitConcurrent: true` AND `keepWaitingPipelines: false` are present, the project description MUST contain BOTH notes. You will be penalized for each applicable note that is omitted from the description.
+
+**Negative example — only one of two applicable notes included (FORBIDDEN)**:
+```
+limitConcurrent: true, keepWaitingPipelines: false → WRONG: only adding limitConcurrent note
+```
+**Correct output — both notes present when both conditions are true**:
+```
+limitConcurrent: true, keepWaitingPipelines: false → CORRECT: both notes appended
+```
 
 Other prompts are then appended to the base prompt to create the equivalent project in Octopus Deploy, for example:
 
@@ -4220,6 +4244,36 @@ The **CORRECT** output (convergence annotation present despite matching JSON ord
 
 **MANDATORY SELF-CHECK — parallel annotation completeness**: Before outputting the final prompt, count the number of root stages (stages with `requisiteStageRefIds: []`). Verify that exactly (root_count - 1) steps have the annotation `Set the start trigger to "Run in parallel with the previous step"`. If the count does not match, identify which root-group stages are missing the annotation and add it. Additionally, for every non-root dependency group with two or more members, verify that all but the first member have the parallel annotation.
 
+**CRITICAL — non-ROOT sibling parallel groups are the most commonly missed case**: When two or more stages share the same non-empty `requisiteStageRefIds` (e.g., both have `"requisiteStageRefIds": ["3"]`), they form a parallel group even though they are NOT root stages. The SECOND (and subsequent) stages in this group MUST receive `Set the start trigger to "Run in parallel with the previous step"` — exactly as in the root group case. This is the SAME rule as for root-group siblings, but it applies to EVERY dependency group at EVERY depth.
+
+**Worked example — two stages both depending on Manual Judgment (non-ROOT 2-stage sibling group)**:
+
+Given a pipeline with:
+- Stage A (`refId: "1"`): `requisiteStageRefIds: []` — ROOT (Deploy Canary)
+- Stage B (`refId: "2"`): `requisiteStageRefIds: ["1"]` — depends on A (Manual Judgment)
+- Stage C (`refId: "3"`): `requisiteStageRefIds: ["2"]` — depends on B (Deploy Prod) ← FIRST in {C, D} group
+- Stage D (`refId: "4"`): `requisiteStageRefIds: ["2"]` — depends on B (Scale Down Canary) ← SECOND in {C, D} group
+
+Stages C and D BOTH depend on stage B. They are siblings forming a non-ROOT parallel group.
+
+The **WRONG** output (Stage D missing its parallel annotation — COMMON MISTAKE):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ...     ← Stage A, ROOT — no annotation ✓
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← Stage B
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ...        ← Stage C, first in {C,D} group — no annotation ✓
+* Add a "Run a Script" step ... "Scale Down Canary" ...            ← WRONG: Stage D is second in {C,D} group and must receive "Run in parallel"!
+```
+
+The **CORRECT** output (Stage D receives parallel annotation):
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Canary" ...     ← Stage A, ROOT — no annotation ✓
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← Stage B
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Prod" ...        ← Stage C, first in {C,D} group — no annotation ✓
+* Add a "Run a Script" step ... "Scale Down Canary" ... Set the start trigger to "Run in parallel with the previous step".   ← CORRECT: Stage D is second in {C,D} group
+```
+
+**MANDATORY NON-ROOT SIBLING CHECK**: For EVERY unique non-empty `requisiteStageRefIds` value that appears 2+ times in the pipeline, identify all stages sharing that value. The FIRST stage (by JSON order) in that group gets no annotation. ALL remaining stages in the group MUST get `Set the start trigger to "Run in parallel with the previous step"`. Perform this check for EVERY such group before finalizing output.
+
 **ABSOLUTE RULE — the ROOT stage (the first stage in topological order, i.e., the stage with `"requisiteStageRefIds": []` that appears first in the output) MUST NEVER receive any start trigger annotation.** Even when the topological sort changes the execution order relative to the JSON array order, the root stage appears first in the output and has no prior stages to wait for. Adding `"Wait for all previous steps to complete, then start"` to the root stage is always wrong.
 
 **Negative example — root stage incorrectly annotated when topological order differs from JSON (COMMON MISTAKE)**:
@@ -5342,6 +5396,13 @@ CORRECT: generate 2 as first in group, 3 as parallel (StartWithPrevious), 18 as 
 4. Only AFTER completing steps 1–3, begin writing your output.
 
 This step is not optional — it ensures the project name and all step names are recorded before any text is generated, preventing accidental replacement of identifier words like `api`, `auth`, `key`, `token`, or `service` with `*****`.
+
+**MANDATORY POST-GENERATION `*****` SCAN**: After generating your output but BEFORE finalizing it, scan EVERY line of your generated output for the character sequence `*****`. For each occurrence found:
+1. Identify what text was in the source pipeline JSON at that position (pipeline `name`, stage `name`, manifest value, etc.).
+2. Confirm: does the source JSON LITERALLY contain `*****` at that exact location? If YES, keep it. If NO, REPLACE the `*****` with the verbatim original text from the JSON.
+3. Do NOT proceed to output until ALL `*****` occurrences that do NOT originate from the source JSON have been replaced with their original values.
+
+This scan is ABSOLUTE and MANDATORY — it applies even if you believe the `*****` was justified. If the original JSON does not contain `*****`, your output MUST NOT contain `*****`. A generated output with `*****` in any project name, step name, or manifest content (that was not `*****` in the source JSON) is ALWAYS wrong.
 
 **MANDATORY STAGE COMPLETENESS AND UNIQUENESS CHECK**: After producing all step prompts, perform this combined verification before finalizing your output:
 
