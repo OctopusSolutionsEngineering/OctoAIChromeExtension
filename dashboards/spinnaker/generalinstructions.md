@@ -2079,7 +2079,43 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
 | *(no condition phrase)* | `"Success"` ← default |
 | `Set condition to "Variable"` with expression | `"Variable"` |
 
-**MANDATORY SELF-CHECK — after generating all step resources, verify completeness of `octopusdeploy_process_steps_order`**: Before finalizing any Terraform output, scan every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource you created. For EACH such resource, confirm its ID appears in the `steps` array of the corresponding `octopusdeploy_process_steps_order` resource. If any step resource is missing from the steps order array, add it immediately. This applies to ALL steps including disabled steps, parallel steps, and notification steps. A step resource that exists in Terraform but does not appear in `octopusdeploy_process_steps_order` will not execute at deployment time.
+**MANDATORY SELF-CHECK — after generating all step resources, verify completeness of `octopusdeploy_process_steps_order`**: Before finalizing any Terraform output, scan every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource you created. For EACH such resource, confirm its ID appears in the `steps` array of the corresponding `octopusdeploy_process_steps_order` resource. If any step resource is missing from the steps order array, add it immediately. This applies to ALL steps including disabled steps, parallel steps, notification steps, and **"Review template-derived pipeline behavior" script steps**. A step resource that exists in Terraform but does not appear in `octopusdeploy_process_steps_order` will not execute at deployment time.
+
+**Negative example — "Review template-derived pipeline behavior" step resource defined but missing from steps_order (CRITICAL MISTAKE)**:
+```hcl
+# The step resource is defined:
+resource "octopusdeploy_process_step" "process_step_review_template_derived_pipeline_behavior" {
+  count  = ...
+  name   = "Review template-derived pipeline behavior"
+  type   = "Octopus.Script"
+  ...
+}
+
+# BUT it is missing from the steps array — WRONG:
+resource "octopusdeploy_process_steps_order" "process_step_order_my_project" {
+  count      = ...
+  process_id = ...
+  steps      = [
+    octopusdeploy_process_step.process_step_my_project_deploy_dev[0].id,
+    octopusdeploy_process_step.process_step_my_project_deploy_staging[0].id,
+    # ← MISSING: process_step_review_template_derived_pipeline_behavior[0].id
+  ]
+}
+```
+← WRONG: The review step resource was created but not added to steps. It will never execute.
+
+**Correct output** — review step is the LAST entry:
+```hcl
+resource "octopusdeploy_process_steps_order" "process_step_order_my_project" {
+  count      = ...
+  process_id = ...
+  steps      = [
+    octopusdeploy_process_step.process_step_my_project_deploy_dev[0].id,
+    octopusdeploy_process_step.process_step_my_project_deploy_staging[0].id,
+    octopusdeploy_process_step.process_step_review_template_derived_pipeline_behavior[0].id,  # ← CORRECT: added last
+  ]
+}
+```
 
 **CRITICAL — "Review template-derived pipeline behavior" step must be the LAST entry in `octopusdeploy_process_steps_order`**: When a `templatedPipeline` project contains a "Review template-derived pipeline behavior" script step, the reference to that step in the `steps` array of `octopusdeploy_process_steps_order` MUST appear as the LAST element. The correct order is: all Slack Notification - Start references, then all deployment stage references, then all Slack Notification - Finish references, then all Slack Notification - Complete references, and finally the "Review template-derived pipeline behavior" reference at the very end. Do NOT place the Review step reference between the Start notification and the Finish/Complete notification references.
 
@@ -2821,6 +2857,42 @@ container = {
 ```
 * You will be penalized for omitting the `container` block or any of the required `execution_properties` from an inline `Octopus.KubernetesDeployRawYaml` step.
 * **CRITICAL — when a project contains one or more `Octopus.KubernetesDeployRawYaml` inline steps, the Terraform configuration MUST include both a `data "octopusdeploy_feeds" "feed_github_container_registry"` data source AND an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource** so that the `container` block's `feed_id` ternary expression can be evaluated. If the prompt does not reference a GitHub Container Registry feed for artifact purposes, you still MUST define these resources when any inline `KubernetesDeployRawYaml` step is present, because the `container` block requires the feed. Omitting either the data source or the resource while defining a `container` block causes a Terraform reference error.
+* **CRITICAL — `octopusdeploy_docker_container_registry "feed_github_container_registry"` MUST use the count+data source idempotency pattern**: Always create this resource with `count = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"`. Without count, the resource cannot be applied idempotently and will fail if the feed already exists. The `feed_id` ternary in the `container` block uses `[0]` indexing which requires count to be present on the resource. The data source lookup MUST also always be defined alongside the resource.
+
+**Negative example — feed_github_container_registry created without count (COMMON MISTAKE)**:
+```hcl
+# WRONG — no count, no data source lookup, direct .id reference:
+resource "octopusdeploy_docker_container_registry" "feed_github_container_registry" {
+  name      = "GitHub Container Registry"
+  feed_uri  = "https://ghcr.io"
+  api_version = "v2"
+}
+container = { feed_id = "${octopusdeploy_docker_container_registry.feed_github_container_registry.id}", image = "ghcr.io/octopusdeploylabs/k8s-workertools" }
+```
+← WRONG: no count means duplicate resource creation fails on re-apply; `.id` (not `[0].id`) is inconsistent with the required ternary pattern.
+
+**Correct output — feed_github_container_registry with count and data source**:
+```hcl
+data "octopusdeploy_feeds" "feed_github_container_registry" {
+  feed_type    = "Docker"
+  ids          = null
+  partial_name = "GitHub Container Registry"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_docker_container_registry" "feed_github_container_registry" {
+  count       = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"
+  name        = "GitHub Container Registry"
+  feed_uri    = "https://ghcr.io"
+  api_version = "v2"
+  package_acquisition_location_options = ["ExecutionTarget", "NotAcquired"]
+}
+# feed_id ternary (uses [0] index, requires count above):
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image   = "ghcr.io/octopusdeploylabs/k8s-workertools"
+}
+```
 * A step of type "Octopus.KubernetesDeployRawYaml" must have property indented YAML content in the "Octopus.Action.KubernetesContainers.CustomResourceYaml" property if the YAML source is set to "Inline YAML".
 * When the prompt provides an inline YAML block for `Octopus.Action.KubernetesContainers.CustomResourceYaml`, copy that YAML content verbatim into the Terraform string while preserving its structure, list items, and indentation. Do not flatten nested keys, regenerate the YAML from a lossy intermediate representation, or remove `image`, `namespace`, `initContainers`, or other fields present in the prompt.
 * If the prompt's inline YAML block contains multiple YAML documents separated by standalone `---` lines, keep the ENTIRE multi-document payload in the single `Octopus.Action.KubernetesContainers.CustomResourceYaml` value. Do not split the YAML into multiple Terraform resources, multiple step resources, or separate prompt sections.

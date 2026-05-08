@@ -5082,13 +5082,42 @@ Create a project called "Deploy api-server to org-0003-2g-prod-tokyo-01" in the 
 2. For each unique `requisiteStageRefIds` value, collect EVERY stage with that value into one parallel group — NOT just those that appear adjacent in the JSON.
 3. Mark the FIRST stage in each group (by JSON order) as the group leader. ALL other stages in the group (second, third, etc.) MUST get `Set the start trigger to "Run in parallel with the previous step"`.
 4. Verify your group map is complete: for example, if stages at JSON positions 2, 3, and 16 all have `"requisiteStageRefIds": ["1"]`, all three belong to the SAME parallel group — the stage at position 16 is NOT in a separate group.
+5. **WARNING — JSON positions are NOT topological positions**: Stages in the JSON array may appear in non-topological order. For example, a stage at JSON position 2 may have `"requisiteStageRefIds": ["5"]` while stage 5 appears at JSON position 5. Always build the parallel group map using `requisiteStageRefIds` values — never infer ordering from the JSON array position alone.
+
+**CRITICAL — ALL parallel group members MUST be output CONSECUTIVELY, immediately after the group leader, BEFORE any of their successors**: When stages A, B, C all belong to the same parallel group (all have the same `requisiteStageRefIds` value), the output MUST place them adjacently — A first (no annotation), then B immediately after A (StartWithPrevious), then C immediately after B (StartWithPrevious). No step that is a successor of A, B, or C may appear between A, B, and C. The entire parallel group block must be complete before any successor of ANY group member is emitted. Violating this rule by outputting A's successors before B or C causes B and C to appear at wrong output positions, breaking both the parallel execution layout and the fork-without-reconvergence branch ordering.
+
+**Negative example — parallel group members displaced by successor steps (CRITICAL MISTAKE)**:
+
+Given stages where refId 2, 6, 9 all have `"requisiteStageRefIds": ["5"]` (parallel group), with chains 2→3→4, 6→7→8, 9→10→11:
+
+```
+WRONG:
+* Add "Deploy Default Server Canary" (Wait)              ← refId 2, group leader ✓
+* Add "Manual Judgment for Default Server" (Wait)        ← refId 3, successor of 2 ← ERROR: emitted before group members 6 and 9
+* Add "Deploy Default Server -Manifest-" (Wait)          ← refId 4, successor of 3 ← ERROR
+* Add "Deploy Listing Item Server Canary" (StartWithPrevious)  ← refId 6 ← ERROR: should have been 2nd after refId 2, not after refId 4
+* Add "Manual Judgment for Listing Item Server" (Wait)   ← refId 7
+...
+
+CORRECT:
+* Add "Deploy Default Server Canary" (Wait)              ← refId 2, group leader
+* Add "Deploy Listing Item Server Canary" (StartWithPrevious)  ← refId 6, IMMEDIATELY after group leader
+* Add "Deploy Listing Data Server Canary" (StartWithPrevious)  ← refId 9, IMMEDIATELY after previous group member
+* Add "Manual Judgment for Default Server" (Wait)        ← refId 3, Branch A continuation (NOTE: no "migration" note — Branch A goes first)
+* Add "Deploy Default Server -Manifest-" (Wait)          ← refId 4, Branch A continuation
+* Add "Manual Judgment for Listing Item Server" (Wait)   ← refId 7, Branch B continuation (NOTE (migration): ran concurrently...)
+* Add "Deploy Listing Item Server -Manifest-" (Wait)     ← refId 8, Branch B continuation
+* Add "Manual Judgment for Listing Data Server" (Wait)   ← refId 10, Branch C continuation (NOTE (migration): ran concurrently...)
+* Add "Deploy Listing Data Server -Manifest-" (Wait)     ← refId 11, Branch C continuation
+```
 
 **MANDATORY POST-GENERATION PARALLEL ANNOTATION SELF-CHECK**: After producing ALL step prompts, perform this mandatory verification before finalizing output:
 1. List every stage in the pipeline with `"requisiteStageRefIds": []` (empty array). These all belong to the ROOT parallel group.
 2. Identify the first stage in this list (by JSON order) — this is the root group leader, which must NOT have any start-trigger annotation.
 3. For every OTHER stage in this list (2nd, 3rd, etc.), confirm that its corresponding step prompt contains the phrase `Set the start trigger to "Run in parallel with the previous step"`. If any such stage is missing this annotation, add it immediately — even if the stage is disabled (disabled stages in parallel groups still get the annotation).
 4. Repeat the same verification for every non-root parallel group: for each unique non-empty `requisiteStageRefIds` value that appears 2+ times, confirm that all members EXCEPT the first have the parallel annotation.
-5. If any parallel annotation is missing, correct it before outputting.
+5. **NEW — verify group member adjacency**: For each parallel group with 2+ members, locate the output positions of all group members. Verify they are consecutive (no non-group steps appear between them). If any non-group step appears between group members, move that step to AFTER the last group member before outputting.
+6. If any parallel annotation is missing or any group member is out of position, correct it before outputting.
 
 **WHY THIS MATTERS**: A disabled stage (e.g., `"stageEnabled": {"expression": false}`) in the ROOT group still participates in parallel execution layout. If stages A and B both have `"requisiteStageRefIds": []` and B is disabled, B's step prompt MUST still contain BOTH `The step must be disabled.` AND `Set the start trigger to "Run in parallel with the previous step"`. Omitting the parallel annotation for a disabled root-group member is a critical error that will cause the Octopus deployment process to run steps sequentially instead of in parallel when the step is re-enabled.
 
@@ -5132,6 +5161,7 @@ When this pattern occurs:
 4. Both chains will carry `Set the start trigger to "Wait for all previous steps to complete, then start"` at their entry points.
 5. **CRITICAL**: the stages in branch A's chain must NEVER appear again in branch B's chain and vice versa. Each stage appears exactly once.
 6. Add a NOTE to the first step of the second linearized branch: `NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with "<first branch steps>". In this Octopus migration, these steps have been linearized and will run sequentially.`
+7. **CRITICAL — for 3+ branch fan-outs**: When a parallel group has 3 or more members (e.g., stages A, B, C all depending on the same predecessor X), ALL 3 group members MUST be emitted consecutively first (A, then B with StartWithPrevious, then C with StartWithPrevious), and then the branches are linearized: Branch A completely, then Branch B completely (with NOTE migration), then Branch C completely (with NOTE migration). Do NOT emit any member of Branch A's continuation before all 3 group members have been listed.
 
 **CRITICAL — determining branch membership when "Wait for all previous steps" appears at multiple points**: In a fork-without-reconvergence pipeline, continuation stages after the parallel group may each have their own `requisiteStageRefIds`. Two continuation stages that both appear to "wait" are NOT interchangeable if they each depend on DIFFERENT branch roots. To assign each continuation stage to its branch: follow its `requisiteStageRefIds` transitively until you reach a stage in the parallel-group (the fork point). The fork-point stage you reach is the branch root — ALL continuation stages that trace back to the SAME branch root belong to THAT branch and must be output BEFORE any stage from the OTHER branch. **Never place a continuation stage from Branch B before the terminal stage of Branch A just because both stages happen to have `Wait for all` semantics.**
 
