@@ -5289,13 +5289,38 @@ CORRECT:
 * Add "Deploy Listing Data Server -Manifest-" (Wait)     ← refId 11, Branch C continuation
 ```
 
+**MANDATORY PRE-GENERATION PARALLEL GROUP MAP**: Before writing any step prompts, perform this MANDATORY group-mapping step to avoid step ordering errors:
+
+**STEP A — Build the parallel group map**:
+1. Create a table of ALL stages with their `requisiteStageRefIds` values (ignoring skipped stage types: `checkPreconditions`, `evaluateVariables`, etc.).
+2. Group stages by their effective `requisiteStageRefIds` value (after resolving through any skipped stages). Two stages with the same effective `requisiteStageRefIds` form a parallel group.
+3. For each parallel group with 2+ members, list ALL members together: `GROUP {id1, id2, ...} depends on {parentId}`.
+4. For each group member, note whether it has zero continuation stages (is a "leaf"). A leaf stage has no other stages that depend on it.
+
+**STEP B — Pre-order output using the group map**:
+Before placing any step in the output, check: "Is this stage a non-first member of any parallel group in my map?" If YES, it must be placed IMMEDIATELY after the first group member, before any continuation stages of the first group member.
+
+**CRITICAL — do NOT use DFS (depth-first search) to generate steps**: DFS traversal will incorrectly explore all of Branch A's subtree before placing Branch B. Instead, for each parallel group, output ALL group members first (breadth-first within the group), then place the continuations.
+
+**Worked example — parallel group pre-ordering**:
+Given stages 8 (PubSub, depends on 2) and 11 (gRPC, depends on 2, leaf), and stages 7, 10, 14 (CronJobs, all depend on 8):
+
+Group Map:
+- GROUP {8, 11} depends on stage 2: 8=PubSub (has continuations), 11=gRPC (leaf, no continuations)
+- GROUP {7, 10, 14} depends on stage 8: all CronJob continuations
+
+Pre-ordering rule: When placing stage 8 (PubSub), IMMEDIATELY check the group map. Stage 11 (gRPC) is in the SAME group as 8. Therefore, stage 11 MUST be placed immediately after stage 8, before any of stages 7, 10, 14.
+
+CORRECT output order: ..., 8 (PubSub, "Wait for all"), 11 (gRPC, "Run in parallel"), 7 (point-redeem-later, "Wait for all"), 10 (pubsub-self-healing, "Run in parallel"), 14 (pubsub-message-cleaner, "Run in parallel"), ...
+
 **MANDATORY POST-GENERATION PARALLEL ANNOTATION SELF-CHECK**: After producing ALL step prompts, perform this mandatory verification before finalizing output:
 1. List every stage in the pipeline with `"requisiteStageRefIds": []` (empty array). These all belong to the ROOT parallel group.
 2. Identify the first stage in this list (by JSON order) — this is the root group leader, which must NOT have any start-trigger annotation.
 3. For every OTHER stage in this list (2nd, 3rd, etc.), confirm that its corresponding step prompt contains the phrase `Set the start trigger to "Run in parallel with the previous step"`. If any such stage is missing this annotation, add it immediately — even if the stage is disabled (disabled stages in parallel groups still get the annotation).
 4. Repeat the same verification for every non-root parallel group: for each unique non-empty `requisiteStageRefIds` value that appears 2+ times, confirm that all members EXCEPT the first have the parallel annotation.
 5. **NEW — verify group member adjacency**: For each parallel group with 2+ members, locate the output positions of all group members. Verify they are consecutive (no non-group steps appear between them). If any non-group step appears between group members, move that step to AFTER the last group member before outputting.
-6. If any parallel annotation is missing or any group member is out of position, correct it before outputting.
+5a. **CRITICAL — leaf branch sibling check**: For each parallel group, identify any member that has zero continuation stages (a "leaf" branch). Verify that leaf member appears IMMEDIATELY after the preceding group member in the output (step N+1, where N is the group's first member). If ANY continuation stage from the non-leaf branch appears between the first group member and the leaf member, that is a critical adjacency error. Move the leaf member to be immediately after the first group member BEFORE listing any continuation stages.
+6. If any parallel annotation is missing, any group member is out of position, or any leaf branch sibling appears after continuation stages, correct it before outputting.
 
 **WHY THIS MATTERS**: A disabled stage (e.g., `"stageEnabled": {"expression": false}`) in the ROOT group still participates in parallel execution layout. If stages A and B both have `"requisiteStageRefIds": []` and B is disabled, B's step prompt MUST still contain BOTH `The step must be disabled.` AND `Set the start trigger to "Run in parallel with the previous step"`. Omitting the parallel annotation for a disabled root-group member is a critical error that will cause the Octopus deployment process to run steps sequentially instead of in parallel when the step is re-enabled.
 
@@ -5322,7 +5347,7 @@ This step is not optional — it ensures the project name and all step names are
 
 **Step 3 — Count check**: Count the expected list and the actual list. They MUST be equal. If |actual| > |expected|: you have duplicates to remove. If |actual| < |expected|: you have missing stages to add. Do NOT add a stage to address a "missing" stage until you have confirmed it is truly absent from the ACTUAL LIST — comparing by step name, not refId.
 
-**Step 4 — Identify duplicates**: For each step name in the ACTUAL LIST, check how many times it appears. If a step name appears more than once: REMOVE all occurrences after the first. Do NOT keep duplicates.
+**Step 4 — Identify duplicates**: For each step name in the ACTUAL LIST, check how many times it appears. If a step name appears more than once: REMOVE all occurrences after the first. Do NOT keep duplicates. **Special duplicate pattern — " 2" suffix caused by incorrect fork traversal**: If you see a step name like "Deploy Foo 2" (with a " 2" suffix) when "Deploy Foo" also appears, this " 2" suffix is ONLY valid if the ORIGINAL JSON `"stages"` array contains two separate stages that resolve to the same name after substitution. If the JSON contains only ONE such stage, then the " 2" entry is a duplicate caused by traversing the same stage twice during fork linearization. REMOVE it immediately. The root cause is a fault in the parallel-group adjacency rule: the leaf-branch sibling was placed too late, causing the topological traversal to visit it a second time. Correct the step order (see HANDLING INDEPENDENT FORKED BRANCHES below) rather than keeping the duplicate.
 
 **Step 5 — Identify missing stages**: For each name in the EXPECTED LIST, check if it appears exactly once in the ACTUAL LIST. If a name has ZERO occurrences in the ACTUAL LIST, add the missing step. ONLY add a step when you have verified it has zero occurrences — do NOT add a step for any name that already appears in the ACTUAL LIST.
 
@@ -5339,7 +5364,26 @@ When this pattern occurs:
 4. Both chains will carry `Set the start trigger to "Wait for all previous steps to complete, then start"` at their entry points.
 5. **CRITICAL**: the stages in branch A's chain must NEVER appear again in branch B's chain and vice versa. Each stage appears exactly once.
 6. Add a NOTE to the first step of the second linearized branch: `NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with "<first branch steps>". In this Octopus migration, these steps have been linearized and will run sequentially.`
-7. **CRITICAL — for 3+ branch fan-outs**: When a parallel group has 3 or more members (e.g., stages A, B, C all depending on the same predecessor X), ALL 3 group members MUST be emitted consecutively first (A, then B with StartWithPrevious, then C with StartWithPrevious), and then the branches are linearized: Branch A completely, then Branch B completely (with NOTE migration), then Branch C completely (with NOTE migration). Do NOT emit any member of Branch A's continuation before all 3 group members have been listed.
+7. **CRITICAL — for ALL parallel groups (2 or more members, including 2-member groups)**: When a parallel group has 2 or more members (e.g., stages A and B both depending on the same predecessor X), ALL group members MUST be emitted consecutively first, and ONLY THEN are the branches linearized. This rule applies equally to 2-member and 3+ member groups. Do NOT emit any continuation stage of Branch A before ALL group members (including any "leaf" branch members with no continuations) have been listed. Specifically for **2-member groups where Branch B is a leaf (no continuations)**: Stage A appears first, then Stage B appears immediately after with "Run in parallel with the previous step", and ONLY THEN do Branch A's continuation stages appear (starting with "Wait for all previous steps to complete, then start"). **NEVER place Branch A's continuation stages between Stage A and Stage B.**
+
+**Negative example — 2-member fork where Branch B is a leaf, continuation wrongly placed before Branch B (CRITICAL MISTAKE)**:
+
+Given a pipeline where stage X fans out to stage A (which has continuation stages C1, C2, C3) and stage B (no continuations):
+```
+WRONG:
+* Add step ... "Stage A" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← correct, first in {A,B} group
+* Add step ... "Stage C1 (continuation of A)" ... Set the start trigger to "Run in parallel with the previous step".  ← WRONG: Stage B must come first, before any continuations
+* Add step ... "Stage C2" ... Set the start trigger to "Run in parallel with the previous step".
+* Add step ... "Stage B (leaf, no continuations)" ... Set the start trigger to "Run in parallel with the previous step".  ← WRONG: too late, should be right after A
+
+CORRECT:
+* Add step ... "Stage A" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← first in {A,B} group
+* Add step ... "Stage B (leaf, no continuations)" ... Set the start trigger to "Run in parallel with the previous step".  ← CORRECT: B immediately after A
+* Add step ... "Stage C1 (continuation of A)" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← CORRECT: converges after BOTH A and B
+* Add step ... "Stage C2" ... Set the start trigger to "Run in parallel with the previous step".
+* Add step ... "Stage C3" ... Set the start trigger to "Run in parallel with the previous step".
+```
+← CORRECT: Stage B is placed right after Stage A (before any continuations). Stage C1 gets "Wait for all" to converge after BOTH A and B completing. This is an ABSOLUTE RULE even when Branch B has zero continuation stages.
 
 **CRITICAL — determining branch membership when "Wait for all previous steps" appears at multiple points**: In a fork-without-reconvergence pipeline, continuation stages after the parallel group may each have their own `requisiteStageRefIds`. Two continuation stages that both appear to "wait" are NOT interchangeable if they each depend on DIFFERENT branch roots. To assign each continuation stage to its branch: follow its `requisiteStageRefIds` transitively until you reach a stage in the parallel-group (the fork point). The fork-point stage you reach is the branch root — ALL continuation stages that trace back to the SAME branch root belong to THAT branch and must be output BEFORE any stage from the OTHER branch. **Never place a continuation stage from Branch B before the terminal stage of Branch A just because both stages happen to have `Wait for all` semantics.**
 

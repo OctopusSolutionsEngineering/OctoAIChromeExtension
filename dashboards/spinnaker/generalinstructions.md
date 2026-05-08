@@ -244,6 +244,40 @@ resource "octopusdeploy_process_step" "... rollback_canary" {
 
 **This scan is MANDATORY and must catch the common mistake where a step annotated `"Run in parallel"` accidentally receives `start_trigger = "StartAfterPrevious"` because the preceding step also uses `"StartAfterPrevious"` (as the first step in its own parallel group).** The `start_trigger` of each step is evaluated independently — the fact that the PREVIOUS step uses `"StartAfterPrevious"` does NOT mean the current step should also use `"StartAfterPrevious"`. They are independent attributes.
 
+**CRITICAL — parallel group members must appear CONSECUTIVE in the `steps` list of `octopusdeploy_process_steps_order`**: Every step with `start_trigger = "StartWithPrevious"` must be placed in the `steps` list IMMEDIATELY after the step it runs in parallel with. No step from a different parallel group or from a later phase may appear between two members of the same parallel group. If you have a parallel group {A, B} where B runs in parallel with A, and A has continuation steps C1, C2, then the `steps` list must be `[..., A, B, C1, C2, ...]`. The order `[..., A, C1, B, C2, ...]` is FORBIDDEN because B is separated from A by a step from a different phase.
+
+**Negative example — leaf-branch sibling placed after continuation steps (CRITICAL MISTAKE)**:
+
+Given a prompt where Stage A and Stage B are parallel siblings (both follow the same predecessor), and Stage B is a leaf (no continuation steps), while Stage A has continuation steps C1 and C2:
+```hcl
+# WRONG — B appears after C1, breaking the consecutive adjacency rule:
+resource "octopusdeploy_process_steps_order" "..." {
+  steps = [
+    octopusdeploy_process_step.step_a.id,       # A: first in {A, B} group
+    octopusdeploy_process_step.step_c1.id,      # WRONG: C1 inserted before B
+    octopusdeploy_process_step.step_b.id,       # WRONG: B should be right after A
+    octopusdeploy_process_step.step_c2.id,
+  ]
+}
+
+# CORRECT — B appears immediately after A, before any continuation steps:
+resource "octopusdeploy_process_steps_order" "..." {
+  steps = [
+    octopusdeploy_process_step.step_a.id,       # A: first in {A, B} group
+    octopusdeploy_process_step.step_b.id,       # CORRECT: B immediately after A
+    octopusdeploy_process_step.step_c1.id,      # C1: first continuation, converges after BOTH A and B
+    octopusdeploy_process_step.step_c2.id,
+  ]
+}
+```
+In the CORRECT version: A gets `start_trigger = "StartAfterPrevious"` (convergence after predecessor), B gets `start_trigger = "StartWithPrevious"` (parallel with A), C1 gets `start_trigger = "StartAfterPrevious"` (waits for BOTH A and B to complete).
+
+**MANDATORY SELF-CHECK — `steps` list adjacency validation**: Before finalizing the `octopusdeploy_process_steps_order` resource for each project, scan the `steps` list and for every step with `start_trigger = "StartWithPrevious"`, verify that its position in the `steps` list is EXACTLY one slot after the step it is parallel with. If a step with `start_trigger = "StartWithPrevious"` is NOT immediately adjacent to its parallel partner in the `steps` list, move it to be adjacent.
+
+**CRITICAL — a "convergence" step (start_trigger = "StartAfterPrevious") that follows a parallel group must appear in the `steps` list AFTER all parallel group members**: When a step annotated with "Wait for all previous steps to complete, then start" follows a parallel group {A, B, C}, this convergence step must appear at position N+1 in the `steps` list where N is the position of the LAST parallel group member. Verify this by checking that no parallel group member appears AFTER the convergence step in the `steps` list.
+
+**CRITICAL — the total count of `StartWithPrevious` steps in resources must match the count in the `steps` list**: When building the `octopusdeploy_process_steps_order` `steps` list, count how many `octopusdeploy_process_step` resources have `start_trigger = "StartWithPrevious"`. The `steps` list must contain ALL of these steps in the correct positions (each immediately after their parallel partner). If the count in resources does not match the adjacency structure of the `steps` list, there is an ordering error.
+
 ## Inline Kubernetes YAML Indentation
 
 * When setting `Octopus.Action.KubernetesContainers.CustomResourceYaml` in `execution_properties`, the YAML value MUST use proper 2-space indentation at every level. Flat YAML (where all keys appear at column 0) is invalid and will cause deployment failures.
