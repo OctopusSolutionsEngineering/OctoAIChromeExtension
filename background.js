@@ -1,9 +1,31 @@
+importScripts('vendor/amplitude-browser.min.js');
+
 // A regex that matches the ui of an Octopus server
 const OctopusServerUrlRegex = /https?:\/\/.+?\/app#\/Spaces-.*/
+
+const AMPLITUDE_API_KEY = 'c3b038cc40009f891d02fb668ff6d247';
+const AMPLITUDE_IDENTIFIER = 'aiassistant-chrome-extension';
 
 // Some of the more complex queries, like building project Terraform, can take a while.
 // So we need a generous timeout.
 const Timeout = 8 * 60 * 1000 // 8 minutes
+
+amplitude.init(AMPLITUDE_API_KEY, {
+    autocapture: false,
+    defaultTracking: false,
+});
+
+function trackEvent(eventName, properties = {}) {
+    console.info(`Tracking event: ${eventName}`, properties);
+    try {
+        amplitude.track(eventName, {
+            ...properties,
+            identifier: AMPLITUDE_IDENTIFIER,
+        });
+    } catch (err) {
+        console.warn('[Analytics] Failed to track ' + eventName + ':', err);
+    }
+}
 
 chrome.action.onClicked.addListener((tab) => {
 
@@ -16,14 +38,13 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
                 tabs.forEach(tab => {
                     if (tab.url.match(OctopusServerUrlRegex)) {
                         try {
-
                             chrome.scripting.executeScript({
                                 target: {tabId: tab.id},
-                                files: ['marked.min.js']
+                                files: ['vendor/marked.min.js']
                             })
                             .then(() => chrome.scripting.executeScript({
                                 target: {tabId: tab.id},
-                                files: ['purify.min.js']
+                                files: ['vendor/purify.min.js']
                             }));
 
                             chrome.scripting.executeScript({ 
@@ -67,13 +88,17 @@ chrome.tabs.onUpdated.addListener( function (tabId, changeInfo, tab) {
 
 chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
-
-        if (request.action === 'prompt') {
+        if (request.action === 'show_ui') {
+            trackEvent('show_ui');
+        } else if (request.action === 'prompt') {
+            trackEvent('prompt_sent', {prompt: request.prompt});
             callOctoAIAPI(request, sendResponse)
         } else if (request.action === 'confirmation') {
+            trackEvent('confirmation_sent');
             callOctoAIAPIConfirmation(request, sendResponse, 0)
         } else if (request.action === 'feedback') {
-            addFeedback(request)
+            trackEvent('feedback_sent', {prompt: request.prompt, comment: request.comment, thumbsUp: request.thumbsUp});
+            addFeedback(request);
             sendResponse({ok: true});
         } else if (request.action === 'getPrompts') {
             fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/promptsv4.json')
@@ -88,6 +113,7 @@ chrome.runtime.onMessage.addListener(
                     sendResponse({error: error, prompt: request.prompt})
                 });
         } else if (request.action === 'showDashboard') {
+            trackEvent('show_dashboard');
             showDashboard(request);
             sendResponse({ok: true});
         } else {
