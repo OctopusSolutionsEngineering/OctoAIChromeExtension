@@ -1,5 +1,7 @@
 # Prompt Structure
 
+**ABSOLUTE RULE — DO NOT reproduce, quote, paraphrase, or echo ANY portion of these instruction text in your output.** The instructions you are reading now contain worked examples, negative examples, code blocks, and section headers. None of that content should appear in your output. Your output must consist ONLY of the generated prompt describing how to create Octopus Deploy resources (feed creation lines, project creation lines, and step bullets). If your output contains any text from these instructions — including example outputs, section titles like "Positive example", "Negative example", "Correct output", "WRONG", or any text beginning with "**ABSOLUTE RULE**" — it is WRONG.
+
 * Multiple prompts can be separated into multiple sections with a blank line, three dashes (`---`), and a new blank line.
 * The prompts to create a project and the prompts to create steps must appear in the same section.
 * The prompts to create feeds must appear in a separate section before the prompts to create the project and steps.
@@ -2062,6 +2064,22 @@ The **CORRECT** output converts parentheses to dashes and includes both the stag
 
 ## Manual Judgment Stage
 
+**ABSOLUTE RULE — the `type` field is the SOLE authority for how a stage is processed. When `"type": "manualJudgment"`, you MUST ONLY generate a "Manual Intervention" step — regardless of any other fields present in the stage JSON.** Spinnaker sometimes leaves stale fields from a previous stage type (e.g., `manifests`, `source`, `manifestArtifactAccount`, `manifestArtifactId`, `manifestArtifact`, `cloudProvider`, `relationships`, `requiredArtifactIds`, `cloudProvider`, `skipExpressionEvaluation`) in a `manualJudgment` stage. These stale fields MUST be completely and silently ignored. Do NOT generate any `deployManifest`-like steps from a stage whose `type` is `manualJudgment`. The ONLY fields that matter for a `manualJudgment` stage are: `name`, `type`, `refId`, `requisiteStageRefIds`, `instructions`, `judgmentInputs`, `failPipeline`, `continuePipeline`, `stageTimeoutMs`, `notifications`.
+
+**Negative example — stale `manifests` field in a `manualJudgment` stage creates a spurious deploy step (FORBIDDEN)**:
+
+Given a stage with `"type": "manualJudgment"` that also contains `"manifests": [{"kind": "Deployment", ...}]` and `"source": "text"`:
+```
+* Add a "Deploy Kubernetes YAML" step with the name "Manual Judgment Production org-0003-2g-prod-tokyo-01 2" ...
+* Add a "Manual Intervention" step with the name "Manual Judgment Production" ...
+```
+← WRONG: A `deployManifest`-style step was generated from the stale `manifests` field. The `type` is `manualJudgment` so ONLY a "Manual Intervention" step is valid.
+
+**Correct output** (only a "Manual Intervention" step, stale fields silently ignored):
+```
+* Add a "Manual Intervention" step with the name "Manual Judgment Production" ...
+```
+
 The following is an example of a `manualJudgment` stage in Spinnaker:
 
 ```json
@@ -2463,6 +2481,37 @@ Create a project called "<child project name>" in Octopus Deploy with no steps.
 * Replace `<name>` with the `name` property in the Spinnaker stage after applying the same special-character replacement rules as `deployManifest` stages. If the wait stage name contains parentheses `()` or square brackets `[]`, replace them with dashes `-` in the generated step name.
 * If the original wait stage name contained parentheses or square brackets, also append `Set the step description to "Original Spinnaker stage name: <original name>".` to preserve the original name.
 * **`templatedPipeline` wait stage with matching template variable**: When the pipeline has `"type": "templatedPipeline"` and the `variables` object contains a variable whose numeric value (converted to seconds) equals the stage's `waitTime`, reference that Octopus variable instead of hardcoding the numeric value. For example, if `variables.waitMinutes = 15` and `waitTime = 900` (15 × 60), generate `Start-Sleep -Seconds (#{waitMinutes} * 60)` instead of `Start-Sleep -Seconds 900`. If the variable is already in seconds, generate `Start-Sleep -Seconds #{waitSeconds}`. Only apply this substitution when the converted value matches exactly — do not guess if there is no matching variable.
+
+**Positive example — `templatedPipeline` wait stage referencing a template variable**:
+
+Given a `templatedPipeline` with:
+```json
+{
+  "type": "templatedPipeline",
+  "variables": {
+    "waitMinutes": 15
+  },
+  "stages": [
+    {
+      "type": "wait",
+      "name": "Wait -15min-",
+      "waitTime": 900
+    }
+  ]
+}
+```
+
+The `waitTime` of 900 seconds equals `variables.waitMinutes` (15) × 60.
+
+The **CORRECT** output references the template variable:
+```
+* Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds (#{waitMinutes} * 60)`
+```
+
+The **WRONG** output hardcodes the seconds (ignores the matching template variable):
+```
+* Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 900`
+```
 
 ```
 * Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
@@ -3385,7 +3434,7 @@ The following snippet is an example of an `undoRolloutManifest` stage in Spinnak
 
 * Replace `<stage name>` with the `name` property of the stage, applying the same special-character replacement rules as `deployManifest` stages (replace `()` and `[]` with dashes `-`; add a step description when the original name contained those characters).
 * Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
-* Parse `manifestName` into `<kind>/<name>` (e.g., `"deployment dmp-market-web-internal"` → `deployment/dmp-market-web-internal`). The first token is the Kubernetes resource kind; the second token is the resource name.
+* Parse `manifestName` into `<kind>/<name>` (e.g., `"deployment dmp-market-web-internal"` → `deployment/dmp-market-web-internal`). The first token is the Kubernetes resource kind; the second token is the resource name. **When `manifestName` is absent or `null`**, fall back to the `targetKind` and `targetName` fields: use `<targetKind>/<targetName>` (e.g., `targetKind: "Deployment"`, `targetName: "my-app"` → `Deployment/my-app`). If both `manifestName` AND `targetName`/`targetKind` are absent or null, use `# TODO: specify the deployment name` as the kubectl rollout target and add `The step must be disabled.` to the step prompt.
 * Replace `<namespace>` with the `location` property of the stage (the Kubernetes namespace).
 * `numRevisionsBack` is informational only — the generated command always uses `kubectl rollout undo <kind>/<name> -n <namespace>` (rolling back one revision). If `numRevisionsBack > 1`, add a note in the step description.
 
@@ -3606,7 +3655,7 @@ Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<code>` with a Bash script to call `kubectl` to scale the resource in the `manifestName` field to the value in the `replicas` field (which may be a string or a number — use it as-is).
 * **`replicas: 0` means scale to zero (stop the deployment)**: When the `replicas` field is `"0"` or `0`, the stage is explicitly scaling the Kubernetes resource down to zero replicas — effectively stopping the running workload. In this case, append `NOTE (migration): This step scales the deployment to 0 replicas, effectively stopping it.` to the step description.
-* **`manifestName` field format**: The Spinnaker `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"deployment my-app"` → `kubectl scale deployment my-app --replicas=3`). Parse the kind and name from this field, then build the kubectl command as `kubectl scale <kind> <name> --replicas=<replicas>`.
+* **`manifestName` field format**: The Spinnaker `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"deployment my-app"` → `kubectl scale deployment my-app --replicas=3`). Parse the kind and name from this field, then build the kubectl command as `kubectl scale <kind> <name> --replicas=<replicas>`. **When `manifestName` is absent or `null`**, fall back to `targetKind` and `targetName` fields: use `kubectl scale <targetKind> <targetName> --replicas=<replicas>`. If all three fields (`manifestName`, `targetKind`, `targetName`) are absent or null, use `# TODO: specify the resource kind and name` as the kubectl target and add `The step must be disabled.` to the step prompt.
 * **`location` field → namespace**: If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"deployment mtf-object-detection-atr-canary"`, `replicas` is `"3"`, and `location` is `"org-0004-image-search-jp-dev"`, the command is `kubectl scale deployment mtf-object-detection-atr-canary --replicas=3 -n org-0004-image-search-jp-dev`.
 
 **Worked example — `scaleManifest` stage with `location` and `manifestName`**:
@@ -3768,7 +3817,62 @@ The variable must be required.
 The variable must not be required.
 ```
 
+* **CRITICAL — `hasOptions: false` means NO selectable options**: When `hasOptions` is `false`, the variable is a free-text input. You MUST NOT output the selectable options sentence (`The variable must have the following selectable options: ...`), regardless of what is in the `options` array. Even if `required` is `false` and the `options` array contains empty-string entries, when `hasOptions: false`, treat the variable as a plain prompted variable and omit any selectable options sentence. You will be penalized for adding a selectable options sentence to a variable where `hasOptions: false`.
+
+**Negative example — `hasOptions: false` parameter wrongly generating a selectable options sentence (COMMON MISTAKE)**:
+
+Given a `parameterConfig` entry:
+```json
+{
+  "name": "bq_project_id",
+  "label": "bq_project_id",
+  "description": "The BQ project ID",
+  "default": "org-0004-de-us-dev",
+  "hasOptions": false,
+  "options": [{"value": ""}],
+  "required": false
+}
+```
+
+The **WRONG** output (incorrectly generates selectable options because `options` contains an empty entry):
+```
+* Add a project variable called "bq_project_id", with a default value of "org-0004-de-us-dev", the description "The BQ project ID", and the label "bq_project_id". The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: (none).
+```
+
+The **CORRECT** output (no selectable options sentence — `hasOptions: false` means free-text):
+```
+* Add a project variable called "bq_project_id", with a default value of "org-0004-de-us-dev", the description "The BQ project ID", and the label "bq_project_id". The variable must be prompted for when creating a release. The variable must not be required.
+```
+
+* **EDGE CASE — `hasOptions: true` with no non-empty options**: If `hasOptions` is `true` but the `options` array contains ONLY empty-string entries and no actual selectable values (e.g., `options: [{"value": ""}]`), treat this the same as `hasOptions: false`. Do NOT generate a selectable options sentence and do NOT include a `(none)` option — the variable has no meaningful choices to select from and should be treated as free-text.
+
+**Negative example — `hasOptions: true` with only empty options still generating selectable options (COMMON MISTAKE)**:
+
+Given a `parameterConfig` entry:
+```json
+{
+  "name": "env_suffix",
+  "label": "env_suffix",
+  "description": "Environment suffix",
+  "default": "-dev",
+  "hasOptions": true,
+  "options": [{"value": ""}],
+  "required": false
+}
+```
+
+The **WRONG** output (generates `(none)` option because `required: false` and `hasOptions: true`, ignoring that there are no real options):
+```
+* Add a project variable called "env_suffix"... The variable must have the following selectable options: (none).
+```
+
+The **CORRECT** output (no selectable options — all entries are empty, so this is a free-text variable):
+```
+* Add a project variable called "env_suffix", with a default value of "-dev", the description "Environment suffix", and the label "env_suffix". The variable must be prompted for when creating a release. The variable must not be required.
+```
+
 * If `hasOptions` is `true` and the `options` array contains one or more non-empty `value` entries, append the following sentence to the end of the variable prompt: `The variable must have the following selectable options: <option1>, <option2>, ...`.
+* Copy the selectable option values verbatim from `options[].value`, preserve their original order, and omit any option entries whose `value` is absent or the empty string **unless** `required` is `false`, in which case include an option with the display name `(none)` and an empty value at the beginning of the list. This ensures that non-required Select variables have an explicit "no selection" choice.
 * Copy the selectable option values verbatim from `options[].value`, preserve their original order, and omit any option entries whose `value` is absent or the empty string **unless** `required` is `false`, in which case include an option with the display name `(none)` and an empty value at the beginning of the list. This ensures that non-required Select variables have an explicit "no selection" choice.
 
 **Example — non-required selectable variable with empty string option**:
@@ -3870,6 +3974,43 @@ Create a project called "Check SSL dev" in the "Default Project Group" project g
 * Add a community step template step ... "Slack Notification - Complete" ...
 * Add a project variable called "AlertDays", with a default value of "3"...
 * Add a project variable called "WarnDays", with a default value of "5"...
+```
+
+**Worked example — `disabled: true` pipeline with `parameterConfig` entries and NO notifications**:
+
+When a pipeline has `"disabled": true` AND `parameterConfig` entries but NO pipeline-level notifications, the correct ordering is: `parameterConfig` variables FIRST, then all deployment stages, then `* The project must be disabled.` LAST.
+
+Given:
+```json
+{
+  "disabled": true,
+  "name": "Batch Retry Dead Letter",
+  "parameterConfig": [
+    {"name": "topic", "default": "my-topic", "description": "The topic name", "hasOptions": false, "required": false, "label": "topic", "options": [{"value": ""}]}
+  ],
+  "stages": [
+    {"type": "manualJudgment", "name": "Approve", "requisiteStageRefIds": []},
+    {"type": "runJobManifest", "name": "Run Job", "requisiteStageRefIds": ["1"]}
+  ]
+}
+```
+
+The **CORRECT** output (variables → stages → disabled line):
+```
+Create a project called "Batch Retry Dead Letter" in the "Default Project Group" project group with no steps.
+* Add a project variable called "topic", with a default value of "my-topic", the description "The topic name", and the label "topic". The variable must be prompted for when creating a release. The variable must not be required.
+* Add a "Manual Intervention" step...
+* Add a "Run a kubectl script" step... Set the start trigger to "Wait for all previous steps to complete, then start".
+* The project must be disabled.
+```
+
+The **WRONG** output (disabled line before the variables — `disabled` must always be last):
+```
+Create a project called "Batch Retry Dead Letter" in the "Default Project Group" project group with no steps.
+* Add a "Manual Intervention" step...
+* Add a "Run a kubectl script" step...
+* The project must be disabled.   ← WRONG: disabled line appears before parameterConfig variables
+* Add a project variable called "topic"...
 ```
 
 ## Running steps in parallel
@@ -5075,3 +5216,7 @@ The **CORRECT** output (stage 19 uses its own name):
 ```
 
 Given the sample Spinnaker pipeline JSON, generate a prompt that recreates the project in Octopus Deploy.
+
+---END OF INSTRUCTIONS---
+
+**The Spinnaker pipeline JSON to convert follows this marker. Everything above this marker is instruction text. Do NOT reproduce, quote, paraphrase, or echo back ANY instruction text, examples, worked examples, code blocks, or guidance from the instructions above in your output. Your output must consist ONLY of the generated prompt describing how to create Octopus Deploy resources — nothing else.**

@@ -559,6 +559,21 @@ resource "octopusdeploy_process_step" "process_step_deploy_staging" {
 * A `wait` stage converted to `Start-Sleep -Seconds <N>` must be implemented as an `octopusdeploy_process_step` of type `"Octopus.Script"` with `execution_properties` containing `"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds <N>"`, `"Octopus.Action.Script.Syntax" = "PowerShell"`, and `"Octopus.Action.Script.ScriptSource" = "Inline"`.
 * The step name must match the dash-replaced form from the prompt (e.g., `"Wait -15min-"`) — parentheses in the original stage name have been replaced with dashes.
 * You will be penalized for using a type other than `"Octopus.Script"` for wait steps.
+* **CRITICAL — Octostache variable references in `Start-Sleep` scripts must be preserved verbatim**: When the prompt specifies a script like `Start-Sleep -Seconds (#{waitMinutes} * 60)`, the Terraform `"Octopus.Action.Script.ScriptBody"` value MUST preserve this Octostache expression exactly as written. Do NOT evaluate the arithmetic expression or replace it with a hardcoded number. Octostache template references (`#{...}`) are evaluated at deployment runtime by Octopus, not at Terraform plan/apply time.
+
+**Negative example — Octostache expression evaluated to hardcoded number (WRONG)**:
+
+Given a prompt: `Start-Sleep -Seconds (#{waitMinutes} * 60)`
+
+The **WRONG** Terraform evaluates and hardcodes the result:
+```hcl
+"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds 900"
+```
+
+The **CORRECT** Terraform preserves the Octostache expression:
+```hcl
+"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds (#{waitMinutes} * 60)"
+```
 
 ## "Review Template-Derived Pipeline Behavior" Script Step
 
@@ -1519,6 +1534,32 @@ resource "octopusdeploy_project" "project_my_azure_web_app" {
   description = "This is a description with line breaks\n\n"
 }
 ```
+* **CRITICAL — multiple migration notes in project description must be concatenated into a SINGLE `description` attribute**: When the prompt instructs you to append multiple migration notes to the project description (e.g., from `keepWaitingPipelines=false`, `limitConcurrent=true`, and `roles`), ALL notes MUST be combined into one single `description` attribute value. Do NOT emit multiple `description` attributes or create separate resource blocks for each note.
+
+**Negative example — multiple migration notes generating duplicate `description` attributes (WRONG)**:
+
+Given a prompt with multiple migration notes:
+```
+Set the project description to "NOTE (migration): keepWaitingPipelines=false..."
+Append to the project description: "NOTE (migration): limitConcurrent=true..."
+Append to the project description: "NOTE (migration): roles=[app-0299-prod]..."
+```
+
+The **WRONG** Terraform emits a separate description for each note:
+```hcl
+resource "octopusdeploy_project" "project_deploy_to_production" {
+  description = "NOTE (migration): keepWaitingPipelines=false..."
+  description = "NOTE (migration): limitConcurrent=true..."   ← WRONG: duplicate attribute
+  description = "NOTE (migration): roles=[app-0299-prod]..."  ← WRONG: duplicate attribute
+}
+```
+
+The **CORRECT** Terraform concatenates all notes into one `description` value:
+```hcl
+resource "octopusdeploy_project" "project_deploy_to_production" {
+  description = "NOTE (migration): The original Spinnaker pipeline had keepWaitingPipelines=false, which discarded queued executions when a new trigger fired. Octopus does not have a direct equivalent; configure a suitable concurrency policy if required. NOTE (migration): The original Spinnaker pipeline had limitConcurrent=true, which prevented concurrent pipeline executions. Configure a suitable deployment mutex or concurrency limit in Octopus if required. NOTE (migration): The original Spinnaker pipeline required the following roles for execution: app-0299-prod."
+}
+```
 * You will be penalized for splitting the "release_notes_template" attribute over two lines, for example:
 ```
 resource "octopusdeploy_project" "project_my_k8s_webapp" {
@@ -2215,6 +2256,23 @@ resource "octopusdeploy_process_step" "step3" {
 }
 ```
 
+* **CRITICAL — when a step name includes a numeric deduplication suffix (` 2`, ` 3`, etc.), both the Terraform resource name AND the `slug` attribute must incorporate that suffix**: When a step is named "Rollback -internal- 2" (i.e., the second of two steps with the same base name), the Terraform resource suffix becomes `rollback_internal_2` and the `slug` attribute becomes `rollback-internal-2`. The number suffix maps from a space-number pattern (` 2`) to an underscore-number suffix (`_2`) in the resource name and a dash-number suffix (`-2`) in the slug. Never omit the suffix from either the resource name or the slug — duplicate Terraform resource names and duplicate slugs both cause Terraform errors.
+
+**Correct example — two steps with the same base name, each with unique resource names and slugs**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_rollback_internal" {
+  name = "Rollback -internal-"
+  slug = "rollback-internal"
+  ...
+}
+
+resource "octopusdeploy_process_step" "process_step_my_project_rollback_internal_2" {
+  name = "Rollback -internal- 2"
+  slug = "rollback-internal-2"
+  ...
+}
+```
+
 * You will be penalized for defining a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource with a "name" attribute that contains any characters other than letters, numbers, periods, commas, dashes, underscores or hashes.
 * You will be penalized for defining a "name" attribute with the characters "/" and "\".
 * Target tags must only be defined in the "Octopus.Action.TargetRoles" properties on a "octopusdeploy_process_step", for example:
@@ -2745,6 +2803,24 @@ git_dependencies = { "" = { default_branch = "master", file_path_filters = null,
 ```
 * If the prompt says `Set the step namespace to "<namespace>".` for a step of type "Octopus.KubernetesDeployRawYaml", you must define `"Octopus.Action.KubernetesContainers.Namespace" = "<namespace>"` in the `execution_properties` block using that exact value.
 * A step of type "Octopus.KubernetesDeployRawYaml" with must not set the "Octopus.Action.KubernetesContainers.Namespace" property to an empty string. If the prompt does not specify a namespace, do not define the "Octopus.Action.KubernetesContainers.Namespace" property.
+* **CRITICAL — ALL inline `Octopus.KubernetesDeployRawYaml` steps MUST include these execution_properties** (unless the prompt explicitly says to use client-side apply):
+  * `"Octopus.Action.Script.ScriptSource" = "Inline"`
+  * `"Octopus.Action.KubernetesContainers.CustomResourceYaml"` — the inline YAML content (or a `# TODO:` placeholder)
+  * `"Octopus.Action.RunOnServer" = "true"`
+  * `"OctopusUseBundledTooling" = "False"`
+  * `"Octopus.Action.Kubernetes.ServerSideApply.Enabled" = "True"`
+  * `"Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts" = "True"`
+  * `"Octopus.Action.Kubernetes.ResourceStatusCheck" = "True"`
+  * `"Octopus.Action.Kubernetes.DeploymentTimeout" = "180"`
+* **CRITICAL — ALL inline `Octopus.KubernetesDeployRawYaml` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/k8s-workertools` image. This applies to BOTH enabled and disabled (TODO placeholder) steps:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/k8s-workertools"
+}
+```
+* You will be penalized for omitting the `container` block or any of the required `execution_properties` from an inline `Octopus.KubernetesDeployRawYaml` step.
+* **CRITICAL — when a project contains one or more `Octopus.KubernetesDeployRawYaml` inline steps, the Terraform configuration MUST include both a `data "octopusdeploy_feeds" "feed_github_container_registry"` data source AND an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource** so that the `container` block's `feed_id` ternary expression can be evaluated. If the prompt does not reference a GitHub Container Registry feed for artifact purposes, you still MUST define these resources when any inline `KubernetesDeployRawYaml` step is present, because the `container` block requires the feed. Omitting either the data source or the resource while defining a `container` block causes a Terraform reference error.
 * A step of type "Octopus.KubernetesDeployRawYaml" must have property indented YAML content in the "Octopus.Action.KubernetesContainers.CustomResourceYaml" property if the YAML source is set to "Inline YAML".
 * When the prompt provides an inline YAML block for `Octopus.Action.KubernetesContainers.CustomResourceYaml`, copy that YAML content verbatim into the Terraform string while preserving its structure, list items, and indentation. Do not flatten nested keys, regenerate the YAML from a lossy intermediate representation, or remove `image`, `namespace`, `initContainers`, or other fields present in the prompt.
 * If the prompt's inline YAML block contains multiple YAML documents separated by standalone `---` lines, keep the ENTIRE multi-document payload in the single `Octopus.Action.KubernetesContainers.CustomResourceYaml` value. Do not split the YAML into multiple Terraform resources, multiple step resources, or separate prompt sections.
@@ -2782,7 +2858,7 @@ resource "octopusdeploy_process_step" "process_step_deploy_manifest" {
 }
 ```
 
-**Positive example — disabled step with TODO YAML**:
+**Positive example — disabled step with TODO YAML (ALL required execution_properties and container block included)**:
 ```hcl
 resource "octopusdeploy_process_step" "process_step_my_project_run_job_manifest" {
   name                  = "Run Job -Manifest-"
@@ -2790,15 +2866,23 @@ resource "octopusdeploy_process_step" "process_step_my_project_run_job_manifest"
   process_id            = "${octopusdeploy_process.process_my_project.id}"
   is_disabled           = true   # Required because the YAML content is a TODO placeholder
   condition             = "Success"
+  container             = {
+    feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+    image = "ghcr.io/octopusdeploylabs/k8s-workertools"
+  }
   notes                 = "Original stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path."
   properties = {
     "Octopus.Action.TargetRoles" = "Kubernetes"
   }
   execution_properties = {
-    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with manifest downloaded from gs://example-bucket/path"
-    "Octopus.Action.Script.ScriptSource"                     = "Inline"
-    "Octopus.Action.RunOnServer"                             = "true"
-    "OctopusUseBundledTooling"                               = "False"
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml"   = "# TODO: replace with manifest downloaded from gs://example-bucket/path"
+    "Octopus.Action.Script.ScriptSource"                       = "Inline"
+    "Octopus.Action.RunOnServer"                               = "true"
+    "OctopusUseBundledTooling"                                 = "False"
+    "Octopus.Action.Kubernetes.ServerSideApply.Enabled"        = "True"
+    "Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts" = "True"
+    "Octopus.Action.Kubernetes.ResourceStatusCheck"            = "True"
+    "Octopus.Action.Kubernetes.DeploymentTimeout"              = "180"
   }
 }
 ```
@@ -3619,8 +3703,97 @@ resource "octopusdeploy_variable" "variable_key" {
 * Preserve the option order from the prompt exactly.
 * When the prompt includes an option named `(none)`, generate a `select_option` block with `display_name = "(none)"` and `value = ""`. The value MUST be an empty string `""` — do NOT use `"_none_"` or any other placeholder. Do NOT ignore or skip `(none)` options — they represent a valid empty-string choice for non-required variables.
 * You will be penalized for generating `value = "_none_"` — use `value = ""` for the `(none)` option.
+
+**Negative example — `(none)` option with wrong `value = "_none_"` (COMMON MISTAKE)**:
+
+Given a prompt that includes `The variable must have the following selectable options: (none), -is_retry=true`:
+
+The **WRONG** Terraform uses a non-empty placeholder for the `(none)` option:
+```hcl
+select_option {
+  display_name = ""
+  value        = "_none_"   ← WRONG: must use value = "" (empty string)
+}
+```
+
+The **CORRECT** Terraform uses an empty string value and `(none)` as the display name:
+```hcl
+select_option {
+  display_name = "(none)"
+  value        = ""
+}
+```
+
+* **CRITICAL — when `(none)` is the ONLY selectable option**: If the prompt says `The variable must have the following selectable options: (none)` with no other options listed, do NOT use `control_type = "Select"`. A Select control with only a `(none)` empty-string option is equivalent to a free-text input with no real choices. Use `control_type = "SingleLineText"` instead, and omit any `select_option` blocks. This situation arises when the original `hasOptions` was incorrectly set or when the only option is the empty-string placeholder.
+
+**Negative example — Select with ONLY `(none)` when `SingleLineText` should be used (COMMON MISTAKE)**:
+
+Given a prompt: `The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: (none).`
+
+The **WRONG** Terraform uses `control_type = "Select"` with a single empty option:
+```hcl
+display_settings {
+  control_type = "Select"
+  select_option {
+    display_name = "(none)"
+    value        = ""
+  }
+}
+```
+
+The **CORRECT** Terraform uses `control_type = "SingleLineText"` since `(none)` is the only option:
+```hcl
+display_settings {
+  control_type = "SingleLineText"
+}
+```
+
 * Ignore any empty option strings that are NOT represented as `(none)` in the prompt (i.e., empty strings that were never included in the prompt in the first place).
 * The top-level `description` attribute on `octopusdeploy_variable` MUST be set to the variable description from the prompt instruction. This is separate from the `description` field inside the `prompt` block. Both must be populated with the same value. Omitting the top-level `description` attribute is a bug.
+* **CRITICAL — the top-level `value` attribute of a prompted variable MUST be set to its default value**: When the prompt specifies `with a default value of "<X>"`, the `octopusdeploy_variable` resource MUST include `value = "<X>"` at the top level, even when a `prompt` block is present. Do NOT omit the `value` attribute or set it to an empty string unless the default value is explicitly `""`. The top-level `value` is the variable's default/current value, separate from the prompt configuration.
+
+**Negative example — prompted variable missing top-level `value` attribute (COMMON MISTAKE)**:
+
+Given a prompt: `* Add a project variable called "batch_size", with a default value of "50", the description "Batch size", and the label "Batch Size". The variable must be prompted for when creating a release. The variable must not be required.`
+
+The **WRONG** Terraform omits the `value` attribute:
+```hcl
+resource "octopusdeploy_variable" "variable_batch_size" {
+  name         = "batch_size"
+  type         = "String"
+  description  = "Batch size"
+  is_sensitive = false
+  # WRONG: value attribute is missing — default value "50" is lost
+  prompt {
+    description = "Batch size"
+    label       = "Batch Size"
+    is_required = false
+    display_settings {
+      control_type = "SingleLineText"
+    }
+  }
+}
+```
+
+The **CORRECT** Terraform includes `value = "50"`:
+```hcl
+resource "octopusdeploy_variable" "variable_batch_size" {
+  name         = "batch_size"
+  type         = "String"
+  description  = "Batch size"
+  value        = "50"
+  is_sensitive = false
+  prompt {
+    description = "Batch size"
+    label       = "Batch Size"
+    is_required = false
+    display_settings {
+      control_type = "SingleLineText"
+    }
+  }
+}
+```
+
 * If the prompt does NOT include a selectable options instruction, use `control_type = "SingleLineText"` in the `display_settings` block (the default).
 * You will be penalized for using `control_type = "SingleLineText"` when the prompt specifies selectable options.
 * You will be penalized for omitting any `select_option` block when selectable options are specified.
