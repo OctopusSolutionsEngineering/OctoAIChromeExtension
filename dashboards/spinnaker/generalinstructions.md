@@ -233,6 +233,81 @@ resource "octopusdeploy_process_step" "... rollback_canary" {
 }
 ```
 
+**CRITICAL — in a 7-or-more-step parallel group, the LAST step MUST still use `start_trigger = "StartWithPrevious"`**: Large parallel groups with 7 or more members are particularly prone to this mistake. The 7th step in a 7-step parallel group is NOT a convergence point — it is a parallel group member. Only the step AFTER the 7th parallel step (annotated "Wait for all previous steps") is the convergence point.
+
+**Negative example — 7-step parallel group where the LAST (7th) parallel step incorrectly uses StartAfterPrevious (CONFIRMED REAL-WORLD BUG)**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Manual Judgment" ... (no annotation — sequential entry)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-A" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-B" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-C" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-D" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-E" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-F" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-G" ... Set the start trigger to "Run in parallel with the previous step". (This is the LAST of 7 parallel steps in this group — the next step is the convergence point and uses "Wait for all previous steps".)
+* Add a "Manual Intervention" step ... "Final Approval" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← convergence
+```
+
+The **WRONG** Terraform (Deploy Service-G, the 7th and LAST parallel step, incorrectly uses StartAfterPrevious — FORBIDDEN):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_service_a" {
+  start_trigger = "StartAfterPrevious"  ← correct: entry into parallel group (Wait for all)
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_b" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_c" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_d" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_e" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_f" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_g" {
+  start_trigger = "StartAfterPrevious"  ← WRONG: the 7th parallel step MUST use StartWithPrevious, NOT StartAfterPrevious
+}
+resource "octopusdeploy_process_step" "process_step_final_approval" {
+  start_trigger = "StartAfterPrevious"  ← correct: convergence point AFTER all 7 parallel steps
+}
+```
+
+The **CORRECT** Terraform (all 7 parallel steps use StartWithPrevious; only the convergence step uses StartAfterPrevious):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_service_a" {
+  start_trigger = "StartAfterPrevious"  ← entry into 7-step parallel group
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_b" {
+  start_trigger = "StartWithPrevious"  ← 2nd parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_c" {
+  start_trigger = "StartWithPrevious"  ← 3rd parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_d" {
+  start_trigger = "StartWithPrevious"  ← 4th parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_e" {
+  start_trigger = "StartWithPrevious"  ← 5th parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_f" {
+  start_trigger = "StartWithPrevious"  ← 6th parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_g" {
+  start_trigger = "StartWithPrevious"  ← CORRECT: 7th parallel step STILL uses StartWithPrevious
+}
+resource "octopusdeploy_process_step" "process_step_final_approval" {
+  start_trigger = "StartAfterPrevious"  ← CORRECT: convergence step AFTER all 7 parallel steps
+}
+```
+
+**The KEY CONFUSION to avoid**: The 7th step is the LAST MEMBER of the parallel group — it is NOT the convergence step. The convergence step is "Final Approval" which appears AFTER the 7th parallel step. Do NOT mistake the LAST parallel step for the convergence point just because it is the last step before the convergence.
+
 **MANDATORY SELF-CHECK — parallel step count verification**: Before finalizing generated Terraform, count the number of step prompts annotated with `"Run in parallel with the previous step"`. This count MUST equal the number of `octopusdeploy_process_step` resources with `start_trigger = "StartWithPrevious"`. If these counts do not match, find and fix the discrepancy before outputting. A count mismatch always indicates that one or more parallel steps incorrectly use `start_trigger = "StartAfterPrevious"`.
 
 **MANDATORY SELF-CHECK — sequential step after parallel group**: When a prompt contains a step annotated with `"Wait for all previous steps to complete, then start"` immediately following a parallel group (one or more steps with `"Run in parallel with the previous step"`), verify that step uses `start_trigger = "StartAfterPrevious"`. This is the default, but the self-check ensures it was not accidentally set to `"StartWithPrevious"` by a copy-paste error.
@@ -241,6 +316,14 @@ resource "octopusdeploy_process_step" "... rollback_canary" {
 - If the prompt says `Set the start trigger to "Run in parallel with the previous step"` → the step's `start_trigger` MUST be `"StartWithPrevious"`. If you find `"StartAfterPrevious"`, **change it immediately** before outputting.
 - If the prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"` → the step's `start_trigger` MUST be `"StartAfterPrevious"`. If you find `"StartWithPrevious"`, change it immediately.
 - If the prompt has NO start trigger annotation for a step → `"StartAfterPrevious"` is correct (the default).
+
+**MANDATORY FINAL ANNOTATION SCAN — for large parallel groups (5+ members), perform explicit per-step enumeration**: After generating ALL `octopusdeploy_process_step` resources, if any prompt annotation includes the phrase `(This is the LAST of N parallel steps in this group...)`, explicitly enumerate ALL N parallel steps and verify each one uses `start_trigger = "StartWithPrevious"`. Write out:
+1. Step 1 of N: `<step name>` — annotation: first in group → expected: `StartAfterPrevious` → actual: `<value>` — **MATCH/MISMATCH**
+2. Step 2 of N: `<step name>` — annotation: "Run in parallel" → expected: `StartWithPrevious` → actual: `<value>` — **MATCH/MISMATCH**
+...
+N. Step N of N: `<step name>` — annotation: "Run in parallel" (LAST) → expected: `StartWithPrevious` → actual: `<value>` — **MATCH/MISMATCH**
+
+Fix any MISMATCH before outputting. This enumeration is required whenever the prompt contains a large parallel group count annotation.
 
 **This scan is MANDATORY and must catch the common mistake where a step annotated `"Run in parallel"` accidentally receives `start_trigger = "StartAfterPrevious"` because the preceding step also uses `"StartAfterPrevious"` (as the first step in its own parallel group).** The `start_trigger` of each step is evaluated independently — the fact that the PREVIOUS step uses `"StartAfterPrevious"` does NOT mean the current step should also use `"StartAfterPrevious"`. They are independent attributes.
 
@@ -277,6 +360,14 @@ In the CORRECT version: A gets `start_trigger = "StartAfterPrevious"` (convergen
 **CRITICAL — a "convergence" step (start_trigger = "StartAfterPrevious") that follows a parallel group must appear in the `steps` list AFTER all parallel group members**: When a step annotated with "Wait for all previous steps to complete, then start" follows a parallel group {A, B, C}, this convergence step must appear at position N+1 in the `steps` list where N is the position of the LAST parallel group member. Verify this by checking that no parallel group member appears AFTER the convergence step in the `steps` list.
 
 **CRITICAL — the total count of `StartWithPrevious` steps in resources must match the count in the `steps` list**: When building the `octopusdeploy_process_steps_order` `steps` list, count how many `octopusdeploy_process_step` resources have `start_trigger = "StartWithPrevious"`. The `steps` list must contain ALL of these steps in the correct positions (each immediately after their parallel partner). If the count in resources does not match the adjacency structure of the `steps` list, there is an ordering error.
+
+**CRITICAL — large parallel group (7+ members) self-check using prompt count annotation**: When the prompt contains a parenthetical count annotation like `(This is the LAST of N parallel steps in this group...)`, use the value N as your verification target:
+1. Count the steps in the prompt that belong to this parallel group: the entry step (first member, no "Run in parallel" annotation) + all steps annotated with "Run in parallel" in this group.
+2. This count MUST equal N (total group size). If not, you have missed some parallel members.
+3. Verify that EXACTLY N-1 of those steps have `start_trigger = "StartWithPrevious"` in your generated Terraform. The entry step has `StartAfterPrevious`. All other N-1 members have `StartWithPrevious`.
+4. If your count of `StartWithPrevious` steps in this group is less than N-1, you have set one or more parallel members to `StartAfterPrevious` — fix them immediately.
+
+**CRITICAL — do NOT confuse the LAST parallel group member with the convergence step**: When a parallel group has N members (positions 1 through N in the steps list), the step at position N is the LAST PARALLEL MEMBER — it still uses `start_trigger = "StartWithPrevious"`. The convergence step is the step at position N+1 (the one annotated "Wait for all previous steps to complete, then start") — it uses `start_trigger = "StartAfterPrevious"`. NEVER set the last parallel group member to `StartAfterPrevious` just because it is the last step before the convergence point.
 
 ## Inline Kubernetes YAML Indentation
 
@@ -560,6 +651,15 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` must be preserved verbatim**: When a `manualJudgment` stage had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit or shorten the timeout note.
 
 * **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` on non-`manualJudgment` stages must also be preserved verbatim**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`) had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute. Never omit or shorten this migration note even for non-manualJudgment steps.
+
+* **IMPORTANT — `NOTE (migration):` text about branch A waiting for branch B in fork-without-reconvergence pipelines must be preserved verbatim**: When the prompt includes a step description containing `NOTE (migration): In the original Spinnaker pipeline, this step depended only on "<Branch A root stage name>" and did not wait for "<Branch B root stage(s)>". In this Octopus migration, this step implicitly waits for all preceding parallel steps including the Branch B stages.`, this ENTIRE sentence MUST appear verbatim in the `notes` attribute. Do NOT drop, shorten, or rephrase this note. It is critical for engineers to understand that the step's wait behavior has changed due to linearization of the parallel branches.
+
+* **IMPORTANT — `NOTE (migration):` text about `stageEnabled.expression` conditions must be preserved verbatim**: When the prompt includes a step description containing `NOTE (migration):` text describing a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent (including any suggestion about Octopus Variable run conditions or parameter-based expressions), this ENTIRE text MUST appear verbatim in the `notes` attribute. Do NOT drop the suggestion about using Octopus Variable run conditions — this guidance is important for engineers who want to replicate the conditional behavior.
+
+* **CRITICAL — when a step has multiple NOTE (migration): fragments in its description, ALL fragments must be concatenated into the single `notes` attribute**: A step prompt may include multiple separate `NOTE (migration):` sentences (for example, one about `stageEnabled.expression`, another about `stageTimeoutMs`, and another about branch linearization). All fragments must be combined with a single space between them into one `notes` value. You MUST NOT:
+  - Emit only the first NOTE and drop the rest
+  - Create separate `notes` attributes for each NOTE (only one `notes` attribute is allowed per resource)
+  - Omit any NOTE because it seems redundant
 **Negative example — GCS URL with incorrect backslash escaping in notes (FORBIDDEN)**:
 ```hcl
 notes = "This step originally loaded its manifest from Google Cloud Storage at \"gs://example-bucket/storage-3209\". The manifest must be inlined."
