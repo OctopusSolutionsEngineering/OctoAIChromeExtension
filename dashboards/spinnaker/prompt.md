@@ -5361,6 +5361,38 @@ This check prevents both silent stage drops AND duplicate stage additions. The k
 
 **HANDLING INDEPENDENT FORKED BRANCHES (NO RECONVERGENCE)**: A Spinnaker pipeline may have a stage that fans out to two or more branches where those branches NEVER reconverge (i.e., no stage depends on stages from multiple branches). This is a "fork without reconvergence." Example: stage 18 has two dependents — stage 19 (leading to a chain of cronjob deploys) and stage 1 (leading to a canary deploy chain). Neither of those downstream chains depends on the other's completion.
 
+**CRITICAL — ALL stages that share the same `requisiteStageRefIds` are ALWAYS in the same parallel group, regardless of their downstream dependencies**: When N stages all depend on the same predecessor(s) (i.e., all have the same `requisiteStageRefIds` value), they form ONE parallel group. The fact that some of these N stages have continuation stages downstream (while others are "leaf" stages with no downstream stages) does NOT split them into separate parallel groups. They remain in ONE N-member parallel group. The first member of the group gets no parallel annotation; ALL other N-1 members get `Set the start trigger to "Run in parallel with the previous step"`.
+
+**Worked example — 7 stages sharing the same `requisiteStageRefIds`, only one with continuations**:
+
+Given: Stages A, B, C, D, E, F, G all have `"requisiteStageRefIds": ["10"]` (all depend on the initial Manual Judgment). Stage A also has downstream stages A1, A2 (continuations). Stages B-G have NO downstream stages (leaf stages).
+
+The **CORRECT** output — ALL 7 stages form ONE parallel group:
+```
+* Add step ... "Stage A" ... (no annotation — first in the 7-member parallel group)
+* Add step ... "Stage B" ... Set the start trigger to "Run in parallel with the previous step".   ← 2nd in group
+* Add step ... "Stage C" ... Set the start trigger to "Run in parallel with the previous step".   ← 3rd in group
+* Add step ... "Stage D" ... Set the start trigger to "Run in parallel with the previous step".   ← 4th in group
+* Add step ... "Stage E" ... Set the start trigger to "Run in parallel with the previous step".   ← 5th in group
+* Add step ... "Stage F" ... Set the start trigger to "Run in parallel with the previous step".   ← 6th in group
+* Add step ... "Stage G" ... Set the start trigger to "Run in parallel with the previous step". (This is the LAST of 7 parallel steps in this group — the next step is the convergence point and uses "Wait for all previous steps".)   ← 7th/LAST in group
+* Add step ... "Stage A1" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← converges after ALL 7 parallel steps complete
+* Add step ... "Stage A2" ...
+```
+
+The **WRONG** output — treating the 6 leaf stages as sequential after Stage A (FORBIDDEN):
+```
+* Add step ... "Stage A" ... (no annotation — FIRST in group — OK)
+* Add step ... "Stage B" ...  ← WRONG: no "Run in parallel" annotation (this would generate StartAfterPrevious!)
+* Add step ... "Stage C" ...  ← WRONG: no "Run in parallel" annotation
+* Add step ... "Stage D" ...  ← WRONG: no "Run in parallel" annotation
+* Add step ... "Stage E" ...  ← WRONG: no "Run in parallel" annotation
+* Add step ... "Stage F" ...  ← WRONG: no "Run in parallel" annotation
+* Add step ... "Stage G" ...  ← WRONG: no "Run in parallel" annotation
+* Add step ... "Stage A1" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+← FORBIDDEN: Steps B through G are in the SAME parallel group as Stage A and MUST have "Run in parallel" annotations. Not having these annotations causes the Terraform generator to create sequential (StartAfterPrevious) steps instead of parallel (StartWithPrevious) steps.
+
 When this pattern occurs:
 1. Treat stages 1 and 19 as a PARALLEL GROUP (both depend on 18).
 2. After the parallel group {19, 1}, linearize ONE branch COMPLETELY (following ALL transitive dependents down to the terminal stage), then linearize the OTHER branch completely.
