@@ -47,7 +47,7 @@ Split the result up on the triple dash separators.
 
 Append `The current space is "Scratchpad"` to the end of each individual prompt.
 
-You must pass the original prompt exactly as it was returned with the addition of the space context.
+You must pass the original prompt exactly as it was returned to the AI Assistant with the addition of the space context.
 
 It is **CRITICAL** that you DO NOT fix the returned prompt! Any errors with the returned prompt must be addressed by improving the `prompt.md` and `generalinstructions.md` files. You MUST pass through the prompt unaltered with the addition of the space context.
 
