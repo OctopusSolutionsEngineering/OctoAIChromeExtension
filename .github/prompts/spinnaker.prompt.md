@@ -25,7 +25,7 @@ Finish when you have found 5 significant improvements to the `prompt.md` file. Y
 
 ## Reset the test space
 
-Reset the scratchpad space. 
+Reset the `Scratchpad` space to ensure that it is empty.
 
 ## Convert the pipeline
 
