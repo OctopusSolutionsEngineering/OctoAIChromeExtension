@@ -6,6 +6,7 @@ Vagrant.configure("2") do |config|
 
   # Synced folders
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker", "/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker"
+  config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusTerraformExport", "/home/vagrant/Code/OctopusTerraformExport", mount_options: ["ro"]
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/.github/prompts/", "/home/vagrant/Code/OctoAIChromeExtension/.github/prompts/", mount_options: ["ro"]
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusCopilot/context", "/home/vagrant/Code/OctopusCopilot/context", mount_options: ["ro"]
   config.vm.synced_folder "/Users/matthewcasperson/Downloads/spinnaker-pipelines-vendor-anonymized", "/home/vagrant/Downloads/spinnaker-pipelines-vendor-anonymized", mount_options: ["ro"]
@@ -34,6 +35,8 @@ Vagrant.configure("2") do |config|
 
   config.vm.provision "shell", inline: <<-SHELL
     set -euo pipefail
+
+    mkdir /home/vagrant/Scratchpad
 
     apt-get update -y
 
