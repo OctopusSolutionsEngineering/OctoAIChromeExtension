@@ -16,12 +16,18 @@ Vagrant.configure("2") do |config|
   end
 
   # ── Credential injection (run: always to pick up token rotations) ────────────
-  # File is owned by root, mode 600 — the aiagent user cannot read it directly.
+  # File is owned by root, mode 600 — the vagrant user cannot read it directly.
   # The token is injected into the agent process at launch time by the wrapper below.
   # Note: this token is scoped only to the GitHub Copilot CLI and cannot be used
   # for any other GitHub API purpose.
+  github_copilot_token = ENV.fetch('GITHUB_COPILOT_TOKEN') do
+    raise "GITHUB_COPILOT_TOKEN is not set on the host. " \
+          "Export it before running vagrant up:\n" \
+          "  export GITHUB_COPILOT_TOKEN='your-token-here'"
+  end
+
   config.vm.provision "shell", run: "always", inline: <<-SHELL
-    echo "export GH_TOKEN='#{ENV['GITHUB_COPILOT_TOKEN']}'" > /etc/github_copilot_token.env
+    echo "export GH_TOKEN='#{github_copilot_token}'" > /etc/github_copilot_token.env
     chown root:root /etc/github_copilot_token.env
     chmod 600 /etc/github_copilot_token.env
   SHELL
