@@ -29,7 +29,7 @@ Enable variable debugging.
 Create an Azure Web App project call "My Azure Project 1"
 ```
 
-Write 5 more prompts to create Octopus projects, starting with "Create a Kubernetes project", "Create an Azure Web App project", "Create an AWS Lambda project", "Create an Argo CD image tag update project", "Create a Tomcat project", or "Create a Script project" including a mix of:
+Write a prompt to create Octopus projects, starting with "Create a Kubernetes project", "Create an Azure Web App project", "Create an AWS Lambda project", "Create an Argo CD image tag update project", "Create a Tomcat project", or "Create a Script project" including a mix of:
 
 * feeds
 * accounts
