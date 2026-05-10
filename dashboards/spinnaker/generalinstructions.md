@@ -371,6 +371,41 @@ In the CORRECT version: A gets `start_trigger = "StartAfterPrevious"` (convergen
 
 **CRITICAL — do NOT confuse the LAST parallel group member with the convergence step**: When a parallel group has N members (positions 1 through N in the steps list), the step at position N is the LAST PARALLEL MEMBER — it still uses `start_trigger = "StartWithPrevious"`. The convergence step is the step at position N+1 (the one annotated "Wait for all previous steps to complete, then start") — it uses `start_trigger = "StartAfterPrevious"`. NEVER set the last parallel group member to `StartAfterPrevious` just because it is the last step before the convergence point.
 
+**CRITICAL — step `notes` attribute as an additional parallel signal**: When a step's `notes` attribute (i.e., the step description from the prompt) contains phrases such as "runs in parallel with the deploy step", "runs in parallel with", or "parallel with the previous step", this is a strong signal that `start_trigger = "StartWithPrevious"` is intended for that step, even if the prompt annotation was accidentally omitted. Before finalizing, scan every step's `notes` value for these phrases. For any step whose `notes` indicates parallel execution and whose `start_trigger` is currently `"StartAfterPrevious"`, review the prompt annotation. If the annotation is absent but the step description clearly indicates parallel execution, set `start_trigger = "StartWithPrevious"`. **The step description (notes) and the start trigger annotation must always agree — a step that says "runs in parallel" in its notes but uses `StartAfterPrevious` as its trigger is self-contradictory and always wrong.**
+
+**MANDATORY SELF-CHECK — notes-to-trigger consistency**: After generating all `octopusdeploy_process_step` resources, scan every `notes` attribute value for the substring "runs in parallel". For each step where the `notes` attribute contains "runs in parallel" but `start_trigger = "StartAfterPrevious"`, this is a definite error — change `start_trigger` to `"StartWithPrevious"` before outputting.
+
+**CRITICAL — multi-phase project parallel group phase isolation**: When a project has multiple sequential phases each containing a parallel group (e.g., Phase 1: {A, B, C} → convergence step D → Phase 2: {E, F} → convergence step G), verify that:
+1. ALL members of Phase 1 ({A, B, C}) appear in the `steps` list BEFORE the Phase 1 convergence step (D).
+2. ALL members of Phase 2 ({E, F}) appear in the `steps` list AFTER D and BEFORE the Phase 2 convergence step (G).
+3. NO members of Phase 2 appear before D in the `steps` list, and NO members of Phase 1 appear after D.
+A step that belongs to Phase 1 but is placed after Phase 2's convergence step is a critical ordering error.
+
+**CRITICAL — `is_disabled` and `start_trigger` are completely independent attributes**: The `is_disabled = true` attribute marks a step as inactive at runtime, but it does NOT change the step's position in the deployment process or its `start_trigger`. A disabled step that belongs to a parallel group (not the first member) MUST still use `start_trigger = "StartWithPrevious"`. Do NOT change a step's `start_trigger` from `"StartWithPrevious"` to `"StartAfterPrevious"` just because the step is disabled. The `start_trigger` determines the step's execution ordering relationship — this relationship must be preserved even when the step is disabled so that re-enabling it later does not break the deployment process order.
+
+**Example — disabled step in a parallel group**:
+```hcl
+# CORRECT — disabled step preserves StartWithPrevious trigger
+resource "octopusdeploy_process_step" "process_step_rollback_canary" {
+  name          = "Rollback -canary-"
+  is_disabled   = true
+  start_trigger = "StartWithPrevious"  ← CORRECT: disabled but still parallel with previous step
+  # ... other attributes ...
+}
+
+# WRONG — disabled step incorrectly uses StartAfterPrevious
+resource "octopusdeploy_process_step" "process_step_rollback_canary" {
+  name          = "Rollback -canary-"
+  is_disabled   = true
+  start_trigger = "StartAfterPrevious"  ← WRONG: changing trigger because step is disabled
+  # ... other attributes ...
+}
+```
+
+**MANDATORY SELF-CHECK — `notes` attribute verbatim fidelity**: When a prompt says `Set the step description to "..."`, the value in double quotes MUST be reproduced VERBATIM as the `notes` attribute value in Terraform. Do NOT truncate, paraphrase, abbreviate, or summarize the description. All migration notes (including `NOTE (migration): ...` clauses) within the quoted text must be included in full. Incomplete notes make the migration rationale invisible to engineers reading the Octopus project and are always wrong.
+
+**MANDATORY SELF-CHECK — step `notes` completeness scan**: After generating all `octopusdeploy_process_step` resources, for each step where the prompt specified a description (via "Set the step description to ..."), compare the `notes` attribute value against the full quoted text from the prompt. If the `notes` value is shorter than the prompt description or is missing any `NOTE (migration):` clause that was present in the prompt, expand it to the full verbatim text.
+
 ## Process Step Terraform Resource Creation Order
 
 * **`octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources MUST NOT be created with uncontrolled parallelism.** When Terraform applies a configuration without explicit `depends_on` between step resources, it may attempt to create all step resources concurrently. This can cause API rate limit errors or race conditions on the Octopus Deploy API. To ensure correct sequential creation order, each process step resource MUST include a `depends_on` attribute pointing to the IMMEDIATELY PRECEDING step resource in the deployment process.

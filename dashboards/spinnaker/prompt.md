@@ -3011,7 +3011,9 @@ The following stage types represent Spinnaker-internal operations or metadata lo
   * **Multiple downstream branches** (more than one stage directly depends on the `checkPreconditions` — e.g., a YES branch and a NO branch): append `NOTE (migration): This step was originally on a conditional branch controlled by a Spinnaker expression-based checkPreconditions stage (SpEL expression condition). In this migration, both branches now run in parallel — the expression condition is not enforced.`
   * **Single downstream branch** (only one stage directly follows the `checkPreconditions` — this is a time-gate or day-of-week pattern): append `NOTE (migration): This step was originally gated by a Spinnaker expression-based checkPreconditions stage. The expression condition is not enforced in this Octopus migration — this step will always run when its predecessors succeed.`
 
-  When the expression-type `checkPreconditions` sits between a `manualJudgment` stage and opposing YES/NO branches (e.g., a deploy step on the YES branch and a rollback step on the NO branch), BOTH the deploy step and the rollback step must receive the multi-branch NOTE, since both will now run in parallel in Octopus Deploy.
+  When the expression-type `checkPreconditions` sits between a `manualJudgment` stage and opposing YES/NO branches (e.g., a deploy step on the YES branch and a rollback step on the NO branch), BOTH the deploy step and the rollback step must receive the multi-branch NOTE, since both will now run in parallel in Octopus Deploy. Additionally, the parallel trigger annotation MUST be applied as follows: the stage that appears FIRST in JSON order (typically the YES/SUCCESS branch stage) is the FIRST member of the parallel group and MUST use `Set the start trigger to "Wait for all previous steps to complete, then start"` — NOT the parallel annotation. ALL OTHER stages in the same parallel group (typically the NO/REJECTION branch stages) are SUBSEQUENT members and MUST use `Set the start trigger to "Run in parallel with the previous step"`.
+
+  **CRITICAL — the multi-branch NOTE and the parallel start trigger annotation are BOTH required for every stage on the NO/rejection branch**: When you write the multi-branch NOTE on a NO-branch stage's description, you MUST also write `Set the start trigger to "Run in parallel with the previous step"` immediately after the description. The NOTE is informational only — it does NOT automatically create a parallel step. The explicit start trigger annotation is MANDATORY and must appear alongside the NOTE on every non-first stage in the parallel group.
 
   **Negative example — expression NOTE missing from single downstream step (COMMON MISTAKE)**:
 
@@ -3073,21 +3075,27 @@ The **CORRECT** output (ALL non-ignored stages included in proper dependency ord
 
 **CRITICAL — when MULTIPLE stages depend on the same ignored stage, those stages become PARALLEL with each other**: When two or more non-ignored stages both depend on the same ignored stage (or different ignored stages that ultimately share the same non-ignored predecessor), those stages are in the SAME parallel dependency group. The first of these stages in JSON order is the "first in its group" (no parallel annotation); subsequent stages get `"Run in parallel with the previous step"`.
 
+**CRITICAL — YES-branch and NO-branch checkPreconditions both collapse to the SAME predecessor**: When a `manualJudgment` stage has one YES-branch `checkPreconditions` and one NO-branch `checkPreconditions` (both pointing to the same judgment), and each is followed by a different non-ignored stage (e.g., deploy on YES, rollback on NO), BOTH non-ignored stages collapse to the SAME judgment predecessor. This makes them parallel with each other regardless of whether they go through the YES or NO branch. Do NOT treat YES-branch and NO-branch stages as sequential just because they follow different checkPreconditions paths.
+
+**CRITICAL — pipeline with multiple sequential manualJudgment stages**: When a pipeline has a chain like `Deploy A → Judge canary → [YES: Deploy B; NO: Rollback A] → Judge main → [YES: Deploy C; NO: Rollback B, Rollback C]`, the parallel groups form AT EACH JUDGMENT POINT. Judge main depends only on the YES branch (Deploy B), but in Octopus the convergence step (Judge main) must appear AFTER the complete parallel group {Deploy B, Rollback A}. Steps from the NO branch of Judge canary (Rollback A) must be placed IMMEDIATELY after their parallel partner (Deploy B) — they MUST NOT be placed at the end of the pipeline after Judge main and its dependent steps.
+
 **Worked example — multiple branches through different ignored stages becoming parallel**:
 
-Given a pipeline where two separate `checkPreconditions` stages (11 and 5) both depend on stage 4, and two non-ignored stages (6 and 13) depend on those two ignored stages:
+Given a pipeline where two separate `checkPreconditions` stages (5 for YES branch and 11 for NO branch) both depend on stage 4, and two non-ignored stages (6 on YES branch and 13 on NO branch) depend on those two ignored stages:
 
 | refId | type | requisiteStageRefIds | effective deps (after ignoring) |
 |---|---|---|---|
 | 3 | deployManifest | `[]` | ROOT |
 | 4 | manualJudgment | `["3"]` | `["3"]` |
-| 5 | checkPreconditions **(SKIP)** | `["4"]` | — |
+| 5 | checkPreconditions YES **(SKIP)** | `["4"]` | — |
 | 6 | deployManifest | `["5"]` → effectively `["4"]` | `["4"]` |
-| 11 | checkPreconditions **(SKIP)** | `["4"]` | — |
-| 13 | deployManifest | `["11"]` → effectively `["4"]` | `["4"]` |
+| 11 | checkPreconditions NO **(SKIP)** | `["4"]` | — |
+| 13 | undoRolloutManifest | `["11"]` → effectively `["4"]` | `["4"]` |
 | 7 | manualJudgment | `["6"]` | `["6"]` |
 
 After removing ignored stages: stages 6 and 13 BOTH effectively depend on stage 4 → they are in the SAME parallel group. Stage 6 comes first in JSON order (position 4 vs position 10) → no parallel annotation; stage 13 gets `"Run in parallel with the previous step"`.
+
+Note: Stage 7 (Judge main) depends on stage 6 (Deploy B / YES branch). In Octopus, the convergence point (Judge main) waits for ALL members of the preceding parallel group {6, 13} before running — so Judge main effectively waits for BOTH Deploy B and Rollback A to complete. This is a migration approximation (in Spinnaker, Judge main only ran on the YES branch), but it is correct behavior for Octopus and does NOT change the step ordering.
 
 The **WRONG** output (stage 13 placed after stage 7 with "Wait for all previous steps" — FORBIDDEN):
 ```
@@ -3112,20 +3120,22 @@ The **CORRECT** output (stages 6 and 13 are parallel, both effectively depend on
 
 **Worked example — 3-stage parallel group through multiple ignored checkPreconditions**:
 
-Given a pipeline where three stages (Deploy -main-, Rollback -internal-, Rollback -canary-) ALL effectively depend on stage 4 (Judge -main-) because two separate checkPreconditions stages (refIds 11 and 12) both depend on stage 4 and are then skipped:
+Given a pipeline where three stages (Deploy -main-, Rollback -internal-, Rollback -canary-) ALL effectively depend on stage 4 (Judge -main-) because two separate checkPreconditions stages (refIds 8 for the YES/SUCCESS branch and refId 12 for the NO/REJECTION branch) both depend on stage 4 and are then skipped:
 
 | refId | type | requisiteStageRefIds | effective deps (after ignoring) |
 |---|---|---|---|
 | 4 | manualJudgment | `[...]` | `[...]` |
-| 11 | checkPreconditions **(SKIP)** | `["4"]` | — |
-| 12 | checkPreconditions **(SKIP)** | `["4"]` | — |
-| 6 | deployManifest | `["11"]` → effectively `["4"]` | `["4"]` |
-| 13 | runKubectl | `["11"]` → effectively `["4"]` | `["4"]` |
+| 8 | checkPreconditions YES **(SKIP)** | `["4"]` | — |
+| 12 | checkPreconditions NO **(SKIP)** | `["4"]` | — |
+| 6 | deployManifest | `["8"]` → effectively `["4"]` | `["4"]` |
+| 14 | undoRolloutManifest | `["12"]` → effectively `["4"]` | `["4"]` |
 | 15 | undoRolloutManifest | `["12"]` → effectively `["4"]` | `["4"]` |
 
-All three of stages 6, 13, and 15 effectively depend on stage 4 → they are in the SAME 3-stage parallel group.
+**KEY INSIGHT — YES-branch and NO-branch both collapse to the same predecessor**: Stage 6 depends on the YES-branch checkPreconditions (stage 8), while stages 14 and 15 depend on the NO-branch checkPreconditions (stage 12). After ignoring both checkPreconditions stages, ALL three effectively depend on stage 4. It does not matter whether a stage goes through the YES branch or the NO branch — both collapsed dependencies point to the same manualJudgment predecessor, placing all three stages in the SAME parallel group.
 
-The **WRONG** output (stage 15 placed after only stages 6 and 13 run — FORBIDDEN):
+All three of stages 6, 14, and 15 effectively depend on stage 4 → they are in the SAME 3-stage parallel group.
+
+The **WRONG** output (stage 15 placed after only stages 6 and 14 run — FORBIDDEN):
 ```
 * Add a "Manual Intervention" step ... "Judge -main-" ...
 * Add a "Deploy Kubernetes YAML" step ... "Deploy -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
@@ -3136,9 +3146,9 @@ The **WRONG** output (stage 15 placed after only stages 6 and 13 run — FORBIDD
 The **CORRECT** output (all 3 stages in the parallel group, only the first gets "Wait for all previous"):
 ```
 * Add a "Manual Intervention" step ... "Judge -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
-* Add a "Deploy Kubernetes YAML" step ... "Deploy -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← FIRST in {6,13,15} parallel group
-* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".            ← SECOND in {6,13,15} parallel group ✓
-* Add a "Run a kubectl script" step ... "Rollback -canary-" ... Set the start trigger to "Run in parallel with the previous step".             ← THIRD in {6,13,15} parallel group ✓
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← FIRST in {6,14,15} parallel group
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".            ← SECOND in {6,14,15} parallel group ✓
+* Add a "Run a kubectl script" step ... "Rollback -canary-" ... Set the start trigger to "Run in parallel with the previous step".             ← THIRD in {6,14,15} parallel group ✓
 ```
 
 Stages with `"type": "shiftTrafficProd"` (and the analogous `"type": "shiftTrafficStaging"`) represent canary traffic-shifting operations that run a Kubernetes Job to redistribute traffic between service versions. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
@@ -3676,13 +3686,32 @@ The following snippet is an example of an `undoRolloutManifest` stage in Spinnak
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `kubectl rollout undo <kind>/<name> -n <namespace>`. Set the target tag to <account>. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back <kind>/<name> to the previous revision in namespace <namespace>."
 ```
 
-**IMPORTANT — `undoRolloutManifest` steps on conditional branches**: When an `undoRolloutManifest` stage is downstream of a `checkPreconditions` stage (i.e., it represents the NO/failure/rollback branch of a judge gate), append the following migration note to the step description: `NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually.` This note is required whenever the `undoRolloutManifest` stage's `requisiteStageRefIds` reference a `checkPreconditions` stage (rather than depending directly on a `deployManifest`, `manualJudgment`, or other non-ignored stage). It helps engineers understand why a rollback step appears to run in parallel with deploy steps in the migrated Octopus project.
+**IMPORTANT — `undoRolloutManifest` steps on conditional branches**: When an `undoRolloutManifest` stage is downstream of a `checkPreconditions` stage (i.e., it represents the NO/failure/rollback branch of a judge gate), TWO changes are required:
+
+1. Append the following migration note to the step description: `NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually.`
+2. **MANDATORY — also add the parallel start trigger annotation**: `Set the start trigger to "Run in parallel with the previous step".` This annotation MUST appear as a separate bullet alongside the step definition. The description NOTE alone is NOT sufficient — without the explicit start trigger annotation, the Terraform generator will leave the step sequential.
+
+This applies whenever the `undoRolloutManifest` stage's `requisiteStageRefIds` reference a `checkPreconditions` stage (rather than depending directly on a `deployManifest`, `manualJudgment`, or other non-ignored stage).
+
+**CRITICAL SELF-CHECK — rejection branch steps**: Before finalizing output, scan every step whose description includes "rollback/rejection branch" or "runs in parallel with the deploy step". Each such step MUST also have the `Set the start trigger to "Run in parallel with the previous step"` annotation. If ANY such step is missing this annotation, add it immediately. The description NOTE and the start trigger annotation must ALWAYS appear together.
 
 **Example** — converting the stage above when the stage's `requisiteStageRefIds` reference a `checkPreconditions` stage (conditional branch rollback) produces:
 
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Rollback -internal-". Set the script to inline Bash with the code `kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod. NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually."
+* Add a "Run a kubectl script" step to the deployment process and name the step "Rollback -internal-". Set the script to inline Bash with the code `kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod`. Set the target tag to Kubernetes. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod. NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually." Set the start trigger to "Run in parallel with the previous step".
 ```
+
+The **WRONG** output (description NOTE present but start trigger annotation missing — FORBIDDEN):
+```
+* Add a "Run a kubectl script" step ... Set the step description to "...NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step..."
+```
+← WRONG: The description says "runs in parallel" but there is no `Set the start trigger to "Run in parallel with the previous step"` annotation. The Terraform generator will treat this as a sequential step.
+
+The **CORRECT** output (both the description NOTE and the start trigger annotation are present):
+```
+* Add a "Run a kubectl script" step ... Set the step description to "...NOTE (migration): This step was originally on the rollback/rejection branch of a Spinnaker pipeline. In this migration it runs in parallel with the deploy step..." Set the start trigger to "Run in parallel with the previous step".
+```
+← CORRECT: Both the migration NOTE and the explicit parallel trigger annotation are included.
 
 ## Webhook Stage
 
@@ -5454,6 +5483,7 @@ CORRECT output order: ..., 8 (PubSub, "Wait for all"), 11 (gRPC, "Run in paralle
 5. **NEW — verify group member adjacency**: For each parallel group with 2+ members, locate the output positions of all group members. Verify they are consecutive (no non-group steps appear between them). If any non-group step appears between group members, move that step to AFTER the last group member before outputting.
 5a. **CRITICAL — leaf branch sibling check**: For each parallel group, identify any member that has zero continuation stages (a "leaf" branch). Verify that leaf member appears IMMEDIATELY after the preceding group member in the output (step N+1, where N is the group's first member). If ANY continuation stage from the non-leaf branch appears between the first group member and the leaf member, that is a critical adjacency error. Move the leaf member to be immediately after the first group member BEFORE listing any continuation stages.
 6. If any parallel annotation is missing, any group member is out of position, or any leaf branch sibling appears after continuation stages, correct it before outputting.
+7. **CRITICAL — rejection/NO-branch step verification**: After generating all step prompts, identify every step whose description contains the phrase "rollback/rejection branch" or "both branches now run in parallel". For EACH such step: verify that the step ALSO contains the text `Set the start trigger to "Run in parallel with the previous step"`. If this text is absent, add it immediately. A step whose DESCRIPTION says it runs in parallel is NOT actually configured to run in parallel unless the START TRIGGER ANNOTATION is also present. This is the most common cause of incorrectly sequential rollback steps.
 
 **WHY THIS MATTERS**: A disabled stage (e.g., `"stageEnabled": {"expression": false}`) in the ROOT group still participates in parallel execution layout. If stages A and B both have `"requisiteStageRefIds": []` and B is disabled, B's step prompt MUST still contain BOTH `The step must be disabled.` AND `Set the start trigger to "Run in parallel with the previous step"`. Omitting the parallel annotation for a disabled root-group member is a critical error that will cause the Octopus deployment process to run steps sequentially instead of in parallel when the step is re-enabled.
 
