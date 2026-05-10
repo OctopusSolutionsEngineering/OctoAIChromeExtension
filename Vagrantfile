@@ -31,6 +31,8 @@ Vagrant.configure("2") do |config|
 
     apt-get update -y
 
+    apt-get upgrade -y
+
     # ── Base tools ──────────────────────────────────────────────────────────────
     apt-get install -y \
       auditd \
@@ -63,6 +65,38 @@ Vagrant.configure("2") do |config|
     # ── Disable bash history for all users ─────────────────────────────────────
     echo "set +o history" >> /etc/bash.bashrc
     echo "HISTFILE=" >> /etc/environment
+
+    # ── Firewall (UFW) ──────────────────────────────────────────────────────────
+    ufw --force reset
+    ufw default deny incoming
+    ufw default allow outgoing
+    ufw allow in 22/tcp comment 'SSH'
+    ufw --force enable
+
+    # ── auditd: log access to sensitive files and privileged commands ───────────
+    cat > /etc/audit/rules.d/aiagent.rules <<'AUDIT'
+# Credential file access
+-w /etc/github_copilot_token.env -p rwxa -k credential_access
+# Sudo and su usage
+-w /usr/bin/sudo -p x -k sudo_exec
+-w /bin/su -p x -k su_exec
+# Identity file changes
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/sudoers -p wa -k sudoers_change
+-w /etc/sudoers.d/ -p wa -k sudoers_change
+AUDIT
+    augenrules --load
+    systemctl enable auditd
+    systemctl restart auditd
+
+    # ── Remove sudo access from the vagrant user ────────────────────────────────
+    # This must be the last step in provisioning — all prior apt-get/usermod
+    # commands above require sudo and must complete before this is applied.
+    deluser vagrant sudo || true
+    # Belt-and-suspenders: explicitly deny via sudoers even if re-added to group
+    echo "vagrant ALL=(ALL) !ALL" > /etc/sudoers.d/deny-vagrant
+    chmod 440 /etc/sudoers.d/deny-vagrant
 
     echo "──────────────────────────────────────"
     echo "git     : $(git --version)"
