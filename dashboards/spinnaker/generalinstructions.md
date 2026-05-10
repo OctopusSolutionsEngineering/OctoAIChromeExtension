@@ -804,7 +804,7 @@ resource "octopusdeploy_process_step" "process_step_review_template_derived_pipe
   count                = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
   name                 = "Review template-derived pipeline behavior"
   type                 = "Octopus.Script"
-  process_id           = octopusdeploy_process.process_my_project[0].id
+  process_id           = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
   condition            = "Success"
   package_requirement  = "LetOctopusDecide"
   start_trigger        = "StartAfterPrevious"
@@ -879,9 +879,7 @@ resource "octopusdeploy_process_step" "process_step_rollback_internal" {
 resource "octopusdeploy_process_step" "process_step_rollback_internal" {
   name                 = "Rollback -internal-"
   type                 = "Octopus.KubernetesRunScript"   ← CORRECT
-  process_id           = octopusdeploy_process.process_myproject[0].id
-  condition            = "Success"
-  notes                = "Original stage type: undoRolloutManifest. This step rolls back deployment/dmp-market-web-internal to the previous revision in namespace app-0112-prod."
+  process_id           = "${length(data.octopusdeploy_projects.project_myproject.projects) != 0 ? null : octopusdeploy_process.process_myproject[0].id}"
   package_requirement  = "LetOctopusDecide"
   start_trigger        = "StartAfterPrevious"
   properties           = {
@@ -904,7 +902,7 @@ resource "octopusdeploy_process_step" "process_step_rollback_internal" {
 resource "octopusdeploy_process_step" "process_step_delete_manifest" {
   name                  = "Delete -Manifest-"
   type                  = "Octopus.KubernetesRunScript"
-  process_id            = octopusdeploy_process.process_myproject[0].id
+  process_id            = "${length(data.octopusdeploy_projects.project_myproject.projects) != 0 ? null : octopusdeploy_process.process_myproject[0].id}"
   condition             = "Success"
   notes                 = "Original stage name: Delete (Manifest)"
   package_requirement   = "LetOctopusDecide"
@@ -1145,6 +1143,55 @@ resource "octopusdeploy_process" "process_my_project" {
 ```
 
 If the deployment process does not use tenant tag sets or other space resources, `depends_on` can be omitted from the `octopusdeploy_process` resource entirely.
+
+**MANDATORY SELF-CHECK before finalizing `octopusdeploy_process` and `octopusdeploy_process_step` resources**: Before outputting these resources, you MUST verify ALL of the following. A single NO means the resource is incomplete and MUST be fixed first:
+
+For every `octopusdeploy_process` resource:
+1. Does it have a `count` attribute using `"${length(data.octopusdeploy_projects.project_<name>.projects) != 0 ? 0 : 1}"`? **If NO → add it.**
+2. Does `project_id` use the FULL ternary lookup (NOT a direct reference)? **If NO → replace with ternary.**
+
+For every `octopusdeploy_process_step` (and `octopusdeploy_process_templated_step`) resource:
+1. Does it have a `count` attribute matching the project count pattern? **If NO → add it.**
+2. Does `process_id` use `"${length(data.octopusdeploy_projects.project_<name>.projects) != 0 ? null : octopusdeploy_process.process_<name>[0].id}"`? **If NO → replace with ternary-null pattern.**
+
+**Negative example — `octopusdeploy_process` missing `count` and using direct `project_id` reference (VERY COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process" "process_my_project" {
+  # WRONG: missing count attribute
+  project_id = "${octopusdeploy_project.project_my_project.id}"   # WRONG: direct reference, no ternary guard
+}
+```
+
+**Correct output — `octopusdeploy_process` with count and ternary `project_id`**:
+```hcl
+resource "octopusdeploy_process" "process_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"   # REQUIRED
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"   # REQUIRED: full ternary
+}
+```
+
+**Negative example — `octopusdeploy_process_step` missing `count` and using direct `process_id` (VERY COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  # WRONG: missing count attribute
+  name       = "Deploy"
+  process_id = "${octopusdeploy_process.process_my_project.id}"   # WRONG: direct reference without ternary-null
+}
+```
+
+**Correct output — `octopusdeploy_process_step` with count and ternary-null `process_id`**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"   # REQUIRED
+  name       = "Deploy"
+  process_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"   # REQUIRED: ternary-null pattern
+}
+```
+
+* You will be penalized for generating an `octopusdeploy_process` resource without a `count` attribute.
+* You will be penalized for generating an `octopusdeploy_process_step` resource without a `count` attribute.
+* You will be penalized for setting `process_id` on an `octopusdeploy_process_step` resource to a direct reference like `"${octopusdeploy_process.process_foo.id}"` — it MUST use the ternary-null pattern.
+
 * **MANDATORY SELF-CHECK before finalizing external feed triggers**: Before outputting an `octopusdeploy_external_feed_create_release_trigger` resource, verify that it has: (1) a `count` attribute matching the project's count pattern, (2) `project_id` using the ternary lookup pattern, (3) `channel_id` using the ternary lookup pattern, (4) a `lifecycle { prevent_destroy = true }` block, (5) a `depends_on` referencing `octopusdeploy_process_steps_order`. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
 
 **ABSOLUTE RULE — external feed trigger output gate — DO NOT OUTPUT until this checklist passes**: Before writing an `octopusdeploy_external_feed_create_release_trigger` resource to output, you MUST answer YES to ALL of the following. A single NO means the resource is incomplete and MUST be fixed first:

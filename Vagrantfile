@@ -4,7 +4,6 @@
 # for i in {1..10}
 #  do
 #    cat /home/vagrant/Code/OctoAIChromeExtension/.github/prompts/project-creation.prompt.md | copilot \
-#      --additional-mcp-config '{"mcpServers":{...}' \
 #      --allow-all-tools \
 #      --allow-all-paths
 #  done
@@ -16,6 +15,7 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
   # Synced folders
+  config.vm.synced_folder "/Users/matthewcasperson/.copilot", "/home/vagrant/.copilot", mount_options: ["ro"]
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker", "/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker"
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusTerraformExport", "/home/vagrant/Code/OctopusTerraformExport", mount_options: ["ro"]
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/.github/prompts/", "/home/vagrant/Code/OctoAIChromeExtension/.github/prompts/", mount_options: ["ro"]
