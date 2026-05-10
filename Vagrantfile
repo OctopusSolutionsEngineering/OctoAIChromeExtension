@@ -5,9 +5,9 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
   # Synced folders
-  config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension", "/home/vagrant/Code/OctoAIChromeExtension"
-  config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusCopilot",        "/home/vagrant/Code/OctopusCopilot"
-  config.vm.synced_folder "/Users/matthewcasperson/.copilot",                   "/home/vagrant/.copilot"
+  config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker", "/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker"
+  config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusCopilot/context", "/home/vagrant/Code/OctopusCopilot/context"
+  config.vm.synced_folder "/Users/matthewcasperson/.copilot", "/home/vagrant/.copilot"
   config.vm.synced_folder "/Users/matthewcasperson/Downloads/spinnaker-pipelines-vendor-anonymized", "/home/vagrant/Downloads/spinnaker-pipelines-vendor-anonymized"
 
   config.vm.provider "parallels" do |prl|
@@ -41,6 +41,9 @@ Vagrant.configure("2") do |config|
       | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
     apt-get update -y
     apt-get install -y gh
+
+    # ── Disable bash history for this provisioning session ─────────────────────────────────
+    echo "set +o history" >> ~/.bash_profile
 
     echo "──────────────────────────────────────"
     echo "git     : $(git --version)"
