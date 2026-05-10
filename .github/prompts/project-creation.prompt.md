@@ -8,6 +8,10 @@ The instructions in the `generalinstructions.md` file must be updated to address
 
 You must update the `generalinstructions.md` file to address the issues you discover.
 
+# Reset the space
+
+Reset the space `Scratchpad2` to ensure that it is empty.
+
 ## Generating projects
 
 Given these example prompts:
@@ -57,7 +61,7 @@ Do not reuse project names from previous responses.
 
 Include a random number suffix on the project name from 1 to 10000.
 
-Append `The current space is "Scratchpad"` to the end of each generated prompt.
+Append `The current space is "Scratchpad2"` to the end of each generated prompt.
 
 Pass the generated prompts one by one to the AI Assistant using the `send_prompt` tool.
 
@@ -75,7 +79,7 @@ If the response indicates that the project could not be created, update the `gen
 
 ## Read the converted projects
 
-Serialize the newly created project in the space `Scratchpad` to terraform with the `convertOctopusToTerraform` tool.
+Serialize the newly created project in the space `Scratchpad2` to terraform with the `convertOctopusToTerraform` tool.
 
 The project name is defined in the `projectName` argument sent to the `convertOctopusToTerraform` tool, which is an array. The space name is defined in the `space` argument sent to the `convertOctopusToTerraform` tool, which is a string.
 
