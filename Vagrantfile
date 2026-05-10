@@ -1,3 +1,14 @@
+# This Vagrantfile sets up a secure, isolated environment for running the GitHub Copilot CLI and related tools.
+# It is used to execute the agent workflows that update the Spinnaker conversion system prompt and prompt-based project creation system prompt.
+# for example
+# for i in {1..10}
+#  do
+#    cat /home/vagrant/Code/OctoAIChromeExtension/.github/prompts/project-creation.prompt.md | copilot \
+#      --additional-mcp-config '{"mcpServers":{...}' \
+#      --allow-all-tools \
+#      --allow-all-paths
+#  done
+
 Vagrant.configure("2") do |config|
   config.vm.box = "bento/ubuntu-24.04"
 
