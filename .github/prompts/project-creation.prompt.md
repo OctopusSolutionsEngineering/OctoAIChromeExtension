@@ -2,13 +2,11 @@
 
 Your task is to generate a number of random projects in Octopus using the AI Assistant. 
 
-The instructions for creating projects from prompts are in the `/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker/generalinstructions.md` file.
+The instructions for creating projects from prompts are in the `/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker/generalinstructions.md` file.
 
 The instructions in the `generalinstructions.md` file must be updated to address edge cases that are discovered as random projects are created.
 
 You must update the `generalinstructions.md` file to address the issues you discover.
-
-Use the directory `/Users/matthewcasperson/Scratchpad` as a temporary directory to store any files you need to create as part of this process.
 
 ## Reset the test space
 
@@ -93,7 +91,7 @@ Compare the Terraform configuration of the space to the original prompt.
 
 Update the `generalinstructions.md` file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
 
-The directory `/Users/matthewcasperson/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. Then list the contents of that directory to find examples that may relate to the type of project being created by the prompt. 
+The directory `/home/vagrant/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. Then list the contents of that directory to find examples that may relate to the type of project being created by the prompt. 
 
 You must refer to these files when making improvements to the `generalinstructions.md` file.
 

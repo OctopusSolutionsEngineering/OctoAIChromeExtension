@@ -2786,8 +2786,8 @@ Some Spinnaker stages have a `stageEnabled` property that controls whether the s
 * When `stageEnabled.expression` is `false` (a boolean literal, not a string), the stage is hard-disabled. **Convert the stage, but mark the corresponding Octopus step as disabled.** Do not drop the stage from the dependency graph.
 * When `stageEnabled.expression` is `true` (a boolean literal), the stage is always enabled — treat it as a normal stage.
 * **ABSOLUTE RULE — before treating any string-valued `stageEnabled.expression` as a SpEL expression, first check for the exact case-insensitive string values `"true"` and `"false"`.** These exact string values are NOT manual-review expressions. They are hard boolean outcomes.
-* When `stageEnabled.expression` is the exact string `"false"` or `"False"` with no surrounding expression syntax, treat it the same as the boolean literal `false`: the stage is hard-disabled and the corresponding Octopus steps must be disabled.
-* When `stageEnabled.expression` is the exact string `"true"` or `"True"` with no surrounding expression syntax, treat it the same as the boolean literal `true`: the stage is always enabled and must be converted normally.
+* When `stageEnabled.expression` is any case variation of the bare string `"false"` (for example `"false"`, `"False"`, or `"FALSE"`) with no surrounding expression syntax, treat it the same as the boolean literal `false`: the stage is hard-disabled and the corresponding Octopus steps must be disabled. Do NOT add a manual-review SpEL note for these bare boolean strings.
+* When `stageEnabled.expression` is any case variation of the bare string `"true"` (for example `"true"`, `"True"`, or `"TRUE"`) with no surrounding expression syntax, treat it the same as the boolean literal `true`: the stage is always enabled and must be converted normally.
 * When `stageEnabled.expression` resolves to false (either the boolean literal or the exact string forms above), the corresponding Octopus steps must be disabled.
 * **CRITICAL — hard-disabled stages still participate in dependency ordering and parallel grouping**: A disabled stage still occupies its original place in the stage graph. It can be part of a parallel root group, and later stages may still need `Set the start trigger to "Wait for all previous steps to complete, then start"` because they depend on a disabled stage. Do NOT remove hard-disabled stages from the dependency graph when computing output order or start-trigger annotations.
 * When `stageEnabled.expression` is any other **string** (for example a SpEL expression like `${ ... }`), there is no direct Octopus Deploy equivalent. **Convert the stage normally** but append the following NOTE to the step description. If the step already has a description, append this text to the existing description separated by a single space; do NOT emit a second independent description instruction:
@@ -2797,6 +2797,8 @@ Some Spinnaker stages have a `stageEnabled` property that controls whether the s
   ```
 
   Replace `<expression>` with the verbatim value of `stageEnabled.expression`.
+
+* **CRITICAL — a disabled GCS TODO step can STILL require a `stageEnabled.expression` migration note**: When a `deployManifest` or `runJobManifest` stage both (a) uses a `gcs/object` artifact source that forces a TODO placeholder and `The step must be disabled.` and (b) has a non-boolean `stageEnabled.expression` string such as `${ #judgment("Manual Judgment").equals("Continue")}`, you MUST preserve BOTH facts. Emit the TODO placeholder, keep the step disabled, and include the `stageEnabled.expression` manual-review note in the SAME combined `Set the step description to "..."` instruction. A step being disabled because its YAML is a TODO placeholder does NOT cancel or replace the `stageEnabled.expression` note.
 
 * **IMPORTANT — `stageEnabled.expression` with simple parameter checks**: When the expression is a Spinnaker SpEL expression that evaluates a pipeline parameter (e.g., `${ parameters['skip_migration'] != 'true' }` or `${ !parameters.skip }`), you may optionally suggest the Octopus equivalent in the migration note. Append: `The original expression checked a pipeline parameter — consider setting the Octopus Variable run condition to the equivalent Octopus variable (e.g., `#{not(Octopus.Release.Variables['<param_name>'] == 'true')}` ).` However, do NOT automatically configure the Variable run condition — only note it as a suggestion. Replace `<param_name>` with the Spinnaker parameter name from the expression.
 
@@ -2835,7 +2837,7 @@ The **WRONG** output converts the hard-disabled stage and merely adds a manual-r
 ```
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "MigrarteDB-Manifest-". ... Set the step description to include: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "false" ...`
 ```
-← WRONG: the exact string `"false"` is a hard-disabled stage and must be skipped.
+← WRONG: the exact string `"false"` is a hard-disabled stage. The stage must still be converted, but the corresponding Octopus step must be disabled rather than replaced with a manual-review note. Do NOT drop the stage from the dependency graph or output order.
 
 **Example — `stageEnabled` with SpEL expression**:
 

@@ -454,7 +454,7 @@ resource "octopusdeploy_process_step" "process_step_my_project_step_3" {
 * You will be penalized for embedding flat (column-0) YAML into any `execution_properties` value even when the source prompt also showed flat YAML.
 
 **MANDATORY CONTAINERS COLUMN CHECK**: Before finalizing any `Octopus.Action.KubernetesContainers.CustomResourceYaml` value for a Deployment resource, count the leading spaces on the `containers:` key:
-- In a standard Deployment (kind: Deployment), `containers:` must be at **6 spaces** (`spec.template.spec.containers` = depth 3, in a `<<-EOT` heredoc where each line has 2 extra spaces from the heredoc indent, the actual Kubernetes indent is 4 spaces but Terraform adds 2 leading spaces making it `      containers:`)
+- In a standard Deployment (kind: Deployment), `containers:` must be at **8 spaces in the rendered YAML value** (`spec` at 2 spaces → `template` at 4 spaces → inner `spec` at 6 spaces → `containers:` at 8 spaces). When the YAML is written with a `<<-EOT` heredoc and the heredoc body is indented for readability, the Terraform source may show extra leading spaces before stripping, but the YAML that Kubernetes receives must still have `containers:` indented to 8 spaces.
 - **The simplest check**: does the `containers:` line start at column 0 (no leading spaces)? If YES, the YAML is FLAT and WRONG. You MUST re-indent or replace with a TODO placeholder.
 - A `containers:` line at column 0 indicates that the entire pod-spec is flat. This is always wrong for a Deployment and must be corrected before outputting.
 - If you cannot correctly re-indent a flat Deployment+HPA or any multi-document manifest, replace it with `# TODO: replace with correctly indented manifest` and set `is_disabled = true` on the step.
@@ -2352,7 +2352,7 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
 * Steps are defined in the "octopusdeploy_process_step" and "octopusdeploy_process_child_step" resources.
 * The order of the steps are defined in the "octopusdeploy_process_steps_order" resource.
 * The order of child steps are defined in the "octopusdeploy_process_child_steps_order" resource.
-* If the prompt indicates that a stage was skipped because it was hard-disabled, do not create any placeholder step resource for it and do not include it in the "octopusdeploy_process_steps_order" resource.
+* If the prompt says `The step must be disabled.` because a stage was hard-disabled, you MUST still create the corresponding step resource, set `is_disabled = true`, and include the step in the `octopusdeploy_process_steps_order` resource. Hard-disabled stages are preserved placeholders, not omitted stages.
 * When a skipped or ignored stage is removed from the dependency graph, the Terraform step order must reflect the rewritten dependency chain from the prompt. Do not preserve an order that still assumes the skipped stage exists.
 * You will be penalized for using asterisks, for example "*****", as placeholders in step properties.
 * The "Octopus.Step.ConditionVariableExpression" property can only be defined in the "properties" block.
@@ -3207,7 +3207,7 @@ resource "octopusdeploy_process_step" "process_step_argo_cd_manifest_update_upda
 * The "StartAfterPrevious" setting corresponds with the "Wait for all previous steps to complete, then start" option in the UI.
 * **CRITICAL — in fork-without-reconvergence pipelines, the `steps` order in `octopusdeploy_process_steps_order` must reflect the fully-linearized branch sequence**: When the prompt describes a fork-without-reconvergence pattern (parallel group of branch roots followed by Branch A continuation steps, then Branch B continuation steps with a migration NOTE), the `steps` array MUST list all Branch A continuation steps BEFORE the first Branch B continuation step. Do NOT interleave Branch A and Branch B continuation steps. The presence of `start_trigger = "StartAfterPrevious"` on both a Branch A continuation and a Branch B continuation does NOT mean they can be reordered — each step's position in the `steps` array must exactly follow the prompt's instruction order.
 * A step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" must define a "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property. If no file name is specified in the prompt, you must set the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property to "custom-resource.yaml".
-* You wll be penalized for defining a step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" and not defining the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property.
+* You will be penalized for defining a step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" and not defining the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property.
 * **ABSOLUTE RULE — `file_path_filters` MUST be set from the "Set the File Paths to" instruction**: When the prompt includes `Set the File Paths to "<path>"` for a "Deploy Kubernetes YAML" step that uses "Files from a Git repository" as its YAML source, you MUST set `file_path_filters = ["<path>"]` in the `git_dependencies` block. Additionally, set `Octopus.Action.KubernetesContainers.CustomResourceYamlFileName = "<path>"` in the `execution_properties` block using the SAME value. Both `file_path_filters` and `CustomResourceYamlFileName` must reflect the exact file path string from the prompt instruction. Leaving `file_path_filters = null` when the prompt specifies a file path means the GitRepository source will not correctly filter to the specified file — this is a deployment-breaking error.
 * **ABSOLUTE RULE — you will be penalized for setting `file_path_filters = null` when the prompt specifies "Set the File Paths to '<path>'"** for a GitRepository-sourced Deploy Kubernetes YAML step. The null value is forbidden whenever a file path instruction is present.
 
@@ -3832,7 +3832,7 @@ data "octopusdeploy_accounts" "my_other_oidc_account" {
 * Every resource must have a "count" attribute.
 * Each "count" attribute must be defined in the format "${length(data.<data type>.<data resource>.<collection>) != 0 ? 0 : 1}".
 * You will be penalized for defining a "count" attribute with the value of "1".
-* You will be penalized for using heredoc syntax.
+* You will be penalized for using heredoc syntax for values other than `Octopus.Action.Script.ScriptBody` and `Octopus.Action.KubernetesContainers.CustomResourceYaml`. For those two multi-line properties, heredoc syntax is allowed and preferred; for other values, use quoted strings.
 * You must only respond with the Terraform configuration.
 * A block starting with "{" and ending with "}" must write each child property on a new line.
 * You will be penalized for writing a single line block like this: "lifecycle { ignore_changes = [sensitive_value] prevent_destroy = true }".
@@ -3889,11 +3889,11 @@ variable "octopus_space_id" {
 "Octopus.Action.Script.ScriptBody" = "curl -w \"%%{http_code}\" http://example.org"
 ```
 
-This is another example using the heredoc syntax:
+For multi-line script bodies, heredoc syntax is valid. For example:
 
 ```
-"Octopus.Action.Script.ScriptBody" = <<EOT
-    curl -w \"%%{http_code}\" http://example.org
+"Octopus.Action.Script.ScriptBody" = <<-EOT
+  curl -w \"%%{http_code}\" http://example.org
 EOT
 ```
 
