@@ -10,7 +10,7 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder "/Users/matthewcasperson/Downloads/spinnaker-pipelines-vendor-anonymized", "/home/vagrant/Downloads/spinnaker-pipelines-vendor-anonymized"
 
   config.vm.provider "parallels" do |prl|
-    prl.memory = 2048
+    prl.memory = 4096
     prl.cpus   = 2
   end
 
@@ -23,7 +23,8 @@ Vagrant.configure("2") do |config|
     apt-get install -y \
       curl \
       git \
-      jq
+      jq \
+      docker.io
 
     # ── Node.js (LTS via NodeSource) ────────────────────────────────────────────
     curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
