@@ -6,18 +6,24 @@ Vagrant.configure("2") do |config|
 
   # Synced folders
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker", "/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker"
-  config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusCopilot/context", "/home/vagrant/Code/OctopusCopilot/context"
-  config.vm.synced_folder "/Users/matthewcasperson/Downloads/spinnaker-pipelines-vendor-anonymized", "/home/vagrant/Downloads/spinnaker-pipelines-vendor-anonymized"
+  config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/.github/prompts/", "/home/vagrant/Code/OctoAIChromeExtension/.github/prompts/", mount_options: ["ro"]
+  config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusCopilot/context", "/home/vagrant/Code/OctopusCopilot/context", mount_options: ["ro"]
+  config.vm.synced_folder "/Users/matthewcasperson/Downloads/spinnaker-pipelines-vendor-anonymized", "/home/vagrant/Downloads/spinnaker-pipelines-vendor-anonymized", mount_options: ["ro"]
 
   config.vm.provider "parallels" do |prl|
     prl.memory = 4096
     prl.cpus   = 2
   end
 
-  # Pass the GitHub Copilot token from the host environment into the VM
+  # ── Credential injection (run: always to pick up token rotations) ────────────
+  # File is owned by root, mode 600 — the aiagent user cannot read it directly.
+  # The token is injected into the agent process at launch time by the wrapper below.
+  # Note: this token is scoped only to the GitHub Copilot CLI and cannot be used
+  # for any other GitHub API purpose.
   config.vm.provision "shell", run: "always", inline: <<-SHELL
-    echo "export GH_TOKEN='#{ENV['GITHUB_COPILOT_TOKEN']}'" > /etc/profile.d/github_copilot_token.sh
-    chmod 600 /etc/profile.d/github_copilot_token.sh
+    echo "export GH_TOKEN='#{ENV['GITHUB_COPILOT_TOKEN']}'" > /etc/github_copilot_token.env
+    chown root:root /etc/github_copilot_token.env
+    chmod 600 /etc/github_copilot_token.env
   SHELL
 
   config.vm.provision "shell", inline: <<-SHELL
@@ -27,12 +33,14 @@ Vagrant.configure("2") do |config|
 
     # ── Base tools ──────────────────────────────────────────────────────────────
     apt-get install -y \
+      auditd \
       curl \
+      docker.io \
       git \
       jq \
-      docker.io \
+      python3 \
       screen \
-      python3
+      ufw
 
     usermod -aG docker vagrant
 
