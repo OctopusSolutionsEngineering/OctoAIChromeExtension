@@ -14,6 +14,12 @@ Vagrant.configure("2") do |config|
     prl.cpus   = 2
   end
 
+  # Pass the GitHub Copilot token from the host environment into the VM
+  config.vm.provision "shell", run: "always", inline: <<-SHELL
+    echo "export GH_TOKEN='#{ENV['GITHUB_COPILOT_TOKEN']}'" > /etc/profile.d/github_copilot_token.sh
+    chmod 600 /etc/profile.d/github_copilot_token.sh
+  SHELL
+
   config.vm.provision "shell", inline: <<-SHELL
     set -euo pipefail
 
