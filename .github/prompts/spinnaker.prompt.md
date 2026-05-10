@@ -5,15 +5,15 @@ description: This prompt converts Spinnaker pipelines into Octopus projects, com
 
 You will convert Spinnaker pipelines into Octopus projects, compare the results, and improve the prompt.md file.
 
-The `/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker/prompt.md` file contains the instructions required to convert Spinnaker pipelines into prompts that create Octopus projects.
+The `/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker/prompt.md` file contains the instructions required to convert Spinnaker pipelines into prompts that create Octopus projects.
 
-The `/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker/generalinstructions.md` file contains instructions for building Terraform configurations for Octopus projects.
+The `/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker/generalinstructions.md` file contains instructions for building Terraform configurations for Octopus projects.
 
-Use the directory `/Users/matthewcasperson/Scratchpad` as a temporary directory to store any files you need to create as part of this process.
+Use the directory `/home/vagrant/Scratchpad` as a temporary directory to store any files you need to create as part of this process.
 
 # Reading the pipeline
 
-Select a random Spinnaker pipeline JSON file from one of the directories under `/Users/matthewcasperson/Downloads/spinnaker-pipelines-vendor-anonymized`.
+Select a random Spinnaker pipeline JSON file from one of the directories under `/home/vagrant/Downloads/spinnaker-pipelines-vendor-anonymized`.
 
 Count the number of array items with `jq`.
 
@@ -31,7 +31,7 @@ Reset the `Scratchpad` space to ensure that it is empty.
 
 ## Convert the pipeline
 
-Create a temporary file using bash in the `/Users/matthewcasperson/Scratchpad` dir, grant everyone read access to the file, and replace the placeholders with the contents of the appropriate files using bash commands like `cat` and `jq` rather than reading the files directly:
+Create a temporary file using bash in the `/home/vagrant/Scratchpad` dir, grant everyone read access to the file, and replace the placeholders with the contents of the appropriate files using bash commands like `cat` and `jq` rather than reading the files directly:
 
 ```
 <prompt.md contents>
@@ -81,7 +81,7 @@ Update the `generalinstructions.md` file to address the 5 most significant issue
 
 You will be penalized for adding Spinnaker specific instructions to the `generalinstructions.md` file.
 
-The directory `/Users/matthewcasperson/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. You can refer to these files when making improvements to the `generalinstructions.md` file.
+The directory `/home/vagrant/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. You can refer to these files when making improvements to the `generalinstructions.md` file.
 
 Once the `generalinstructions.md` file has been updated, use the `upload_file` tool from the `blobuploader` agent to upload the files to the Azure Blob Storage container. The `upload_file` tool is harded to upload the `generalinstructions.md` file to Azure Blob Storage. This is the only file that needs to be uploaded. Uploading this file will make it available to the AI Assistant for future iterations of this process and ensures that the improvements made to the instructions are retained for future use.
 
