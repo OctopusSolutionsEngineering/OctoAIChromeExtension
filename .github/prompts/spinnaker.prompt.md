@@ -101,4 +101,4 @@ You MUST NEVER push files to remote repositories.
 
 You must save files in the `/home/vagrant/Scratchpad` directory when calling the `send_prompt_from_file` tool. This is the only directory that the MCP server can read.
 
-You MUST NEVER interact with the Octopus API directly. You MUST ONLY interact with the Octopus API by creating prompts that result in the AI Assistant making calls to the Octopus API. You MUST NOT use any CLI tools to interact with the Octopus API. You MUST NOT use any other tools or methods to interact with the Octopus API.
+You MUST NEVER interact with the Octopus API directly. You MUST NOT use any CLI tools to interact with the Octopus API. You MUST NOT use any other tools or methods to interact with the Octopus API.
