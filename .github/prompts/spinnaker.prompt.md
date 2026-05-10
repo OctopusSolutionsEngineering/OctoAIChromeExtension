@@ -5,9 +5,11 @@ description: This prompt converts Spinnaker pipelines into Octopus projects, com
 
 You will convert Spinnaker pipelines into Octopus projects, compare the results, and improve the prompt.md file.
 
-The prompt.md file contains the instructions required to convert Spinnaker pipelines into prompts that create Octopus projects.
+The `/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker/prompt.md` file contains the instructions required to convert Spinnaker pipelines into prompts that create Octopus projects.
 
-The generalinstructions.md file contains instructions for building Terraform configurations for Octopus projects.
+The `/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker/generalinstructions.md` file contains instructions for building Terraform configurations for Octopus projects.
+
+Use the directory `/Users/matthewcasperson/Scratchpad` as a temporary directory to store any files you need to create as part of this process.
 
 # Reading the pipeline
 

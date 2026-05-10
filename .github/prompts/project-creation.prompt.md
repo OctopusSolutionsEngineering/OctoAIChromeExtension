@@ -2,11 +2,13 @@
 
 Your task is to generate a number of random projects in Octopus using the AI Assistant. 
 
-The instructions for creating projects from prompts are in the `generalinstructions.md` file.
+The instructions for creating projects from prompts are in the `/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker/generalinstructions.md` file.
 
 The instructions in the `generalinstructions.md` file must be updated to address edge cases that are discovered as random projects are created.
 
 You must update the `generalinstructions.md` file to address the issues you discover.
+
+Use the directory `/Users/matthewcasperson/Scratchpad` as a temporary directory to store any files you need to create as part of this process.
 
 ## Reset the test space
 
