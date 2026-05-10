@@ -99,4 +99,4 @@ When reading files, confirm that you have read the whole file by counting the nu
 
 You MUST NEVER push files to remote repositories.
 
-You must saves files in the `/home/vagrant/Scratchpad` directory when calling the `send_prompt_from_file` tool. This is the only directoy that the MCP server can read.
+You must save files in the `/home/vagrant/Scratchpad` directory when calling the `send_prompt_from_file` tool. This is the only directory that the MCP server can read.
