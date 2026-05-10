@@ -52,8 +52,9 @@ Vagrant.configure("2") do |config|
     apt-get update -y
     apt-get install -y gh
 
-    # ── Disable bash history for this provisioning session ─────────────────────────────────
-    echo "set +o history" >> ~/.bash_profile
+    # ── Disable bash history for all users ─────────────────────────────────────
+    echo "set +o history" >> /etc/bash.bashrc
+    echo "HISTFILE=" >> /etc/environment
 
     echo "──────────────────────────────────────"
     echo "git     : $(git --version)"
