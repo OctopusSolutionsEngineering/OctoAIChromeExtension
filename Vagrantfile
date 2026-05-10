@@ -30,7 +30,11 @@ Vagrant.configure("2") do |config|
       curl \
       git \
       jq \
-      docker.io
+      docker.io \
+      screen \
+      python3
+
+    usermod -aG docker vagrant
 
     # ── Node.js (LTS via NodeSource) ────────────────────────────────────────────
     curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
