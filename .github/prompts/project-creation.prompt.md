@@ -109,3 +109,5 @@ Recreate the same project again after the `generalinstructions.md` file has been
 # Final Instructions
 
 When reading files, confirm that you have read the whole file by counting the number of lines in the file with `wc -l` and comparing it to the number of lines you have read. If the numbers do not match, you have not read the whole file.
+
+You MUST NEVER push files to remote repositories.
