@@ -6,7 +6,7 @@ The instructions for creating projects from prompts are in the `generalinstructi
 
 The instructions in the `generalinstructions.md` file must be updated to address edge cases that are discovered as random projects are created.
 
-You must update the `generalinstructions.md` file to to address the issues you discover.
+You must update the `generalinstructions.md` file to address the issues you discover.
 
 ## Generating projects
 
@@ -51,6 +51,7 @@ Write 5 more prompts, starting with "Create a Kubernetes project", "Create an Az
 * tenant tags
 * tenants
 * project tenant variables
+* Sample Kubernetes YAML
 
 Do not reuse project names from previous responses.
 
