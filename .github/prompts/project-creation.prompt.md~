@@ -10,7 +10,7 @@ You must update the `generalinstructions.md` file to address the issues you disc
 
 Note that projects are created from templates that include a number of steps, triggers, and variables. This is expected unless the prompt explicitly states that the project should not include any steps, triggers, or variables.
 
-You MUST NOT add rules to the `generalinstructions.md` file stating that a project must not include the template steps.
+You MOUST NOT add rules to the `generalinstructions.md` file stating that a project must not include the template steps.
 
 ## Reset the test space
 
@@ -33,7 +33,7 @@ Enable variable debugging.
 Create an Azure Web App project call "My Azure Project 1"
 ```
 
-Write a single prompt to create Octopus projects, starting with "Create a Kubernetes project", "Create an Azure Web App project", "Create an AWS Lambda project", "Create an Argo CD image tag update project", "Create a Tomcat project", or "Create a Script project" including a mix of:
+Write a prompt to create Octopus projects, starting with "Create a Kubernetes project", "Create an Azure Web App project", "Create an AWS Lambda project", "Create an Argo CD image tag update project", "Create a Tomcat project", or "Create a Script project" including a mix of:
 
 * feeds
 * accounts

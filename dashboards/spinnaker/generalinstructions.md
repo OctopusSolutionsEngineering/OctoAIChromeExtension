@@ -6,6 +6,216 @@
 
 **⚠️ CRITICAL — `depends_on` for sequential steps MUST reference ONLY the immediately preceding step**: Each `octopusdeploy_process_step` resource (steps 2, 3, 4, etc.) must have `depends_on` pointing to EXACTLY ONE step — the step that immediately precedes it in the deployment process. NEVER list all previous steps in `depends_on`. For step N, `depends_on = [octopusdeploy_process_step.step_N_minus_1]`. For step N to depend on ALL previous steps violates the rule and creates unnecessary complexity. WRONG: `depends_on = [step_1, step_2, step_3, step_4, step_5, step_6]` for step 7. CORRECT: `depends_on = [octopusdeploy_process_step.step_6]` for step 7.
 
+**⚠️ CRITICAL — ALL resources in a new project creation MUST use `count` with data source lookup**: Every resource that represents a project-scoped or space-scoped entity created as part of a project MUST include `count = "${length(data.octopusdeploy_<TYPE>s.<data_name>.<attribute>) != 0 ? 0 : 1}"` AND an associated `data "octopusdeploy_<TYPE>"` data source. This applies to the following resources in new project creation prompts:
+
+- `octopusdeploy_project` — MUST have `count` and ternary `project_id`
+- `octopusdeploy_process` — MUST have `count` and ternary `project_id`
+- `octopusdeploy_process_step` / `octopusdeploy_process_templated_step` — MUST have `count` and ternary `process_id`
+- `octopusdeploy_variable` — MUST have `count`
+- `octopusdeploy_lifecycle` — MUST have `count`
+- `octopusdeploy_environment` — MUST have `count`
+- `octopusdeploy_channel` — MUST have `count`
+- `octopusdeploy_project_scheduled_trigger` — MUST have `count`
+- `octopusdeploy_community_step_template` — MUST have `count`
+- `octopusdeploy_project_versioning_strategy` — MUST have `count`
+- `octopusdeploy_project_group` — MUST have `count`
+- `octopusdeploy_docker_container_registry` (feed) — MUST have `count`
+- `octopusdeploy_maven_feed`, `octopusdeploy_nuget_feed`, etc. (feeds) — MUST have `count`
+
+This pattern ensures idempotent re-apply: when the resource already exists, `count = 0` skips creation and the data source is used; when it doesn't exist, `count = 1` creates it.
+
+**Project resource — CRITICAL `count` + data source pattern (MUST for new project creation)**:
+The `octopusdeploy_project` resource MUST include a `count` attribute with a matching data source.
+
+```hcl
+# Data source to lookup existing project
+data "octopusdeploy_projects" "project_my_project" {
+  ids           = null
+  partial_name = "My Project"
+  skip          = 0
+  take          = 1
+}
+
+variable "project_my_project_name" {
+  type         = string
+  nullable     = false
+  sensitive    = false
+  description = "The name of the project"
+  default      = "My Project"
+}
+
+# Resource with count for idempotent re-apply
+resource "octopusdeploy_project" "project_my_project" {
+  count                            = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name                             = "${var.project_my_project_name}"
+  lifecycle_id                     = "${length(data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_devsecops[0].id}"
+  project_group_id                 = "${length(data.octopusdeploy_project_groups.project_group_kubernetes.project_groups) != 0 ? data.octopusdeploy_project_groups.project_group_kubernetes.project_groups[0].id : octopusdeploy_project_group.project_group_kubernetes[0].id}"
+  template_id                      = ""
+  tenanted_deployment_participation = "Untenanted"
+  is_version_controlled           = false
+  web_page                        = ""
+  default_worker_pool_id          = "${length(data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id : octopusdeploy_worker_pool.workerpool_default_worker_pool[0].id}"
+  default_tool_version            = "ToolVersionLatest"
+}
+```
+
+**Process resource — CRITICAL `count` + ternary `project_id` (MUST for new project creation)**:
+The `octopusdeploy_process` resource MUST include `count` and a ternary `project_id`.
+
+```hcl
+resource "octopusdeploy_process" "process_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  depends_on = []
+}
+```
+
+**Process step / templated step — CRITICAL `count` + ternary `process_id` (MUST for new project creation)**:
+Every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource MUST include `count` and a ternary `process_id`.
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_first_step" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name         = "First Step"
+  type         = "Octopus.Script"
+  process_id   = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  # ... other attributes ...
+}
+
+resource "octopusdeploy_process_templated_step" "process_step_my_project_community_step" {
+  count          = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name           = "Community Step"
+  process_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  template_id    = "${data.octopusdeploy_step_template.steptemplate_scan_for_vulnerabilities.step_template != null ? data.octopusdeploy_step_template.steptemplate_scan_for_vulnerabilities.step_template.id : octopusdeploy_community_step_template.communitysteptemplate_scan_for_vulnerabilities[0].id}"
+  # ... other attributes ...
+}
+```
+
+**Variable resource — CRITICAL `count` (MUST for new project creation)**:
+Every `octopusdeploy_variable` resource MUST include `count`.
+
+```hcl
+resource "octopusdeploy_variable" "my_project_connection_string" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  name         = "Connection.String"
+  type         = "String"
+  value        = "server=prod"
+  is_sensitive = false
+  lifecycle {
+    ignore_changes = [sensitive_value]
+  }
+  depends_on = []
+}
+```
+
+**Environment resource — CRITICAL `count` + ternary `id` references (MUST for new project creation)**:
+Every `octopusdeploy_environment` resource MUST include `count`, a matching data source, and `lifecycle { prevent_destroy = true }`.
+
+```hcl
+data "octopusdeploy_environments" "environment_development" {
+  ids           = null
+  partial_name = "Development"
+  skip          = 0
+  take          = 1
+}
+resource "octopusdeploy_environment" "environment_development" {
+  count = "${length(data.octopusdeploy_environments.environment_development.environments) != 0 ? 0 : 1}"
+  name  = "Development"
+  # ... other attributes ...
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+**Lifecycle resource — CRITICAL `count` (MUST for new project creation)**:
+Every `octopusdeploy_lifecycle` resource MUST include `count` and a matching data source.
+
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_devsecops" {
+  count = "${length(data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles) != 0 ? 0 : 1}"
+  name  = "DevSecOps"
+  # ... other attributes ...
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+**Channel resource — CRITICAL `count` with project-based lookup**:
+Every `octopusdeploy_channel` resource MUST include `count` referencing a `data.octopusdeploy_projects` data source (NOT a channels data source).
+
+```hcl
+resource "octopusdeploy_channel" "channel_my_project_hotfix" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  lifecycle_id = "${length(data.octopusdeploy_lifecycles.lifecycle_hotfix.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_hotfix.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_hotfix[0].id}"
+  name         = "Hotfix"
+  project_id   = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  is_default   = false
+  tenant_tags  = []
+}
+```
+
+**Scheduled trigger — CRITICAL `count` (MUST for new project creation)**:
+Every `octopusdeploy_project_scheduled_trigger` resource MUST include `count`.
+
+```hcl
+resource "octopusdeploy_project_scheduled_trigger" "projecttrigger_my_project_daily_scan" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  name       = "Daily Scan"
+  # ... other attributes ...
+}
+```
+
+**Worker pool lookup**:
+When a step references a worker pool, use a data source + ternary:
+
+```hcl
+data "octopusdeploy_worker_pools" "workerpool_default_worker_pool" {
+  ids           = null
+  partial_name = "Default Worker Pool"
+  skip          = 0
+  take          = 1
+}
+```
+
+The step's `worker_pool_variable` should be set to `"Octopus.Project.WorkerPool"` (this is the correct value). The `default_worker_pool_id` on the project should use the ternary pattern shown above.
+
+**Community step template — CRITICAL `count` with both data sources**:
+Every `octopusdeploy_community_step_template` resource MUST include `count` and use BOTH the step_template and community_step_template data sources:
+
+```hcl
+data "octopusdeploy_community_step_template" "communitysteptemplate_scan_for_vulnerabilities" {
+  website = "https://library.octopus.com/step-templates/a38bfff8-8dde-4dd6-9fd0-c90bb4709d5a"
+}
+data "octopusdeploy_step_template" "steptemplate_scan_for_vulnerabilities" {
+  name = "Scan for Vulnerabilities"
+}
+resource "octopusdeploy_community_step_template" "communitysteptemplate_scan_for_vulnerabilities" {
+  count                              = "${data.octopusdeploy_step_template.steptemplate_scan_for_vulnerabilities.step_template != null ? 0 : 1}"
+  community_action_template_id       = "${length(data.octopusdeploy_community_step_template.communitysteptemplate_scan_for_vulnerabilities.steps) != 0 ? data.octopusdeploy_community_step_template.communitysteptemplate_scan_for_vulnerabilities.steps[0].id : null}"
+}
+```
+
+**MANDATORY SELF-CHECK — count + data source completeness scan**: Before finalizing Terraform output, verify EVERY resource type in the output:
+1. Does `octopusdeploy_project` have `count`? — YES
+2. Does `octopusdeploy_process` have `count` and ternary `project_id`? — YES
+3. Does every `octopusdeploy_process_step` / `octopusdeploy_process_templated_step` have `count` and ternary `process_id`? — YES
+4. Does every `octopusdeploy_variable` have `count`? — YES
+5. Does every `octopusdeploy_environment` have `count`, data source, and `lifecycle { prevent_destroy = true }`? — YES
+6. Does every `octopusdeploy_lifecycle` have `count` and `lifecycle { prevent_destroy = true }`? — YES
+7. Does every `octopusdeploy_channel` have `count` with project-based lookup? — YES
+8. Does every `octopusdeploy_project_scheduled_trigger` have `count`? — YES
+9. Does every `octopusdeploy_community_step_template` have `count`? — YES
+10. Does every feed resource have `count`? — YES
+11. Is there a `data.octopusdeploy_worker_pools` data source for worker pool lookup? — YES
+12. Does every data source have a matching resource? — YES
+
+If ANY of the above is NO, fix it BEFORE finalizing the Terraform output. You will be penalized for outputting Terraform that lacks the `count` + data source pattern on any resource listed above.
+
 * You must carefully consider the prompt and create all the required resources.
 * You must ignore any mention of the current project.
 * If the target space is defined in the prompt, that must take precedence over any mention of a current space. For example:
