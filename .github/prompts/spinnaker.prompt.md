@@ -87,9 +87,9 @@ CRITICAL: The Terraform generated to create the project and the sample context i
 
 When updating the `generalinstructions.md` file, you must only consider the presense or absence of resources and their properties excluding the `count` fields and `lifecycle` blocks.
 
-You MUST NOT update the `generalinstructions.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
-You MUST NOT update the `generalinstructions.md` file with instructions around creating data sources.
-You MUST NOT update the `generalinstructions.md` file with instructions around retaining special characters in the project name or naming steps and projects exactly as they were in the original Spinnaker pipeline.
+You MUST NOT update the `generalinstructions.md` or `prompt.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
+You MUST NOT update the `generalinstructions.md` or `prompt.md` file with instructions around creating data sources.
+You MUST NOT update the `generalinstructions.md` or `prompt.md` file with instructions around retaining special characters in the project name or naming steps and projects exactly as they were in the original Spinnaker pipeline.
 
 The directory `/home/vagrant/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. You can refer to these files when making improvements to the `generalinstructions.md` file.
 
