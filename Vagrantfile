@@ -116,6 +116,7 @@ EOF
     # ── Disable bash history for all users ─────────────────────────────────────
     echo "set +o history" >> /etc/bash.bashrc
     echo "HISTFILE=" >> /etc/environment
+    echo "OLLAMA_DUMMY_KEY=DUMMY" >> /etc/environment
 
     # ── Firewall (UFW) ──────────────────────────────────────────────────────────
     ufw --force reset
