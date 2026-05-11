@@ -93,9 +93,14 @@ DO NOT pass the API key or server url parameters to the `convertOctopusToTerrafo
 
 Compare the Terraform configuration of the project to the original prompt.
 
-Note the exported Terraform does not expose the "count" fields or "lifecycle" blocks on resources. This is expected.
+CRITICAL: The Terraform generated to create the project is different from the Terraform generated when reading an existing project:
+* Terraform generated from an existing project does not expose the `count` fields or `lifecycle` blocks on resources.
+* Terraform generated from an existing project does not match every resource to an associated data source.
+
+When updating the `generalinstructions.md` file, you must only consider the presense or absence of resources and their properties excluding the `count` fields and `lifecycle` blocks.
 
 You MUST NOT update the `generalinstructions.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
+You MUST NOT update the `generalinstructions.md` file with instructions around creating data sources.
 
 Update the `generalinstructions.md` file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
 
