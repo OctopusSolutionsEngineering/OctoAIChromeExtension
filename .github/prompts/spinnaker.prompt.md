@@ -89,7 +89,7 @@ When updating the `generalinstructions.md` file, you must only consider the pres
 
 You MUST NOT update the `generalinstructions.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
 You MUST NOT update the `generalinstructions.md` file with instructions around creating data sources.
-You MUST NOT update the `generalinstructions.md` file with instructions retaining special characters in the project name.
+You MUST NOT update the `generalinstructions.md` file with instructions around retaining special characters in the project name.
 
 The directory `/home/vagrant/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. You can refer to these files when making improvements to the `generalinstructions.md` file.
 
