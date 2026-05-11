@@ -4672,4 +4672,126 @@ resource "octopusdeploy_process_step" "process_step_my_project_wait_20_min" {
 **MANDATORY — duplicate step resources are FORBIDDEN**: When the prompt lists "Deploy prod HTTP server primary" once, there must be EXACTLY ONE `process_step_..._deploy_prod_http_server_primary` resource in the Terraform. A step resource named `process_step_..._deploy_prod_http_server_primary_2` is only valid when the PROMPT explicitly lists a SECOND step with the same name (after deduplication rules). Do NOT create `_2` suffix resources based on your own interpretation — only create them when the prompt explicitly requests a second step with the same name.
 
 **MANDATORY — "Run a Script" wait steps must appear in Terraform as `Octopus.Script` resources**: When the prompt includes a step like `Add a "Run a Script" step with the name "Wait -20 min-" ... Set the script to the following inline PowerShell code: Start-Sleep -Seconds 1200`, it MUST produce an `octopusdeploy_process_step` resource with `type = "Octopus.Script"` and `execution_properties["Octopus.Action.Script.ScriptBody"] = "Start-Sleep -Seconds 1200"`. Never omit wait-script steps. If the prompt has a wait step, the Terraform MUST have a matching `Octopus.Script` resource.
+
+## Space ID Variable Instructions
+
+**MANDATORY — `octopus_space_id` variable must NOT have a default value**: The `octopus_space_id` Terraform variable must be declared without a `default` attribute. In particular, you must NEVER add `default = "Spaces-1"` or any other space ID as the default. The canonical example is:
+
+```hcl
+variable "octopus_space_id" {
+  type        = string
+  nullable    = false
+  sensitive   = false
+  description = "The ID of the Octopus space to populate."
+}
+```
+
+**Negative example — `octopus_space_id` with hardcoded default (FORBIDDEN)**:
+```hcl
+variable "octopus_space_id" {
+  type        = string
+  nullable    = false
+  sensitive   = false
+  description = "The ID of the Octopus space to populate."
+  default     = "Spaces-1"   ← WRONG: space ID hardcoded as default
+}
+```
+
+You will be penalized for adding `default = "Spaces-1"` or any specific space ID as the default value of the `octopus_space_id` variable. The space ID must always be provided externally (e.g., via a `terraform.tfvars` file or environment variable), not hardcoded.
+
+## Terraform HCL Indentation Instructions
+
+**MANDATORY — all Terraform HCL blocks must use consistent 2-space indentation**: Properties inside `variable`, `resource`, and `data` blocks MUST be indented with exactly 2 spaces. Properties inside nested blocks (such as `release_retention_policy`, `tentacle_retention_policy`, `connectivity_policy`, `phase`, `scope`, `lifecycle`, etc.) MUST be indented with 4 spaces total (2 spaces for the containing block + 2 more spaces for the nested block). You will be penalized for using 0-space, 1-space, or any non-standard indentation inside HCL blocks.
+
+**Negative example — variable block with 0-space indentation (FORBIDDEN)**:
+```hcl
+variable "octopus_space_id" {
+type = string              ← WRONG: 0-space indentation
+nullable = false           ← WRONG: 0-space indentation
+sensitive = false          ← WRONG: 0-space indentation
+description = "..."        ← WRONG: 0-space indentation
+}
+```
+
+**Correct output — variable block with 2-space indentation**:
+```hcl
+variable "octopus_space_id" {
+  type        = string     ← CORRECT: 2-space indentation
+  nullable    = false      ← CORRECT: 2-space indentation
+  sensitive   = false      ← CORRECT: 2-space indentation
+  description = "..."      ← CORRECT: 2-space indentation
+}
+```
+
+**Negative example — nested block with 1-space indentation (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_devsecops" {
+  release_retention_policy {
+ quantity_to_keep = 30   ← WRONG: 1-space indentation inside nested block
+ unit = "Days"           ← WRONG: 1-space indentation inside nested block
+}
+  connectivity_policy {
+ allow_deployments_to_no_targets = true  ← WRONG: 1-space indentation
+ exclude_unhealthy_targets = false       ← WRONG: 1-space indentation
+}
+}
+```
+
+**Correct output — nested block with proper 4-space indentation**:
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_devsecops" {
+  release_retention_policy {
+    quantity_to_keep = 30   ← CORRECT: 4-space indentation inside nested block
+    unit             = "Days"
+  }
+  connectivity_policy {
+    allow_deployments_to_no_targets = true   ← CORRECT: 4-space indentation
+    exclude_unhealthy_targets       = false
+    skip_machine_behavior           = "None"
+    target_roles                    = []
+  }
+}
+```
+
+## Project Group Uniqueness Instructions
+
+**MANDATORY — only create project groups explicitly named in the prompt**: When the prompt specifies a project group name (e.g., "Kubernetes Apps"), create ONLY that project group resource. Do NOT create additional project groups from any default template (e.g., a generic "Kubernetes" project group alongside a requested "Kubernetes Apps" group). Every `octopusdeploy_project_group` resource MUST correspond to a project group explicitly named in the prompt. If the canonical template uses a different project group name than the prompt, use the prompt's name, not the template's name.
+
+**Negative example — extra project group not in prompt (FORBIDDEN)**:
+```hcl
+# Prompt says: use project group "Kubernetes Apps"
+resource "octopusdeploy_project_group" "project_group_kubernetes" { ... }      ← WRONG: "Kubernetes" was NOT in the prompt
+resource "octopusdeploy_project_group" "project_group_kubernetes_apps" { ... } ← correct
+```
+
+**Correct output**:
+```hcl
+resource "octopusdeploy_project_group" "project_group_kubernetes_apps" { ... } ← CORRECT: only the group named in the prompt
+```
+
+You will be penalized for creating project group resources not explicitly requested in the prompt.
+
+## Security Environment Exclusion for Kubernetes Steps
+
+**MANDATORY — Kubernetes deploy steps must exclude the Security environment when the project uses the DevSecOps lifecycle**: When a project uses the DevSecOps lifecycle (which includes a Security environment used for daily security scanning), Kubernetes deployment steps (`Octopus.KubernetesDeployRawYaml`, `Octopus.KubernetesRunScript`, `Octopus.HelmChartUpgrade`, `Octopus.Kubernetes.Kustomize`, etc.) MUST set `excluded_environments` to include the Security environment ID. The Security environment is only used for vulnerability scanning (the "Scan for Vulnerabilities" step), not for actual Kubernetes deployments.
+
+**Canonical pattern — K8s deploy step excludes Security environment**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_app" {
+  name                  = "Deploy App"
+  type                  = "Octopus.KubernetesDeployRawYaml"
+  excluded_environments = ["${length(data.octopusdeploy_environments.environment_security.environments) != 0 ? data.octopusdeploy_environments.environment_security.environments[0].id : octopusdeploy_environment.environment_security[0].id}"]
+  ...
+}
+```
+
+**Negative example — K8s deploy step with null excluded_environments when DevSecOps lifecycle is used (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_app" {
+  excluded_environments = null   ← WRONG: K8s deploy steps must exclude Security when using DevSecOps lifecycle
+  ...
+}
+```
+
+You will be penalized for setting `excluded_environments = null` on Kubernetes deployment steps when the project uses the DevSecOps lifecycle.
 * Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
