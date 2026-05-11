@@ -72,6 +72,9 @@ Vagrant.configure("2") do |config|
     # ── GitHub Copilot CLI ─────────────────────────────────────────────────────
     npm install -g @github/copilot
 
+    # ── Qwen Code (LLaMA 3-based code generation model) ─────────────────────────────
+    npm install -g @qwen-code/qwen-code
+
     # ── GitHub CLI ──────────────────────────────────────────────────────────────
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
