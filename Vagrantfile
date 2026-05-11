@@ -16,6 +16,7 @@ Vagrant.configure("2") do |config|
 
   # Synced folders
   config.vm.synced_folder "/Users/matthewcasperson/.copilot", "/home/vagrant/.copilot"
+  config.vm.synced_folder "/Users/matthewcasperson/.qwen", "/home/vagrant/.qwen"
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker", "/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker"
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/.github/prompts/", "/home/vagrant/Code/OctoAIChromeExtension/.github/prompts/", mount_options: ["ro"]
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusCopilot/context", "/home/vagrant/Code/OctopusCopilot/context", mount_options: ["ro"]
@@ -71,35 +72,6 @@ Vagrant.configure("2") do |config|
 
     # ── GitHub Copilot CLI ─────────────────────────────────────────────────────
     npm install -g @github/copilot
-
-    # ── Qwen Code settings ──────────────────────────────────────────────────────
-    mkdir -p /home/vagrant/.qwen
-    cat > /home/vagrant/.qwen/settings.json <<'EOF'
-{
-  "security": {
-    "auth": {
-      "selectedType": "openai",
-      "apiKey": "DUMMY_PASSWORD",
-      "baseUrl": "http://10.211.55.2:11434/v1"
-    }
-  },
-  "model": {
-    "name": "qwen3.6:35b-a3b-coding-mxfp8"
-  },
-  "modelProviders": {
-    "openai": [
-      {
-        "id": "qwen3.6:35b-a3b-coding-mxfp8",
-        "name": "Qwen 3.6 (Local)",
-        "baseUrl": "http://localhost:11434/v1",
-        "envKey": "OLLAMA_DUMMY_KEY"
-      }
-    ]
-  },
-  "$version": 3
-}
-EOF
-    chown -R vagrant:vagrant /home/vagrant/.qwen
 
     # ── Qwen Code (LLaMA 3-based code generation model) ─────────────────────────────
     npm install -g @qwen-code/qwen-code
