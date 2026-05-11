@@ -62,6 +62,7 @@ Write a single prompt to create Octopus projects, starting with "Create a Kubern
 * Powershell, Bash, or Python scripts
 * manual intervention steps
 * email steps
+* step ordering
 
 Do not reuse project names from previous responses.
 
