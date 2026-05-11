@@ -81,6 +81,16 @@ Update the `generalinstructions.md` file to address the 5 most significant issue
 
 You will be penalized for adding Spinnaker specific instructions to the `generalinstructions.md` file.
 
+CRITICAL: The Terraform generated to create the project and the sample context in `/home/vagrant/Code/OctopusCopilot/context` is different from the Terraform generated when reading an existing project:
+* Terraform generated from an existing project does not expose the `count` fields or `lifecycle` blocks on resources.
+* Terraform generated from an existing project does not match every resource to an associated data source.
+
+When updating the `generalinstructions.md` file, you must only consider the presense or absence of resources and their properties excluding the `count` fields and `lifecycle` blocks.
+
+You MUST NOT update the `generalinstructions.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
+You MUST NOT update the `generalinstructions.md` file with instructions around creating data sources.
+You MUST NOT update the `generalinstructions.md` file with instructions retaining special characters in the project name.
+
 The directory `/home/vagrant/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. You can refer to these files when making improvements to the `generalinstructions.md` file.
 
 Once the `generalinstructions.md` file has been updated, use the `upload_file` tool from the `blobuploader` agent to upload the files to the Azure Blob Storage container. The `upload_file` tool is hard coded to upload the `generalinstructions.md` file to Azure Blob Storage. This is the only file that needs to be uploaded. Uploading this file will make it available to the AI Assistant for future iterations of this process and ensures that the improvements made to the instructions are retained for future use.
