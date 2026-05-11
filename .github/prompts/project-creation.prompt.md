@@ -8,6 +8,10 @@ The instructions in the `generalinstructions.md` file must be updated to address
 
 You must update the `generalinstructions.md` file to address the issues you discover.
 
+Note that projects are created from templates that include a number of steps, triggers, and variables. This is expected unless the prompt explicitly states that the project should not include any steps, triggers, or variables.
+
+You MOUST NOT add rules to the `generalinstructions.md` file stating that a project must not include the template steps.
+
 ## Reset the test space
 
 Reset the space `Scratchpad2` to ensure that it is empty.
