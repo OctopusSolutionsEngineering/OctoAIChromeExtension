@@ -106,7 +106,7 @@ When updating the `generalinstructions.md` file, you must only consider the pres
 
 You MUST NOT update the `generalinstructions.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
 You MUST NOT update the `generalinstructions.md` file with instructions around creating data sources.
-You MUST NOT update the `generalinstructions.md` file with instructions around retaining special characters in the project name.
+You MUST NOT update the `generalinstructions.md` file with instructions around retaining special characters in the project name or naming steps and projects exactly as they were defined in the original prompt.
 
 Update the `generalinstructions.md` file to address the most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
 
