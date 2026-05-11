@@ -57,9 +57,11 @@ Write a single prompt to create Octopus projects, starting with "Create a Kubern
 * tenants
 * variable scopes
 * tenant tags
-* tenants
 * project tenant variables
 * Sample Kubernetes YAML
+* Powershell, Bash, or Python scripts
+* manual intervention steps
+* email steps
 
 Do not reuse project names from previous responses.
 
