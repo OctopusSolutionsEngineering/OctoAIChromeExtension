@@ -62,7 +62,8 @@ Vagrant.configure("2") do |config|
       jq \
       python3 \
       screen \
-      ufw
+      ufw \
+      btop
 
     usermod -aG docker vagrant
 
