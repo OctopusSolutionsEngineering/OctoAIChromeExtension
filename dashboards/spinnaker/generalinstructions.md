@@ -18,6 +18,11 @@
 - `octopusdeploy_project_scheduled_trigger` — MUST have `count`
 - `octopusdeploy_community_step_template` — MUST have `count`
 - `octopusdeploy_project_versioning_strategy` — MUST have `count`
+- `octopusdeploy_tenant` — MUST have `count` (when tenant is requested)
+- `octopusdeploy_tenant_project` — MUST have `count` (when tenant_project is requested)
+- `octopusdeploy_tenant_project_variable` / `octopusdeploy_tenant_common_variable` — MUST have `count` (when tenant variables are requested)
+- `octopusdeploy_tag_set` — MUST have `count` (when tenant has tags)
+- `octopusdeploy_tag` — MUST have `count` (when tenant has tags)
 - `octopusdeploy_project_group` — MUST have `count`
 - `octopusdeploy_docker_container_registry` (feed) — MUST have `count`
 - `octopusdeploy_maven_feed`, `octopusdeploy_nuget_feed`, etc. (feeds) — MUST have `count`
@@ -222,7 +227,7 @@ If ANY of the above is NO, fix it BEFORE finalizing the Terraform output. You wi
   * When given the prompt `Create a project called 'Example Project' in the 'Example Space'. The current project is 'My Web App'. The current space is 'Default'.`, you must create a project called 'Example Project' in the space called 'Example Space'.
   * When given the prompt `Create a project called 'Example Project'. The current project is 'My Web App'. The current space is 'Default'.`, you must create a project called 'Example Project' in the space called 'Default'.
 * You must create valid Terraform.
-* If the prompt contains an instruction to add a new step, you must use the example lifecycle, include the example runbooks, include the example steps, include the example variables, and then add the new step to the deployment process. **EXCEPTION — this instruction applies ONLY to Spinnaker migration prompts.** When the prompt starts with "Create a [type] project" (e.g., "Create a Kubernetes project", "Create an Azure Web App project") and lists explicit "Add a step to..." instructions that name specific step types and configurations, this is a **new project creation prompt**, NOT a migration prompt. For new project creation prompts, ONLY create the steps explicitly named in the "Add a step" instructions. Do NOT add additional template steps (e.g., "Approve Production Deployment", "Check Targets Available", "Scan for Vulnerabilities", or any other steps from the project type template). Do NOT add template runbooks, template scheduled triggers, or any other template resources that are not explicitly requested. You will be penalized for adding template steps that were not explicitly requested in a new project creation prompt.
+* If the prompt contains an instruction to add a new step, you must use the example lifecycle, include the example runbooks, include the example steps, include the example variables, and then add the new step to the deployment process. **EXCEPTION — this instruction applies ONLY to Spinnaker migration prompts.** When the prompt starts with "Create a [type] project" (e.g., "Create a Kubernetes project", "Create an Azure Web App project") and lists explicit "Add a step to..." instructions that name specific step types and configurations, this is a **new project creation prompt**, NOT a migration prompt. For new project creation prompts, ONLY create the steps explicitly named in the "Add a step" instructions. Do NOT add additional template steps (e.g., "Approve Production Deployment", "Check Targets Available", "Scan for Vulnerabilities", or any other steps from the project type template). Do NOT add template runbooks, template scheduled triggers, or any other template resources that are not explicitly requested. You will be penalized for adding template steps that were not explicitly requested in a new project creation prompt. **CRITICAL EXCEPTION: When tenant variables are requested, you MUST add `template` blocks inside the `octopusdeploy_project` resource. These are NOT the same as template steps — `template` blocks define variable variable templates (variable definitions), NOT deployment steps. This is the ONLY time you should add `template` blocks to a new project creation prompt.**
 
 * The phrase "with no steps" in a project creation prompt is a **template placeholder** that is always present in migration prompts. When the prompt lists explicit "Add a step" instructions after the project creation line, those explicit step instructions take **absolute precedence** and ALL listed steps MUST be created — even if the project creation line says "with no steps". The phrase "with no steps" should only be interpreted literally when there are **zero** subsequent "Add a step" instructions in the entire prompt. **CRITICAL: Do NOT use the presence of "with no steps" to suppress step creation when explicit "Add a step" instructions follow it.** You will be penalized for creating a project with no `octopusdeploy_process_step` resources when the prompt contains one or more "Add a step" instructions.
 
@@ -1590,6 +1595,8 @@ resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my
 
 ## Tenant Instructions
 
+**⚠️ EMERGENCY: TENANT RESOURCES ARE OFTEN OMITTED FROM TERRAFORM OUTPUT** — Your execution plan correctly creates tenant resources but your Terraform HCL output frequently omits them. When you create a `data "octopusdeploy_tenants"` data source, you MUST also create a matching `resource "octopusdeploy_tenant"`. This applies to all tenant-related resources: `octopusdeploy_tenant`, `octopusdeploy_tenant_project`, `octopusdeploy_tenant_project_variable`, `octopusdeploy_tag_set`, and `octopusdeploy_tag`. DO NOT create tenant data sources without the corresponding resource blocks.
+
 * If the prompt indicates that tenants are to be created or added, the "octopusdeploy_tenant" resources must be created in addition to the "octopusdeploy_project" resource.
 * You will be penalized for creating "octopusdeploy_tenant" resources without an associated "octopusdeploy_project" resource.
 * Each resource "octopusdeploy_tenant" must have an associated data "octopusdeploy_tenants". For example, if the following resource is defined:
@@ -1700,12 +1707,24 @@ resource "octopusdeploy_tenant_project" "tenant_project_acme_corp_my_project" {
 
 ## Tenant Project Variable Instructions
 
-**CRITICAL — `octopusdeploy_tenant_project_variable` REQUIRES a `template` block in the project**: The `octopusdeploy_tenant_project_variable` resource references `template_id` which points to a template block in the `octopusdeploy_project` resource. If the project has no `template` blocks, you CANNOT use `octopusdeploy_tenant_project_variable`. Before creating a `octopusdeploy_tenant_project_variable`, you MUST add one or more `template` blocks to the `octopusdeploy_project` resource.
+**CRITICAL — `octopusdeploy_tenant_project_variable` REQUIRES a `template` block in the project**: The `octopusdeploy_tenant_project_variable` resource references `template_id` which points to a template block in the `octopusdeploy_project` resource. If the project has no `template` blocks, you CANNOT use `octopusdeploy_tenant_project_variable`. Before creating a `octopusdeploy_tenant_project_variable`, you MUST add one or more `template` blocks to the `octopusdeploy_project` resource. **When the prompt requests tenant variables for a project that has no steps or templates, you MUST add `template` blocks to the project resource to support the tenant variables.** For example, if the prompt says "Add tenant variables scoped to Production", and the project has no existing templates, add a single generic template like:
+```hcl
+template {
+  name              = "Tenant.Variable"
+  label             = "A tenant variable"
+  help_text         = "Define a tenant-specific value for this project."
+  default_value     = null
+  display_settings = { "Octopus.ControlType" = "SingleLineText" }
+ }
+```
+Then create the `octopusdeploy_tenant_project_variable` referencing this template by index (0 for the first template).
 
 **How tenant project variables work**:
 1. The `octopusdeploy_project` resource defines one or more `template` blocks (0-indexed).
 2. Each `octopusdeploy_tenant_project_variable` resource sets the value of a template for a specific tenant and environment.
 3. The `template_id` in `octopusdeploy_tenant_project_variable` references the project's template by index.
+4. **CRITICAL: Each `template` block inside `octopusdeploy_project` represents a variable template definition. When the prompt requests N tenant variables, you MUST add N `template` blocks (indexed 0 through N-1) or fewer if variables share the same template type. Each template block defines ONE variable template.**
+5. **You MUST NOT omit `template` blocks when tenant variables are requested. The absence of template blocks is the #1 cause of failed tenant variable creation.**
 
 **Example — project with template blocks for tenant variables**:
 ```hcl
@@ -1746,14 +1765,87 @@ resource "octopusdeploy_tenant_project_variable" "tenantprojectvariable_acme_cor
   lifecycle {
     prevent_destroy = true
   }
+
+**Example — multiple tenant variables with multiple template blocks**:
+```hcl
+resource "octopusdeploy_project" "project_my_k8s_project" {
+  count                                = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? 0 : 1}"
+  name                                 = "${var.project_my_k8s_project_name}"
+  lifecycle_id                         = "${data.octopusdeploy_lifecycles.lifecycle_security.lifecycles[0].id}"
+  project_group_id                     = "${data.octopusdeploy_project_groups.project_group_default.project_groups[0].id}"
+  tenanted_deployment_participation = "Tenanted"
+
+  template {
+    name                = "DatabaseConnectionString"
+    label               = "Database Connection String"
+    help_text           = "The connection string for the database."
+    default_value       = "DefaultConnString"
+    display_settings = { "Octopus.ControlType" = "SingleLineText" }
+    }
+
+  template {
+    name                = "ApiEndpoint"
+    label               = "API Endpoint"
+    help_text           = "The endpoint URL for the API service."
+    default_value       = "https://api.example.com"
+    display_settings = { "Octopus.ControlType" = "SingleLineText" }
+    }
+
+  template {
+    name                = "EnableFeatureFlag"
+    label               = "Enable Feature Flag"
+    help_text           = "Whether to enable the feature flag."
+    default_value       = "true"
+    display_settings = { "Octopus.ControlType" = "Boolean" }
+    }
+
+  connectivity_policy {
+    allow_deployments_to_no_targets = true
+    exclude_unhealthy_targets         = false
+    skip_machine_behavior             = "None"
+    target_roles                      = []
+    }
+  lifecycle {
+    prevent_destroy = true
+    }
+}
+
+resource "octopusdeploy_tenant_project_variable" "tenantprojectvariable_prod_dbconn" {
+  count            = "${length(data.octopusdeploy_tenants.tenant_prod.tenants) != 0 ? 0 : 1}"
+  environment_id = "${length(data.octopusdeploy_environments.environment_staging.environments) != 0 ? data.octopusdeploy_environments.environment_staging.environments[0].id : octopusdeploy_environment.environment_staging[0].id}"
+  project_id       = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? data.octopusdeploy_projects.project_my_k8s_project.projects[0].id : octopusdeploy_project.project_my_k8s_project[0].id}"
+  template_id      = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? null : octopusdeploy_project.project_my_k8s_project[0].template[0].id}"
+  tenant_id        = "${length(data.octopusdeploy_tenants.tenant_prod.tenants) != 0 ? data.octopusdeploy_tenants.tenant_prod.tenants[0].id : octopusdeploy_tenant.tenant_prod[0].id}"
+  value            = "Server=prod-db.example.com"
+  depends_on       = [octopusdeploy_tenant_project.tenant_project_prod_my_k8s_project]
+  lifecycle {
+    prevent_destroy = true
+    }
+}
+
+resource "octopusdeploy_tenant_project_variable" "tenantprojectvariable_prod_api" {
+  count            = "${length(data.octopusdeploy_tenants.tenant_prod.tenants) != 0 ? 0 : 1}"
+  environment_id = "${length(data.octopusdeploy_environments.environment_staging.environments) != 0 ? data.octopusdeploy_environments.environment_staging.environments[0].id : octopusdeploy_environment.environment_staging[0].id}"
+  project_id       = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? data.octopusdeploy_projects.project_my_k8s_project.projects[0].id : octopusdeploy_project.project_my_k8s_project[0].id}"
+  template_id      = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? null : octopusdeploy_project.project_my_k8s_project[0].template[1].id}"
+  tenant_id        = "${length(data.octopusdeploy_tenants.tenant_prod.tenants) != 0 ? data.octopusdeploy_tenants.tenant_prod.tenants[0].id : octopusdeploy_tenant.tenant_prod[0].id}"
+  value            = "https://prod-api.example.com"
+  depends_on       = [octopusdeploy_tenant_project.tenant_project_prod_my_k8s_project]
+  lifecycle {
+    prevent_destroy = true
+    }
+}
+```
+
 }
 ```
 
 **MANDATORY SELF-CHECK — tenant project variables require project templates**:
-1. Before creating any `octopusdeploy_tenant_project_variable` resource, verify that the referenced `octopusdeploy_project` resource has at least one `template` block.
-2. The `template[N].id` index (0, 1, 2, ...) corresponds to the order in which `template` blocks appear in the project resource.
-3. If the project has NO `template` blocks, you CANNOT create `octopusdeploy_tenant_project_variable` resources for it. In this case, either: (a) add `template` blocks to the project for each per-tenant variable, or (b) use `octopusdeploy_tenant_common_variable` with a library variable set instead.
-4. You will be penalized for creating `octopusdeploy_tenant_project_variable` resources that reference `template[N].id` when the project has no `template` blocks defined.
+1. Count the number of `octopusdeploy_tenant_project_variable` resources you are creating. You MUST have at least that many `template` blocks in the corresponding `octopusdeploy_project` resource. For example, if you create 3 tenant variable resources, you MUST have exactly 3 template blocks (template[0], template[1], template[2]).
+2. For each `tenant_project_variable`, verify that `template[N].id` references an existing template block index (0, 1, 2, ...) in the project resource.
+3. Before creating any `octopusdeploy_tenant_project_variable` resource, verify that the referenced `octopusdeploy_project` resource has at least one `template` block. If the project has NO `template` blocks, you MUST add `template` blocks to the project for each tenant variable before creating the tenant variable resources.
+4. The `template[N].id` index (0, 1, 2, ...) corresponds to the order in which `template` blocks appear in the project resource.
+5. You will be penalized for creating `octopusdeploy_tenant_project_variable` resources that reference `template[N].id` when the project has no `template` blocks defined.
 
 **Distinction between tenant project variables and tenant common variables**:
 - `octopusdeploy_tenant_project_variable`: Sets per-project, per-tenant values for variable templates defined in the `octopusdeploy_project` resource's `template` blocks. Use when the variable is specific to a project.
@@ -2386,7 +2478,7 @@ resource "octopusdeploy_project_versioning_strategy" "project_my_project" {
 
 You will be penalized for adding `lifecycle { prevent_destroy = true }` to an `octopusdeploy_project_versioning_strategy` resource.
 
-* Every project tenant variable must have a "template" block in the "octopusdeploy_project" resource defining the variable.
+* Every project tenant variable must have a "template" block in the "octopusdeploy_project" resource defining the variable. If the prompt requests tenant variables but the project has no existing `template` blocks, you MUST add `template` blocks to the project resource BEFORE creating `octopusdeploy_tenant_project_variable` resources. **The number of `template` blocks must equal or exceed the number of `octopusdeploy_tenant_project_variable` resources.** Each template block defines ONE variable (with `name`, `label`, `help_text`, `default_value`, `display_settings`). Each tenant variable's `template_id` must reference `template[N].id` where N is 0-indexed. You will be penalized if you create tenant variable resources without sufficient template blocks.
 * You will be penalized for creating a resource of type "octopusdeploy_project_deployment_settings".
 * You will be penalized for adding whitespace to the "description" attribute of a resource "octopusdeploy_project", for example:
 ```

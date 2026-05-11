@@ -93,6 +93,10 @@ DO NOT pass the API key or server url parameters to the `convertOctopusToTerrafo
 
 Compare the Terraform configuration of the project to the original prompt.
 
+Note the exported Terraform does not expose the "count" fields or "lifecycle" blocks on resources. This is expected.
+
+You MUST NOT update the `generalinstructions.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
+
 Update the `generalinstructions.md` file to address the 5 most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
 
 The directory `/home/vagrant/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. Then list the contents of that directory to find examples that may relate to the type of project being created by the prompt. 
@@ -116,4 +120,7 @@ When reading files, confirm that you have read the whole file by counting the nu
 
 You MUST NEVER push files to remote repositories.
 
-You MUST NEVER interact with the Octopus API directly. You MUST NOT use any CLI tools to interact with the Octopus API. You MUST NOT use any other tools or methods to interact with the Octopus API.
+You MUST NEVER interact with the Octopus API directly. 
+You MUST NOT use any CLI tools to interact with the Octopus API. 
+You MUST NOT use any other tools or methods to interact with the Octopus API.
+You MUST NEVER attempt to scan for the Octopus API key environment variables.
