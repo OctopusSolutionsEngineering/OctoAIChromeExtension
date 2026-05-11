@@ -3194,7 +3194,7 @@ resource "octopusdeploy_process_step" "process_step_azure_web_app_deploy_web_app
 * The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource can only contain lower case letters, numbers, or dashes.
 * You will be penalized for using asterisks, for example "*****", as placeholders in the "slug" or "name" attributes.
 * You must set the "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource to a value like "step-name" derived from the "name" attribute by converting all letters to lowercase and replacing spaces with dashes.
-* The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must NOT start or end with a dash. After replacing spaces and special characters with dashes, you must strip any leading or trailing dashes from the result. For example, a step name "Start -main-" would produce the intermediate slug "start--main-" which after stripping leading/trailing dashes and collapsing consecutive dashes becomes "start-main".
+* The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must NOT start or end with a dash. After replacing spaces and special characters with dashes, you must strip any leading or trailing dashes from the result. For example, a step name `"Start (main)"` produces intermediate slug `"start--main-"` which after collapsing consecutive dashes and stripping leading/trailing dashes becomes `"start-main"`. A step name `"Deploy (Manifest)"` produces slug `"deploy-manifest"`.
 * You will be penalized for generating a "slug" attribute that starts or ends with a dash, such as "start-" or "-deploy".
 * The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
 * The "name" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
@@ -4017,6 +4017,40 @@ container = {
 5. `container` blocks in all `Octopus.KubernetesDeployRawYaml` steps referencing this feed use `[0]` index in the ternary `feed_id` expression
 
 If any answer is NO, fix the resource before outputting. You will be penalized for omitting any of these attributes.
+
+## Cloud Step Container Image Instructions
+
+* **CRITICAL — ALL `Octopus.TerraformPlan`, `Octopus.TerraformApply`, `Octopus.TerraformDestroy`, and `Octopus.TerraformPlanDestroy` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/terraform-workertools` image:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/terraform-workertools"
+}
+```
+* You will be penalized for omitting the `container` block from any `Octopus.TerraformPlan`, `Octopus.TerraformApply`, `Octopus.TerraformDestroy`, or `Octopus.TerraformPlanDestroy` step.
+* **CRITICAL — ALL `Octopus.AzurePowerShell` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/azure-workertools` image:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/azure-workertools"
+}
+```
+* **CRITICAL — ALL `Octopus.AwsRunScript` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/aws-workertools` image:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/aws-workertools"
+}
+```
+* **CRITICAL — ALL `Octopus.GoogleCloudScripting` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/gcp-workertools` image:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/gcp-workertools"
+}
+```
+* When any Terraform, Azure PowerShell, AWS CLI, or GCP step is present, the Terraform configuration MUST include both a `data "octopusdeploy_feeds" "feed_github_container_registry"` data source AND an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource with the full idempotency pattern (same requirement as for Kubernetes steps).
+
 * A step of type "Octopus.KubernetesDeployRawYaml" must have property indented YAML content in the "Octopus.Action.KubernetesContainers.CustomResourceYaml" property if the YAML source is set to "Inline YAML".
 * When the prompt provides an inline YAML block for `Octopus.Action.KubernetesContainers.CustomResourceYaml`, copy that YAML content verbatim into the Terraform string while preserving its structure, list items, and indentation. Do not flatten nested keys, regenerate the YAML from a lossy intermediate representation, or remove `image`, `namespace`, `initContainers`, or other fields present in the prompt.
 * If the prompt's inline YAML block contains multiple YAML documents separated by standalone `---` lines, keep the ENTIRE multi-document payload in the single `Octopus.Action.KubernetesContainers.CustomResourceYaml` value. Do not split the YAML into multiple Terraform resources, multiple step resources, or separate prompt sections.
@@ -4278,6 +4312,15 @@ depends_on = []
   * "machines"
   * "roles"
   * "tenant_tags"
+  * "processes"
+* The "processes" attribute in the "scope" block for a "octopusdeploy_variable" resource is used to scope the variable to the deployment process of a specific project. When a variable must be scoped to the deployment process, set "processes" to a list containing the project ID reference. For example:
+```
+resource "octopusdeploy_variable" "scoped_to_deployment_process" {
+  scope {
+    processes = ["${octopusdeploy_project.project_example[0].id}"]
+  }
+}
+```
 * You will be penalized for defining "tenants" in the "scope" block for a "octopusdeploy_variable" resource.
 * The "tenant_tags" attribute in the "scope" block for a "octopusdeploy_variable" resource must be in the format "Tag Set Name/Tag Name", with two phrases separated by a forward slash, where the first phrase is the tag set name, and the second phrase is the tag name, for example "Region/West". Here is an example of a tenant tag defined for a variable:
 
