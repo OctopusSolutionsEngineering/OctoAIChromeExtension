@@ -652,9 +652,9 @@ Pipelines are represented by a project. This is the base prompt to create an emp
 Create a project called "My Project" in the "Default Project Group" project group with no steps.
 ```
 
-The project name MUST be the exact verbatim value of the pipeline `name` field. **CRITICAL — do NOT redact or anonymize the pipeline `name` when using it as the project name**: Words such as `api`, `key`, `token`, `service`, `syncer`, `auth`, or `credential` in the pipeline name are microservice names and deployment identifiers — they are NOT secrets or API keys. For example, a pipeline `"name": "[PROD] api-syncer canary"` must produce `Create a project called "[PROD] api-syncer canary"` verbatim. NEVER replace any portion of the pipeline name with `*****`.
+The project name must be derived from the pipeline `name` field while remaining valid for Octopus/Terraform naming constraints. **CRITICAL — do NOT redact or anonymize the pipeline `name` when using it as the project name**: Words such as `api`, `key`, `token`, `service`, `syncer`, `auth`, or `credential` in the pipeline name are microservice names and deployment identifiers — they are NOT secrets or API keys. Replace unsupported characters in project names (including parentheses `()` and square brackets `[]`) with dashes `-` rather than masking content with `*****`.
 
-**ABSOLUTE OUTPUT GATE — project name must NEVER contain `*****`**: Before writing the `Create a project called "..."` line, confirm that the project name you are about to write is IDENTICAL (character-for-character) to the pipeline's top-level `"name"` field value. If you observe any asterisks (`*`) in your intended project name that were NOT in the original pipeline `"name"` field, STOP and replace them with the original characters before writing. This gate applies even if you believe the characters are sensitive — pipeline names are resource identifiers and are NEVER sensitive.
+**ABSOLUTE OUTPUT GATE — project name must NEVER contain `*****`**: Before writing the `Create a project called "..."` line, confirm that the project name contains no unintended redaction. If you observe any asterisks (`*`) in your intended project name that were NOT in the original pipeline `"name"` field, STOP and replace them with the original text (subject to required invalid-character normalization such as replacing `[]` and `()` with `-`).
 
 The `limitConcurrent` property of the Spinnaker pipeline has no equivalent setting in Octopus. When `limitConcurrent` is `true`, add the following migration note as part of the project description: `NOTE (migration): The original Spinnaker pipeline had limitConcurrent=true, which prevented concurrent pipeline executions. Configure a suitable deployment mutex or concurrency limit in Octopus if required.`. Append this note to the existing description if one is present, or set it as the description if none exists.
 
@@ -939,9 +939,7 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 
 **MANDATORY COMPLETENESS CHECK — before finalizing the output for a `templatedPipeline`, count the entries in the `stages` array and verify that the same number of non-notification stages appear in your output.** Notification-type stages (those whose stage type is only represented by Slack Notification steps) are excluded from this count. If the count of stages in the JSON does not match the count of deployment steps in your output (excluding Start/Finish/Complete notification steps and the Review step), you are missing stages — add them before the Review step.
 
-**MANDATORY SELF-CHECK — step name verbatim scan**: Before finalizing the output, for EACH step you have generated, compare the step name in your output against the original `name` field of the corresponding Spinnaker stage in the JSON. If any character in the original stage name is absent or substituted (e.g., `(` → `-`, `)` → `-`, `:` → `-`, `/` → `-`), you have a bug. Replace the output step name with the verbatim original name from the JSON. This scan MUST catch:
-- `"Deploy gRPC -canary-"` when the JSON has `"name": "Deploy gRPC (canary)"` — WRONG, must be `"Deploy gRPC (canary)"`
-- `"Judgement -canary stage 1"` when the JSON has `"name": "Judgement: canary stage 1"` — WRONG, must be `"Judgement: canary stage 1"`
+**MANDATORY SELF-CHECK — step name validity scan**: Before finalizing the output, for EACH step you have generated, ensure the step name remains meaningfully derived from the original stage `name` while satisfying Octopus/Terraform naming constraints. Parentheses `()` and square brackets `[]` are invalid in step names and must be normalized (for example, replaced with `-`). Do not redact content with `*****`.
 
 * **DO convert any `stages` from the JSON** — convert all stages using exactly the same rules as for a regular pipeline.
 * **DO convert any `notifications` from the JSON** — notification steps are project-level and must be preserved. Notifications in a `templatedPipeline` must be converted using exactly the same rules as for a regular pipeline (see the Notifications section). The `when` array and `message` text must be inspected and Slack Notification steps must be generated for all applicable events.
@@ -1747,10 +1745,10 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
 
-**CRITICAL — do NOT add "Original Spinnaker stage name:" note for stage names that are reproduced verbatim**: The "Original Spinnaker stage name: ..." note in the step description is ONLY needed when the step name could NOT be reproduced verbatim (which should be extremely rare). If the step name is the verbatim original stage name, do NOT add a note about it — the step name itself IS the original name. Adding an "Original Spinnaker stage name:" note when the step name already matches the original is redundant and confusing.
+**CRITICAL — do NOT add "Original Spinnaker stage name:" note when the step name already clearly reflects the original name after required normalization**: The note is only needed when the transformed Octopus-safe step name could cause ambiguity. If the step name is already a clear normalized form of the original stage name, do NOT add a redundant note.
 
 
-* **CRITICAL — do NOT redact or anonymize the stage `name` value when generating the step name**: Words such as `api`, `dev`, `prod`, `key`, `token`, `service`, `syncer`, `auth`, `credential`, or similar terms in stage names are microservice and deployment identifiers — they are NOT secrets. For example, `"Deploy org-0004-api-syncer"` must produce the step name `"Deploy org-0004-api-syncer"` verbatim. NEVER replace any portion of a stage name with `*****`.
+* **CRITICAL — do NOT redact or anonymize the stage `name` value when generating the step name**: Words such as `api`, `dev`, `prod`, `key`, `token`, `service`, `syncer`, `auth`, `credential`, or similar terms in stage names are microservice and deployment identifiers — they are NOT secrets. Preserve the stage-name meaning while normalizing unsupported step-name characters (including `[]` and `()`) to valid alternatives. NEVER replace any portion of a stage name with `*****`.
 
 **IMPORTANT — stage `comments` field preservation**: When a stage JSON object contains a non-null and non-empty `comments` property, this contains human-authored documentation about the stage's purpose or behavior. Preserve this information by appending it to the step description: `NOTE (comments): <comments value>`. If the step already has a description for another reason (e.g., special characters in stage name or GCS artifact note), append the comments note after the existing description text, separated by a single space. Do NOT create a separate `Set the step description` instruction — combine all description fragments into ONE instruction.
 
@@ -1762,7 +1760,7 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 ```
 ← WRONG: "Original Spinnaker stage type: deployManifest." must NEVER appear in a step description.
 
-**Correct output** (`deployManifest` stage type omitted; step name is verbatim):
+**Correct output** (`deployManifest` stage type omitted; step name is valid and normalized as needed):
 ```
 * Add a "Deploy Kubernetes YAML" step ... name the step "Deploy (Manifest)".
 ```
@@ -2802,7 +2800,7 @@ The **WRONG** output hardcodes the seconds (ignores the matching template variab
 ```
 ← WRONG: The step type is "Deploy Kubernetes YAML" but should be "Run a Script". A wait stage NEVER produces a Kubernetes deploy step.
 
-**Correct output** (wait stage always produces "Run a Script", step name verbatim):
+**Correct output** (wait stage always produces "Run a Script", with a valid normalized step name):
 ```
 * Add a "Run a Script" step with the name "Wait (20 min)" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 1200`.
 ```
@@ -5405,7 +5403,7 @@ The replacement only fires when producing a `Set the target tag to ...` instruct
 
 **CRITICAL — do NOT redact or anonymize ANY property value copied from the Spinnaker pipeline JSON.** This rule applies globally to every part of the generated prompt. Specifically:
 
-* **Project names**: The project name in `Create a project called "<name>"...` must be the exact verbatim value of the pipeline `name` property — including any component/service names like `api-server`, `auth-service`, `worker`, `backend`, etc.
+* **Project names**: The project name in `Create a project called "<name>"...` must be derived from the pipeline `name` property while remaining valid for Octopus/Terraform constraints (replace unsupported characters such as `[]` and `()` with `-`) and preserving component/service names like `api-server`, `auth-service`, `worker`, `backend`, etc.
 * **Variable values**: Every value copied into `Add a project variable called "<name>" with the value "<value>"` must be the literal string from the pipeline JSON — never replaced with `*****` or any other placeholder.
 * **Parameter defaults and descriptions**: The `default`, `description`, and `label` fields copied from `parameterConfig` entries must be verbatim — do not redact or modify them.
 * **Step names**: Step names must be unique. Append a number to the name of steps with the same name to make them unique.
@@ -5416,7 +5414,7 @@ The replacement only fires when producing a `Set the target tag to ...` instruct
 Project name: "[PROD] ***** canary"   ← WRONG: source JSON had "[PROD] api-syncer canary"
 Step name:    "Deploy org-0004-*****" ← WRONG: source JSON had "Deploy org-0004-api-syncer"
 ```
-**Correct output** (names reproduced verbatim from the source JSON):
+**Correct output** (names preserve meaning without redaction, applying required invalid-character normalization):
 ```
 Project name: "[PROD] api-syncer canary"   ← CORRECT
 Step name:    "Deploy org-0004-api-syncer" ← CORRECT
@@ -5773,7 +5771,7 @@ The **WRONG** output (stage 19 incorrectly renamed using stage 1's name + suffix
 ```
 ← WRONG: stage 19's name from JSON is "Manual Judgement (Cronjob)" — its Octopus name is `"Manual Judgement (Cronjob)"`, which is different from `"Manual Judgment (Deploy Canary)"`. No ` 2` suffix needed.
 
-The **CORRECT** output (stage 19 uses its own verbatim name):
+The **CORRECT** output (stage 19 uses its own distinct normalized name):
 ```
 * Add a "Manual Intervention" step with the name "Manual Judgment (Deploy Canary)" ...  ← stage 1
 * Add a "Manual Intervention" step with the name "Manual Judgement (Cronjob)" ... Set the start trigger to "Run in parallel with the previous step".  ← stage 19, CORRECT NAME
