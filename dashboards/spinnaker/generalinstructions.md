@@ -978,7 +978,7 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * If the prompt contains a step name with parentheses or square brackets that were replaced by dashes (e.g., `Deploy -Manifest-`), use the dash-replaced form exactly as written in the prompt. Do NOT re-introduce parentheses or other special characters.
 * Do NOT normalize prompt-provided dash replacements into underscores. For example, `Manual Judgment -Canary-` must stay `Manual Judgment -Canary-`, never `Manual Judgment _Canary_`.
 * You will be penalized for creating steps with parentheses or square brackets in their names.
-* The Terraform provider is more strict about step and project names than the Octopus API. This is why parentheses and square brackets are not supported.
+* The Terraform provider is stricter about step and project names than the Octopus API. This is why parentheses and square brackets are not supported.
 
 ## Step Description Property
 

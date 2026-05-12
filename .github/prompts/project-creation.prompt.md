@@ -104,6 +104,10 @@ CRITICAL: The Terraform generated to create the project and the sample context i
 
 When updating the `generalinstructions.md` file, you must only consider the presense or absence of resources and their properties excluding the `count` fields and `lifecycle` blocks.
 
+Octopus Deploy project and step names may only contain letters, numbers, periods, commas, dashes, underscores, and hashes. Parentheses `()` and square brackets `[]` are NOT valid in step names.
+The Terraform provider is stricter about step and project names than the Octopus API. This is why parentheses and square brackets are not supported.
+The `generalinstructions.md` file has explicit instructions about naming conventions. You must assume these conventions are correct.
+
 You MUST NOT update the `generalinstructions.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
 You MUST NOT update the `generalinstructions.md` file with instructions around creating data sources.
 You MUST NOT update the `generalinstructions.md` file with instructions around retaining special characters in the project name or naming steps and projects exactly as they were defined in the original prompt.
