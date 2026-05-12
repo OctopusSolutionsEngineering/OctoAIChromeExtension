@@ -3878,7 +3878,7 @@ The following snippet is an example of a `patchManifest` stage in Spinnaker:
 The equivalent Octopus prompt for a `patchManifest` stage is a disabled "Run a kubectl Script" step whose PowerShell body encodes the full patch context as comments so engineers can act on it:
 
 ```
-* Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code:
+* Add a "Run a kubectl Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code:
 ```powershell
 # TODO: convert Spinnaker patchManifest stage — no direct Octopus Deploy equivalent.
 # Target resource: <manifestName>
