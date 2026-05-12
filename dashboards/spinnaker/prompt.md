@@ -6,8 +6,6 @@
 
 This line MUST appear verbatim in your output. It is NOT instruction text — it is data that must be passed to the next stage of processing.
 
-**MANDATORY VERIFICATION — TERRAFORM INSTRUCTION line inclusion check**: Before completing your output, verify that the `TERRAFORM INSTRUCTION:` bullet appears as the FIRST bullet in EVERY project section. It must appear BEFORE `* Set the project description` and BEFORE the first `* Add a ...` step. If the TERRAFORM INSTRUCTION line is missing from your draft output, ADD IT NOW before any other bullets. This line is NOT instruction text — it is literal output that tells the Terraform generation stage to preserve step names verbatim. Without this line, ALL step names will have parentheses `()` replaced by underscores `_X_`, causing every deployment step to have the wrong name and fail.
-
 **ABSOLUTE RULE — before grouping stages, build a complete stage dependency map from `requisiteStageRefIds`**: For EVERY stage in the pipeline, check its `requisiteStageRefIds` array. Do NOT assume that stages with "prod" in their name are ROOT stages or that stages with "dev" in their name are post-wait stages. A "prod" stage CAN be a ROOT stage if its `requisiteStageRefIds` is empty. A "dev" stage CAN be a post-wait stage if its `requisiteStageRefIds` contains a wait stage ID. Always determine group membership by reading `requisiteStageRefIds`, NEVER by name patterns alone.
 
 **Mandatory dependency map construction before generating any output**:
@@ -916,23 +914,6 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 
 **ABSOLUTE RULE — each Spinnaker stage `refId` MUST appear in the output exactly once, regardless of pipeline type.** Before outputting any stage, check whether its `refId` has already been output. If the `refId` was already output, SKIP it — do NOT emit it again. This check is especially critical for `templatedPipeline` entries: when adding the "Review template-derived pipeline behavior" step, do NOT re-traverse the stage graph from any node — ALL stages must have been emitted before the Review step is inserted, and NO stages may be emitted after it. A stage that appears twice in the output (same name, same step type, same namespace) is definitive evidence of a `refId` duplication bug and must be corrected before finalizing the output.
 
-**ABSOLUTE RULE — Spinnaker stage `name` fields must be reproduced CHARACTER-FOR-CHARACTER in the Octopus step name, including colons (`:`), parentheses `()`, brackets `[]`, slashes `/`, and all other punctuation.** Do NOT replace colons with hyphens or dashes. Do NOT replace parentheses with dashes or hyphens. Do NOT replace slashes with dashes or hyphens. Do NOT add or remove spaces around punctuation. If a stage is named `"Judgement: canary stage 1"`, the step name MUST be `"Judgement: canary stage 1"`. If a stage is named `"Deploy gRPC (canary)"`, the step name MUST be `"Deploy gRPC (canary)"` — NOT `"Deploy gRPC -canary-"`. If a stage is named `"Deploy Pub/Sub handlers"`, the step name MUST be `"Deploy Pub/Sub handlers"` — NOT `"Deploy Pub-Sub handlers"`. Names are identifiers — they identify the Octopus step that corresponds to the original Spinnaker stage. Any substitution of `:` with `-`, `(` with `-`, `)` with `-`, or `/` with any other character is a bug.
-
-**Negative example — stage names with special characters incorrectly converted (COMMON MISTAKE)**:
-```
-Spinnaker stage name: "Judgement: canary stage 1"
-WRONG output:   * Add a "Manual Intervention" step with the name "Judgement -canary stage 1" ...  ← colon replaced with space-hyphen-space
-CORRECT output: * Add a "Manual Intervention" step with the name "Judgement: canary stage 1" ...  ← verbatim including colon
-
-Spinnaker stage name: "Deploy gRPC (canary)"
-WRONG output:   * Add a "Deploy Kubernetes YAML" step ... name the step "Deploy gRPC -canary-" ...  ← parentheses replaced with dashes
-CORRECT output: * Add a "Deploy Kubernetes YAML" step ... name the step "Deploy gRPC (canary)" ...  ← verbatim including parentheses
-
-Spinnaker stage name: "Deploy Pub/Sub handlers (canary)"
-WRONG output:   * Add a "Deploy Kubernetes YAML" step ... name the step "Deploy Pub-Sub handlers -canary-" ...  ← slash and parentheses replaced
-CORRECT output: * Add a "Deploy Kubernetes YAML" step ... name the step "Deploy Pub/Sub handlers (canary)" ...  ← verbatim including slash and parentheses
-```
-
 **ABSOLUTE RULE — ALL stages in the pipeline's `stages` array must be output BEFORE the "Review template-derived pipeline behavior" step, if that step is required. NO deployment stage may appear AFTER the Review step in the output.** The correct sequence is: (1) Slack Notification - Start, (2) ALL deployment stages in topological order, (3) Slack Notification - Finish and Complete, (4) project variable prompts, (5) Review template-derived pipeline behavior (LAST). If you find yourself about to emit a deployment stage AFTER you have already emitted the Review step, you have made an error — remove the extra stage and do not add it.
 
 **Negative example — deployment stages incorrectly appearing after the Review step (CRITICAL BUG)**:
@@ -961,7 +942,6 @@ CORRECT output: * Add a "Deploy Kubernetes YAML" step ... name the step "Deploy 
 **MANDATORY SELF-CHECK — step name verbatim scan**: Before finalizing the output, for EACH step you have generated, compare the step name in your output against the original `name` field of the corresponding Spinnaker stage in the JSON. If any character in the original stage name is absent or substituted (e.g., `(` → `-`, `)` → `-`, `:` → `-`, `/` → `-`), you have a bug. Replace the output step name with the verbatim original name from the JSON. This scan MUST catch:
 - `"Deploy gRPC -canary-"` when the JSON has `"name": "Deploy gRPC (canary)"` — WRONG, must be `"Deploy gRPC (canary)"`
 - `"Judgement -canary stage 1"` when the JSON has `"name": "Judgement: canary stage 1"` — WRONG, must be `"Judgement: canary stage 1"`
-- Any step name containing `-X-` where the JSON contains `(X)` in the original — always a parentheses-to-dashes substitution bug.
 
 * **DO convert any `stages` from the JSON** — convert all stages using exactly the same rules as for a regular pipeline.
 * **DO convert any `notifications` from the JSON** — notification steps are project-level and must be preserved. Notifications in a `templatedPipeline` must be converted using exactly the same rules as for a regular pipeline (see the Notifications section). The `when` array and `message` text must be inspected and Slack Notification steps must be generated for all applicable events.
@@ -1766,7 +1746,6 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 * Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<account>` with the value of the `account` property in the Spinnaker stage.
-* **IMPORTANT**: The `<stage name>` placeholder must be replaced with the EXACT verbatim value of the `name` property from the Spinnaker stage. **Octopus step names support all punctuation characters including parentheses `()`, square brackets `[]`, slashes `/`, and colons `:`** — there is no restriction that requires replacing these characters. Do NOT replace `()` with `-`, do NOT replace `[]` with `-`, do NOT replace `/` with `-` or `_`. If a stage is named `"Deploy gRPC (canary)"`, the step name MUST be `"Deploy gRPC (canary)"` exactly. If a stage is named `"Deploy Pub/Sub handlers"`, the step name MUST be `"Deploy Pub/Sub handlers"` exactly.
 
 **CRITICAL — do NOT add "Original Spinnaker stage name:" note for stage names that are reproduced verbatim**: The "Original Spinnaker stage name: ..." note in the step description is ONLY needed when the step name could NOT be reproduced verbatim (which should be extremely rare). If the step name is the verbatim original stage name, do NOT add a note about it — the step name itself IS the original name. Adding an "Original Spinnaker stage name:" note when the step name already matches the original is redundant and confusing.
 
@@ -2241,8 +2220,6 @@ The resulting prompt must follow exactly the same rules as a `deployManifest` st
 
 * **`runJobManifest` stages with inline `manifests` array**: When a `runJobManifest` stage has a non-empty `manifests` array (instead of a `manifestArtifactId` or `manifestArtifact` reference), apply the SAME inline YAML serialization rules as `deployManifest` stages with inline manifests. Serialize each manifest in the `manifests` array into a YAML block; apply all multi-document, complex nested structure, and TODO placeholder rules as for `deployManifest` stages. If the manifests are too complex to serialize inline, use `# TODO: replace with correctly indented manifest` as the YAML content and add `The step must be disabled.` to the step prompt.
 
-**IMPORTANT**: The `<stage name>` placeholder must be the EXACT verbatim value of the stage's `name` property (parentheses, slashes, and all other punctuation preserved). For `runJobManifest` stages, always set the step description to include `"Original Spinnaker stage type: runJobManifest."` as the first sentence.
-
 **CRITICAL — `runJobManifest` steps must mention stage type in their description**: Unlike `deployManifest` stages (which deploy long-running Kubernetes Deployments/Services), `runJobManifest` stages execute Kubernetes Jobs — one-time or batch workloads that run to completion and then exit. This distinction is operationally significant. The step description MUST always include `Original Spinnaker stage type: runJobManifest.` as the first sentence, so engineers understand the step represents a one-time Job execution, not a continuous Deployment.
 
 **Negative example — `runJobManifest` stage type missing from description (COMMON MISTAKE)**:
@@ -2302,7 +2279,7 @@ Given a stage with `"type": "manualJudgment"` that also contains `"manifests": [
 * Add a "Manual Intervention" step with the name "Manual Judgment Production" ...
 ```
 
-**ABSOLUTE RULE — a `manualJudgment` stage MUST NEVER be converted to a "Run a kubectl script" step or any other script step, even when it follows a `checkPreconditions` stage or is surrounded by `deleteManifest` stages.** The presence of a `checkPreconditions` stage immediately before a `manualJudgment` stage in the dependency chain does NOT change the step type. A `manualJudgment` stage with name "Manual Judgment(Final confirmation for deployment)" MUST produce a "Manual Intervention" step named "Manual Judgment(Final confirmation for deployment)" (verbatim including parentheses), NOT a kubectl script step running `kubectl delete`.
+**ABSOLUTE RULE — a `manualJudgment` stage MUST NEVER be converted to a "Run a kubectl script" step or any other script step, even when it follows a `checkPreconditions` stage or is surrounded by `deleteManifest` stages.** The presence of a `checkPreconditions` stage immediately before a `manualJudgment` stage in the dependency chain does NOT change the step type. A `manualJudgment` stage with name "Manual Judgment(Final confirmation for deployment)" MUST produce a "Manual Intervention" step named "Manual Judgment-Final confirmation for deployment-", NOT a kubectl script step running `kubectl delete`.
 
 **Negative example — `manualJudgment` stage incorrectly converted to a kubectl step (FORBIDDEN)**:
 
@@ -2343,24 +2320,11 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
 * Add a "Manual Intervention" step with the name "<stage name>" to the deployment process. Set the instructions to "<instructions>".
 ```
 
-* Replace `<stage name>` with the exact verbatim `name` property of the stage. Parentheses `()`, square brackets `[]`, colons `:`, slashes `/`, and all other punctuation in stage names are VALID in Octopus step names and MUST be preserved character-for-character. Do NOT replace `(` with `-` or `_`. Do NOT replace `)` with `-` or `_`. The step name in the generated output MUST be identical to the `name` field in the JSON.
 * Replace `<instructions>` with the `instructions` property of the stage. If the `instructions` property is absent or empty, use `"Please review and approve."` as the default instructions text.
 * **IMPORTANT — SpEL expression migration**: When the `instructions` field contains Spinnaker Expression Language (SpEL) expressions in the format `${...}`, these expressions reference Spinnaker runtime variables (e.g., `${trigger['artifacts'][0]['version']}`) that are not available in Octopus Deploy. Preserve the SpEL expression text verbatim in the instructions but append the following to the step description: `NOTE (migration): The Manual Intervention instructions contain Spinnaker SpEL expressions (${...}) that reference Spinnaker runtime context. Convert these to equivalent Octopus variable syntax (#{...}) or remove them before deploying.` If the step already has a description, append this note after the existing description text, separated by a space.
 * **IMPORTANT — `stageTimeoutMs` preservation**: When a `manualJudgment` stage has a `stageTimeoutMs` property, convert the value from milliseconds to minutes (divide by 60000) and append `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a Manual Intervention timeout in Octopus if required.` to the step description. If the stage already has a description (from another note such as notifications or comments), append this note after the existing description text, separated by a space. For example, a `stageTimeoutMs` of `1800000` (30 minutes) becomes: `NOTE (migration): The original Spinnaker stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.`
 
 * **IMPORTANT — `stageTimeoutMs` on non-`manualJudgment` stages**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`, `runJob`) has a `stageTimeoutMs` property, Octopus Deploy has no direct equivalent step-level timeout. Preserve the intent by appending `NOTE (migration): The original Spinnaker stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` to the step description, where `<N>` is the value in milliseconds divided by 60000 (rounded down). If the step already has a description, append this note after the existing description text, separated by a space.
-
-**Negative example — `manualJudgment` stage name has parentheses incorrectly replaced with dashes (COMMON MISTAKE)**:
-
-Given a `manualJudgment` stage with `"name": "Manual Judgment (Canary)"`, the **WRONG** output replaces parentheses with dashes:
-```
-* Add a "Manual Intervention" step with the name "Manual Judgment -Canary-" to the deployment process. Set the instructions to "Please review and approve.". Set the step description to "Original Spinnaker stage name: Manual Judgment (Canary)".
-```
-
-The **CORRECT** output preserves the verbatim stage name including parentheses (parentheses are valid in Octopus step names):
-```
-* Add a "Manual Intervention" step with the name "Manual Judgment (Canary)" to the deployment process. Set the instructions to "Please review and approve.".
-```
 
 * If the `judgmentInputs` array is non-empty, append the judgment options to the instructions text. Extract the `value` property from each entry and list them as a comma-separated note. For example, if `judgmentInputs` is `[{"value": "Continue"}, {"value": "Rollback"}]`, append ` Available options: Continue, Rollback.` to the instructions text.
 
@@ -2436,8 +2400,8 @@ The **CORRECT** output (each stage uses only its own `judgmentInputs`):
 * Add a "Manual Intervention" step with the name "Manual Judgment" ... Set the instructions to "Please review and approve."
 ← CORRECT: refId 2 has empty judgmentInputs — no options text
 ...
-* Add a "Manual Intervention" step with the name "Manual Judgment (Deploy All)" ... Set the instructions to "Please review and approve. Available options: Deploy all, Delete canary deployment."
-← CORRECT: refId 4 has non-empty judgmentInputs — options listed only here; parentheses in stage name are preserved verbatim
+* Add a "Manual Intervention" step with the name "Manual Judgment -Deploy All-" ... Set the instructions to "Please review and approve. Available options: Deploy all, Delete canary deployment."
+← CORRECT: refId 4 has non-empty judgmentInputs — options listed only here
 ```
 
 ## Kubernetes Run Job Stage
@@ -2792,7 +2756,6 @@ If any step name is missing or duplicate, derive it from the corresponding stage
 * The equivalent step in an Octopus Deploy project is created with the following prompt.
 * Replace `<seconds>` with the `waitTime` property in the Spinnaker stage.
 * **If the `waitTime` property is absent, `null`, or zero, use `30` as the default value.** Spinnaker's default wait time is 30 seconds. Never emit `Start-Sleep -Seconds 0` or `Start-Sleep -Seconds null`.
-* Replace `<name>` with the EXACT verbatim `name` property in the Spinnaker stage, including any parentheses, slashes, and other punctuation.
 * If the original wait stage had a description reason to note (rare), set the step description accordingly.
 * **`templatedPipeline` wait stage with matching template variable**: When the pipeline has `"type": "templatedPipeline"` and the `variables` object contains a variable whose numeric value (converted to seconds) equals the stage's `waitTime`, reference that Octopus variable instead of hardcoding the numeric value. For example, if `variables.waitMinutes = 15` and `waitTime = 900` (15 × 60), generate `Start-Sleep -Seconds (#{waitMinutes} * 60)` instead of `Start-Sleep -Seconds 900`. If the variable is already in seconds, generate `Start-Sleep -Seconds #{waitSeconds}`. Only apply this substitution when the converted value matches exactly — do not guess if there is no matching variable.
 
@@ -2829,27 +2792,6 @@ The **WRONG** output hardcodes the seconds (ignores the matching template variab
 
 ```
 * Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
-```
-
-**Negative example — wait step name keeps parentheses (COMMON MISTAKE)**:
-
-Given:
-```json
-{
-  "type": "wait",
-  "name": "Wait (15min)",
-  "waitTime": 900
-}
-```
-
-The **WRONG** output replaces parentheses with dashes:
-```
-* Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 900`. Set the step description to "Original Spinnaker stage name: Wait (15min)".
-```
-
-The **CORRECT** output preserves the verbatim stage name including parentheses:
-```
-* Add a "Run a Script" step with the name "Wait (15min)" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 900`.
 ```
 
 **ABSOLUTE RULE — a `wait` stage MUST produce a "Run a Script" step, NEVER a "Deploy Kubernetes YAML" step.** The step type is `"Run a Script"` — NOT `"Deploy Kubernetes YAML"`, `"Deploy Kubernetes YAML step"`, or any Kubernetes-related step type. A wait stage uses `Start-Sleep` PowerShell code, which is a server-side script, not a Kubernetes deployment action.
@@ -2951,14 +2893,14 @@ Given:
 }
 ```
 
-The **CORRECT** output creates a disabled step (verbatim name including parentheses):
+The **CORRECT** output creates a disabled step:
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "MigrarteDB(Manifest)". The step must be disabled.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "MigrarteDB-Manifest-". The step must be disabled.
 ```
 
 The **WRONG** output converts the hard-disabled stage and merely adds a manual-review note:
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "MigrarteDB(Manifest)". ... Set the step description to include: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "false" ...`
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "MigrarteDB-Manifest-". ... Set the step description to include: `This step has a Spinnaker conditional execution condition ... stageEnabled.expression = "false" ...`
 ```
 ← WRONG: the exact string `"false"` is a hard-disabled stage. The stage must still be converted, but the corresponding Octopus step must be disabled rather than replaced with a manual-review note. Do NOT drop the stage from the dependency graph or output order.
 
@@ -3215,8 +3157,6 @@ The **CORRECT** output (ALL non-ignored stages included in proper dependency ord
 
 **Worked example — multiple branches through different ignored stages becoming parallel**:
 
-**⚠️ IMPORTANT NAMING NOTE FOR ALL WORKED EXAMPLES BELOW**: In the following ordering and parallelism examples, step names like `"Deploy -canary-"`, `"Judge -canary-"`, `"Delete -Manifest-"`, `"Rollback -internal-"` etc. are ABBREVIATED PLACEHOLDERS used for brevity in ordering diagrams. **DO NOT use these abbreviated forms in real output.** **YOUR actual output MUST use the verbatim stage name from the JSON**, including all parentheses, colons, slashes, and other punctuation exactly as they appear. If a stage is named `"Deploy gRPC (canary)"`, the step name is `"Deploy gRPC (canary)"` — NOT `"Deploy gRPC -canary-"`. The examples below demonstrate STEP ORDERING (parallel/sequential) — the abbreviated naming shown is for illustration only and must NOT be applied to real stage names.
-
 Given a pipeline where two separate `checkPreconditions` stages (5 for YES branch and 11 for NO branch) both depend on stage 4, and two non-ignored stages (6 on YES branch and 13 on NO branch) depend on those two ignored stages:
 
 | refId | type | requisiteStageRefIds | effective deps (after ignoring) |
@@ -3352,7 +3292,7 @@ The following snippet is an example of a `shiftTrafficProd` stage in Spinnaker:
 
 Convert a `shiftTrafficProd` (or `shiftTrafficStaging`) stage to a "Deploy Kubernetes YAML" step as follows:
 
-* Replace `<stage name>` with the exact verbatim `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation are valid in Octopus step names and MUST be preserved character-for-character. Only square brackets `[]` must be replaced with dashes `-`.
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
 * Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<namespace>` with `manifest.metadata.namespace`.
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). **CRITICAL — replace `metadata.generateName` with `metadata.name`** using a lowercase-hyphenated form of the stage name (e.g., stage name "Canary stage 1" → `name: canary-stage-1`). The Octopus API rejects Kubernetes manifests that use `generateName` and requires a static `name` field. Do not alter any other field values.
@@ -3480,7 +3420,7 @@ The following snippet is an example of a `restoreProd` stage in Spinnaker:
 
 Convert a `restoreProd` stage to a "Deploy Kubernetes YAML" step as follows:
 
-* Replace `<stage name>` with the exact verbatim `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation are valid in Octopus step names and MUST be preserved character-for-character. Only square brackets `[]` must be replaced with dashes `-`.
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
 * Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<namespace>` with `manifest.metadata.namespace`.
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). **CRITICAL — replace `metadata.generateName` with `metadata.name`** using a lowercase-hyphenated form of the stage name (e.g., stage name "Restore" → `name: restore`). The Octopus API rejects Kubernetes manifests that use `generateName` and requires a static `name` field. Do not alter any other field values.
@@ -3605,7 +3545,7 @@ The following snippet is an example of a `deriveBaselineProd` stage in Spinnaker
 
 Convert a `deriveBaselineProd` stage to a "Deploy Kubernetes YAML" step as follows:
 
-* Replace `<stage name>` with the exact verbatim `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation are valid in Octopus step names and MUST be preserved character-for-character. Only square brackets `[]` must be replaced with dashes `-`.
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
 * Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<namespace>` with `manifest.metadata.namespace`.
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). **CRITICAL — replace `metadata.generateName` with `metadata.name`** using a lowercase-hyphenated form of the stage name (e.g., stage name "Derive baseline deployment from main Deployment" → `name: derive-baseline`). The Octopus API rejects Kubernetes manifests that use `generateName` and requires a static `name` field. Do not alter any other field values.
@@ -3733,7 +3673,7 @@ The following snippet is an example of a `deriveCanaryProd` stage in Spinnaker:
 
 Convert a `deriveCanaryProd` stage to a "Deploy Kubernetes YAML" step as follows:
 
-* Replace `<stage name>` with the exact verbatim `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation are valid in Octopus step names and MUST be preserved character-for-character. Only square brackets `[]` must be replaced with dashes `-`.
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
 * Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<namespace>` with `manifest.metadata.namespace`.
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). **CRITICAL — replace `metadata.generateName` with `metadata.name`** using a lowercase-hyphenated form of the stage name (e.g., stage name "Derive canary deployment from manifests" → `name: derive-canary`). The Octopus API rejects Kubernetes manifests that use `generateName` and requires a static `name` field. Do not alter any other field values.
@@ -3812,7 +3752,7 @@ The following snippet is an example of an `undoRolloutManifest` stage in Spinnak
 }
 ```
 
-* Replace `<stage name>` with the exact verbatim `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation are valid in Octopus step names and MUST be preserved character-for-character. Only square brackets `[]` must be replaced with dashes `-`.
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
 * Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
 * Parse `manifestName` into `<kind>/<name>` (e.g., `"deployment dmp-market-web-internal"` → `deployment/dmp-market-web-internal`). The first token is the Kubernetes resource kind; the second token is the resource name. **When `manifestName` is absent or `null`**, fall back to the `targetKind` and `targetName` fields: use `<targetKind>/<targetName>` (e.g., `targetKind: "Deployment"`, `targetName: "my-app"` → `Deployment/my-app`). If both `manifestName` AND `targetName`/`targetKind` are absent or null, use `# TODO: specify the deployment name` as the kubectl rollout target and add `The step must be disabled.` to the step prompt.
 * Replace `<namespace>` with the `location` property of the stage (the Kubernetes namespace).
@@ -3958,8 +3898,6 @@ Set the step description to "Original Spinnaker stage name: <stage name>. This s
 
 **SpEL conversion rule for `patchManifest`**: All Spinnaker Spring Expression Language (SpEL) expressions in the `patchBody` values (e.g., `${ parameters.limit_credit }`, `${ parameters.feature_flag }`) MUST be converted to Octopus variable syntax by replacing `${parameters.<name>}` or `${ parameters.<name> }` with `#{<name>}`. Apply this substitution inside the patchBody comment so engineers can see the final Octopus expression.
 
-**CRITICAL — always use the stage `name` field (not the type) as the step name verbatim**, preserving all punctuation including parentheses (e.g., a stage named `"Patch (Manifest) my-service"` produces the step name `"Patch (Manifest) my-service"`).
-
 **ABSOLUTE RULE — every `patchManifest` step MUST be disabled.** The generated script body is a TODO comment and cannot execute the patch — the step must always include `The step must be disabled.`
 
 ## Unknown Stage Types
@@ -4028,30 +3966,12 @@ The **CORRECT** output converts the SpEL expression to Octopus variable syntax:
 ```
 * Add a "Run a kubectl script" step ... Set the script to inline Bash with the code `kubectl delete deployment,pod -l model-version=#{model_version} -n app-prod`. Set the target tag to Kubernetes. Set the step description to "(NOTE: Spinnaker SpEL parameter references were converted to Octopus variable syntax, e.g. #{model_version}.)".
 ```
-* **IMPORTANT — step name verbatim fidelity**: The same verbatim rules as `deployManifest` stages apply. The `deleteManifest` step name MUST be the exact `name` from the stage JSON, including parentheses `()`, slashes `/`, and all other punctuation.
-
-**Negative example — `deleteManifest` stage name incorrectly modified (COMMON MISTAKE)**:
-
-Given a `deleteManifest` stage with `"name": "Delete (canary)"`, the **WRONG** output replaces parentheses:
-```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Delete -canary-". ...
-```
-← WRONG: The parentheses in "Delete (canary)" must NOT be replaced with dashes.
-
-The **CORRECT** output (step name verbatim):
-```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Delete (canary)". Set the script to inline Bash with the code `kubectl delete deployment ...`. Set the target tag to Kubernetes.
-```
-
-```
-* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `<code>`. Set the target tag to <account>.
-```
 
 ## Scale Manifest Stage
 
 Stages with `"type": "scaleManifest"` represent scaling of a Kubernetes resource to a target replica count (e.g., scaling to zero to effectively stop a deployment). Convert them using the same prompt as `deleteManifest` stages:
 
-* Replace `<stage name>` with the EXACT verbatim `name` property of the stage, including any parentheses, slashes, and other punctuation.
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
 * Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<code>` with a Bash script to call `kubectl` to scale the resource in the `manifestName` field to the value in the `replicas` field (which may be a string or a number — use it as-is).
 * **`replicas: 0` means scale to zero (stop the deployment)**: When the `replicas` field is `"0"` or `0`, the stage is explicitly scaling the Kubernetes resource down to zero replicas — effectively stopping the running workload. In this case, append `NOTE (migration): This step scales the deployment to 0 replicas, effectively stopping it.` to the step description.
@@ -5502,7 +5422,7 @@ Project name: "[PROD] api-syncer canary"   ← CORRECT
 Step name:    "Deploy org-0004-api-syncer" ← CORRECT
 ```
 
-**CRITICAL — duplicate step names arise when multiple Spinnaker stages have the same `name` value**: After the name transformation rules are applied (replacing square brackets `[]` with dashes, but preserving parentheses and all other punctuation verbatim), if two or more steps would result in the same name, the FIRST occurrence keeps the base name; the SECOND gets suffix ` 2`; the THIRD gets suffix ` 3`; and so on. You MUST check all step names for uniqueness before finalizing the output.
+**CRITICAL — duplicate step names arise when multiple Spinnaker stages have the same `name` value**: After the name transformation rules are applied, if two or more steps would result in the same name, the FIRST occurrence keeps the base name; the SECOND gets suffix ` 2`; the THIRD gets suffix ` 3`; and so on. You MUST check all step names for uniqueness before finalizing the output.
 
 **Negative example — duplicate step names not made unique (COMMON MISTAKE)**:
 
@@ -5671,7 +5591,8 @@ This scan is ABSOLUTE and MANDATORY — it applies even if you believe the `****
 
 **MANDATORY STAGE COMPLETENESS AND UNIQUENESS CHECK**: After producing all step prompts, perform this combined verification before finalizing your output:
 
-**Step 1 — Build the expected name list**: From the pipeline JSON `"stages"` array, extract the `"name"` field of every stage that is NOT a skipped type (`checkPreconditions`, `evaluateVariables`, `findArtifactFromExecution`, `findImage`, `findImageFromTags`, `tagImage`). **CRITICAL — custom Kubernetes Job stage types are NOT skipped**: stages of `"type": "shiftTrafficProd"`, `"type": "shiftTrafficStaging"`, `"type": "restoreProd"`, `"type": "deriveBaselineProd"`, and `"type": "deriveCanaryProd"` ARE converted to "Deploy Kubernetes YAML" steps and MUST appear in the expected name list. **CRITICAL — `pipeline` type stages are NOT skipped**: stages of `"type": "pipeline"` MUST appear in the expected name list because they each produce a "Deploy a Release" step. The step name for a `pipeline` stage is derived from the child project name extracted from the stage `"name"` field (e.g., stage `"name": "Run \"[DEV] Deploy API\""` → child project name `[DEV] Deploy API` → step name after replacing `[` and `]` with `-` → `"-DEV- Deploy API"`). Apply the step-name rules (square brackets `[]` → dashes; parentheses and all other punctuation preserved verbatim) and write down every expected step name. This is your EXPECTED LIST.
+**Step 1 — Build the expected name list**: From the pipeline JSON `"stages"` array, extract the `"name"` field of every stage that is NOT a skipped type (`checkPreconditions`, `evaluateVariables`, `findArtifactFromExecution`, `findImage`, `findImageFromTags`, `tagImage`). **CRITICAL — custom Kubernetes Job stage types are NOT skipped**: stages of `"type": "shiftTrafficProd"`, `"type": "shiftTrafficStaging"`, `"type": "restoreProd"`, `"type": "deriveBaselineProd"`, and `"type": "deriveCanaryProd"` ARE converted to "Deploy Kubernetes YAML" steps and MUST appear in the expected name list. **CRITICAL — `pipeline` type stages are NOT skipped**: stages of `"type": "pipeline"` MUST appear in the expected name list because they each produce a "Deploy a Release" step. The step name for a `pipeline` stage is derived from the child project name extracted from the stage `"name"` field (e.g., stage `"name": "Run \"[DEV] Deploy API\""` → child project name `[DEV] Deploy API` → step name after replacing `[` and `]` with `-` → `"-DEV- Deploy API"`). Apply the step-name rules and write down every expected step name. This is your EXPECTED LIST.
+**Step 1 — Build the expected name list**: From the pipeline JSON `"stages"` array, extract the `"name"` field of every stage that is NOT a skipped type (`checkPreconditions`, `evaluateVariables`, `findArtifactFromExecution`, `findImage`, `findImageFromTags`, `tagImage`). **CRITICAL — custom Kubernetes Job stage types are NOT skipped**: stages of `"type": "shiftTrafficProd"`, `"type": "shiftTrafficStaging"`, `"type": "restoreProd"`, `"type": "deriveBaselineProd"`, and `"type": "deriveCanaryProd"` ARE converted to "Deploy Kubernetes YAML" steps and MUST appear in the expected name list. **CRITICAL — `pipeline` type stages are NOT skipped**: stages of `"type": "pipeline"` MUST appear in the expected name list because they each produce a "Deploy a Release" step. The step name for a `pipeline` stage is derived from the child project name extracted from the stage `"name"` field (e.g., stage `"name": "Run \"[DEV] Deploy API\""` → child project name `[DEV] Deploy API` → step name after replacing `[` and `]` with `-` → `"-DEV- Deploy API"`). Apply the step-name rules and write down every expected step name. This is your EXPECTED LIST.
 
 **Step 2 — Build the actual name list**: Scan your generated output for every line that starts with `* Add a` and contains `step to the deployment process`. Extract the step name from each such line (the value after `name the step "..."` or `name "..."`). This is your ACTUAL LIST.
 
@@ -5837,7 +5758,7 @@ The **CORRECT** output (all of Branch A before any continuation of Branch B):
 ```
 ← CORRECT: Deploy Retrieval Server (Branch A end) appears before Prediction (Branch B continuation). Since Train Model depends only on Node2Vec (Branch A root) and Prediction depends only on Generate Queries (Branch B root), these belong to different branches — the entirety of Branch A must be output first.
 
-**ABSOLUTE RULE — the ` 2` suffix applies ONLY when two stages have IDENTICAL names after the step-name rules are applied**: The deduplication suffix (` 2`, ` 3`, etc.) is appended ONLY when two or more stages produce the same step name after applying the name transformation rules (replacing square brackets `[]` with dashes; preserving parentheses and all other punctuation verbatim). If stage A is named "Manual Judgment (Deploy Canary)" and stage B is named "Manual Judgement (Cronjob)", these are DIFFERENT names — stage B must be named `"Manual Judgement (Cronjob)"`, NOT `"Manual Judgment (Deploy Canary) 2"`. The fact that stages A and B are in the same parallel group does NOT cause them to share a name. Check the actual stage `name` field from the JSON before applying any deduplication suffix.
+**ABSOLUTE RULE — the ` 2` suffix applies ONLY when two stages have IDENTICAL names after the step-name rules are applied**: The deduplication suffix (` 2`, ` 3`, etc.) is appended ONLY when two or more stages produce the same step name after applying the name transformation rules. If stage A is named "Manual Judgment (Deploy Canary)" and stage B is named "Manual Judgement (Cronjob)", these are DIFFERENT names — stage B must be named `"Manual Judgement (Cronjob)"`, NOT `"Manual Judgment (Deploy Canary) 2"`. The fact that stages A and B are in the same parallel group does NOT cause them to share a name. Check the actual stage `name` field from the JSON before applying any deduplication suffix.
 
 **Negative example — incorrect deduplication suffix applied to differently-named parallel stages (FORBIDDEN)**:
 
