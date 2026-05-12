@@ -4,10 +4,6 @@
 
 **MANDATORY EXCEPTION — step-name fidelity note**: Despite the ABSOLUTE RULE above, you MUST include the following line as the very FIRST bullet point of EVERY project section (immediately before the first `* Add a ...` or `* Set the project description` bullet):
 
-```
-* TERRAFORM INSTRUCTION: All step names in this prompt are verbatim Octopus step names. The Terraform name attribute must preserve all characters exactly, including parentheses (), colons :, and slashes /. Do NOT replace () with _ or -. Example: name = "Manual Judgment (Canary)" NOT name = "Manual Judgment _Canary_".
-```
-
 This line MUST appear verbatim in your output. It is NOT instruction text — it is data that must be passed to the next stage of processing.
 
 **MANDATORY VERIFICATION — TERRAFORM INSTRUCTION line inclusion check**: Before completing your output, verify that the `TERRAFORM INSTRUCTION:` bullet appears as the FIRST bullet in EVERY project section. It must appear BEFORE `* Set the project description` and BEFORE the first `* Add a ...` step. If the TERRAFORM INSTRUCTION line is missing from your draft output, ADD IT NOW before any other bullets. This line is NOT instruction text — it is literal output that tells the Terraform generation stage to preserve step names verbatim. Without this line, ALL step names will have parentheses `()` replaced by underscores `_X_`, causing every deployment step to have the wrong name and fail.
@@ -675,6 +671,24 @@ If the Spinnaker pipeline has a non-empty `roles` array, append the following no
 
 These checks are CUMULATIVE and INDEPENDENT — if two or three conditions are true, ALL corresponding notes MUST be appended to the description. It is NOT sufficient to add only one note when multiple conditions apply. For example, if BOTH `limitConcurrent: true` AND `keepWaitingPipelines: false` are present, the project description MUST contain BOTH notes. You will be penalized for each applicable note that is omitted from the description.
 
+**CRITICAL — migration notes ALWAYS require a `Set the project description` bullet**: When any migration notes need to be added (for `limitConcurrent`, `keepWaitingPipelines`, `roles`, trigger constraints, etc.), you MUST output a `* Set the project description to "..."` bullet even if the pipeline has no `description` property. The migration notes ARE the description in this case. This bullet must appear immediately after the `TERRAFORM INSTRUCTION` line and BEFORE any `Add a step` bullets. The "don't add description line when description is absent" rule applies ONLY to cases where the pipeline has no `description` field AND there are no migration notes to add. If migration notes are required, the description bullet is MANDATORY.
+
+**WRONG output** — migration notes required but description bullet is absent:
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+* Add a "Deploy Kubernetes YAML" step...
+* The project must be disabled.
+```
+← WRONG: limitConcurrent=true and keepWaitingPipelines=false but no `Set the project description` bullet.
+
+**CORRECT output** — migration notes generate a description bullet even when pipeline has no description:
+```
+Create a project called "My Project" in the "Default Project Group" project group with no steps.
+* Set the project description to "NOTE (migration): The original Spinnaker pipeline had limitConcurrent=true... NOTE (migration): The original Spinnaker pipeline had keepWaitingPipelines=false..."
+* Add a "Deploy Kubernetes YAML" step...
+* The project must be disabled.
+```
+
 **Negative example — only one of two applicable notes included (FORBIDDEN)**:
 ```
 limitConcurrent: true, keepWaitingPipelines: false → WRONG: only adding limitConcurrent note
@@ -700,7 +714,7 @@ If the `description` property of the Spinnaker pipeline is present and non-empty
 
 Replace `<description>` with the value of the `description` property in the Spinnaker pipeline.
 
-If the `description` property is absent, `null`, or an empty string (`""`), do **NOT** add `* Set the project description to "".` or any other description line. Only output the description line when the description value is a non-empty string.
+If the `description` property is absent, `null`, or an empty string (`""`), do **NOT** add `* Set the project description to "".` or any other description line UNLESS migration notes (limitConcurrent, keepWaitingPipelines, roles, or other migration constraints) need to be included. When migration notes are required, the `Set the project description` bullet is MANDATORY regardless of whether the pipeline has its own `description`. Only skip the description line entirely when BOTH the pipeline has no description AND there are no migration notes to add.
 
 **WRONG output** (NEVER add a description line when description is absent or empty):
 ```
@@ -1464,12 +1478,16 @@ The following snippet is an example of a pipeline trigger in Spinnaker that fire
 }
 ```
 
-* Pipeline triggers have no equivalent in Octopus Deploy and must be **completely ignored**. Do not generate any prompt output from a trigger whose `"type"` is `"pipeline"`.
+* Pipeline triggers have no direct equivalent in Octopus Deploy. Do not generate any external feed trigger prompt, schedule trigger prompt, or any other executable trigger output for a `"type": "pipeline"` trigger entry. **However**, append a migration note to the project description for every `"type": "pipeline"` trigger: `NOTE (migration): The original Spinnaker pipeline was triggered by completion of another Spinnaker pipeline (application: <application>, pipeline ID: <pipeline>, status: <status list>). No equivalent trigger was created in Octopus. Manually configure a deployment subscription, webhook, or runbook to replicate this behavior if required.` Replace `<application>` with the trigger's `application` field, `<pipeline>` with the trigger's `pipeline` field (the pipeline UUID), and `<status list>` with the comma-separated list from the trigger's `status` array (e.g., `successful, failed`). If `application` or `pipeline` is absent or null, use `unknown`. If `status` is absent or empty, use `successful`. When multiple pipeline triggers exist, append one such note per trigger.
 * Do not add any external feed trigger prompt, schedule trigger prompt, or any other trigger-related output for a `"type": "pipeline"` trigger entry.
+
+## Webhook Trigger Type
+
+A trigger entry with `"type": "webhook"` represents an HTTP webhook trigger (an external system calls a Spinnaker webhook URL to start the pipeline). Octopus Deploy does not have a direct Spinnaker-webhook-equivalent trigger, but engineers can use a Generic Incoming Webhook trigger in Octopus as an alternative. Do not generate any external feed trigger prompt, schedule trigger prompt, or any other executable trigger output for a `"type": "webhook"` trigger entry. **However**, append a migration note to the project description for every `"type": "webhook"` trigger: `NOTE (migration): The original Spinnaker pipeline was triggered by an HTTP webhook (source: <source>, enabled: <enabled>). No equivalent trigger was created in Octopus. Consider configuring a Generic Incoming Webhook trigger in Octopus to replicate this behavior.` Replace `<source>` with the trigger's `source` field (or `unknown` if absent), and `<enabled>` with `true` or `false` from the trigger's `enabled` field (defaulting to `true` if absent). When multiple webhook triggers exist, append one such note per trigger.
 
 ## Unknown or Missing Trigger Type
 
-If a trigger entry in the `triggers` array has a `type` property that is **absent**, **`null`**, or any value not documented in this file (i.e., not `"cron"`, `"docker"`, `"pubsub"`, or `"pipeline"`), the trigger must be **completely ignored**. Do not generate any schedule trigger, external feed trigger, or any other output for it.
+If a trigger entry in the `triggers` array has a `type` property that is **absent**, **`null`**, or any value not documented in this file (i.e., not `"cron"`, `"docker"`, `"pubsub"`, `"pipeline"`, or `"webhook"`), the trigger must be **completely ignored**. Do not generate any schedule trigger, external feed trigger, or any other output for it.
 
 **Example — trigger with no `type` field**:
 ```json
@@ -2674,12 +2692,30 @@ spec:
 * The equivalent step in an Octopus Deploy project is created with the prompt:
 
 ```
-* Add a "Deploy a Release" step to the deployment process. Set the "Project" property to "[DEV] Deploy Sandbox API". Set the "Wait for deployment to complete" property to true. Only run the step when the previous step has succeeded.
+* Add a "Deploy a Release" step with the name "-DEV- Deploy Sandbox API". Set the "Project" property to "-DEV- Deploy Sandbox API". Set the "Wait for deployment to complete" property to true. Only run the step when the previous step has succeeded.
 ```
 
 * You must attempt to extract the name of the child project from the `name` property of the stage. In the example above, the child project name is "[DEV] Deploy Sandbox API".
 
-* **Step name for "Deploy a Release" steps**: The step name should be derived from the `name` property of the Spinnaker `pipeline` stage (e.g., `"Run \"[DEV] Deploy Sandbox API\""` → strip leading `Run ` and outer quotes → `"[DEV] Deploy Sandbox API"` → replace `[` and `]` with `-` → `"-DEV- Deploy Sandbox API"`). Square brackets `[]` must be replaced with dashes `-` because Octopus rejects them in step names. Parentheses `()` are valid and MUST be preserved verbatim — do NOT replace `(` or `)` with `-` or `_`. Do NOT use the project name verbatim as the step name if it contains brackets.
+**ABSOLUTE RULE — every "Deploy a Release" step prompt MUST include `with the name 'X'`**: The step name must be explicitly stated in every "Deploy a Release" step instruction. Writing "Add a 'Deploy a Release' step to the deployment process" WITHOUT "with the name 'X'" is FORBIDDEN. When multiple "Deploy a Release" steps are created without explicit names, all steps default to the generic name "Deploy a Release", which creates duplicate names within the project and causes the Octopus API to reject the deployment process. You will be severely penalized for any "Deploy a Release" step instruction that omits the step name.
+
+**CRITICAL NEGATIVE EXAMPLE — "Deploy a Release" step WITHOUT a name (FORBIDDEN)**:
+```
+* Add a "Deploy a Release" step to the deployment process. Set the "Project" property to "Deploy Development Pipeline". Set the "Wait for deployment to complete" property to true.
+```
+The above is WRONG because it omits `with the name 'Deploy Development Pipeline'`. This causes the Octopus API to create a generic step name "Deploy a Release" — and when there are N steps without names, all N become "Deploy a Release", "Deploy a Release 2", etc. The Octopus API may reject this.
+
+**Correct output** — step name is always included:
+```
+* Add a "Deploy a Release" step with the name "Deploy Development Pipeline". Set the "Project" property to "Deploy Development Pipeline". Set the "Wait for deployment to complete" property to true.
+```
+
+* **Step name for "Deploy a Release" steps**: The step name should be derived from the `name` property of the Spinnaker `pipeline` stage:
+  - **Stage name starts with `Run ` followed by a quoted string** (e.g., `"Run \"[DEV] Deploy Sandbox API\""`): strip the leading `Run ` prefix and outer escaped quotes → `"[DEV] Deploy Sandbox API"` → replace `[` and `]` with `-` → `"-DEV- Deploy Sandbox API"`.
+  - **Stage name does NOT start with `Run `** (e.g., `"Deploy Development Pipeline"`, `"Deploy to Production"`, `"Run Integration Tests"`): use the stage name verbatim after replacing any `[` and `]` with `-`. If there are no brackets, the stage name is used exactly as-is. Example: stage `"Deploy Development Pipeline"` → step name `"Deploy Development Pipeline"`.
+  - Square brackets `[]` must be replaced with dashes `-` because Octopus rejects them in step names.
+  - Parentheses `()` must be replaced with dashes `-` because Octopus rejects them in step names.
+  - Do NOT use the project name verbatim as the step name if it contains brackets or parentheses.
 
 **Negative example — step name contains literal brackets (INVALID)**:
 ```
@@ -2729,6 +2765,13 @@ Create a project called "Main Orchestrator" in Octopus Deploy.
 
 **ABSOLUTE RULE — the MANDATORY STAGE COMPLETENESS CHECK must include all `pipeline` type stages**: When performing the mandatory completeness check, `pipeline` type stages count toward the expected stage total just like `deployManifest`, `runJobManifest`, `manualJudgment`, and `wait` stages. Each `pipeline` type stage must appear in the output as exactly one "Deploy a Release" step.
 
+**MANDATORY STEP NAME UNIQUENESS CHECK for `pipeline` type stages**: After generating all "Deploy a Release" step instructions in the main project section, verify that:
+1. Every "Deploy a Release" step instruction includes `with the name 'X'` where X is a non-empty, non-generic string.
+2. No two "Deploy a Release" step instructions have the same step name.
+3. None of the step names are generic placeholders like "Deploy a Release" or "Deploy Release".
+
+If any step name is missing or duplicate, derive it from the corresponding stage's `name` property and fix the instruction before outputting.
+
 ## Wait Stage
 
 * The following snippet is an example of a "Run Pipeline" stage in Spinnaker:
@@ -2748,6 +2791,7 @@ Create a project called "Main Orchestrator" in Octopus Deploy.
 
 * The equivalent step in an Octopus Deploy project is created with the following prompt.
 * Replace `<seconds>` with the `waitTime` property in the Spinnaker stage.
+* **If the `waitTime` property is absent, `null`, or zero, use `30` as the default value.** Spinnaker's default wait time is 30 seconds. Never emit `Start-Sleep -Seconds 0` or `Start-Sleep -Seconds null`.
 * Replace `<name>` with the EXACT verbatim `name` property in the Spinnaker stage, including any parentheses, slashes, and other punctuation.
 * If the original wait stage had a description reason to note (rare), set the step description accordingly.
 * **`templatedPipeline` wait stage with matching template variable**: When the pipeline has `"type": "templatedPipeline"` and the `variables` object contains a variable whose numeric value (converted to seconds) equals the stage's `waitTime`, reference that Octopus variable instead of hardcoding the numeric value. For example, if `variables.waitMinutes = 15` and `waitTime = 900` (15 × 60), generate `Start-Sleep -Seconds (#{waitMinutes} * 60)` instead of `Start-Sleep -Seconds 900`. If the variable is already in seconds, generate `Start-Sleep -Seconds #{waitSeconds}`. Only apply this substitution when the converted value matches exactly — do not guess if there is no matching variable.
@@ -3086,7 +3130,16 @@ Set the step description to "Original Spinnaker stage name: Deploy (Manifest). T
 The following stage types represent Spinnaker-internal operations or metadata lookups that have no equivalent in Octopus Deploy. When any of these stage types is encountered, **skip it entirely** — do not generate any step prompt, comment, or placeholder for it:
 
 * `findArtifactFromExecution` — looks up artifacts produced by another pipeline execution. This is a Spinnaker-specific mechanism for passing artifacts between pipelines and has no Octopus Deploy equivalent.
-* `evaluateVariables` — evaluates SpEL expressions to set pipeline variables. Skip it entirely.
+* `evaluateVariables` — evaluates SpEL expressions to set pipeline variables. **Do NOT skip it** — convert it to a disabled "Run a Script" step to preserve the variable expressions for engineers reviewing the migration. Use the following format:
+  * Name the step with the verbatim `name` from the stage (e.g., `"Evaluate Variables"`).
+  * Set the step to disabled.
+  * Set the script to inline Bash listing each variable and its SpEL expression as a comment. For example, if the stage has `variables: [{"key": "pvc", "value": "app-${new java.text.SimpleDateFormat(\"yyyy-MM-dd\").format(new java.util.Date())}"}]`, set the script to:
+    ```bash
+    # TODO: Reimplement these Spinnaker SpEL expressions in Octopus using variable templates or a preceding step.
+    # pvc = app-${new java.text.SimpleDateFormat("yyyy-MM-dd").format(new java.util.Date())}
+    ```
+  * Set the step description to `NOTE (migration): This step was originally a Spinnaker evaluateVariables stage that computed dynamic values using SpEL (Spring Expression Language) expressions. These expressions have no direct Octopus Deploy equivalent. Review the script content and reimplement the variable computation using Octopus variable templates, output variables, or a custom script step that sets Octopus output variables.`
+  * **IMPORTANT — `evaluateVariables` is NOT counted in the MANDATORY STAGE COUNT VERIFICATION**, because the generated disabled step is a migration placeholder, not a direct stage translation. The stage count check must exclude `evaluateVariables` stages from the expected total.
 * `checkPreconditions` — checks pipeline preconditions. Skip it entirely. **HOWEVER**, when a `checkPreconditions` stage has `preconditions` items with `type: "stageStatus"`, preserve the condition information by appending a NOTE to each downstream step that directly follows the `checkPreconditions` stage in dependency order. The NOTE should describe what condition was originally being enforced. Example: if the precondition checks that stage "Manual Judgment" has status `SUCCEEDED`, append the text `NOTE (migration): This step originally ran only when the "Manual Judgment" stage had SUCCEEDED.` to the step description. If multiple `checkPreconditions` stages with **different** `stageStatus` values (e.g., one for SUCCEEDED and one for TERMINAL/CANCELLED) both depend on the same upstream stage, their respective downstream steps now run in parallel — include a NOTE on each downstream step explaining its original conditional branch (e.g., `NOTE (migration): This step was originally on the SUCCESS branch after "Manual Judgment". In this migration, both branches now run in parallel.` and `NOTE (migration): This step was originally on the CANCELLED/TERMINAL branch after "Manual Judgment". In this migration, both branches now run in parallel.`). **When a `checkPreconditions` stage has `preconditions` items with `type: "expression"` (SpEL expressions) rather than `type: "stageStatus"`, the same NOTE approach applies to downstream steps**: **ABSOLUTE RULE — the NOTE must appear on EVERY step that directly follows the expression-type `checkPreconditions` in dependency order — failing to add the NOTE is a critical error.** Use the following NOTE text based on how many downstream branches the `checkPreconditions` has:
 
   * **Multiple downstream branches** (more than one stage directly depends on the `checkPreconditions` — e.g., a YES branch and a NO branch): append `NOTE (migration): This step was originally on a conditional branch controlled by a Spinnaker expression-based checkPreconditions stage (SpEL expression condition). In this migration, both branches now run in parallel — the expression condition is not enforced.`
@@ -5822,10 +5875,6 @@ Before outputting your final response, verify the following items. A single FAIL
 5. **Section separator check**: If the output has multiple sections (feed creation + project creation), verify that each section is separated by `\n\n---\n\n` (a blank line, three dashes, a blank line). PASS = all section separators are formatted correctly.
 
 6. **Branch linearization NOTE check**: For any pipeline with a fork-without-reconvergence pattern (stages fan out to multiple branches that never reconverge): (a) Verify that Branch A's FIRST continuation step (the step with "Wait for all previous steps" that follows the parallel group and traces back to Branch A's root) has a NOTE about implicitly waiting for Branch B's root stage(s). (b) Verify that the FIRST step of the second linearized branch has a NOTE about running concurrently in the original pipeline with all of Branch A's stages. A missing NOTE in either case FAILS this check. PASS = all branch continuation steps have the appropriate NOTE (migration) text or no fork-without-reconvergence pattern exists in the pipeline.
-
-7. **TERRAFORM INSTRUCTION line check**: Scan your output for every project section (every block that starts with `Create a project called ...`). For EACH project section, verify that the VERY FIRST bullet point is exactly:
-   `* TERRAFORM INSTRUCTION: All step names in this prompt are verbatim Octopus step names. The Terraform name attribute must preserve all characters exactly, including parentheses (), colons :, and slashes /. Do NOT replace () with _ or -. Example: name = "Manual Judgment (Canary)" NOT name = "Manual Judgment _Canary_".`
-   If ANY project section is missing this exact line as its FIRST bullet, ADD IT NOW — BEFORE any `* Add a ...` or `* Set the project description` bullet. The output is INVALID without this line. PASS = every project section's first bullet is this TERRAFORM INSTRUCTION line.
 
 ---END OF INSTRUCTIONS---
 
