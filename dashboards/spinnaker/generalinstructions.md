@@ -2,7 +2,7 @@
 
 ## General Instructions
 
-**⚠️ CRITICAL — `feed_github_container_registry` MUST use count + data source pattern**: When any `Octopus.KubernetesDeployRawYaml` step is present, the `feed_github_container_registry` resource MUST be created with `count = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"` AND a matching `data "octopusdeploy_feeds" "feed_github_container_registry"` data source. Creating this resource WITHOUT count (i.e., `resource "octopusdeploy_docker_container_registry" "feed_github_container_registry" { name = "GitHub Container Registry" ... }` without a count attribute) is FORBIDDEN — it will fail on re-apply when the feed already exists. The `container` block MUST use the ternary pattern `feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"` with `[0]` indexing — NOT `.id` directly.
+**⚠️ CRITICAL — Template default accounts (`account_octopussamples_azure_account`, `account_aws_oidc`) MUST NOT be created when the prompt names a specific account**: When the prompt says "Add an Azure OIDC account named 'X'" or "Create an Azure account called 'X'", the `octopusdeploy_azure_service_principal` resource named `account_octopussamples_azure_account` MUST NOT appear anywhere in the Terraform output. When the prompt says "Add an AWS account named 'X'", the `octopusdeploy_aws_openid_connect_account` resource named `account_aws_oidc` MUST NOT appear anywhere in the output. These template defaults MUST be completely omitted and ALL step references must use the prompt-specified account. This rule has ABSOLUTE PRIORITY over any template that includes these default accounts.
 
 **⚠️ CRITICAL — `depends_on` for sequential steps MUST reference ONLY the immediately preceding step**: Each `octopusdeploy_process_step` resource (steps 2, 3, 4, etc.) must have `depends_on` pointing to EXACTLY ONE step — the step that immediately precedes it in the deployment process. NEVER list all previous steps in `depends_on`. For step N, `depends_on = [octopusdeploy_process_step.step_N_minus_1]`. For step N to depend on ALL previous steps violates the rule and creates unnecessary complexity. WRONG: `depends_on = [step_1, step_2, step_3, step_4, step_5, step_6]` for step 7. CORRECT: `depends_on = [octopusdeploy_process_step.step_6]` for step 7.
 
@@ -978,6 +978,7 @@ The **CORRECT** Terraform value re-indents each document based on schema depth:
 * If the prompt contains a step name with parentheses or square brackets that were replaced by dashes (e.g., `Deploy -Manifest-`), use the dash-replaced form exactly as written in the prompt. Do NOT re-introduce parentheses or other special characters.
 * Do NOT normalize prompt-provided dash replacements into underscores. For example, `Manual Judgment -Canary-` must stay `Manual Judgment -Canary-`, never `Manual Judgment _Canary_`.
 * You will be penalized for creating steps with parentheses or square brackets in their names.
+* The Terraform provider is more strict about step and project names than the Octopus API. This is why parentheses and square brackets are not supported.
 
 ## Step Description Property
 
@@ -1195,6 +1196,13 @@ resource "octopusdeploy_process_step" "process_step_delete_manifest" {
 * When the prompt specifies a Kubernetes namespace in the step (e.g., `Set the step namespace to "my-namespace"`), set `"Octopus.Action.KubernetesContainers.Namespace" = "my-namespace"` in `execution_properties`. When no namespace is specified, omit this property entirely — do NOT set it to an empty string or null.
 * You will be penalized for adding a `container` block to an `Octopus.KubernetesRunScript` step when the prompt does not explicitly request one.
 
+## Container Block Rules
+
+* **CRITICAL — `container = { feed_id = "", image = "" }` is NEVER valid Terraform and MUST NEVER be generated.** An empty container block with blank `feed_id` and `image` values is a common mistake that produces invalid configuration. If a step does not use a container, the `container` attribute MUST be omitted entirely — do NOT include it with empty values.
+* **CRITICAL — `Octopus.Manual` steps (manual interventions) steps MUST NEVER include a `container` attribute.** These step types do not use Docker containers and the `container` attribute has no meaning for them. Omit the `container` attribute from ALL `Octopus.Manual` resources.
+* The `container` attribute is ONLY valid for step types that explicitly use containerized tooling: `Octopus.KubernetesDeployRawYaml`, `Octopus.TerraformPlan`, `Octopus.TerraformApply`, `Octopus.TerraformDestroy`, `Octopus.TerraformPlanDestroy`, `Octopus.AzurePowerShell`, `Octopus.AwsRunScript`, `Octopus.GoogleCloudScripting`, `Octopus.AzureWebApp`, and `Octopus.KubernetesRunScript` (only when a specific image is requested).
+* You will be penalized for including a `container` attribute on `Octopus.Manual` step resources.
+
 ## Webhook / HTTP Script Steps
 
 * When the prompt says `Add a "Run a Script" step` with inline Bash code that contains a `curl` command (i.e., the step is an HTTP webhook call converted from a Spinnaker `webhook` stage), the `Octopus.Script` step MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. Do NOT use `"PowerShell"` for `curl`-based script steps.
@@ -1217,11 +1225,24 @@ resource "octopusdeploy_process_step" "process_step_delete_manifest" {
 
 ## Retention Policy for New Project Creation Prompts
 
-**CRITICAL — when a new project creation prompt specifies a retention policy (e.g., "with a retention policy of 30 days for releases")**:
+**CRITICAL — when a new project creation prompt specifies a retention policy (e.g., "with a retention policy of 30 days for releases" or "Set the retention policy to 5 items")**:
 
 1. If the project uses the **Default Lifecycle** (looked up via data source only, NOT a resource), the retention policy from the prompt CANNOT be applied — the Default Lifecycle cannot be modified by Terraform. In this case, **ignore the retention policy instruction entirely** and do NOT add any `release_retention_policy` or `tentacle_retention_policy` blocks.
 
-2. If the project uses a **custom lifecycle being created** as a new `octopusdeploy_lifecycle` resource, apply the retention policy to the lifecycle resource's `release_retention_policy` block:
+2. If the project uses a **custom lifecycle being created** as a new `octopusdeploy_lifecycle` resource, apply the retention policy to the lifecycle resource's `release_retention_policy` block. The `unit` attribute MUST match what the prompt specifies:
+   - When the prompt says "N days" → use `unit = "Days"` and `quantity_to_keep = N`
+   - When the prompt says "N items" or "keep N releases" → use `unit = "Items"` and `quantity_to_keep = N`
+
+**⚠️ CRITICAL — do NOT default to 30 Days when the prompt specifies items**: If the prompt says "Set the retention policy to 5 items", the lifecycle MUST use `quantity_to_keep = 5` and `unit = "Items"`. Setting `quantity_to_keep = 30` and `unit = "Days"` is WRONG — it ignores the prompt instruction.
+
+**MANDATORY SELF-CHECK — retention policy verification**: Before finalizing any `octopusdeploy_lifecycle` resource, check:
+1. Did the prompt specify a retention policy? If YES → did you apply the correct `quantity_to_keep` and `unit` values?
+2. Did the prompt say "items"? If YES → is `unit = "Items"` (NOT `"Days"`)?
+3. Did the prompt say "days"? If YES → is `unit = "Days"` (NOT `"Items"`)?
+
+You will be penalized for using `unit = "Days"` when the prompt says "items", or using `unit = "Items"` when the prompt says "days".
+
+**Example — prompt says "Set the retention policy to 30 days"**:
 ```hcl
 resource "octopusdeploy_lifecycle" "lifecycle_my_lifecycle" {
   name = "My Lifecycle"
@@ -1232,6 +1253,22 @@ resource "octopusdeploy_lifecycle" "lifecycle_my_lifecycle" {
   tentacle_retention_policy {
     quantity_to_keep = 30
     unit             = "Days"
+  }
+  phase { ... }
+}
+```
+
+**Example — prompt says "Set the retention policy to 10 items"**:
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_my_lifecycle" {
+  name = "My Lifecycle"
+  release_retention_policy {
+    quantity_to_keep = 10
+    unit             = "Items"
+  }
+  tentacle_retention_policy {
+    quantity_to_keep = 10
+    unit             = "Items"
   }
   phase { ... }
 }
@@ -3607,6 +3644,51 @@ resource "octopusdeploy_process_step" "process_step_every_step_project_deploy_a_
 * When the prompt says `Set the "Wait for deployment to complete" property to false`, add `"Octopus.Action.DeployRelease.WaitForDeployment" = "False"` to the `execution_properties` block of the `Octopus.DeployRelease` step.
 * When the prompt does not specify a "Wait for deployment to complete" value for a `Octopus.DeployRelease` step, default to `"Octopus.Action.DeployRelease.WaitForDeployment" = "True"`.
 
+**CRITICAL — step name fallback for `Octopus.DeployRelease` steps**: When the prompt says "Add a 'Deploy a Release' step to the deployment process" WITHOUT specifying "with the name 'X'", you MUST derive the step name from the child project name specified in "Set the 'Project' property to X". Use X as the `name` attribute of the step. For example, if the prompt says "Add a 'Deploy a Release' step to the deployment process. Set the 'Project' property to 'Deploy Development Pipeline'.", the step `name` MUST be `"Deploy Development Pipeline"` — NOT `"Deploy a Release"`. This prevents multiple "Deploy a Release" steps from receiving identical names "Deploy a Release", "Deploy a Release 2", etc., which are not descriptive and may cause the Octopus API to reject the deployment process.
+
+**CRITICAL NEGATIVE EXAMPLE — all DeployRelease steps have generic names (FORBIDDEN)**:
+```hcl
+# WRONG: Three steps deploying different child projects but all have generic names
+resource "octopusdeploy_process_step" "process_step_deploy_a_release" {
+  name = "Deploy a Release"    # WRONG: generic name, not descriptive
+  type = "Octopus.DeployRelease"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_deploy_a_release_2" {
+  name = "Deploy a Release 2"  # WRONG: generic numbered name
+  type = "Octopus.DeployRelease"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_deploy_a_release_3" {
+  name = "Deploy a Release 3"  # WRONG: generic numbered name
+  type = "Octopus.DeployRelease"
+  ...
+}
+```
+
+**CORRECT EXAMPLE — DeployRelease steps have unique, descriptive names derived from child project names**:
+```hcl
+# CORRECT: Each step has a unique, descriptive name from the child project
+resource "octopusdeploy_process_step" "process_step_deploy_development_pipeline" {
+  name = "Deploy Development Pipeline"    # CORRECT: derived from child project name
+  type = "Octopus.DeployRelease"
+  slug = "deploy-development-pipeline"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_deploy_sandbox_pipeline" {
+  name = "Deploy Sandbox Pipeline"        # CORRECT: derived from child project name
+  type = "Octopus.DeployRelease"
+  slug = "deploy-sandbox-pipeline"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_deploy_production_pipeline" {
+  name = "Deploy Production Pipeline"     # CORRECT: derived from child project name
+  type = "Octopus.DeployRelease"
+  slug = "deploy-production-pipeline"
+  ...
+}
+```
+
 **CRITICAL — when the prompt says `Set the start trigger to "Run in parallel with the previous step"` for an `Octopus.DeployRelease` step**, set `start_trigger = "StartWithPrevious"` on that resource. When multiple "Deploy a Release" steps run in parallel (e.g., an orchestrator project triggering several child deployments simultaneously), the FIRST step gets `start_trigger = "StartAfterPrevious"` and ALL subsequent parallel steps get `start_trigger = "StartWithPrevious"`. This pattern mirrors how other parallel steps are handled in Octopus Terraform.
 
 **CRITICAL — each `Octopus.DeployRelease` step referencing a child project requires its own `data "octopusdeploy_projects"` data source lookup for that child project.** When an orchestrator project has N "Deploy a Release" steps, there must be N separate `data "octopusdeploy_projects"` data source blocks — one per child project. Each data source uses the child project name as its `partial_name`. Do NOT share a single data source lookup across multiple child project references.
@@ -3708,6 +3790,8 @@ resource "octopusdeploy_process_step" "process_step_deploy_child_b" {
 3. Does each `Octopus.DeployRelease` step have `"Octopus.Action.DeployRelease.ProjectId"` set to the CHILD project's data source (NOT the orchestrator project's data source)? **If NO → correct the references.**
 4. Does each `Octopus.DeployRelease` step's `primary_package.package_id` reference the CORRECT child project's data source (one unique data source per child, NOT reused across multiple children)? **If NO → assign the correct per-child data source.**
 5. Does each `Octopus.DeployRelease` step appear in the `octopusdeploy_process_steps_order` `steps` list? **If NO → add the missing step IDs.**
+6. Does each `Octopus.DeployRelease` step have a UNIQUE and DESCRIPTIVE `name` attribute derived from the child project name (NOT a generic name like "Deploy a Release", "Deploy a Release 2", etc.)? **If NO → replace the generic names with descriptive names derived from the child project names (e.g., `name = "Deploy Development Pipeline"` for a step deploying the "Deploy Development Pipeline" project).**
+7. Does the `slug` attribute of each `Octopus.DeployRelease` step match the kebab-case version of its unique `name` (e.g., `name = "Deploy Development Pipeline"` → `slug = "deploy-development-pipeline"`)? **If NO → update the slug to match the name.**
 
 If any answer is NO, correct the issue before outputting the Terraform.
 * You will be penalized for defining attributes in the "execution_properties" and "properties" blocks that do not exist in the examples.
@@ -3957,15 +4041,14 @@ git_dependencies = { "" = { default_branch = "master", file_path_filters = null,
   * `"Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts" = "True"`
   * `"Octopus.Action.Kubernetes.ResourceStatusCheck" = "True"`
   * `"Octopus.Action.Kubernetes.DeploymentTimeout" = "180"`
-* **CRITICAL — ALL inline `Octopus.KubernetesDeployRawYaml` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/k8s-workertools` image. This applies to BOTH enabled and disabled (TODO placeholder) steps:
+* **CRITICAL — `Octopus.KubernetesDeployRawYaml` MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/k8s-workertools` image. This applies to BOTH enabled and disabled (TODO placeholder) steps and applies to both Inline script and scripts sources from a git repository:
 ```hcl
 container = {
   feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
   image = "ghcr.io/octopusdeploylabs/k8s-workertools"
 }
 ```
-* You will be penalized for omitting the `container` block or any of the required `execution_properties` from an inline `Octopus.KubernetesDeployRawYaml` step.
-* **CRITICAL — when a project contains one or more `Octopus.KubernetesDeployRawYaml` inline steps, the Terraform configuration MUST include both a `data "octopusdeploy_feeds" "feed_github_container_registry"` data source AND an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource** so that the `container` block's `feed_id` ternary expression can be evaluated. If the prompt does not reference a GitHub Container Registry feed for artifact purposes, you still MUST define these resources when any inline `KubernetesDeployRawYaml` step is present, because the `container` block requires the feed. Omitting either the data source or the resource while defining a `container` block causes a Terraform reference error.
+* **CRITICAL — when a project contains one or more `Octopus.KubernetesDeployRawYaml` steps, the Terraform configuration MUST include both a `data "octopusdeploy_feeds" "feed_github_container_registry"` data source AND an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource** so that the `container` block's `feed_id` ternary expression can be evaluated. If the prompt does not reference a GitHub Container Registry feed for artifact purposes, you still MUST define these resources when any `KubernetesDeployRawYaml` step is present, because the `container` block requires the feed.
 * **CRITICAL — `octopusdeploy_docker_container_registry "feed_github_container_registry"` MUST use the count+data source idempotency pattern**: Always create this resource with `count = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"`. Without count, the resource cannot be applied idempotently and will fail if the feed already exists. The `feed_id` ternary in the `container` block uses `[0]` indexing which requires count to be present on the resource. The data source lookup MUST also always be defined alongside the resource.
 
 **Negative example — feed_github_container_registry created without count (COMMON MISTAKE)**:
@@ -4432,6 +4515,30 @@ resource "octopusdeploy_process_step" "my_step" {
 
 * You will be penalized for creating a `Project.WorkerPool` variable of type "WorkerPool" when the prompt does not explicitly request a worker pool variable.
 
+* **CRITICAL — `worker_pool_id` MUST NEVER be set to a hardcoded ID string** like `"WorkerPools-1234"`. Hardcoded resource IDs are not portable across Octopus spaces or instances. Always use the data source ternary lookup pattern. The same rule applies to `lifecycle_id` on project resources — NEVER hardcode a lifecycle ID like `"Lifecycles-7411"`. Always use `"${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"` for the default lifecycle. You will be penalized for any hardcoded `WorkerPools-*` or `Lifecycles-*` ID in your Terraform output.
+
+**Negative example — hardcoded worker pool and lifecycle IDs (FORBIDDEN)**:
+```hcl
+# WRONG: hardcoded IDs
+resource "octopusdeploy_project" "my_project" {
+  lifecycle_id = "Lifecycles-7411"  # WRONG: hardcoded lifecycle ID
+}
+resource "octopusdeploy_process_step" "my_step" {
+  worker_pool_id = "WorkerPools-6589"  # WRONG: hardcoded worker pool ID
+}
+```
+
+**Correct pattern — data source references**:
+```hcl
+# CORRECT: Uses data source references
+resource "octopusdeploy_project" "my_project" {
+  lifecycle_id = "${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"
+}
+resource "octopusdeploy_process_step" "my_step" {
+  worker_pool_id = "${length(data.octopusdeploy_worker_pools.workerpool_hosted_windows.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_windows.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}"
+}
+```
+
 * The "worker_pool_id" attribute must first test the length of the "worker_pools" property exposed by the data source associated with a hosted worker pool, return the first worker pool if the hosted worker pool array is not empty, otherwise return the first worker pool from the default worker pool data source, for example:
 
 ```
@@ -4523,6 +4630,42 @@ resource "octopusdeploy_kubernetes_cluster_deployment_target" "target_kubernetes
 * If the prompt indicates that an account is associated with tenant tags, the tags must be included in the "tenant_tags" attribute of the account resource.
 * You must create one distinct "octopusdeploy_aws_openid_connect_account" resource for each AWS OIDC account specified in the prompt.
 * You must create one distinct "octopusdeploy_accounts" data source for each "octopusdeploy_aws_openid_connect_account" resource.
+
+**CRITICAL — Explicitly requested accounts MUST be created even when no steps reference them**: When the prompt explicitly says "Create an [account type] account called [name]" or "Add an [account type] account called [name]", the account resource and associated data source MUST be created regardless of whether any deployment steps reference it. The account is a requested Octopus resource in its own right.
+
+**CRITICAL — When the prompt says "Create an AWS account" without specifying OIDC or access key, default to creating an `octopusdeploy_aws_openid_connect_account` resource**: Use a placeholder role ARN and set `account_test_subject_keys`, `execution_subject_keys`, and `health_subject_keys` to `["space"]`.
+
+**Example — "Create an AWS account called 'AWS Production'" with no step reference**:
+```hcl
+data "octopusdeploy_accounts" "account_aws_production" {
+  ids          = null
+  partial_name = "AWS Production"
+  skip         = 0
+  take         = 1
+  account_type = "AmazonWebServicesOidcAccount"
+}
+resource "octopusdeploy_aws_openid_connect_account" "account_aws_production" {
+  count                             = "${length(data.octopusdeploy_accounts.account_aws_production.accounts) != 0 ? 0 : 1}"
+  name                              = "AWS Production"
+  description                       = "AWS Production account"
+  role_arn                          = "arn:aws:iam::123456789012:role/OctopusDeployRole"
+  account_test_subject_keys         = ["space"]
+  environments                      = []
+  execution_subject_keys            = ["space"]
+  health_subject_keys               = ["space"]
+  session_duration                  = 3600
+  tenant_tags                       = []
+  tenants                           = []
+  tenanted_deployment_participation = "Untenanted"
+  depends_on                        = []
+  lifecycle {
+    ignore_changes  = []
+    prevent_destroy = true
+  }
+}
+```
+
+You will be penalized for omitting an account resource that was explicitly requested in the prompt.
 * You will be penalized for using a `locals` block to define account names.
 * Every "octopusdeploy_aws_openid_connect_account" resource must have an associated "octopusdeploy_accounts" data source with the "account_type" set to "AmazonWebServicesOidcAccount", for example, if the prompt specified that there are two AWS OIDC accounts called "My OIDC Account" and "My other OIDC Account", the following Terraform configuration would be required:
 
@@ -4615,6 +4758,13 @@ execution_properties = {
 
 You will be penalized for creating template-default accounts (`account_octopussamples_azure_account`, `account_aws_oidc`) when the prompt explicitly names replacement accounts for the same cloud provider.
 You will be penalized for referencing template-default accounts in step execution properties when the prompt has specified a different account for that cloud provider.
+
+**⚠️ MANDATORY SELF-CHECK — template default account scan**: Before finalizing any Terraform output for Azure or AWS projects, explicitly check:
+1. Does the prompt mention an Azure account by name? If YES → does the output contain `account_octopussamples_azure_account`? If YES → DELETE IT. This resource must NOT appear in the output.
+2. Does the prompt mention an AWS account by name? If YES → does the output contain `account_aws_oidc`? If YES → DELETE IT. This resource must NOT appear in the output.
+3. Are ALL `Octopus.Action.Azure.AccountId` or `Octopus.Action.AwsAccount` step properties referencing the prompt-specified account (NOT the deleted template default)? If NO → fix them to reference the prompt-specified account.
+
+You will be penalized for each occurrence of `account_octopussamples_azure_account` or `account_aws_oidc` in the output when the prompt has named a different account.
 
 ## Worker Instructions
 
