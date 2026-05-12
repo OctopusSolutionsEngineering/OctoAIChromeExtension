@@ -31,7 +31,7 @@ This line MUST appear verbatim in your output. It is NOT instruction text — it
 
 **CRITICAL — for large pipelines with many stages (10+), it is especially easy to accidentally stop before converting all stages.** Large pipelines with parallel branches (multiple stages sharing `requisiteStageRefIds: ["X"]`) may have 8 or more post-convergence stages — ALL of them must appear in the output. Stages that appear late in the JSON array (e.g., refIds 20-30 that appear at positions 15-30 in the array) are just as required as the first few stages. Do NOT stop generating steps after the first convergence point; continue until the last stage in the topological order is output.
 
-**ABSOLUTE RULE — every `"type": "wait"` stage in the pipeline JSON MUST appear in your output as a "Run a Script" step.** You MUST NOT omit wait stages — even if they appear between two large parallel fan-out groups (e.g., a wait that bridges ROOT stages and post-wait stages). Before finalizing your output, count every `"type": "wait"` entry in the stages array and verify that your output has the same number of "Run a Script" `Start-Sleep` steps. If ANY wait stage is missing, add it before the post-wait stages that depend on it.
+**ABSOLUTE RULE — every `"type": "wait"` stage in the pipeline JSON MUST appear in your output as a "Run a Script" step.** You MUST NOT omit wait stages — even if they appear between two large parallel fan-out groups (e.g., a wait that bridges ROOT stages and post-wait stages). Before finalizing your output, count every `"type": "wait"` entry in the stages array and verify that your output has the same number of "Run a Script" `sleep` steps. If ANY wait stage is missing, add it before the post-wait stages that depend on it.
 
 **ABSOLUTE RULE — stages that appear EARLY in the JSON array but depend on stages that appear LATER in the JSON array must still be included in the output.** Spinnaker stages are not always listed in topological order. For example, if stage at JSON position 1 has `"requisiteStageRefIds": ["6"]` but stage refId "6" is at JSON position 3, the stage at position 1 MUST still appear in the output (placed AFTER refId 6 in topological order). Never skip a stage just because it would require the topological sort to "reach back" to an earlier JSON position. ALL stages must appear in the output regardless of their position in the JSON array.
 
@@ -946,7 +946,7 @@ If the pipeline has `"type": "templatedPipeline"`, the following rules apply:
 * If a `templatedPipeline` has a template reference (`template.reference` or `_templateRef`) but the concrete JSON has no non-notification stages, do NOT assume the visible JSON fully describes the deployment behavior. After the notification steps and project variables, add a placeholder step to preserve the missing template-supplied behavior:
 
 ```
-* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: expand the Spinnaker pipeline template "<template reference>" using the templatedPipeline variables before considering this conversion complete.` The step must be disabled.
+* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" to the deployment process. Set the script to the following inline bash code: `# TODO: expand the Spinnaker pipeline template "<template reference>" using the templatedPipeline variables before considering this conversion complete.` The step must be disabled.
 ```
 
 * Replace `<template reference>` with the verbatim value of the non-empty template reference field (`template.reference` if present, otherwise `_templateRef`).
@@ -1118,7 +1118,7 @@ Create a project called "Deploy cronjob basic to dev" in the "Default Project Gr
 * Add a project variable called "clusterAccount" with the value "gke-prod".
 * Add a project variable called "dockerImageName" with the value "api-server".
 * Add a sensitive project variable called "Project.Slack.WebhookUrl" with the description "Slack webhook URL used by migrated Spinnaker notification steps.".
-* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: expand the Spinnaker pipeline template "spinnaker://basic-gcs" using the templatedPipeline variables before considering this conversion complete.` The step must be disabled.
+* Add a "Run a Script" step with the name "Review template-derived pipeline behavior" to the deployment process. Set the script to the following inline bash code: `# TODO: expand the Spinnaker pipeline template "spinnaker://basic-gcs" using the templatedPipeline variables before considering this conversion complete.` The step must be disabled.
 * The project must be disabled.
 ```
 
@@ -2749,9 +2749,9 @@ If any step name is missing or duplicate, derive it from the corresponding stage
 
 * The equivalent step in an Octopus Deploy project is created with the following prompt.
 * Replace `<seconds>` with the `waitTime` property in the Spinnaker stage.
-* **If the `waitTime` property is absent, `null`, or zero, use `30` as the default value.** Spinnaker's default wait time is 30 seconds. Never emit `Start-Sleep -Seconds 0` or `Start-Sleep -Seconds null`.
+* **If the `waitTime` property is absent, `null`, or zero, use `30` as the default value.** Spinnaker's default wait time is 30 seconds. Never emit `sleep 0` or `sleep null`.
 * If the original wait stage had a description reason to note (rare), set the step description accordingly.
-* **`templatedPipeline` wait stage with matching template variable**: When the pipeline has `"type": "templatedPipeline"` and the `variables` object contains a variable whose numeric value (converted to seconds) equals the stage's `waitTime`, reference that Octopus variable instead of hardcoding the numeric value. For example, if `variables.waitMinutes = 15` and `waitTime = 900` (15 × 60), generate `Start-Sleep -Seconds (#{waitMinutes} * 60)` instead of `Start-Sleep -Seconds 900`. If the variable is already in seconds, generate `Start-Sleep -Seconds #{waitSeconds}`. Only apply this substitution when the converted value matches exactly — do not guess if there is no matching variable.
+* **`templatedPipeline` wait stage with matching template variable**: When the pipeline has `"type": "templatedPipeline"` and the `variables` object contains a variable whose numeric value (converted to seconds) equals the stage's `waitTime`, reference that Octopus variable instead of hardcoding the numeric value. For example, if `variables.waitMinutes = 15` and `waitTime = 900` (15 × 60), generate `sleep (#{waitMinutes} * 60)` instead of `sleep 900`. If the variable is already in seconds, generate `sleep #{waitSeconds}`. Only apply this substitution when the converted value matches exactly — do not guess if there is no matching variable.
 
 **Positive example — `templatedPipeline` wait stage referencing a template variable**:
 
@@ -2776,29 +2776,29 @@ The `waitTime` of 900 seconds equals `variables.waitMinutes` (15) × 60.
 
 The **CORRECT** output references the template variable:
 ```
-* Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds (#{waitMinutes} * 60)`
+* Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline bash code: `sleep (#{waitMinutes} * 60)`
 ```
 
 The **WRONG** output hardcodes the seconds (ignores the matching template variable):
 ```
-* Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 900`
+* Add a "Run a Script" step with the name "Wait -15min-" to the deployment process. Set the script to the following inline bash code: `sleep 900`
 ```
 
 ```
-* Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds <seconds>`
+* Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline bash code: `sleep <seconds>`
 ```
 
-**ABSOLUTE RULE — a `wait` stage MUST produce a "Run a Script" step, NEVER a "Deploy Kubernetes YAML" step.** The step type is `"Run a Script"` — NOT `"Deploy Kubernetes YAML"`, `"Deploy Kubernetes YAML step"`, or any Kubernetes-related step type. A wait stage uses `Start-Sleep` PowerShell code, which is a server-side script, not a Kubernetes deployment action.
+**ABSOLUTE RULE — a `wait` stage MUST produce a "Run a Script" step, NEVER a "Deploy Kubernetes YAML" step.** The step type is `"Run a Script"` — NOT `"Deploy Kubernetes YAML"`, `"Deploy Kubernetes YAML step"`, or any Kubernetes-related step type. A wait stage uses `sleep` bash code, which is a server-side script, not a Kubernetes deployment action.
 
 **Negative example — wait stage incorrectly output as "Deploy Kubernetes YAML" (FORBIDDEN)**:
 ```
-* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Wait (20 min)". Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 1200`.
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Wait (20 min)". Set the script to the following inline bash code: `sleep 1200`.
 ```
 ← WRONG: The step type is "Deploy Kubernetes YAML" but should be "Run a Script". A wait stage NEVER produces a Kubernetes deploy step.
 
 **Correct output** (wait stage always produces "Run a Script", with a valid normalized step name):
 ```
-* Add a "Run a Script" step with the name "Wait (20 min)" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 1200`.
+* Add a "Run a Script" step with the name "Wait (20 min)" to the deployment process. Set the script to the following inline bash code: `sleep 1200`.
 ```
 
 **ABSOLUTE RULE — wait stages in a fan-in/fan-out pattern must NOT be omitted.** When multiple ROOT stages (e.g., 8 parallel deploy stages) all converge into a single wait stage, and then the wait stage fans out to more stages (e.g., 12 post-wait deploy stages), ALL THREE groups must appear in the output:
@@ -2824,7 +2824,7 @@ The **CORRECT** output includes the wait step between the ROOT and post-wait gro
 ```
 * Add a "Deploy Kubernetes YAML" step ... "Deploy prod HTTP server canary" ... (ROOT)
 [... other ROOT stages with "Run in parallel with the previous step" ...]
-* Add a "Run a Script" step with the name "Wait (20 min)" ... `Start-Sleep -Seconds 1200`. Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Run a Script" step with the name "Wait (20 min)" ... `sleep 1200`. Set the start trigger to "Wait for all previous steps to complete, then start".
 * Add a "Deploy Kubernetes YAML" step ... "Deploy prod HTTP server primary" ... Set the start trigger to "Run in parallel with the previous step". (post-wait)
 [... other post-wait stages with "Run in parallel with the previous step" ...]
 ```
@@ -3875,11 +3875,11 @@ The following snippet is an example of a `patchManifest` stage in Spinnaker:
 }
 ```
 
-The equivalent Octopus prompt for a `patchManifest` stage is a disabled "Run a kubectl Script" step whose PowerShell body encodes the full patch context as comments so engineers can act on it:
+The equivalent Octopus prompt for a `patchManifest` stage is a disabled "Run a kubectl Script" step whose body encodes the full patch context as comments so engineers can act on it:
 
 ```
-* Add a "Run a kubectl Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code:
-```powershell
+* Add a "Run a kubectl Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline bash code:
+```bash
 # TODO: convert Spinnaker patchManifest stage — no direct Octopus Deploy equivalent.
 # Target resource: <manifestName>
 # Namespace: <location>
@@ -3899,7 +3899,7 @@ Set the step description to "Original Spinnaker stage name: <stage name>. This s
 If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `patchManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `webhook`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
 
 ```
-* Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline PowerShell code: `# TODO: convert Spinnaker stage of type "<type>" — this stage type has no direct Octopus Deploy equivalent and requires manual conversion.`
+* Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline bash code: `# TODO: convert Spinnaker stage of type "<type>" — this stage type has no direct Octopus Deploy equivalent and requires manual conversion.`
 ```
 
 Replace `<stage name>` and `<type>` with the actual values from the stage.
@@ -5302,7 +5302,7 @@ Given a pipeline with `when: ["pipeline.starting", "pipeline.failed", "pipeline.
 
 The **WRONG** output (Wait placed before Start — FORBIDDEN):
 ```
-* Add a "Run a Script" step with the name "Wait" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 30`   ← WRONG: wait before Start
+* Add a "Run a Script" step with the name "Wait" to the deployment process. Set the script to the following inline bash code: `sleep 30`   ← WRONG: wait before Start
 * Add a community step template step with the name "Slack Notification - Start" ... to the start of the deployment process.
 * Add a community step template step with the name "Slack Notification - Finish" ...
 * Add a community step template step with the name "Slack Notification - Complete" ...
@@ -5311,7 +5311,7 @@ The **WRONG** output (Wait placed before Start — FORBIDDEN):
 The **CORRECT** output (Start first, THEN Wait, THEN Finish/Complete):
 ```
 * Add a community step template step with the name "Slack Notification - Start" ... to the start of the deployment process.  ← CORRECT: Start first
-* Add a "Run a Script" step with the name "Wait" to the deployment process. Set the script to the following inline PowerShell code: `Start-Sleep -Seconds 30`
+* Add a "Run a Script" step with the name "Wait" to the deployment process. Set the script to the following inline bash code: `sleep 30`
 * Add a community step template step with the name "Slack Notification - Finish" ... to the end of the deployment process. Only run the step when the previous step has failed.
 * Add a community step template step with the name "Slack Notification - Complete" ... to the end of the deployment process. Always run the step.
 ```
