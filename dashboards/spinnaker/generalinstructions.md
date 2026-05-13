@@ -866,6 +866,57 @@ Note: `tolerations`, `nodeSelector`, `imagePullSecrets`, and `volumes` are direc
 * `spec.jobTemplate.spec.template.spec.containers[0].env[-]` (dash) → depth 6, 12 spaces
 * `spec.jobTemplate.spec.template.spec.containers[0].env[0].name` → depth 7, 14 spaces
 
+**Job YAML re-indentation**: Kubernetes `batch/v1 Job` manifests are commonly used for canary traffic-shifting, restore, derive-baseline, and derive-canary operations. A Job has the same `spec.template.spec` nesting as a Deployment (but without `spec.selector` or `spec.replicas`). The key depths are:
+* `apiVersion`, `kind`, `metadata`, `spec` → depth 0, column 0
+* `metadata.name`, `metadata.namespace`, `metadata.labels`, `metadata.generateName` → depth 1, 2 spaces
+* `spec.backoffLimit`, `spec.completions`, `spec.parallelism`, `spec.template` → depth 1, 2 spaces
+* `spec.template.metadata`, `spec.template.spec` → depth 2, 4 spaces
+* `spec.template.spec.containers` (list key), `spec.template.spec.restartPolicy`, `spec.template.spec.serviceAccountName`, `spec.template.spec.imagePullSecrets` → depth 3, 6 spaces
+* `spec.template.spec.containers[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.containers[0].name`, `.image`, `.command`, `.env`, `.envFrom` → depth 4, 8 spaces
+* `spec.template.spec.containers[0].command[-]` (dash and value) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].env[-]` (dash) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].env[0].name`, `.value`, `.valueFrom` → depth 5, 10 spaces
+* `spec.template.spec.containers[0].env[0].valueFrom.fieldRef` → depth 6, 12 spaces
+* `spec.template.spec.containers[0].env[0].valueFrom.fieldRef.fieldPath` → depth 7, 14 spaces
+* `spec.template.spec.imagePullSecrets[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.imagePullSecrets[0].name` → depth 4, 8 spaces
+
+**MANDATORY JOB COLUMN CHECK**: Before finalizing any `Octopus.Action.KubernetesContainers.CustomResourceYaml` value for a `kind: Job` resource, verify that `spec.template.spec.containers:` is indented at exactly 6 spaces. A `containers:` line at column 0 means the entire spec is flat — WRONG. A `containers:` line at 2 or 4 spaces is also wrong. It must be exactly 6 spaces for a Job manifest.
+
+**Example — correct Terraform YAML for a Kubernetes Job with containers and env vars**:
+```hcl
+"Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+  apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: shift-traffic
+    namespace: app-prod
+  spec:
+    backoffLimit: 0
+    template:
+      spec:
+        containers:
+          - command:
+              - shift-traffic
+              - -n
+              - $(NAMESPACE)
+            env:
+              - name: NAMESPACE
+                value: app-prod
+              - name: CJ_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+            image: registry.example.invalid/image-0434
+            name: shift-traffic
+        imagePullSecrets:
+          - name: my-pull-secret
+        restartPolicy: Never
+        serviceAccountName: spinnaker-custom-job
+  EOT
+```
+
 **Example — reconstructing a flat CronJob from the prompt into correct Terraform YAML**:
 
 If the prompt says (flat YAML from conversion step):
@@ -3070,6 +3121,30 @@ resource "octopusdeploy_channel" "channel_dev_deployment_application" {
 | *(no condition phrase)* | `"Success"` ← default |
 | `Set condition to "Variable"` with expression | `"Variable"` |
 
+**MANDATORY SELF-CHECK — condition attribute verification**: After generating ALL `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources, scan every step prompt instruction and verify each step's `condition` attribute matches its prompt phrase. Specifically:
+1. For every step prompt that contains `Always run the step.`, verify its resource has `condition = "Always"`. If it has `condition = "Success"` instead, correct it immediately.
+2. For every step prompt that contains `Only run the step when the previous step has failed.`, verify its resource has `condition = "Failure"`.
+3. If neither phrase is present, the default `condition = "Success"` is correct.
+
+**Negative example — step with "Always run the step." using wrong condition (COMMON MISTAKE)**:
+
+```hcl
+# Prompt says: "Always run the step."
+resource "octopusdeploy_process_templated_step" "process_step_my_project_notification" {
+  condition = "Success"  ← WRONG: prompt said "Always run the step." but condition is "Success"
+  ...
+}
+```
+
+The **CORRECT** output:
+```hcl
+# Prompt says: "Always run the step."
+resource "octopusdeploy_process_templated_step" "process_step_my_project_notification" {
+  condition = "Always"  ← CORRECT: "Always run the step." maps to condition = "Always"
+  ...
+}
+```
+
 **MANDATORY SELF-CHECK — after generating all step resources, verify completeness of `octopusdeploy_process_steps_order`**: Before finalizing any Terraform output, scan every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource you created. For EACH such resource, confirm its ID appears in the `steps` array of the corresponding `octopusdeploy_process_steps_order` resource. If any step resource is missing from the steps order array, add it immediately. This applies to ALL steps including disabled steps, parallel steps, notification steps, and **"Review template-derived pipeline behavior" script steps**. A step resource that exists in Terraform but does not appear in `octopusdeploy_process_steps_order` will not execute at deployment time.
 
 **MANDATORY FINAL COUNT CHECK — the length of the `steps` list in `octopusdeploy_process_steps_order` MUST equal the total count of `octopusdeploy_process_step` + `octopusdeploy_process_templated_step` resources for that project.** Before outputting any Terraform:
@@ -4128,7 +4203,44 @@ container = {
 
 If any answer is NO, fix the resource before outputting. You will be penalized for omitting any of these attributes.
 
-**MANDATORY SELF-CHECK — `Octopus.KubernetesDeployRawYaml` container block completeness**: Before finalizing any Terraform that contains one or more `Octopus.KubernetesDeployRawYaml` steps, check EVERY such step's `container` block. For each step, answer the following:
+**MANDATORY SELF-CHECK — `Octopus.KubernetesDeployRawYaml` step type enforcement**: When the prompt includes an instruction to "Add a 'Deploy Kubernetes YAML' step", the `type` attribute on that `octopusdeploy_process_step` resource MUST be `"Octopus.KubernetesDeployRawYaml"`. Before finalizing any Terraform that contains a "Deploy Kubernetes YAML" step instruction in the prompt, scan every corresponding `octopusdeploy_process_step` resource and verify:
+1. Is `type = "Octopus.KubernetesDeployRawYaml"`? — If NO (e.g., `"Octopus.Script"`, `"Octopus.KubernetesRunScript"`, or any other type), the step type is WRONG.
+2. Is the step using the `execution_properties` block with `"Octopus.Action.Script.ScriptSource"` and `"Octopus.Action.KubernetesContainers.CustomResourceYaml"` (for inline) or `git_dependencies` (for GitRepository)? — If NO, the step is not properly configured.
+
+**Negative example — "Deploy Kubernetes YAML" step with wrong step type (CRITICAL MISTAKE)**:
+```hcl
+# Prompt says: "Add a 'Deploy Kubernetes YAML' step named 'Restore Prod'."
+resource "octopusdeploy_process_step" "process_step_restore_prod" {
+  type = "Octopus.Script"  ← WRONG: "Deploy Kubernetes YAML" instructions require type = "Octopus.KubernetesDeployRawYaml", NEVER "Octopus.Script"
+  execution_properties = {
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.ScriptBody"   = "# YAML content here"  ← WRONG: YAML content must go in CustomResourceYaml, not ScriptBody
+  }
+}
+```
+← WRONG: Using `Octopus.Script` with `ScriptBody` for YAML content is FORBIDDEN. This converts a Kubernetes YAML deployment step into a bash script step, completely changing the runtime behavior.
+
+**Correct output — "Deploy Kubernetes YAML" step with correct type**:
+```hcl
+# Prompt says: "Add a 'Deploy Kubernetes YAML' step named 'Restore Prod'."
+resource "octopusdeploy_process_step" "process_step_restore_prod" {
+  type = "Octopus.KubernetesDeployRawYaml"  ← CORRECT
+  container = {
+    feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+    image   = "ghcr.io/octopusdeploylabs/k8s-workertools"
+  }
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+      apiVersion: batch/v1
+      kind: Job
+      ...
+    EOT
+    "Octopus.Action.Script.ScriptSource" = "Inline"  ← CORRECT for inline YAML
+  }
+}
+```
+
+
 1. Is `feed_id` non-empty (not `""`)? — If NO, set it to the ternary feed expression above.
 2. Is `image` set to `"ghcr.io/octopusdeploylabs/k8s-workertools"` (not `""`)? — If NO, set it to the correct image.
 If any `container` block has `feed_id = ""` or `image = ""`, STOP and fix the container block before outputting. An empty container block is ALWAYS wrong for `Octopus.KubernetesDeployRawYaml` steps.
