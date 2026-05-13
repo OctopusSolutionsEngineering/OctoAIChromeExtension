@@ -15,8 +15,9 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
   # Synced folders
-  config.vm.synced_folder "/Users/matthewcasperson/.copilot", "/home/vagrant/.copilot"
-  config.vm.synced_folder "/Users/matthewcasperson/.qwen", "/home/vagrant/.qwen"
+
+  #config.vm.synced_folder "/Users/matthewcasperson/.copilot", "/home/vagrant/.copilot" # This maps in the mcp config from the host. Use the --additional-mcp-config arg for the copilot cli to pass this in manually.
+  #config.vm.synced_folder "/Users/matthewcasperson/.qwen", "/home/vagrant/.qwen" # This maps in the qwen config directory.
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/dashboards/spinnaker", "/home/vagrant/Code/OctoAIChromeExtension/dashboards/spinnaker"
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctoAIChromeExtension/.github/prompts/", "/home/vagrant/Code/OctoAIChromeExtension/.github/prompts/", mount_options: ["ro"]
   config.vm.synced_folder "/Users/matthewcasperson/Code/OctopusCopilot/context", "/home/vagrant/Code/OctopusCopilot/context", mount_options: ["ro"]
