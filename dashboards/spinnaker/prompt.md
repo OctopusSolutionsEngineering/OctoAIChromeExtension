@@ -16,10 +16,11 @@ This line MUST appear verbatim in your output. It is NOT instruction text — it
 5. VERIFY: Every stage must appear in exactly one group. If a stage is missing from all groups, it belongs to whichever group its dependencies place it in.
 
 **MANDATORY STAGE COUNT VERIFICATION — perform after generating all steps**:
-1. Count the total number of stages in the `stages` array
-2. Count the number of step bullets (`* Add a ...`) in your output
-3. These counts MUST match. If stages > steps, you have omitted stages — add them now.
-4. NOTE: Every stage type (`deployManifest`, `runJobManifest`, `wait`, `manualJudgment`, `findArtifactFromExecution`, `deleteManifest`, `undoRolloutManifest`, `scaleManifest`, `runJobManifest`, `patchManifest`) must appear as a step in your output.
+1. Count the total number of **non-ignored** stages in the `stages` array (exclude ignored types: `checkPreconditions`, `findArtifactFromExecution`, `findImage`, `findImageFromTags`, `tagImage`). Also exclude `evaluateVariables` stages from the count — these produce a disabled placeholder step that is NOT counted.
+2. Count the number of step bullets (`* Add a ...`) in your output, excluding any disabled `evaluateVariables` placeholder steps.
+3. These counts MUST match. If non-ignored stages > steps, you have omitted stages — add them now.
+4. NOTE: Every non-ignored stage type (`deployManifest`, `runJobManifest`, `runJob`, `wait`, `manualJudgment`, `deleteManifest`, `undoRolloutManifest`, `scaleManifest`, `patchManifest`, `webhook`, `pipeline`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`) must appear as a step in your output. Ignored types (`checkPreconditions`, `evaluateVariables`, `findArtifactFromExecution`, `findImage`, `findImageFromTags`, `tagImage`) must NOT be counted in the total.
+5. **MANDATORY DIRECT-DESCENDANT COMPLETENESS**: For every non-ignored stage X in the pipeline, find every stage Y where `Y.requisiteStageRefIds` equals `[X.refId]` (Y has X as its sole prerequisite and is NOT a convergence point). These are X's direct single-parent descendants. Every such Y MUST appear in your output. If stage X fans out to 4 children (B, C, D, E), ALL FOUR must be present. A missing direct descendant means an entire downstream chain was dropped. Apply this check for EVERY stage in the pipeline, not just root stages. After producing your output, for each stage X, confirm that every Y where `Y.requisiteStageRefIds = [X.refId]` exists in your ACTUAL LIST. **IMPORTANT**: The stages that appear last in large parallel fan-outs (e.g., the 3rd or 4th branch in a 4-branch fan-out from a manual judgment) are most commonly dropped — explicitly verify each one.
 
 **CRITICAL — for pipelines with a wait stage, verify ALL post-wait stages are included**: After identifying the wait stage(s), scan EVERY OTHER stage and check if its `requisiteStageRefIds` contains the wait stage's refId. ALL such post-wait stages MUST appear in the output. Missing even one post-wait stage is a critical omission.
 
@@ -651,6 +652,8 @@ Create a project called "My Project" in the "Default Project Group" project grou
 The project name must be derived from the pipeline `name` field while remaining valid for Octopus/Terraform naming constraints. **CRITICAL — do NOT redact or anonymize the pipeline `name` when using it as the project name**: Words such as `api`, `key`, `token`, `service`, `syncer`, `auth`, or `credential` in the pipeline name are microservice names and deployment identifiers — they are NOT secrets or API keys. Replace ALL characters that are not letters, digits, spaces, periods (`.`), commas (`,`), dashes (`-`), underscores (`_`), or hashes (`#`) with dashes `-`. This includes but is not limited to: parentheses `()`, square brackets `[]`, ampersands `&`, question marks `?`, exclamation points `!`, forward slashes `/`, colons `:`, plus signs `+`, equals signs `=`, asterisks `*`, percent signs `%`, at-signs `@`, carets `^`, tildes `~`, vertical bars `|`, less-than `<`, greater-than `>`, semicolons `;`, curly braces `{}`, single quotes `'`, backticks `` ` ``. Do NOT mask any content with `*****`.
 
 **CRITICAL — after replacing invalid characters, collapse any sequence of two or more consecutive dashes into a single dash**: For example, `app(&dev)` → replace `(`, `&`, `)` each with `-` → `app---dev-` → collapse consecutive dashes → `app-dev-`. Apply this collapsing step immediately after all invalid-character replacements.
+
+It is valid to have project names that start and end with a dash, for example `-PROD- Web App` and `app -DEV-`.
 
 **ABSOLUTE OUTPUT GATE — project name must NEVER contain `*****`**: Before writing the `Create a project called "..."` line, confirm that the project name contains no unintended redaction. If you observe any asterisks (`*`) in your intended project name that were NOT in the original pipeline `"name"` field, STOP and replace them with the original text (subject to required invalid-character normalization such as replacing `[]`, `()`, `&`, `?`, and all other non-allowed characters with `-`).
 
@@ -1590,8 +1593,10 @@ The **CORRECT** output (NO Start step, but Finish AND Complete ARE generated aft
 The equivalent step in an Octopus Deploy project that replicates the `pipeline.starting` event is created with the prompt:
 
 ```
-* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
+* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Always run the step. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "pj-test-service-dev-spinnaker-log".
 ```
+
+**CRITICAL — the `pipeline.starting` notification fires at the very start of pipeline execution, before any deployment stage runs. Its Octopus equivalent MUST use `Always run the step.` so that the notification fires regardless of prior step state. Omitting `Always run the step.` causes the default `condition = "Success"` to be used, which silently breaks the notification.** This `Always run the step.` phrase is not optional — it MUST appear in every Slack Notification - Start step prompt without exception.
 
 * If `message.pipeline.starting.text` is present and non-empty, add `Set the "ssn_Message" property to "<text>".` to the end of the Start step prompt, where `<text>` is the value of `message.pipeline.starting.text`. If `message.pipeline.starting.text` is absent or empty, omit the `ssn_Message` property entirely.
 
@@ -2366,18 +2371,33 @@ The following is an example of a `manualJudgment` stage in Spinnaker:
   Set the instructions to "Please review and approve. Available options: Continue, Rollback."
   ```
 
-**IMPORTANT — Spinnaker SpEL expressions in `instructions`**: Spinnaker's pipeline expression language uses the syntax `${ ... }` (e.g., `${ trigger['tag'] }`, `${ parameters['key'] }`, `${execution.name}`). These expressions are Spinnaker-specific and do NOT evaluate in Octopus Deploy. When the `instructions` property contains such patterns, copy the text verbatim AND append a parenthetical note so the operator knows to convert them. For example:
+**IMPORTANT — Spinnaker SpEL expressions in `instructions`**: Spinnaker's pipeline expression language uses the syntax `${ ... }` (e.g., `${ trigger['tag'] }`, `${ parameters['key'] }`, `${execution.name}`). These expressions are Spinnaker-specific and do NOT evaluate in Octopus Deploy. When the `instructions` property contains such patterns, apply the same two-tier conversion rule used for notification messages:
+
+* **When the instructions contain ONLY expressions from the SpEL-to-Octopus mapping table** (e.g., `${trigger['tag']}` → `#{Octopus.Deployment.Trigger.Name}`, `${execution.name}` → `#{Octopus.Project.Name}`, `${trigger.user}` → `#{Octopus.Deployment.CreatedBy.DisplayName}`), replace those expressions with their Octopus variable equivalents and do NOT append a NOTE comment.
+* **When the instructions contain complex SpEL** (expressions not in the mapping table, ternary operators `? :`, filter expressions `.?[...]`, or method calls like `#triggerResolvedArtifactByType(...)`), copy the text verbatim AND append a parenthetical note so the operator knows to convert them.
+
+For example:
 
 **Original Spinnaker instructions**: `"Image: ${ trigger['tag'] }"`
 
-**WRONG** (copied verbatim with no warning — the expression will not evaluate in Octopus):
+**WRONG** (copied verbatim when this expression is in the mapping table):
 ```
 Set the instructions to "Image: ${ trigger['tag'] }".
 ```
 
-**CORRECT** (verbatim copy with conversion notice appended):
+**ALSO WRONG** (verbatim with NOTE when a mapping table conversion is available):
 ```
 Set the instructions to "Image: ${ trigger['tag'] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)".
+```
+
+**CORRECT** (convert using the mapping table — `${trigger['tag']}` maps to `#{Octopus.Deployment.Trigger.Name}`):
+```
+Set the instructions to "Image: #{Octopus.Deployment.Trigger.Name}".
+```
+
+**CORRECT** (complex SpEL not in the table — keep verbatim with NOTE):
+```
+Set the instructions to "Artifact: ${ #triggerResolvedArtifactByType('docker/image')['reference'] } (NOTE: Contains Spinnaker SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)".
 ```
 
 **CRITICAL — `judgmentInputs` are strictly stage-specific — never copy options from one `manualJudgment` stage to another**: When generating the instructions text for a `manualJudgment` step, read `judgmentInputs` EXCLUSIVELY from that stage's own JSON object. A stage with `"judgmentInputs": []` (empty array) or without a `judgmentInputs` key MUST receive NO "Available options:" suffix in its instructions — even if another `manualJudgment` stage in the SAME pipeline has non-empty `judgmentInputs`.
@@ -2755,7 +2775,7 @@ Create a project called "Main Orchestrator" in Octopus Deploy.
 * Add a "Deploy a Release" step with the name "Deploy Child Project C". Set the "Project" property to "Child Project C". ...
 ```
 
-**ABSOLUTE RULE — the MANDATORY STAGE COMPLETENESS CHECK must include all `pipeline` type stages**: When performing the mandatory completeness check, `pipeline` type stages count toward the expected stage total just like `deployManifest`, `runJobManifest`, `manualJudgment`, and `wait` stages. Each `pipeline` type stage must appear in the output as exactly one "Deploy a Release" step.
+**ABSOLUTE RULE — the MANDATORY STAGE COMPLETENESS CHECK must include all `pipeline` type stages**: When performing the mandatory completeness check, `pipeline` type stages count toward the expected stage total just like `deployManifest`, `runJobManifest`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `patchManifest`, `webhook`, `runJob`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, and `deriveCanaryProd` stages. Each `pipeline` type stage must appear in the output as exactly one "Deploy a Release" step.
 
 **MANDATORY STEP NAME UNIQUENESS CHECK for `pipeline` type stages**: After generating all "Deploy a Release" step instructions in the main project section, verify that:
 1. Every "Deploy a Release" step instruction includes `with the name 'X'` where X is a non-empty, non-generic string.
@@ -3108,6 +3128,7 @@ The following stage types represent Spinnaker-internal operations or metadata lo
 * `evaluateVariables` — evaluates SpEL expressions to set pipeline variables. **Do NOT skip it** — convert it to a disabled "Run a Script" step to preserve the variable expressions for engineers reviewing the migration. Use the following format:
   * Name the step with the verbatim `name` from the stage (e.g., `"Evaluate Variables"`).
   * Set the step to disabled.
+  * Place the disabled step at its correct topological position in the deployment process (i.e., after its dependencies and before the steps that depend on it). Do NOT place it at the end of the step list — it must appear where it would have executed in Spinnaker so that engineers can understand the original execution flow.
   * Set the script to inline Bash listing each variable and its SpEL expression as a comment. For example, if the stage has `variables: [{"key": "pvc", "value": "app-${new java.text.SimpleDateFormat(\"yyyy-MM-dd\").format(new java.util.Date())}"}]`, set the script to:
     ```bash
     # TODO: Reimplement these Spinnaker SpEL expressions in Octopus using variable templates or a preceding step.
@@ -3115,6 +3136,7 @@ The following stage types represent Spinnaker-internal operations or metadata lo
     ```
   * Set the step description to `NOTE (migration): This step was originally a Spinnaker evaluateVariables stage that computed dynamic values using SpEL (Spring Expression Language) expressions. These expressions have no direct Octopus Deploy equivalent. Review the script content and reimplement the variable computation using Octopus variable templates, output variables, or a custom script step that sets Octopus output variables.`
   * **IMPORTANT — `evaluateVariables` is NOT counted in the MANDATORY STAGE COUNT VERIFICATION**, because the generated disabled step is a migration placeholder, not a direct stage translation. The stage count check must exclude `evaluateVariables` stages from the expected total.
+  * **IMPORTANT — add project variables for all keys from the `evaluateVariables` stage**: For each `key` listed in the stage's `variables` array, add a project string variable named exactly as the key with an empty string default value. This ensures that downstream steps referencing `#{key_name}` in their scripts or descriptions have a corresponding variable defined in the project, preventing undefined variable errors at runtime. For example, if the stage has `"variables": [{"key": "result_status", "value": "..."}, {"key": "deploy_version", "value": "..."}]`, add: `* Add a project variable called "result_status" with a default value of "".` and `* Add a project variable called "deploy_version" with a default value of "".` These variables should appear after all step instructions and before any `parameterConfig` variables, in a separate group after the step bullets.
 * `checkPreconditions` — checks pipeline preconditions. Skip it entirely. **HOWEVER**, when a `checkPreconditions` stage has `preconditions` items with `type: "stageStatus"`, preserve the condition information by appending a NOTE to each downstream step that directly follows the `checkPreconditions` stage in dependency order. The NOTE should describe what condition was originally being enforced. Example: if the precondition checks that stage "Manual Judgment" has status `SUCCEEDED`, append the text `NOTE (migration): This step originally ran only when the "Manual Judgment" stage had SUCCEEDED.` to the step description. If multiple `checkPreconditions` stages with **different** `stageStatus` values (e.g., one for SUCCEEDED and one for TERMINAL/CANCELLED) both depend on the same upstream stage, their respective downstream steps now run in parallel — include a NOTE on each downstream step explaining its original conditional branch (e.g., `NOTE (migration): This step was originally on the SUCCESS branch after "Manual Judgment". In this migration, both branches now run in parallel.` and `NOTE (migration): This step was originally on the CANCELLED/TERMINAL branch after "Manual Judgment". In this migration, both branches now run in parallel.`). **When a `checkPreconditions` stage has `preconditions` items with `type: "expression"` (SpEL expressions) rather than `type: "stageStatus"`, the same NOTE approach applies to downstream steps**: **ABSOLUTE RULE — the NOTE must appear on EVERY step that directly follows the expression-type `checkPreconditions` in dependency order — failing to add the NOTE is a critical error.** Use the following NOTE text based on how many downstream branches the `checkPreconditions` has:
 
   * **Multiple downstream branches** (more than one stage directly depends on the `checkPreconditions` — e.g., a YES branch and a NO branch): append `NOTE (migration): This step was originally on a conditional branch controlled by a Spinnaker expression-based checkPreconditions stage (SpEL expression condition). In this migration, both branches now run in parallel — the expression condition is not enforced.`
@@ -3260,6 +3282,25 @@ The **CORRECT** output (all 3 stages in the parallel group, only the first gets 
 * Add a "Run a kubectl script" step ... "Rollback -canary-" ... Set the start trigger to "Run in parallel with the previous step".             ← THIRD in {6,14,15} parallel group ✓
 ```
 
+**ABSOLUTE RULE — Spinnaker-specific canary stage types (`shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`) MUST ALWAYS produce "Deploy Kubernetes YAML" steps.** These stage types carry fully-formed Kubernetes `Job` manifests in their `manifest` property. They are NEVER "Run a Script" steps, "Run a kubectl script" steps, or any other step type. Using any step type other than "Deploy Kubernetes YAML" for these stage types is ALWAYS WRONG and will be penalized.
+
+**Negative example — `restoreProd` incorrectly converted to "Run a Script" (FORBIDDEN)**:
+```
+* Add a "Run a Script" step with the name "Restore" to the deployment process. Set the script to the following inline Bash code:
+```yaml
+apiVersion: batch/v1
+kind: Job
+...
+```
+```
+← WRONG: `restoreProd` is NOT a script step. NEVER emit "Run a Script" for any of these stage types.
+
+**CORRECT output for `restoreProd`**:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Restore". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. ...
+```
+← CORRECT: Always "Deploy Kubernetes YAML".
+
 Stages with `"type": "shiftTrafficProd"` (and the analogous `"type": "shiftTrafficStaging"`) represent canary traffic-shifting operations that run a Kubernetes Job to redistribute traffic between service versions. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
 
 The following snippet is an example of a `shiftTrafficProd` stage in Spinnaker:
@@ -3329,6 +3370,7 @@ Convert a `shiftTrafficProd` (or `shiftTrafficStaging`) stage to a "Deploy Kuber
 * Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<namespace>` with `manifest.metadata.namespace`.
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). **CRITICAL — replace `metadata.generateName` with `metadata.name`** using a lowercase-hyphenated form of the stage name (e.g., stage name "Canary stage 1" → `name: canary-stage-1`). The Octopus API rejects Kubernetes manifests that use `generateName` and requires a static `name` field. Do not alter any other field values.
+* **ABSOLUTE RULE — YAML indentation must be correct**: The `manifest` property is a single JSON object (not an array). When serialising it to YAML, every nested key MUST be indented by exactly 2 spaces per nesting level relative to its parent. A key at nesting level 1 is indented 2 spaces, level 2 is indented 4 spaces, level 3 is indented 6 spaces, and so on. **Flat YAML where ALL keys are at column 0 (zero indentation) is ALWAYS WRONG.** For example, `spec:` must appear at 0 spaces, `template:` at 2 spaces, `spec:` (inside template) at 4 spaces, and `containers:` at 6 spaces. Generating output where `template:`, `spec:`, `containers:`, `command:`, and `env:` all appear at 0 spaces is a critical error that produces invalid Kubernetes manifests and will be penalized.
 * Add a step description that identifies the original Spinnaker stage type and describes the traffic-shifting purpose of the step.
 
 
@@ -3457,6 +3499,7 @@ Convert a `restoreProd` stage to a "Deploy Kubernetes YAML" step as follows:
 * Replace `<account>` with the `account` property of the stage, applying the standard placeholder substitution (`<redacted-cluster>` or empty string → `Kubernetes`).
 * Replace `<namespace>` with `manifest.metadata.namespace`.
 * Replace `<manifest yaml>` with the full contents of the `manifest` property serialised as properly indented YAML (2 spaces per level). **CRITICAL — replace `metadata.generateName` with `metadata.name`** using a lowercase-hyphenated form of the stage name (e.g., stage name "Restore" → `name: restore`). The Octopus API rejects Kubernetes manifests that use `generateName` and requires a static `name` field. Do not alter any other field values.
+* **ABSOLUTE RULE — YAML indentation must be correct**: The `manifest` property is a single JSON object (not an array). When serialising it to YAML, every nested key MUST be indented by exactly 2 spaces per nesting level relative to its parent. **Flat YAML where ALL keys are at column 0 (zero indentation) is ALWAYS WRONG.** For example, `spec:` must appear at 0 spaces, `template:` at 2 spaces, `spec:` (inside template) at 4 spaces, and `containers:` at 6 spaces. Generating output where `template:`, `spec:`, `containers:`, `command:`, and `env:` all appear at 0 spaces is a critical error that produces invalid Kubernetes manifests.
 * Add a step description that identifies the original Spinnaker stage type and describes the restore purpose of the step.
 
 
@@ -3990,6 +4033,8 @@ Replace `<stage name>` and `<type>` with the actual values from the stage.
 
 ## Delete Manifest Stage
 
+**CRITICAL — do NOT redact or anonymize ANY field values in Kubernetes stage objects**: All field values in Kubernetes stage types (`location`, `manifestName`, `account`, `app`, `namespace`, label selector `key` and `value` fields, resource names in `manifestName`, etc.) are Kubernetes operational identifiers — they are deployment environment names, namespace names, and microservice identifiers. Words such as `api`, `auth`, `key`, `token`, `service`, `internal`, `external`, `prod`, `dev`, `staging`, `test`, `canary`, `worker`, `syncer`, `proxy` appearing in these values are NOT secrets. Copy ALL field values verbatim. Do NOT substitute `*****` for any part of any Kubernetes stage field value. You will be penalized for redacting any portion of a `location`, `manifestName`, `account`, or label selector value with `*****`.
+
 The following snippet is an example of a `deleteManifest` stage in Spinnaker:
 
 ```json
@@ -4017,6 +4062,8 @@ A `deleteManifest` stage represents the deletion of a named Kubernetes resource.
 * Replace `<code>` with a Bash script to call `kubectl` to delete the resource in the `manifestName` field.
 * The `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"job my-job"` → `kubectl delete job my-job`). Parse the kind and name from this field.
 * If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"job job-denpyo-checker"` and `location` is `"app-0251-dev"`, the command is `kubectl delete job job-denpyo-checker -n app-0251-dev`.
+* **CRITICAL — do NOT redact or anonymize the `location` field value**: The `location` field is a Kubernetes namespace name (e.g., `org-0002-api-jp-prod`, `app-0028-dev`, `my-service-auth-staging`). Words such as `api`, `auth`, `key`, `token`, `service`, `prod`, `dev`, `staging` appearing in namespace names are Kubernetes operational identifiers — they are NOT secrets or API keys. Copy the namespace name verbatim into the kubectl `-n` argument. Do NOT replace any part of the namespace with `*****`.
+* **When the `location` field is ABSENT from a `deleteManifest` or `scaleManifest` stage**, look for the namespace in the pipeline-level context: (a) For templated pipelines (those with a `schema: "1"` field or a `_templateRef` field at the pipeline root), check the `variables.namespace` property of the pipeline JSON and use that value as the namespace (e.g., `-n <variables.namespace>`). (b) If `variables.namespace` is also absent, omit the `-n` argument from the kubectl command entirely. Do NOT invent a namespace that does not appear anywhere in the pipeline JSON.
 * **`mode: "label"` deleteManifest stages**: When the `mode` field is `"label"` (instead of `"static"`), the stage uses `labelSelectors` to identify resources to delete rather than a specific `manifestName`. In this case, build the kubectl command using `-l` label selectors. Iterate over the `labelSelectors.selectors` array and convert each selector to a label expression (e.g., `{key: "app", kind: "EQUALS", values: ["server"]}` → `app=server`). Combine multiple selectors with commas. Also use the `kinds` array to specify the resource types to delete. For example, a stage with `kinds: ["deployment", "replicaSet", "pod"]` and selectors `app=server,stack=canary,version=v1` in namespace `app-0220-prod` generates: `kubectl delete deployment,replicaSet,pod -l app=server,stack=canary,version=v1 -n app-0220-prod`. The `kinds` list should be comma-joined with no spaces.
 * **CRITICAL — Spinnaker SpEL expressions in `deleteManifest` label selector values must be converted to Octopus variable syntax**: Label selector `values` may contain Spinnaker Spring Expression Language (SpEL) expressions such as `${ parameters.model_version }` that reference pipeline parameters. These Spinnaker SpEL expressions do NOT evaluate in Octopus Deploy. You MUST convert them to Octopus variable syntax by replacing `${ parameters.<name> }` with `#{<name>}`. For example, `${ parameters.model_version }` becomes `#{model_version}` in the generated kubectl command. If any such conversions are made, append the following parenthetical note to the step's description: `(NOTE: Spinnaker SpEL parameter references were converted to Octopus variable syntax, e.g. #{model_version}.)`. The pipeline's `parameterConfig` entries (if any) should correspond to Octopus project variables that provide the runtime values.
 * **`mode: "label"` deleteManifest stages with absent or empty `kinds` array**: When the `mode` field is `"label"` but the `kinds` array is absent, `null`, or empty, omit the resource type prefix from the kubectl command entirely. The command becomes `kubectl delete -l <selectors> -n <namespace>` (without resource types). For example, a stage with no `kinds` field and selectors `jobName=quick-shipper-migration-prod` in namespace `app-0241-prod` generates: `kubectl delete -l jobName=quick-shipper-migration-prod -n app-0241-prod`.
@@ -4629,6 +4676,34 @@ The **CORRECT** output (Stage D receives parallel annotation):
 ```
 
 **MANDATORY NON-ROOT SIBLING CHECK**: For EVERY unique non-empty `requisiteStageRefIds` value that appears 2+ times in the pipeline, identify all stages sharing that value. The FIRST stage (by JSON order) in that group gets no annotation. ALL remaining stages in the group MUST get `Set the start trigger to "Run in parallel with the previous step"`. Perform this check for EVERY such group before finalizing output.
+
+**MANDATORY SELF-CHECK — unique stage refId emission**: Before writing any output, perform a topological sort of ALL stages in the `stages` array. After sorting, verify that the sorted list contains each `refId` EXACTLY ONCE. In a diamond DAG (where two or more stages share the same `requisiteStageRefIds` value and both feed into the same downstream stage), the downstream stage is reachable via MULTIPLE paths. A naive depth-first traversal will visit — and emit — that downstream stage multiple times, which is ALWAYS WRONG. Use a `visited` set: when the topological traversal reaches a stage whose `refId` is already in the `visited` set, SKIP IT immediately without emitting any step for it. Every `refId` must appear in the sorted output list exactly once, and every `refId` must appear in the final step prompts exactly once. If you count N stages in the `stages` array (excluding ignored types), the output must contain exactly N step prompts — no more, no fewer. You will be penalized for any duplicate `refId` in the output.
+
+**Negative example — diamond DAG causes duplicate emission (COMMON MISTAKE)**:
+
+Given a pipeline:
+- Stage A (`refId: "2"`, ROOT)
+- Stage B (`refId: "3"`, ROOT, parallel with A)
+- Stage C (`refId: "4"`, convergence — depends on BOTH "2" AND "3")
+- Stage D (`refId: "10"`, depends on "4")
+
+A naive DFS (A → C → D, then B → C → D) emits Stage C twice and Stage D twice. The **WRONG** output:
+```
+* Add a step ... "Stage A" ...              ← refId 2, visited ✓
+* Add a step ... "Stage C" ... (Wait for all previous ...)  ← refId 4, first visit
+* Add a step ... "Stage D" ...              ← refId 10, first visit
+* Add a step ... "Stage B" ... (Run in parallel ...)        ← refId 3, visited ✓
+* Add a step ... "Stage C" ... (Wait for all previous ...)  ← DUPLICATE refId 4 — WRONG
+* Add a step ... "Stage D" ...              ← DUPLICATE refId 10 — WRONG
+```
+
+The **CORRECT** output (each refId exactly once, in topological order):
+```
+* Add a step ... "Stage A" ...              ← refId 2, ROOT
+* Add a step ... "Stage B" ... (Run in parallel ...)        ← refId 3, ROOT, parallel
+* Add a step ... "Stage C" ... (Wait for all previous ...)  ← refId 4, convergence
+* Add a step ... "Stage D" ...              ← refId 10, sequential after C
+```
 
 **MANDATORY SELF-CHECK — topological dependency ordering**: Before finalizing the output, verify that EVERY step in the output appears AFTER all of its transitive predecessors (following the full `requisiteStageRefIds` dependency chain, propagating through ignored stages). Pay special attention to webhook (`webhook` type) stages — they are NOT ignored and must participate in the full dependency ordering. A common mistake is placing a `manualJudgment` or `deployManifest` stage before a `webhook` stage that it indirectly depends on (e.g., manualJudgment → webhook → deployManifest, but the manualJudgment appears before the webhook in the output). To verify: for each step S in your output, find every stage whose refId is transitively reachable in `requisiteStageRefIds` → confirm that stage's step appears EARLIER in the output than S. If S appears before any of its transitive predecessors, swap their positions.
 
@@ -5345,7 +5420,7 @@ The generated output for the deployment stages would include:
 When a project has pipeline-level notification entries, the generated prompt must list all steps in the following order:
 
 1. All "Slack Notification - Start" steps (one per `notifications` array entry that has `pipeline.starting` in its `when` array) must be listed first, before any non-notification stage steps, in `notifications` array order.
-2. All non-notification stage steps must be listed next (this includes ALL stage types: `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `pipeline`, and any unknown stage types), in topological execution order as described in the "Running steps in parallel" section above. When multiple stages share the same dependency level, preserve their relative order from the original JSON array. **CRITICAL**: `wait` stages, `manualJudgment` stages, and ALL other non-notification stage types MUST appear AFTER the Start step — do NOT place them before the Start step even if they appear earlier in the pipeline JSON.
+2. All non-notification stage steps must be listed next (this includes ALL stage types: `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `patchManifest`, `webhook`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `pipeline`, and any unknown stage types), in topological execution order as described in the "Running steps in parallel" section above. When multiple stages share the same dependency level, preserve their relative order from the original JSON array. **CRITICAL**: `wait` stages, `manualJudgment` stages, and ALL other non-notification stage types MUST appear AFTER the Start step — do NOT place them before the Start step even if they appear earlier in the pipeline JSON.
 3. All "Slack Notification - Finish" steps (one per `notifications` array entry that has `pipeline.failed` in its `when` array) must be listed after all deployment stage steps, in `notifications` array order.
 4. All "Slack Notification - Complete" steps (one per `notifications` array entry that has `pipeline.complete` in its `when` array) must be listed last, after all Finish steps, in `notifications` array order.
 5. All `parameterConfig` variable prompts must follow all notification steps (after the Complete steps). When there are NO pipeline-level notification steps, variable prompts must appear BEFORE the deployment stage steps.
@@ -5806,6 +5881,8 @@ This scan is ABSOLUTE and MANDATORY — it applies even if you believe the `****
 
 This check prevents both silent stage drops AND duplicate stage additions. The key rule: **check the ACTUAL step name list before adding or removing anything — every decision must be based on what you see in the output, not on an assumed traversal order.**
 
+**Step 7 — Branch chain completeness for fan-out stages**: For each stage S in the pipeline that fans out to N ≥ 2 direct children (N stages all share `requisiteStageRefIds: [S.refId]`), trace the complete sequential sub-chain from EACH child to its leaf. A "sequential sub-chain" from child C is: C → C_next (where `C_next.requisiteStageRefIds = [C.refId]`) → ... → leaf. For a 4-branch fan-out from S where each branch has stages (Canary → Judgment → Production), ALL 12 stages (4 canaries + 4 judgments + 4 production stages) must be in the ACTUAL LIST. Verify each branch independently: "Branch 1: Canary ✓, Judgment ✓, Production ✓. Branch 2: Canary ✓, Judgment ?, Production ?..." If any intermediate or leaf stage is absent, add it in the correct sequential position. **This is the most common source of silently dropped stages in large parallel pipelines.**
+
 **HANDLING INDEPENDENT FORKED BRANCHES (NO RECONVERGENCE)**: A Spinnaker pipeline may have a stage that fans out to two or more branches where those branches NEVER reconverge (i.e., no stage depends on stages from multiple branches). This is a "fork without reconvergence." Example: stage 18 has two dependents — stage 19 (leading to a chain of cronjob deploys) and stage 1 (leading to a canary deploy chain). Neither of those downstream chains depends on the other's completion.
 
 **CRITICAL — ALL stages that share the same `requisiteStageRefIds` are ALWAYS in the same parallel group, regardless of their downstream dependencies**: When N stages all depend on the same predecessor(s) (i.e., all have the same `requisiteStageRefIds` value), they form ONE parallel group. The fact that some of these N stages have continuation stages downstream (while others are "leaf" stages with no downstream stages) does NOT split them into separate parallel groups. They remain in ONE N-member parallel group. The first member of the group gets no parallel annotation; ALL other N-1 members get `Set the start trigger to "Run in parallel with the previous step"`.
@@ -5844,6 +5921,7 @@ When this pattern occurs:
 1. Treat stages 1 and 19 as a PARALLEL GROUP (both depend on 18).
 2. After the parallel group {19, 1}, linearize ONE branch COMPLETELY (following ALL transitive dependents down to the terminal stage), then linearize the OTHER branch completely.
 3. A branch's "complete chain" includes NOT just its immediate dependents but ALL stages reachable by following `requisiteStageRefIds` pointers transitively from the branch's root. For example, if stage 1 → 6 → 2 → 3 → 4, the complete canary branch chain is {6, 2, 3, 4} — ALL FOUR stages must appear before switching to the cronjob branch. **To determine branch membership for a continuation stage, trace its `requisiteStageRefIds` backwards: if a stage transitively depends on Branch A's root (but NOT Branch B's root), it belongs exclusively to Branch A, and ALL such Branch A stages must appear before ANY continuation stage from Branch B.**
+3a. **CRITICAL — for N-branch fan-outs (N ≥ 3) where each branch has an internal sequential sub-chain**: When stage S fans out to N parallel branch roots (B1, B2, ..., BN each with `requisiteStageRefIds: [S.refId]`), and each branch root has its own sequential continuation (B1→B1a→B1b, B2→B2a→B2b, ...), the output must include ALL stages of ALL N branches. First, output ALL N branch roots as the parallel group (B1 first with no annotation, B2 through BN with "Run in parallel with previous step"). Then linearize EACH branch COMPLETELY before starting the next: ALL of Branch 1's continuation (B1a, B1b) → ALL of Branch 2's continuation (B2a, B2b) → ... → ALL of Branch N's continuation (BNa, BNb). A fan-out of 4 branches each with 3 stages (canary→judgment→production) requires 4 parallel canary steps + 4 continuation pairs (8 sequential steps) = 12 steps total from this fan-out. **The most common mistake is dropping one or more branch chains entirely** — for example, outputting only 3 of the 4 judgment-production pairs. Verify the count: if you have N branch roots in the parallel group but fewer than N judgment-production pairs in the continuation section, you have dropped a branch chain.
 4. Both chains will carry `Set the start trigger to "Wait for all previous steps to complete, then start"` at their entry points.
 5. **CRITICAL**: the stages in branch A's chain must NEVER appear again in branch B's chain and vice versa. Each stage appears exactly once.
 6. Add a NOTE to the first step of the second linearized branch: `NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with the "<Branch A root stage name>" / "<Branch A continuation stage names>" path. In this Octopus migration, these steps have been linearized and will run sequentially.` Replace `<Branch A root stage name>` with the name of Branch A's root stage and `<Branch A continuation stage names>` with the names of ALL continuation stages in Branch A (root plus all subsequent stages up to the terminal). For example, if Branch A consists of stages "Manual Judgment (Deploy All)" → "Deploy All", the NOTE should read: `NOTE (migration): In the original Spinnaker pipeline, this step ran concurrently with the "Manual Judgment (Deploy All)" / "Deploy All" path. In this Octopus migration, these steps have been linearized and will run sequentially.`
@@ -5996,6 +6074,8 @@ Before outputting your final response, verify the following items. A single FAIL
 5. **Section separator check**: If the output has multiple sections (feed creation + project creation), verify that each section is separated by `\n\n---\n\n` (a blank line, three dashes, a blank line). PASS = all section separators are formatted correctly.
 
 6. **Branch linearization NOTE check**: For any pipeline with a fork-without-reconvergence pattern (stages fan out to multiple branches that never reconverge): (a) Verify that Branch A's FIRST continuation step (the step with "Wait for all previous steps" that follows the parallel group and traces back to Branch A's root) has a NOTE about implicitly waiting for Branch B's root stage(s). (b) Verify that the FIRST step of the second linearized branch has a NOTE about running concurrently in the original pipeline with all of Branch A's stages. A missing NOTE in either case FAILS this check. PASS = all branch continuation steps have the appropriate NOTE (migration) text or no fork-without-reconvergence pattern exists in the pipeline.
+
+7. **Branch sub-chain completeness**: For any pipeline stage S that fans out to N ≥ 2 parallel children, trace every branch from its root to its leaf by following single-parent (`requisiteStageRefIds = [one refId]`) dependencies. For each branch, list the stages: root → intermediate_1 → intermediate_2 → ... → leaf. Verify that EVERY stage in EVERY branch chain appears in the output. A 4-branch fan-out where each branch has 3 stages (canary→judgment→production) must have all 12 stages present. Count the expected total (N × chain_length) and verify the actual count matches. PASS = all branch chains are fully represented with no missing intermediate or leaf stages. **This check specifically targets the case where some branches have complete 3-stage chains but other branches are missing their intermediate judgment stage or their final production stage.**
 
 ---END OF INSTRUCTIONS---
 
