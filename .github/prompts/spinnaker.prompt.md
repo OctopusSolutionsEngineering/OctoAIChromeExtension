@@ -93,7 +93,7 @@ The `generalinstructions.md` file has explicit instructions about naming convent
 
 You MUST NOT update the `generalinstructions.md` or `prompt.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
 You MUST NOT update the `generalinstructions.md` or `prompt.md` file with instructions around creating data sources.
-You MUST NOT update the `generalinstructions.md` or `prompt.md` file with instructions around retaining special characters in the project name or naming steps and projects exactly as they were in the original Spinnaker pipeline.
+You MUST NOT update the `generalinstructions.md` or `prompt.md` file with instructions around retaining special characters, especially parentheses `()` and square brackets `[]`, in the project name or naming steps and projects exactly as they were in the original Spinnaker pipeline.
 You MUST NOT update the `generalinstructions.md` or `prompt.md` file with instructions about recreating project or step names verbatim.
 
 The directory `/home/vagrant/Code/OctopusCopilot/context` contains Terraform files that provide canonical examples of how to represent Octopus resources in Terraform. Start with the `everystep.tf` file, as this contains the most comprehensive example of projects and steps. You can refer to these files when making improvements to the `generalinstructions.md` file.

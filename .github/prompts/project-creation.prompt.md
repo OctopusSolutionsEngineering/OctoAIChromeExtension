@@ -110,7 +110,7 @@ The `generalinstructions.md` file has explicit instructions about naming convent
 
 You MUST NOT update the `generalinstructions.md` file with instructions around the use of the "count" fields or "lifecycle" blocks.
 You MUST NOT update the `generalinstructions.md` file with instructions around creating data sources.
-You MUST NOT update the `generalinstructions.md` file with instructions around retaining special characters in the project name or naming steps and projects exactly as they were defined in the original prompt.
+You MUST NOT update the `generalinstructions.md` file with instructions around retaining special characters, especially parentheses `()` and square brackets `[]`, in the project name or naming steps and projects exactly as they were defined in the original prompt.
 You MUST NOT update the `generalinstructions.md` file with instructions about recreating project or step names verbatim.
 
 Update the `generalinstructions.md` file to address the most significant issues found as part of the migration that are related to building Terraform configurations for Octopus projects.
