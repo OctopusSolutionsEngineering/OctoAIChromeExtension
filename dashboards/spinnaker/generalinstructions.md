@@ -1162,10 +1162,11 @@ resource "octopusdeploy_process_step" "process_step_rollback_internal" {
     "Octopus.Action.Script.ScriptSource"            = "Inline"
     "Octopus.Action.Script.Syntax"                  = "Bash"   ← CORRECT
     "Octopus.Action.Script.ScriptBody"              = "kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod"
-    "Octopus.Action.KubernetesContainers.Namespace" = "app-0112-prod"
   }
 }
 ```
+
+**CRITICAL — `Octopus.Action.KubernetesContainers.Namespace` in KubernetesRunScript steps**: This property MUST ONLY be set when the prompt explicitly contains the instruction `Set the step namespace to "<namespace>"`. When the namespace appears ONLY in the kubectl command's `-n <namespace>` argument (i.e., the prompt does NOT include a separate `Set the step namespace to` instruction), do NOT add this execution property. It is already encoded in the script body and adding it separately is redundant and may cause unexpected behavior.
 
 **Example — correct `Octopus.KubernetesRunScript` step with Bash syntax**:
 
@@ -1175,7 +1176,6 @@ resource "octopusdeploy_process_step" "process_step_delete_manifest" {
   type                  = "Octopus.KubernetesRunScript"
   process_id            = "${length(data.octopusdeploy_projects.project_myproject.projects) != 0 ? null : octopusdeploy_process.process_myproject[0].id}"
   condition             = "Success"
-  notes                 = "Original stage name: Delete (Manifest)"
   package_requirement   = "LetOctopusDecide"
   start_trigger         = "StartAfterPrevious"
   properties            = {
@@ -1187,10 +1187,11 @@ resource "octopusdeploy_process_step" "process_step_delete_manifest" {
     "Octopus.Action.Script.ScriptSource"              = "Inline"
     "Octopus.Action.Script.Syntax"                    = "Bash"
     "Octopus.Action.Script.ScriptBody"                = "kubectl delete deployment my-deployment -n my-namespace"
-    "Octopus.Action.KubernetesContainers.Namespace"   = "my-namespace"
   }
 }
 ```
+
+Note: The `"Octopus.Action.KubernetesContainers.Namespace"` property is omitted in this example. **Only add this property when the prompt explicitly says `Set the step namespace to "X"`.** When the namespace appears only in the kubectl command itself (e.g., `kubectl delete ... -n my-namespace`), do NOT add this execution property separately — it is already encoded in the script body.
 
 * A `Octopus.KubernetesRunScript` step must NOT include a `container` block unless the prompt explicitly requests a specific container image. `deleteManifest` and `scaleManifest` stage types run kubectl using the worker's native environment, not a containerized image.
 * When the prompt specifies a Kubernetes namespace in the step (e.g., `Set the step namespace to "my-namespace"`), set `"Octopus.Action.KubernetesContainers.Namespace" = "my-namespace"` in `execution_properties`. When no namespace is specified, omit this property entirely — do NOT set it to an empty string or null.
@@ -4048,6 +4049,31 @@ container = {
   image = "ghcr.io/octopusdeploylabs/k8s-workertools"
 }
 ```
+
+**ABSOLUTE RULE — the `container` block on an `Octopus.KubernetesDeployRawYaml` step MUST NEVER have empty `feed_id` or `image` values.** An empty container block (`container = { feed_id = "", image = "" }`) means the step will not be able to pull the required tooling image and will fail at runtime. This is the MOST COMMON MISTAKE when generating Terraform for Kubernetes deploy steps.
+
+**Negative example — empty container block (VERY COMMON MISTAKE — FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  type      = "Octopus.KubernetesDeployRawYaml"
+  container = { feed_id = "", image = "" }  ← WRONG: empty container block will cause runtime failure
+  ...
+}
+```
+← WRONG: `feed_id = ""` and `image = ""` are invalid. The container block MUST reference the GitHub Container Registry feed and the k8s-workertools image using the ternary expression.
+
+**Correct output — non-empty container block with k8s-workertools image**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  type      = "Octopus.KubernetesDeployRawYaml"
+  container = {
+    feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+    image   = "ghcr.io/octopusdeploylabs/k8s-workertools"
+  }
+  ...
+}
+```
+← CORRECT: container block has non-empty feed_id ternary and image values.
 * **CRITICAL — when a project contains one or more `Octopus.KubernetesDeployRawYaml` steps, the Terraform configuration MUST include both a `data "octopusdeploy_feeds" "feed_github_container_registry"` data source AND an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource** so that the `container` block's `feed_id` ternary expression can be evaluated. If the prompt does not reference a GitHub Container Registry feed for artifact purposes, you still MUST define these resources when any `KubernetesDeployRawYaml` step is present, because the `container` block requires the feed.
 * **CRITICAL — `octopusdeploy_docker_container_registry "feed_github_container_registry"` MUST use the count+data source idempotency pattern**: Always create this resource with `count = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"`. Without count, the resource cannot be applied idempotently and will fail if the feed already exists. The `feed_id` ternary in the `container` block uses `[0]` indexing which requires count to be present on the resource. The data source lookup MUST also always be defined alongside the resource.
 
@@ -4100,6 +4126,11 @@ container = {
 5. `container` blocks in all `Octopus.KubernetesDeployRawYaml` steps referencing this feed use `[0]` index in the ternary `feed_id` expression
 
 If any answer is NO, fix the resource before outputting. You will be penalized for omitting any of these attributes.
+
+**MANDATORY SELF-CHECK — `Octopus.KubernetesDeployRawYaml` container block completeness**: Before finalizing any Terraform that contains one or more `Octopus.KubernetesDeployRawYaml` steps, check EVERY such step's `container` block. For each step, answer the following:
+1. Is `feed_id` non-empty (not `""`)? — If NO, set it to the ternary feed expression above.
+2. Is `image` set to `"ghcr.io/octopusdeploylabs/k8s-workertools"` (not `""`)? — If NO, set it to the correct image.
+If any `container` block has `feed_id = ""` or `image = ""`, STOP and fix the container block before outputting. An empty container block is ALWAYS wrong for `Octopus.KubernetesDeployRawYaml` steps.
 
 ## Cloud Step Container Image Instructions
 
