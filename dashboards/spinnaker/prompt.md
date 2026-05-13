@@ -4001,6 +4001,7 @@ Given a `scaleManifest` stage with `"name": "Scale (Manifest)"`, the **CORRECT**
 * Add a "Run a kubectl script" step to the deployment process and name the step "Scale -Manifest-". Set the script to inline Bash with the code `kubectl scale ...`. Set the target tag to Kubernetes.
 ```
 
+**General template output**:
 ```
 * Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `<code>`. Set the target tag to <account>.
 ```
@@ -4063,6 +4064,54 @@ Given a `disableManifest` stage:
 The **CORRECT** output (manifestName parsed to kind+name, location added as -n namespace):
 ```
 * Add a "Run a kubectl script" step to the deployment process and name the step "Disable -Manifest-". Set the script to inline Bash with the code `kubectl scale deployment taskqueue --replicas=0 -n compliance`. Set the target tag to Kubernetes.
+```
+
+## Find Artifact From Resource Stage
+
+Stages with `"type": "findArtifactsFromResource"` represent looking up a Kubernetes resource by name (e.g., retrieving an existing Deployment, Service, ConfigMap, or Pod to inspect its configuration or extract information from it). Convert them using the same approach as `scaleManifest` stages — a `kubectl` script step:
+
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
+* Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
+* Replace `<code>` with a Bash script to call `kubectl` to get/describe the resource specified in the `manifestName` field.
+* **`manifestName` field format**: The Spinnaker `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"pod logger"` → `kubectl get pod pod logger`). Parse the kind and name from this field, then build the kubectl command as `kubectl get <kind> <name>`. **When `manifestName` is absent or `null`**, fall back to `targetKind` and `targetName` fields: use `kubectl get <targetKind> <targetName>`. If both `manifestName` and (`targetKind`/`targetName`) are absent or null, use `# TODO: specify the resource kind and name` as the kubectl target and add `The step must be disabled.` to the step prompt.
+* **`location` field → namespace**: If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"pod logger"`, `location` is `"default"`, the command is `kubectl get pod logger -n default`.
+* **`app` field**: The `app` property (e.g., `"test1"`) identifies the application. It can be included in the step description for clarity but does not affect the kubectl command.
+* **`cloudProvider` field**: Typically `"kubernetes"` — use this to determine the target tag (i.e., `Kubernetes`).
+* The step should use `"Run a kubectl script"` as the step type with inline Bash script to `get` the resource (use `kubectl get` to retrieve the resource metadata and spec).
+
+**Worked example — `findArtifactsFromResource` stage with `location` and `manifestName`**:
+
+Given a `findArtifactsFromResource` stage:
+```json
+{
+   "app": "test1",
+   "cloudProvider": "kubernetes",
+   "isNew": true,
+   "location": "default",
+   "manifestName": "pod logger",
+   "mode": "static",
+   "name": "Find Artifacts From Resource (Manifest)",
+   "refId": "8",
+   "requisiteStageRefIds": [
+     "7"
+   ],
+   "type": "findArtifactsFromResource"
+}
+```
+
+The **CORRECT** output (manifestName parsed to kind+name, location added as -n namespace):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Find Artifacts From Resource -Manifest-". Set the script to inline Bash with the code `kubectl get pod pod logger -n default`. Set the target tag to Kubernetes.
+```
+
+The **WRONG** output (missing namespace, wrong command format):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Find Artifacts From Resource (Manifest)". Set the script to inline Bash with the code `kubectl get pod logger default`. Set the target tag to Kubernetes.
+```
+
+**General template output**:
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `<code>`. Set the target tag to <account>.
 ```
 
 # Parameter Config
