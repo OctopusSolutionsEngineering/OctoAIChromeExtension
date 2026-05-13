@@ -1736,6 +1736,16 @@ The **CORRECT** output includes the variable after the Slack steps even though n
 }
 ```
 
+**General template output** (inline YAML variant):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to `<Kubernetes object from Spinnaker stage manifest YAML>`. Set the target tag to <account>. Set the step namespace to <namespace>.
+```
+
+**General template output** (git repository variant):
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>. Set the step namespace to <namespace>.
+```
+
 * The equivalent step in an Octopus Deploy project is created with the prompt.
 * Replace `<reference>` with the `reference` property of the `defaultArtifact` in the Spinnaker stage.
 * Replace `<name>` with the `name` property of the `defaultArtifact` in the Spinnaker stage.
@@ -2233,6 +2243,16 @@ The **CORRECT** output preserves the verbatim step name and includes the stage t
 * Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Files from a Git repository". Set the Authentication to "Anonymous". Set the Repository URL to "<reference>". Set the File Paths to "<name>". Set the target tag to <account>.
 ```
 
+**General template output**:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the Kubernetes Job manifest generated from the containers array. Set the target tag to <account>. Set the step namespace to <namespace>.
+* Set the step YAML to:
+
+```yaml
+<Kubernetes manifest from Spinnaker stage>
+```
+```
+
 ## Manual Judgment Stage
 
 **ABSOLUTE RULE — the `type` field is the SOLE authority for how a stage is processed. When `"type": "manualJudgment"`, you MUST ONLY generate a "Manual Intervention" step — regardless of any other fields present in the stage JSON.** Spinnaker sometimes leaves stale fields from a previous stage type (e.g., `manifests`, `source`, `manifestArtifactAccount`, `manifestArtifactId`, `manifestArtifact`, `cloudProvider`, `relationships`, `requiredArtifactIds`, `cloudProvider`, `skipExpressionEvaluation`) in a `manualJudgment` stage. These stale fields MUST be completely and silently ignored. Do NOT generate any `deployManifest`-like steps from a stage whose `type` is `manualJudgment`. The ONLY fields that matter for a `manualJudgment` stage are: `name`, `type`, `refId`, `requisiteStageRefIds`, `instructions`, `judgmentInputs`, `failPipeline`, `continuePipeline`, `stageTimeoutMs`, `notifications`.
@@ -2396,6 +2416,11 @@ The **CORRECT** output (each stage uses only its own `judgmentInputs`):
 ...
 * Add a "Manual Intervention" step with the name "Manual Judgment -Deploy All-" ... Set the instructions to "Please review and approve. Available options: Deploy all, Delete canary deployment."
 ← CORRECT: refId 4 has non-empty judgmentInputs — options listed only here
+```
+
+**General template output**:
+```
+* Add a "Manual Intervention" step with the name "<stage name>" to the deployment process. Set the instructions to "<instructions>".
 ```
 
 ## Kubernetes Run Job Stage
@@ -2653,6 +2678,11 @@ spec:
 * Add a "Deploy a Release" step with the name "-DEV- Deploy Sandbox API". Set the "Project" property to "-DEV- Deploy Sandbox API". Set the "Wait for deployment to complete" property to true. Only run the step when the previous step has succeeded.
 ```
 
+**General template output**:
+```
+* Add a "Deploy a Release" step with the name "<stage name>" to the deployment process. Set the "Project" property to "<child project name>". Set the "Wait for deployment to complete" property to <waitForCompletion>. Only run the step when the previous step has succeeded.
+```
+
 * You must attempt to extract the name of the child project from the `name` property of the stage. In the example above, the child project name is "[DEV] Deploy Sandbox API".
 
 **ABSOLUTE RULE — every "Deploy a Release" step prompt MUST include `with the name 'X'`**: The step name must be explicitly stated in every "Deploy a Release" step instruction. Writing "Add a 'Deploy a Release' step to the deployment process" WITHOUT "with the name 'X'" is FORBIDDEN. When multiple "Deploy a Release" steps are created without explicit names, all steps default to the generic name "Deploy a Release", which creates duplicate names within the project and causes the Octopus API to reject the deployment process. You will be severely penalized for any "Deploy a Release" step instruction that omits the step name.
@@ -2827,6 +2857,11 @@ The **CORRECT** output includes the wait step between the ROOT and post-wait gro
 * Add a "Run a Script" step with the name "Wait (20 min)" ... `sleep 1200`. Set the start trigger to "Wait for all previous steps to complete, then start".
 * Add a "Deploy Kubernetes YAML" step ... "Deploy prod HTTP server primary" ... Set the start trigger to "Run in parallel with the previous step". (post-wait)
 [... other post-wait stages with "Run in parallel with the previous step" ...]
+```
+
+**General template output**:
+```
+* Add a "Run a Script" step with the name "<name>" to the deployment process. Set the script to the following inline bash code: `sleep <seconds>`
 ```
 
 ## Stage Conditions (`stageEnabled`)
@@ -3473,6 +3508,16 @@ spec:
 ```
 ```
 
+**General template output**:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>.
+* Set the step YAML to:
+
+```yaml
+<manifest yaml>
+```
+```
+
 ## Derive Baseline Stage
 
 Stages with `"type": "deriveBaselineProd"` represent derive-baseline operations that run a Kubernetes Job to derive a baseline state from the main deployment. The stage carries a fully-formed Kubernetes `Job` manifest in its `manifest` property.
@@ -3588,6 +3633,16 @@ spec:
         - name: <redacted-secret-name>
       restartPolicy: Never
       serviceAccountName: spinnaker-custom-job
+```
+```
+
+**General template output**:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>.
+* Set the step YAML to:
+
+```yaml
+<manifest yaml>
 ```
 ```
 
@@ -3725,6 +3780,16 @@ spec:
 ```
 ```
 
+**General template output**:
+```
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "<stage name>". Set the YAML Source to "Inline YAML". Set the YAML content to the manifest below. Set the target tag to <account>. Set the step namespace to <namespace>.
+* Set the step YAML to:
+
+```yaml
+<manifest yaml>
+```
+```
+
 ## Undo Rollout Manifest Stage
 
 Stages with `"type": "undoRolloutManifest"` represent a Kubernetes rollback operation — rolling a named deployment back to a previous revision. Convert them to a "Run a kubectl script" step using `kubectl rollout undo`:
@@ -3784,6 +3849,11 @@ The **CORRECT** output (description NOTE, parallel trigger, and disabled flag al
 ```
 ← CORRECT: Migration NOTE, parallel trigger annotation, and disabled flag are all present.
 
+**General template output**:
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `kubectl rollout undo <kind>/<name> -n <namespace>`. Set the target tag to <account>. Set the step description to "Original Spinnaker stage type: undoRolloutManifest. This step rolls back <kind>/<name> to the previous revision in namespace <namespace>."
+```
+
 ## Webhook Stage
 
 A `webhook` stage in Spinnaker sends an HTTP request to an external service. Convert it to a "Run a Script" step that executes the equivalent request using `curl`.
@@ -3828,6 +3898,11 @@ curl -X <method> \
   -d '<json payload>'
 ```
 Set the step description to "Original Spinnaker stage type: webhook. Sends an HTTP <method> request to <url>."
+```
+
+**General template output**:
+```
+* Add a "Run a Script" step with the name "<stage name>" to the deployment process. Set the script to the following inline Bash code: `curl -X <method> "<url>" -H "Content-Type: application/json"`. Set the step description to "Original Spinnaker stage type: webhook. Sends an HTTP <method> request to <url>."
 ```
 
 **SpEL conversion rule**: All Spinnaker Spring Expression Language (SpEL) expressions in the webhook URL, headers, and payload (e.g., `${parameters.version}`, `${ parameters.oauthToken }`) MUST be converted to Octopus variable syntax by replacing `${parameters.<name>}` or `${ parameters.<name> }` with `#{<name>}`. Never leave raw SpEL expressions in the generated script.
@@ -3894,6 +3969,11 @@ Set the step description to "Original Spinnaker stage name: <stage name>. This s
 
 **ABSOLUTE RULE — every `patchManifest` step MUST be disabled.** The generated script body is a TODO comment and cannot execute the patch — the step must always include `The step must be disabled.`
 
+**General template output**:
+```
+* Add a "Run a kubectl script" step with the name "<stage name>" to the deployment process. Set the script to the following inline bash code: `# TODO: convert Spinnaker patchManifest stage — no direct Octopus Deploy equivalent. Target resource: <manifestName>. Namespace: <location>. Merge strategy: <options.mergeStrategy>.` Set the step description to "Original Spinnaker stage type: patchManifest. Patches an existing Kubernetes resource." The step must be disabled.
+```
+
 ## Unknown Stage Types
 
 If a stage has a `type` value that is not listed in this document (i.e., not `deployManifest`, `runJobManifest`, `runJob`, `manualJudgment`, `pipeline`, `wait`, `deleteManifest`, `scaleManifest`, `undoRolloutManifest`, `patchManifest`, `shiftTrafficProd`, `shiftTrafficStaging`, `restoreProd`, `deriveBaselineProd`, `deriveCanaryProd`, `webhook`, or an ignored type), generate a placeholder "Run a Script" step for it so that it is not silently lost:
@@ -3959,6 +4039,11 @@ Given a `deleteManifest` stage with `mode: "label"` and a selector `values: ["${
 The **CORRECT** output converts the SpEL expression to Octopus variable syntax:
 ```
 * Add a "Run a kubectl script" step ... Set the script to inline Bash with the code `kubectl delete deployment,pod -l model-version=#{model_version} -n app-prod`. Set the target tag to Kubernetes. Set the step description to "(NOTE: Spinnaker SpEL parameter references were converted to Octopus variable syntax, e.g. #{model_version}.)".
+```
+
+**General template output**:
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `kubectl delete <kind> <name> -n <location>`. Set the target tag to <account>.
 ```
 
 ## Scale Manifest Stage
@@ -4034,6 +4119,11 @@ The **CORRECT** output (manifestName parsed to kind+name, location added as -n n
 * Add a "Run a kubectl script" step to the deployment process and name the step "Enable Canary". Set the script to inline Bash with the code `kubectl scale deployment mtf-object-detection-atr-canary --replicas=3 -n org-0004-image-search-jp-dev`. Set the target tag to Kubernetes.
 ```
 
+**General template output**:
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `kubectl scale <kind> <name> --replicas=<replicas> -n <location>`. Set the target tag to <account>.
+```
+
 ## Disable Manifest Stage
 
 Stages with `"type": "disableManifest"` or with no-op/disabled output representing disabling of a Kubernetes resource (e.g., scaling to zero to effectively stop a deployment). Convert them using the same approach as `scaleManifest` stages:
@@ -4064,6 +4154,11 @@ Given a `disableManifest` stage:
 The **CORRECT** output (manifestName parsed to kind+name, location added as -n namespace):
 ```
 * Add a "Run a kubectl script" step to the deployment process and name the step "Disable -Manifest-". Set the script to inline Bash with the code `kubectl scale deployment taskqueue --replicas=0 -n compliance`. Set the target tag to Kubernetes.
+```
+
+**General template output**:
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `kubectl scale <kind> <name> --replicas=0 -n <location>`. Set the target tag to <account>.
 ```
 
 ## Find Artifact From Resource Stage
