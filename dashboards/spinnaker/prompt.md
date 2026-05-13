@@ -4033,20 +4033,36 @@ The **CORRECT** output (manifestName parsed to kind+name, location added as -n n
 * Add a "Run a kubectl script" step to the deployment process and name the step "Enable Canary". Set the script to inline Bash with the code `kubectl scale deployment mtf-object-detection-atr-canary --replicas=3 -n org-0004-image-search-jp-dev`. Set the target tag to Kubernetes.
 ```
 
-The **WRONG** output (missing namespace, wrong command format):
-```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Enable Canary". Set the script to inline Bash with the code `kubectl scale mtf-object-detection-atr-canary 3`. Set the target tag to Kubernetes.
+## Disable Manifest Stage
+
+Stages with `"type": "disableManifest"` or with no-op/disabled output representing disabling of a Kubernetes resource (e.g., scaling to zero to effectively stop a deployment). Convert them using the same approach as `scaleManifest` stages:
+
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
+* Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
+* Replace `<code>` with a Bash script to call `kubectl` to scale the resource in the `manifestName` field down to zero replicas (`0`). If a `replicas` field exists and is `0`, use it; otherwise default to `0`.
+* **`manifestName` field format**: The Spinnaker `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"deployment my-app"` → `kubectl scale deployment my-app --replicas=0`). Parse the kind and name from this field, then build the kubectl command as `kubectl scale <kind> <name> --replicas=<replicas>`. **When `manifestName` is absent or `null`**, fall back to `targetKind` and `targetName` fields: use `kubectl scale <targetKind> <targetName> --replicas=<replicas>`. If all three fields (`manifestName`, `targetKind`, `targetName`) are absent or null, use `# TODO: specify the resource kind and name` as the kubectl target and add `The step must be disabled.` to the step prompt.
+* **`location` field → namespace**: If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"deployment mtf-object-detection-atr-canary"`, `replicas` is `"0"`, and `location` is `"org-0004-image-search-jp-dev"`, the command is `kubectl scale deployment mtf-object-detection-atr-canary --replicas=0 -n org-0004-image-search-jp-dev`.
+* **`replicas: 0` means scale to zero (stop the deployment)**: When the `replicas` field is `"0"` or `0`, the stage is explicitly scaling the Kubernetes resource down to zero replicas — effectively stopping the running workload. In this case, append `NOTE (migration): This step scales the deployment to 0 replicas, effectively stopping it.` to the step description.
+
+**Worked example — `disableManifest` stage with `location` and `manifestName`**:
+
+Given a `disableManifest` stage:
+```json
+{
+  "app": "test1",
+  "cloudProvider": "kubernetes",
+  "isNew": true,
+  "location": "compliance",
+  "manifestName": "deployment taskqueue",
+  "mode": "static",
+  "name": "Disable (Manifest)",
+  "type": "disableManifest"
+}
 ```
 
-**Negative example — `enableManifest` stage with empty stage name (FORBIDDEN)**:
-
-Given a `enableManifest` stage with `"name": "Enable (Manifest)"`, the **CORRECT** output preserves the step name:
+The **CORRECT** output (manifestName parsed to kind+name, location added as -n namespace):
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Enable -Manifest-". Set the script to inline Bash with the code `kubectl scale ...`. Set the target tag to Kubernetes.
-```
-
-```
-* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `<code>`. Set the target tag to <account>.
+* Add a "Run a kubectl script" step to the deployment process and name the step "Disable -Manifest-". Set the script to inline Bash with the code `kubectl scale deployment taskqueue --replicas=0 -n compliance`. Set the target tag to Kubernetes.
 ```
 
 # Parameter Config
