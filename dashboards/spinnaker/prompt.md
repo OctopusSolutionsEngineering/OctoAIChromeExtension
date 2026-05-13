@@ -104,12 +104,12 @@ A name like `"[PROD] api-syncer canary"` is a Kubernetes Deployment identifier, 
 
 **Negative example — pipeline name containing "api" incorrectly redacted (FORBIDDEN)**:
 ```
-Pipeline name: "[PROD] api-syncer canary" → WRONG: "[PROD] ***** canary"
+Pipeline name: "[PROD] api-syncer canary" → WRONG: "-PROD- ***** canary"
 Stage name: "Deploy org-0004-api-syncer" → WRONG: "Deploy org-0004-*****"
 ```
 **Correct output** (names must be preserved verbatim):
 ```
-Pipeline name: "[PROD] api-syncer canary"  ← CORRECT
+Pipeline name: "-PROD- api-syncer canary"  ← CORRECT
 Stage name: "Deploy org-0004-api-syncer"   ← CORRECT
 ```
 
@@ -3996,11 +3996,53 @@ The **WRONG** output (missing namespace, wrong command format):
 * Add a "Run a kubectl script" step to the deployment process and name the step "Scale Canary". Set the script to inline Bash with the code `kubectl scale mtf-object-detection-atr-canary 3`. Set the target tag to Kubernetes.
 ```
 
-
-
-Given a `scaleManifest` stage with `"name": "Scale (Manifest)"`, the **CORRECT** output preserves the verbatim step name:
+Given a `scaleManifest` stage with `"name": "Scale (Manifest)"`, the **CORRECT** output preserves the step name:
 ```
-* Add a "Run a kubectl script" step to the deployment process and name the step "Scale (Manifest)". Set the script to inline Bash with the code `kubectl scale ...`. Set the target tag to Kubernetes.
+* Add a "Run a kubectl script" step to the deployment process and name the step "Scale -Manifest-". Set the script to inline Bash with the code `kubectl scale ...`. Set the target tag to Kubernetes.
+```
+
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "<stage name>". Set the script to inline Bash with the code `<code>`. Set the target tag to <account>.
+```
+
+## Enable Manifest Stage
+
+Stages with `"type": "enableManifest"` or with no-op/enabled output representing enabling of a Kubernetes resource previously scaled to zero or disabled. Convert them using the same approach as `scaleManifest` stages:
+
+* Replace `<stage name>` with the `name` property of the stage. Parentheses `()`, colons `:`, slashes `/`, and all other punctuation must be replaced with dashes `-`.
+* Replace `<account>` with the `account` property of the stage, applying the same placeholder substitution rule (e.g., `<redacted-cluster>` or empty string → `Kubernetes`).
+* Replace `<code>` with a Bash script to call `kubectl` to scale the resource in the `manifestName` field to a healthy replica count (e.g., `1` or the original replica count). If a `replicas` field exists, use its value; otherwise default to `1`.
+* **`manifestName` field format**: The Spinnaker `manifestName` field contains the Kubernetes resource kind and name separated by a space (e.g., `"deployment my-app"` → `kubectl scale deployment my-app --replicas=1`). Parse the kind and name from this field, then build the kubectl command as `kubectl scale <kind> <name> --replicas=<replicas>`. **When `manifestName` is absent or `null`**, fall back to `targetKind` and `targetName` fields: use `kubectl scale <targetKind> <targetName> --replicas=<replicas>`. If all three fields (`manifestName`, `targetKind`, `targetName`) are absent or null, use `# TODO: specify the resource kind and name` as the kubectl target and add `The step must be disabled.` to the step prompt.
+* **`location` field → namespace**: If the stage has a `location` field, it represents the Kubernetes namespace. Include `-n <location>` in the kubectl command. For example, if `manifestName` is `"deployment mtf-object-detection-atr-canary"`, `replicas` is `"3"`, and `location` is `"org-0004-image-search-jp-dev"`, the command is `kubectl scale deployment mtf-object-detection-atr-canary --replicas=3 -n org-0004-image-search-jp-dev`.
+
+**Worked example — `enableManifest` stage with `location` and `manifestName`**:
+
+Given an `enableManifest` stage:
+```json
+{
+   "account": "<redacted-cluster>",
+   "location": "org-0004-image-search-jp-dev",
+   "manifestName": "deployment mtf-object-detection-atr-canary",
+   "name": "Enable Canary",
+   "type": "enableManifest"
+}
+```
+
+The **CORRECT** output (manifestName parsed to kind+name, location added as -n namespace):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Enable Canary". Set the script to inline Bash with the code `kubectl scale deployment mtf-object-detection-atr-canary --replicas=3 -n org-0004-image-search-jp-dev`. Set the target tag to Kubernetes.
+```
+
+The **WRONG** output (missing namespace, wrong command format):
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Enable Canary". Set the script to inline Bash with the code `kubectl scale mtf-object-detection-atr-canary 3`. Set the target tag to Kubernetes.
+```
+
+**Negative example — `enableManifest` stage with empty stage name (FORBIDDEN)**:
+
+Given a `enableManifest` stage with `"name": "Enable (Manifest)"`, the **CORRECT** output preserves the step name:
+```
+* Add a "Run a kubectl script" step to the deployment process and name the step "Enable -Manifest-". Set the script to inline Bash with the code `kubectl scale ...`. Set the target tag to Kubernetes.
 ```
 
 ```
