@@ -138,3 +138,4 @@ You MUST NEVER interact with the Octopus API directly.
 You MUST NOT use any CLI tools to interact with the Octopus API. 
 You MUST NOT use any other tools or methods to interact with the Octopus API.
 You MUST NEVER attempt to scan for the Octopus API key environment variables.
+You MUST NEVER run the `docker` command.
