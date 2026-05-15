@@ -2843,7 +2843,7 @@ tbody tr:last-child td {
   border-radius: var(--radiusMedium);
   font: var(--textBodyRegularSmall);
   color: var(--colorTextPrimary);
-  colorscheme: dark;
+  color-scheme: dark;
 }
 
 .tv-date-input:focus {
