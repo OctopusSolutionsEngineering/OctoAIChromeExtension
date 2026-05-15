@@ -253,14 +253,34 @@ const TenantView = (() => {
                 const fromDateStr = encodeURIComponent(fromDate.toISOString());
                 const deployTake  = lookbackMonths <= 3 ? 500 : lookbackMonths <= 6 ? 1000 : lookbackMonths <= 12 ? 2000 : 5000;
 
-                const [rawEnvs, projectList, tenantList, deploymentsData, tasksData, releasesData] = await Promise.all([
+                const [rawEnvs, projectList, tenantList, rawDeploymentsData, runbookRunsData, tasksData, releasesData] = await Promise.all([
                     OctopusApi.get(`/api/${spaceId}/environments/all`),
                     OctopusApi.get(`/api/${spaceId}/projects/all`),
                     OctopusApi.get(`/api/${spaceId}/tenants/all`),
                     OctopusApi.get(`/api/${spaceId}/deployments?fromDate=${fromDateStr}&take=${deployTake}`),
+                    OctopusApi.get(`/api/${spaceId}/runbookRuns?fromDate=${fromDateStr}&take=${deployTake}`),
                     OctopusApi.get(`/api/${spaceId}/tasks?skip=0&take=${deployTake}`),
                     OctopusApi.get(`/api/${spaceId}/releases?take=${deployTake}`),
                 ]);
+
+                const deploymentItems = rawDeploymentsData.Items || rawDeploymentsData || [];
+                const runbookRunItems = runbookRunsData.Items || runbookRunsData || [];
+                const deploymentsData = {
+                    ...(rawDeploymentsData && !Array.isArray(rawDeploymentsData) ? rawDeploymentsData : {}),
+                    Items: deploymentItems.concat(runbookRunItems.map(rr => ({
+                        Id: rr.Id,
+                        TaskId: rr.TaskId,
+                        TenantId: rr.TenantId,
+                        EnvironmentId: rr.EnvironmentId,
+                        ProjectId: rr.ProjectId,
+                        ReleaseId: rr.ReleaseId || null,
+                        RunbookId: rr.RunbookId || null,
+                        RunbookSnapshotId: rr.RunbookSnapshotId || null,
+                        Created: rr.Created,
+                        QueueTime: rr.QueueTime,
+                        TaskType: 'RunbookRun',
+                    }))),
+                };
 
                 envs = rawEnvs;
                 rawProjects = projectList;
