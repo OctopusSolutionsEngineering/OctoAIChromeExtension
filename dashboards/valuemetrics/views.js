@@ -2106,7 +2106,7 @@ const Views = (() => {
         <div class="tv-toolbar">
           <div class="tv-search-wrap">
             <i class="fa-solid fa-magnifying-glass tv-search-wrap__icon"></i>
-            <input id="tv-tenant-search" type="text" placeholder="Filter by tenant name…" class="tv-search-input">
+            <input id="tv-tenant-search" type="text" placeholder="Filter by tenant name…" aria-label="Filter tenants by name" class="tv-search-input">
           </div>
           <button id="tv-filter-toggle-btn" class="btn btn-secondary btn-sm">
             <i class="fa-solid fa-sliders"></i>
