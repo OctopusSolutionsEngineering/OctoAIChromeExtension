@@ -215,6 +215,9 @@ function renderValueImpact(summary) {
 function openOnboarding() {
     Onboarding.open((answers) => {
         debug('Onboarding complete', answers ? Object.keys(answers) : 'skipped');
+        Analytics.trackEvent('onboarding_completed', {
+            answered: answers ? Object.keys(answers).length : 0,
+        });
         if (_lastSummary && Router.getCurrentView() === 'overview') {
             renderValueImpact(_lastSummary);
         }
@@ -226,6 +229,7 @@ document.getElementById('nav-reset-onboarding').addEventListener('click', (e) =>
     e.preventDefault();
     Onboarding.clear();
     debug('Onboarding answers cleared');
+    Analytics.trackEvent('onboarding_reset');
     if (_lastSummary && Router.getCurrentView() === 'overview') {
         renderValueImpact(_lastSummary);
     }
@@ -297,7 +301,7 @@ document.getElementById('lookback-select').addEventListener('change', () => {
     DashboardData.clearHistoryCache();
     startEnrichment();
     lastConfirmedLookbackMonths = months;
-    lastConfirmedLookbackMonths = months;
+    Analytics.trackEvent('lookback_changed', { months });
 });
 
 // ================================================================
@@ -330,6 +334,8 @@ DashboardUI.loadDashboard = async function() {
         debug('Connected', { serverUrl: OctopusApi.getInstanceUrl() });
         updateConnectionStatus();
 
+        Analytics.init();
+
         // Initialise router (renders the initial view)
         Router.init();
 
@@ -339,6 +345,16 @@ DashboardUI.loadDashboard = async function() {
             Router.refresh();
             if (!Onboarding.hasAnswers() && Router.getCurrentView() === 'overview') {
                 setTimeout(openOnboarding, 1500);
+            }
+
+            const summary = DashboardData.getSummary();
+            if (summary) {
+                Analytics.setUserProperties({
+                    total_spaces: summary.kpi.totalSpaces,
+                    total_projects: summary.kpi.activeProjects,
+                    total_deployments: summary.kpi.totalDeployments,
+                    server_version: summary.serverInfo?.Version,
+                });
             }
         });
     } catch (err) {
@@ -369,6 +385,7 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
     DashboardData.cancelEnrichment();
     DashboardData.clearHistoryCache();
     DashboardUI.loadDashboard();
+    Analytics.trackEvent('dashboard_refreshed');
 });
 
 // ================================================================
@@ -379,7 +396,9 @@ const exportDropdown = document.getElementById('export-dropdown');
 
 exportBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    const wasOpen = exportDropdown.classList.contains('open');
     exportDropdown.classList.toggle('open');
+    if (!wasOpen) Analytics.trackEvent('export_menu_opened');
 });
 
 document.addEventListener('click', () => {
@@ -576,9 +595,11 @@ function performExport(format) {
         const json = JSON.stringify(data, null, 2);
         downloadFile(json, baseName + '.json', 'application/json');
         debug('Exported JSON', { filename: baseName + '.json', size: json.length });
+        Analytics.trackEvent('data_exported', { format: 'json' });
     } else if (format === 'csv') {
         const csv = formatCSV(data);
         downloadFile(csv, baseName + '.csv', 'text/csv');
         debug('Exported CSV', { filename: baseName + '.csv', size: csv.length });
+        Analytics.trackEvent('data_exported', { format: 'csv' });
     }
 }

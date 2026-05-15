@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSFI Compliance Audit Report - Octopus Deploy AI Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="../api.js" defer></script>
+    <script src="dashboard.js" defer></script>
+</head>
+<body>
+    <div class="header">
+        <h1>Octopus AI Assistant OSFI Compliance Audit Report</h1>
+    </div>
+
+    <div class="container">
+        <div class="controls-section">
+            <div class="control-group">
+                <label for="space-select">Space:</label>
+                <select id="space-select" disabled>
+                    <option value="">Loading spaces...</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="project-select">Project:</label>
+                <select id="project-select" disabled>
+                    <option value="">Select a space first...</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="reporting-period">Reporting period (days):</label>
+                <input id="reporting-period" type="number" min="1" step="1" value="90">
+            </div>
+            <div class="control-group button-group">
+                <button id="generate-report-btn" disabled>Generate Report</button>
+                <button id="copy-link-btn" disabled>Copy Link</button>
+            </div>
+        </div>
+
+        <div id="report">
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading OSFI compliance dashboard...</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

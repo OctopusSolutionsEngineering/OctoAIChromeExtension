@@ -348,10 +348,16 @@ const Views = (() => {
   /** Wire up Overview-specific event listeners after HTML is inserted */
   function wireOverviewEvents() {
     const startBtn = document.getElementById('btn-start-onboarding');
-    if (startBtn) startBtn.addEventListener('click', () => { if (typeof openOnboarding === 'function') openOnboarding(); });
+    if (startBtn) startBtn.addEventListener('click', () => {
+      Analytics.trackEvent('onboarding_started', { trigger: 'cta_button' });
+      if (typeof openOnboarding === 'function') openOnboarding();
+    });
 
     const editBtn = document.getElementById('btn-edit-value-settings');
-    if (editBtn) editBtn.addEventListener('click', () => { if (typeof openOnboarding === 'function') openOnboarding(); });
+    if (editBtn) editBtn.addEventListener('click', () => {
+      Analytics.trackEvent('value_settings_opened');
+      if (typeof openOnboarding === 'function') openOnboarding();
+    });
 
     // Trend range buttons
     document.querySelectorAll('[data-range]').forEach(btn => {
@@ -359,6 +365,7 @@ const Views = (() => {
         document.querySelectorAll('[data-range]').forEach(b => b.classList.remove('active-toggle'));
         btn.classList.add('active-toggle');
         DashboardUI.setTrendRange(btn.dataset.range);
+        Analytics.trackEvent('chart_range_changed', { view: 'overview', range: btn.dataset.range });
       });
     });
   }
@@ -632,6 +639,7 @@ const Views = (() => {
         btn.classList.add('active-toggle');
         const el = document.getElementById('trends-chart');
         if (el) el.innerHTML = _renderTrendChart(summary, btn.dataset.trendsRange);
+        Analytics.trackEvent('chart_range_changed', { view: 'trends', range: btn.dataset.trendsRange });
       });
     });
   }
@@ -1116,11 +1124,16 @@ const Views = (() => {
   function wireVelocityEvents(summary) {
     const input = document.getElementById('velocity-project-search');
     if (input) {
+      let _searchTracked = false;
       input.addEventListener('input', () => {
         const query = input.value.toLowerCase().trim();
         document.querySelectorAll('#velocity-projects-tbody tr[data-proj-name]').forEach(row => {
           row.style.display = !query || row.dataset.projName.includes(query) ? '' : 'none';
         });
+        if (query.length >= 2 && !_searchTracked) {
+          _searchTracked = true;
+          Analytics.trackEvent('search_used', { view: 'velocity' });
+        }
       });
     }
     document.querySelectorAll('[data-velocity-range]').forEach(btn => {
@@ -1129,6 +1142,7 @@ const Views = (() => {
         btn.classList.add('active-toggle');
         const el = document.getElementById('velocity-chart');
         if (el) el.innerHTML = _renderTrendChart(summary, btn.dataset.velocityRange);
+        Analytics.trackEvent('chart_range_changed', { view: 'velocity', range: btn.dataset.velocityRange });
       });
     });
   }
@@ -1368,8 +1382,14 @@ const Views = (() => {
         if (panel.style.display !== 'none' && panel.dataset.activeSpace === spaceId) {
           panel.style.display = 'none';
           card.classList.remove('active');
+          Analytics.trackEvent('space_detail_closed');
           return;
         }
+
+        Analytics.trackEvent('space_detail_opened', {
+          space_projects: spaceInfo.projectCount,
+          space_deployments: spaceInfo.deploymentCount,
+        });
 
         document.querySelectorAll('.space-card').forEach(c => c.classList.remove('active'));
         card.classList.add('active');
@@ -1570,11 +1590,16 @@ const Views = (() => {
   function wireProjectsEvents() {
     const input = document.getElementById('project-search');
     if (!input) return;
+    let _searchTracked = false;
     input.addEventListener('input', () => {
       const query = input.value.toLowerCase().trim();
       document.querySelectorAll('#projects-tbody tr[data-project-name]').forEach(row => {
         row.style.display = !query || row.dataset.projectName.includes(query) ? '' : 'none';
       });
+      if (query.length >= 2 && !_searchTracked) {
+        _searchTracked = true;
+        Analytics.trackEvent('search_used', { view: 'projects' });
+      }
     });
   }
 
@@ -1865,7 +1890,9 @@ const Views = (() => {
 
     document.querySelectorAll('.view-env-spaces[data-env-name]').forEach(btn => {
       btn.addEventListener('click', () => {
-        open(btn.dataset.envName || '');
+        const envName = btn.dataset.envName || '';
+        open(envName);
+        Analytics.trackEvent('env_spaces_modal_opened', { environment: envName });
       });
     });
 

@@ -320,6 +320,8 @@ function hidePromptUI() {
 }
 
 function displayPromptUIV2(theme) {
+    chrome.runtime.sendMessage({action: "show_ui"});
+
     const existingContainer = document.getElementById('octoai-container');
 
     if (existingContainer) {

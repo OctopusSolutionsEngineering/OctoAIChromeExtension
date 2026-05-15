@@ -1,0 +1,6246 @@
+# Instructions
+
+## General Instructions
+
+**⚠️ CRITICAL — Template default accounts (`account_octopussamples_azure_account`, `account_aws_oidc`) MUST NOT be created when the prompt names a specific account**: When the prompt says "Add an Azure OIDC account named 'X'" or "Create an Azure account called 'X'" or "Add an Azure Service Principal account called 'X'", the `octopusdeploy_azure_service_principal` resource named `account_octopussamples_azure_account` MUST NOT appear anywhere in the Terraform output. When the prompt says "Add an AWS account named 'X'", the `octopusdeploy_aws_openid_connect_account` resource named `account_aws_oidc` MUST NOT appear anywhere in the output. These template defaults MUST be completely omitted and ALL references (including step `execution_properties`, project variables such as `Project.Azure.Account`, and any variable referencing an account) must use the prompt-specified account. Specifically: the `Project.Azure.Account` variable value MUST reference the prompt-specified account resource, not the template default account. This rule has ABSOLUTE PRIORITY over any template that includes these default accounts.
+
+**MANDATORY SELF-CHECK — template default account exclusion**: Before finalizing Terraform output, scan for any resource named `account_octopussamples_azure_account` or `account_aws_oidc`. If the prompt named a specific account, REMOVE these resources entirely and replace ALL references to them with references to the prompt-specified account resource. You will be penalized for each occurrence of `account_octopussamples_azure_account` or `account_aws_oidc` in the output when the prompt names a specific account.
+
+**⚠️ CRITICAL — Prompt-specified deployment package feed MUST be used for packages, not the template default feed**: When the prompt says "Add a Docker container registry feed called 'X'" or "use the 'X' feed for deployment", you MUST create the prompt-specified feed resource AND use it for all `packages` references in steps. The template default `feed_github_container_registry` (GitHub Container Registry) is only permitted as the `container` block feed (worker tools container for step execution) — it MUST NOT be used as the deployment package `feed_id` when the prompt names a specific Docker feed. The prompt-specified feed MUST be created in addition to the `feed_github_container_registry` resource which may still be required for Kubernetes worker tool containers. Similarly, when a prompt names a specific Maven feed or Helm feed, the prompt-specified feed MUST be created and used for packages, even if the template default `octopusdeploy_maven_feed` resource named `feed_octopus_maven_feed` is also present.
+
+**MANDATORY SELF-CHECK — prompt-specified deployment feed**: Before finalizing Terraform output, scan the prompt for "Add a feed named 'X'" or "use the 'X' feed for..." instructions. For EACH such instruction, verify that: (1) a feed resource with `name = "X"` exists in the output, and (2) all `packages` blocks in steps that should use this feed have `feed_id` pointing to this prompt-specified feed, NOT to `feed_github_container_registry`. You will be penalized for each case where a deployment package uses `feed_github_container_registry` when the prompt specified a different feed.
+
+**⚠️ CRITICAL — Prompt-specified accounts MUST be created**: When the prompt says "Add an AWS OIDC account called 'X'" or "Add an Azure account called 'X'", you MUST create the corresponding account resource (`octopusdeploy_aws_openid_connect_account` or `octopusdeploy_azure_openid_connect`) with the exact name specified in the prompt. Failing to create a prompt-specified account is always wrong. You will be penalized for each prompt-specified account that is absent from the Terraform output. This rule applies regardless of the project template being used — even if the Kubernetes, Azure, or other template does not include an account, the prompt-specified account MUST STILL be created as a separate top-level resource. Example: if the prompt says "Add an AWS OIDC account called 'AWS Deploy Account' with the role ARN 'arn:aws:iam::123456789012:role/OctopusDeployRole'", the following resource MUST appear in the output:
+```
+resource "octopusdeploy_aws_openid_connect_account" "account_aws_deploy_account" {
+  name                              = "AWS Deploy Account"
+  role_arn                          = "arn:aws:iam::123456789012:role/OctopusDeployRole"
+  account_test_subject_keys         = ["space"]
+  execution_subject_keys            = ["space"]
+  health_subject_keys               = ["space"]
+  session_duration                  = 3600
+  environments                      = []
+  tenant_tags                       = []
+  tenants                           = []
+  tenanted_deployment_participation = "Untenanted"
+}
+```
+
+**MANDATORY SELF-CHECK — prompt-specified account creation**: Before finalizing Terraform output, scan the prompt for any "Add an ... account called 'X'" or "Create an ... account named 'X'" instructions. For EACH such instruction, verify that a corresponding account resource with `name = "X"` exists in the Terraform output. If any prompt-specified account is missing, add it immediately. This check MUST be performed even for Kubernetes projects where the template does not include accounts.
+
+**⚠️ CRITICAL — `depends_on` for sequential steps MUST reference ONLY the immediately preceding step**: Each `octopusdeploy_process_step` resource (steps 2, 3, 4, etc.) must have `depends_on` pointing to EXACTLY ONE step — the step that immediately precedes it in the deployment process. NEVER list all previous steps in `depends_on`. For step N, `depends_on = [octopusdeploy_process_step.step_N_minus_1]`. For step N to depend on ALL previous steps violates the rule and creates unnecessary complexity. WRONG: `depends_on = [step_1, step_2, step_3, step_4, step_5, step_6]` for step 7. CORRECT: `depends_on = [octopusdeploy_process_step.step_6]` for step 7.
+
+**⚠️ CRITICAL — ALL resources in a new project creation MUST use `count` with data source lookup**: Every resource that represents a project-scoped or space-scoped entity created as part of a project MUST include `count = "${length(data.octopusdeploy_<TYPE>s.<data_name>.<attribute>) != 0 ? 0 : 1}"` AND an associated `data "octopusdeploy_<TYPE>"` data source. This applies to the following resources in new project creation prompts:
+
+- `octopusdeploy_project` — MUST have `count` and ternary `project_id`
+- `octopusdeploy_process` — MUST have `count` and ternary `project_id`
+- `octopusdeploy_process_step` / `octopusdeploy_process_templated_step` — MUST have `count` and ternary `process_id`
+- `octopusdeploy_variable` — MUST have `count`
+- `octopusdeploy_lifecycle` — MUST have `count`
+- `octopusdeploy_environment` — MUST have `count`
+- `octopusdeploy_channel` — MUST have `count`
+- `octopusdeploy_project_scheduled_trigger` — MUST have `count`
+- `octopusdeploy_community_step_template` — MUST have `count`
+- `octopusdeploy_project_versioning_strategy` — MUST have `count`
+- `octopusdeploy_tenant` — MUST have `count` (when tenant is requested)
+- `octopusdeploy_tenant_project` — MUST have `count` (when tenant_project is requested)
+- `octopusdeploy_tenant_project_variable` / `octopusdeploy_tenant_common_variable` — MUST have `count` (when tenant variables are requested)
+- `octopusdeploy_tag_set` — MUST have `count` (when tenant has tags)
+- `octopusdeploy_tag` — MUST have `count` (when tenant has tags)
+- `octopusdeploy_project_group` — MUST have `count`
+- `octopusdeploy_docker_container_registry` (feed) — MUST have `count`
+- `octopusdeploy_maven_feed`, `octopusdeploy_nuget_feed`, etc. (feeds) — MUST have `count`
+
+This pattern ensures idempotent re-apply: when the resource already exists, `count = 0` skips creation and the data source is used; when it doesn't exist, `count = 1` creates it.
+
+**Project resource — CRITICAL `count` + data source pattern (MUST for new project creation)**:
+The `octopusdeploy_project` resource MUST include a `count` attribute with a matching data source.
+
+```hcl
+# Data source to lookup existing project
+data "octopusdeploy_projects" "project_my_project" {
+  ids           = null
+  partial_name = "My Project"
+  skip          = 0
+  take          = 1
+}
+
+variable "project_my_project_name" {
+  type         = string
+  nullable     = false
+  sensitive    = false
+  description = "The name of the project"
+  default      = "My Project"
+}
+
+# Resource with count for idempotent re-apply
+resource "octopusdeploy_project" "project_my_project" {
+  count                            = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name                             = "${var.project_my_project_name}"
+  lifecycle_id                     = "${length(data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_devsecops[0].id}"
+  project_group_id                 = "${length(data.octopusdeploy_project_groups.project_group_kubernetes.project_groups) != 0 ? data.octopusdeploy_project_groups.project_group_kubernetes.project_groups[0].id : octopusdeploy_project_group.project_group_kubernetes[0].id}"
+  template_id                      = ""
+  tenanted_deployment_participation = "Untenanted"
+  is_version_controlled           = false
+  web_page                        = ""
+  default_worker_pool_id          = "${length(data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id : octopusdeploy_worker_pool.workerpool_default_worker_pool[0].id}"
+  default_tool_version            = "ToolVersionLatest"
+}
+```
+
+**Process resource — CRITICAL `count` + ternary `project_id` (MUST for new project creation)**:
+The `octopusdeploy_process` resource MUST include `count` and a ternary `project_id`.
+
+```hcl
+resource "octopusdeploy_process" "process_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  depends_on = []
+}
+```
+
+**Process step / templated step — CRITICAL `count` + ternary `process_id` (MUST for new project creation)**:
+Every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource MUST include `count` and a ternary `process_id`.
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_first_step" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name         = "First Step"
+  type         = "Octopus.Script"
+  process_id   = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  # ... other attributes ...
+}
+
+resource "octopusdeploy_process_templated_step" "process_step_my_project_community_step" {
+  count          = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name           = "Community Step"
+  process_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  template_id    = "${data.octopusdeploy_step_template.steptemplate_scan_for_vulnerabilities.step_template != null ? data.octopusdeploy_step_template.steptemplate_scan_for_vulnerabilities.step_template.id : octopusdeploy_community_step_template.communitysteptemplate_scan_for_vulnerabilities[0].id}"
+  # ... other attributes ...
+}
+```
+
+**Variable resource — CRITICAL `count` (MUST for new project creation)**:
+Every `octopusdeploy_variable` resource MUST include `count`.
+
+```hcl
+resource "octopusdeploy_variable" "my_project_connection_string" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  name         = "Connection.String"
+  type         = "String"
+  value        = "server=prod"
+  is_sensitive = false
+  lifecycle {
+    ignore_changes = [sensitive_value]
+  }
+  depends_on = []
+}
+```
+
+**Environment resource — CRITICAL `count` + ternary `id` references (MUST for new project creation)**:
+Every `octopusdeploy_environment` resource MUST include `count`, a matching data source, and `lifecycle { prevent_destroy = true }`.
+
+```hcl
+data "octopusdeploy_environments" "environment_development" {
+  ids           = null
+  partial_name = "Development"
+  skip          = 0
+  take          = 1
+}
+resource "octopusdeploy_environment" "environment_development" {
+  count = "${length(data.octopusdeploy_environments.environment_development.environments) != 0 ? 0 : 1}"
+  name  = "Development"
+  # ... other attributes ...
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+**Lifecycle resource — CRITICAL `count` (MUST for new project creation)**:
+Every `octopusdeploy_lifecycle` resource MUST include `count` and a matching data source.
+
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_devsecops" {
+  count = "${length(data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles) != 0 ? 0 : 1}"
+  name  = "DevSecOps"
+  # ... other attributes ...
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+**Channel resource — CRITICAL `count` with project-based lookup**:
+Every `octopusdeploy_channel` resource MUST include `count` referencing a `data.octopusdeploy_projects` data source (NOT a channels data source).
+
+```hcl
+resource "octopusdeploy_channel" "channel_my_project_hotfix" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  lifecycle_id = "${length(data.octopusdeploy_lifecycles.lifecycle_hotfix.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_hotfix.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_hotfix[0].id}"
+  name         = "Hotfix"
+  project_id   = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  is_default   = false
+  tenant_tags  = []
+}
+```
+
+**Scheduled trigger — CRITICAL `count` (MUST for new project creation)**:
+Every `octopusdeploy_project_scheduled_trigger` resource MUST include `count`.
+
+```hcl
+resource "octopusdeploy_project_scheduled_trigger" "projecttrigger_my_project_daily_scan" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  name       = "Daily Scan"
+  # ... other attributes ...
+}
+```
+
+**Worker pool lookup**:
+When a step references a worker pool, use a data source + ternary:
+
+```hcl
+data "octopusdeploy_worker_pools" "workerpool_default_worker_pool" {
+  ids           = null
+  partial_name = "Default Worker Pool"
+  skip          = 0
+  take          = 1
+}
+```
+
+The step's `worker_pool_variable` should be set to `"Octopus.Project.WorkerPool"` (this is the correct value). The `default_worker_pool_id` on the project should use the ternary pattern shown above.
+
+**Community step template — CRITICAL `count` with both data sources**:
+Every `octopusdeploy_community_step_template` resource MUST include `count` and use BOTH the step_template and community_step_template data sources:
+
+```hcl
+data "octopusdeploy_community_step_template" "communitysteptemplate_scan_for_vulnerabilities" {
+  website = "https://library.octopus.com/step-templates/a38bfff8-8dde-4dd6-9fd0-c90bb4709d5a"
+}
+data "octopusdeploy_step_template" "steptemplate_scan_for_vulnerabilities" {
+  name = "Scan for Vulnerabilities"
+}
+resource "octopusdeploy_community_step_template" "communitysteptemplate_scan_for_vulnerabilities" {
+  count                              = "${data.octopusdeploy_step_template.steptemplate_scan_for_vulnerabilities.step_template != null ? 0 : 1}"
+  community_action_template_id       = "${length(data.octopusdeploy_community_step_template.communitysteptemplate_scan_for_vulnerabilities.steps) != 0 ? data.octopusdeploy_community_step_template.communitysteptemplate_scan_for_vulnerabilities.steps[0].id : null}"
+}
+```
+
+**MANDATORY SELF-CHECK — count + data source completeness scan**: Before finalizing Terraform output, verify EVERY resource type in the output:
+1. Does `octopusdeploy_project` have `count`? — YES
+2. Does `octopusdeploy_process` have `count` and ternary `project_id`? — YES
+3. Does every `octopusdeploy_process_step` / `octopusdeploy_process_templated_step` have `count` and ternary `process_id`? — YES
+4. Does every `octopusdeploy_variable` have `count`? — YES
+5. Does every `octopusdeploy_environment` have `count`, data source, and `lifecycle { prevent_destroy = true }`? — YES
+6. Does every `octopusdeploy_lifecycle` have `count` and `lifecycle { prevent_destroy = true }`? — YES
+7. Does every `octopusdeploy_channel` have `count` with project-based lookup? — YES
+8. Does every `octopusdeploy_project_scheduled_trigger` have `count`? — YES
+9. Does every `octopusdeploy_community_step_template` have `count`? — YES
+10. Does every feed resource have `count`? — YES
+11. Is there a `data.octopusdeploy_worker_pools` data source for worker pool lookup? — YES
+12. Does every data source have a matching resource? — YES
+
+If ANY of the above is NO, fix it BEFORE finalizing the Terraform output. You will be penalized for outputting Terraform that lacks the `count` + data source pattern on any resource listed above.
+
+* You must carefully consider the prompt and create all the required resources.
+* You must ignore any mention of the current project.
+* If the target space is defined in the prompt, that must take precedence over any mention of a current space. For example:
+  * When given the prompt `Create a project called 'Example Project' in the 'Example Space'. The current project is 'My Web App'. The current space is 'Default'.`, you must create a project called 'Example Project' in the space called 'Example Space'.
+  * When given the prompt `Create a project called 'Example Project'. The current project is 'My Web App'. The current space is 'Default'.`, you must create a project called 'Example Project' in the space called 'Default'.
+* You must create valid Terraform.
+* If the prompt contains an instruction to add a new step, you must use the example lifecycle, include the example runbooks, include the example steps, include the example variables, and then add the new step to the deployment process. **EXCEPTION — this instruction applies ONLY to Spinnaker migration prompts.** When the prompt starts with "Create a [type] project" (e.g., "Create a Kubernetes project", "Create an Azure Web App project") and lists explicit "Add a step to..." instructions that name specific step types and configurations, this is a **new project creation prompt**, NOT a migration prompt. For new project creation prompts, the template steps, variables, and triggers from the project type template are included as the baseline for the project. In addition to the template steps, ALL steps explicitly named in the "Add a step" instructions MUST also be created as separate `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resources with the **exact names and configurations** specified in the prompt. **CRITICAL: A template step is NOT a substitute for a custom step. Even if the template already includes a deployment step with a similar function (e.g., "Deploy Azure Web App Container"), if the prompt says "Add a step called 'Deploy to Azure Web App'" with a specific package and account, a separate step with exactly the name "Deploy to Azure Web App" and those specific configurations MUST be created.** You will be penalized for omitting any explicitly named step from the prompt. **CRITICAL EXCEPTION: When tenant variables are requested, you MUST add `template` blocks inside the `octopusdeploy_project` resource. These are NOT the same as template steps — `template` blocks define variable variable templates (variable definitions), NOT deployment steps. This is the ONLY time you should add `template` blocks to a new project creation prompt.**
+
+**⚠️ CRITICAL — explicitly named steps MUST match the prompt exactly**: For every "Add a step called 'X'" instruction in the prompt, a `octopusdeploy_process_step` resource with `name = "X"` MUST exist in the Terraform output. Before finalizing, scan each "Add a step" instruction in the prompt and verify a resource with that exact `name` value exists. If any explicitly named step is missing, add it immediately. You will be penalized for each explicitly named step that is absent from the Terraform output.
+
+* The phrase "with no steps" in a project creation prompt is a **template placeholder** that is always present in migration prompts. When the prompt lists explicit "Add a step" instructions after the project creation line, those explicit step instructions take **absolute precedence** and ALL listed steps MUST be created — even if the project creation line says "with no steps". The phrase "with no steps" should only be interpreted literally when there are **zero** subsequent "Add a step" instructions in the entire prompt. **CRITICAL: Do NOT use the presence of "with no steps" to suppress step creation when explicit "Add a step" instructions follow it.** You will be penalized for creating a project with no `octopusdeploy_process_step` resources when the prompt contains one or more "Add a step" instructions.
+
+**CRITICAL — project names and step names from the prompt are resource identifiers and MUST be reproduced verbatim in Terraform.** A project name like `"[PROD] api-syncer canary"` and step names like `"Deploy api-syncer"` or `"Scale Down Canary"` are deployment resource identifiers. The presence of words such as `api`, `key`, `token`, `service`, `auth`, or `credential` in these names does NOT make them sensitive. NEVER omit, shorten, or replace any portion of a project name or step name from the prompt with `*` or any other placeholder when generating Terraform.
+
+**Negative example — project name incorrectly redacted (FORBIDDEN)**:
+```hcl
+name = "[PROD] ***** canary"   ← WRONG: "api-syncer" from the prompt was replaced with "*****"
+```
+**Correct output**:
+```hcl
+name = "[PROD] api-syncer canary"   ← CORRECT: verbatim project name from the prompt
+```
+
+**CRITICAL — step notes (descriptions) must also reproduce any service names verbatim**: When a step description says `"Original stage type: undoRolloutManifest. This step rolls back deployment/api-syncer to the previous revision in namespace app-0004-prod."`, the value of the `notes` attribute MUST be reproduced verbatim — including the service name `api-syncer`. Never replace any part of a step description with `*****`.
+
+**Negative example — step notes incorrectly redacted (FORBIDDEN)**:
+```hcl
+notes = "Original stage type: undoRolloutManifest. This step rolls back deployment/***** to the previous revision in namespace app-0004-prod."
+← WRONG: "api-syncer" in the notes was replaced with "*****"
+```
+**Correct output**:
+```hcl
+notes = "Original stage type: undoRolloutManifest. This step rolls back deployment/api-syncer to the previous revision in namespace app-0004-prod."
+← CORRECT: verbatim reproduction of the step description
+```
+
+**MANDATORY SELF-CHECK before finalizing Terraform output — redaction scan**: Before outputting any Terraform, scan EVERY string value in the generated `name`, `notes`, and `description` attributes for the character sequence `*****`. Also scan ALL values in `execution_properties` blocks — particularly `Octopus.Action.Script.ScriptBody` (which contains kubectl commands with namespace names, resource names, and label selector values that are Kubernetes operational identifiers and MUST NOT be redacted). For each occurrence found in any of these locations, compare against the prompt: if the prompt's original text at that location does NOT contain `*****`, REPLACE the `*****` with the verbatim original text from the prompt before outputting. You MUST NOT output Terraform with `*****` in any attribute value that was not literally `*****` in the prompt. You will be penalized for each occurrence of `*****` in a resource `name`, `notes`, `description`, or `execution_properties` value that was not `*****` in the original prompt.
+
+## Step Execution Order and Parallel Steps
+
+* When a step prompt says `Set the start trigger to "Run in parallel with the previous step"`, the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource MUST have `start_trigger = "StartWithPrevious"`.
+* When a step prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"`, the resource MUST have `start_trigger = "StartAfterPrevious"`.
+* Steps with no start trigger annotation default to `start_trigger = "StartAfterPrevious"`.
+* If the prompt says `The step must be disabled.`, you must still keep that step in the `octopusdeploy_process_steps_order` resource and preserve any explicit `start_trigger` annotation from the prompt. Disabled steps still participate in process ordering.
+* You will be penalized for using `start_trigger = "StartAfterPrevious"` when the prompt explicitly says `"Run in parallel with the previous step"`.
+* You will be penalized for using `start_trigger = "StartWithPrevious"` when the prompt explicitly says `"Wait for all previous steps to complete, then start"` or when no start trigger annotation is given.
+* **MANDATORY — every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource defined for a project MUST appear in that project's `octopusdeploy_process_steps_order` resource's `steps` list.** A step that exists in Terraform but is absent from the `steps` list is silently ignored by Octopus and will not execute. Before finalizing, count the `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources for a project and verify the same count of step IDs appears in the `octopusdeploy_process_steps_order` `steps` list. If any are missing, add them in the correct topological order. You will be penalized for omitting any step from the `steps` list.
+* **MANDATORY — each step ID must appear in the `octopusdeploy_process_steps_order` `steps` list EXACTLY ONCE.** Duplicate step IDs in the `steps` list cause Octopus to execute a step more than once, which is always wrong. Before finalizing, scan the `steps` list for duplicate references and remove any duplicates. The `steps` list length must equal the count of `octopusdeploy_process_step` + `octopusdeploy_process_templated_step` resources for the project. If the list length is greater than this count, there are duplicate IDs — find and remove them.
+
+**CRITICAL — when two steps in the prompt have identical names, use distinct Terraform resource labels but preserve the exact prompt name as the `name` attribute**: If two "Add a step" instructions both specify the same step name (e.g., two steps both named "Deploy Service-A"), they are two separate resources and must have distinct Terraform resource labels (e.g., `process_step_..._deploy_service_a` and `process_step_..._deploy_service_a_2`). Also, the `name` attribute on the step resources must be unique — append the same suffix to the `name` attribute.
+
+**Negative example — `name` attribute incorrectly modified to avoid collision (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_...deploy_service_a" {
+  name = "Deploy Service-A"  ← CORRECT
+}
+resource "octopusdeploy_process_step" "process_step_...deploy_service_a_2" {
+  name = "Deploy Service-A"  ← WRONG: name attribute is duplicated
+}
+```
+**CORRECT output** (resource label differs, name attribute is verbatim from prompt):
+```hcl
+resource "octopusdeploy_process_step" "process_step_...deploy_service_a" {
+  name = "Deploy Service-A"  ← CORRECT: matches first prompt instruction verbatim
+}
+resource "octopusdeploy_process_step" "process_step_...deploy_service_a_2" {
+  name = "Deploy Service-A 2"  ← CORRECT: both name and label are unique
+```
+* **MANDATORY SELF-CHECK — parallel group completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Run in parallel with the previous step"`. For EACH such step, verify that the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` uses `start_trigger = "StartWithPrevious"`. If any step with that phrase uses `start_trigger = "StartAfterPrevious"`, correct it before outputting. **This check applies to ALL steps in the parallel group including the LAST one** — the last member of a parallel group is NOT a convergence point and MUST use `start_trigger = "StartWithPrevious"`, not `"StartAfterPrevious"`. Only the step AFTER the entire parallel group (annotated with "Wait for all previous steps") is a convergence point.
+
+  **CRITICAL — the SECOND step in a parallel group is the most commonly broken**: When a prompt includes a large parallel group (e.g., 8 steps all with "Run in parallel with the previous step"), the SECOND step — the first one to receive the parallel annotation — is where the `StartAfterPrevious` mistake is most often made. Before finalizing, explicitly check the resource for the SECOND parallel step and confirm it uses `start_trigger = "StartWithPrevious"`, not `"StartAfterPrevious"`.
+
+  **CRITICAL — the bug can occur at ANY position in a large parallel group, not just the second step**: After fixing the second step, do NOT assume all remaining parallel steps are correct. The `StartAfterPrevious` mistake can occur at any index in a large parallel group (third, fourth, etc.). The self-check must examine EVERY step annotated with "Run in parallel with the previous step" — not just the second one.
+
+  **Negative example — SECOND step in large parallel group incorrectly using StartAfterPrevious (VERY COMMON MISTAKE)**:
+
+  Given that the prompt says:
+  ```
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy Service-A" ...    (no annotation — first in parallel group)
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy Service-B" ... Set the start trigger to "Run in parallel with the previous step".   ← SECOND step in group
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy Service-C" ... Set the start trigger to "Run in parallel with the previous step".
+  * Add a "Deploy Kubernetes YAML" step ... "Deploy Service-D" ... Set the start trigger to "Run in parallel with the previous step".
+  ```
+
+  The **WRONG** Terraform (Deploy Service-B uses StartAfterPrevious — FORBIDDEN):
+  ```hcl
+  resource "octopusdeploy_process_step" "process_step_deploy_service_a" {
+    start_trigger = "StartAfterPrevious"  ← correct (first in group, no annotation)
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_b" {
+    start_trigger = "StartAfterPrevious"  ← WRONG: prompt says "Run in parallel with the previous step"
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_c" {
+    start_trigger = "StartWithPrevious"  ← correct
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_d" {
+    start_trigger = "StartWithPrevious"  ← correct
+  }
+  ```
+
+  The **CORRECT** Terraform (ALL steps after the first use StartWithPrevious):
+  ```hcl
+  resource "octopusdeploy_process_step" "process_step_deploy_service_a" {
+    start_trigger = "StartAfterPrevious"  ← first in group
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_b" {
+    start_trigger = "StartWithPrevious"  ← CORRECT: second step MUST use StartWithPrevious
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_c" {
+    start_trigger = "StartWithPrevious"  ← correct
+  }
+  resource "octopusdeploy_process_step" "process_step_deploy_service_d" {
+    start_trigger = "StartWithPrevious"  ← correct
+  }
+  ```
+* **MANDATORY SELF-CHECK — convergence step completeness**: Before finalizing generated Terraform, scan every step prompt for the phrase `"Wait for all previous steps to complete, then start"`. For EACH such step, verify that the corresponding resource uses `start_trigger = "StartAfterPrevious"`. If any step with that phrase uses `start_trigger = "StartWithPrevious"`, correct it before outputting.
+
+**CRITICAL — convergence steps (after a parallel group) MUST use `start_trigger = "StartAfterPrevious"`**: When the prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"`, this indicates a convergence point — a step that waits for multiple preceding parallel steps to finish before it begins. In Octopus Terraform, this is expressed as `start_trigger = "StartAfterPrevious"`. This is the SAME attribute value as the default, but it MUST be explicitly set when the prompt says "Wait for all previous steps". The `StartAfterPrevious` value is used for two distinct cases:
+1. Sequential steps (default, no annotation needed)
+2. Convergence steps (explicitly annotated in prompt — MUST be set even though value matches default)
+
+**Negative example — convergence step after a parallel group incorrectly using StartWithPrevious**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...         (no annotation — first in root group)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Manual Intervention" step ... "Manual Judgment" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+```
+
+The **WRONG** Terraform (Manual Judgment uses StartWithPrevious — FORBIDDEN at a convergence point):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_staging" {
+  start_trigger = "StartWithPrevious"  ← correct
+  ...
+}
+resource "octopusdeploy_process_step" "... manual_judgment" {
+  start_trigger = "StartWithPrevious"  ← WRONG: convergence point must use StartAfterPrevious
+  ...
+}
+```
+
+The **CORRECT** Terraform (Manual Judgment uses StartAfterPrevious as a convergence point):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_staging" {
+  start_trigger = "StartWithPrevious"  ← CORRECT: parallel
+  ...
+}
+resource "octopusdeploy_process_step" "... manual_judgment" {
+  start_trigger = "StartAfterPrevious"  ← CORRECT: convergence — waits for all parallel steps
+  ...
+}
+```
+
+**CRITICAL — a step with BOTH `is_disabled = true` AND `start_trigger = "StartWithPrevious"` is VALID and REQUIRED when a disabled stage is a parallel group member**: When the prompt says `The step must be disabled. Set the start trigger to "Run in parallel with the previous step"`, the corresponding Terraform resource MUST have both attributes set. Setting `is_disabled = true` does NOT override or cancel the `start_trigger` annotation.
+
+**Negative example — disabled parallel step incorrectly using StartAfterPrevious (COMMON MISTAKE)**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Dev" ...
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Staging" ... The step must be disabled. Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **WRONG** Terraform (Deploy Staging uses StartAfterPrevious — FORBIDDEN when prompt says parallel):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_staging" {
+  name          = "Deploy Staging"
+  is_disabled   = true
+  start_trigger = "StartAfterPrevious"  ← WRONG: prompt says "Run in parallel with the previous step"
+  ...
+}
+```
+
+The **CORRECT** Terraform (disabled step still uses StartWithPrevious):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_staging" {
+  name          = "Deploy Staging"
+  is_disabled   = true
+  start_trigger = "StartWithPrevious"  ← CORRECT: disabled + parallel are independent attributes
+  ...
+}
+```
+
+**CRITICAL — the `start_trigger` on the FIRST step in a project is always `"StartAfterPrevious"`**: The first step in `octopusdeploy_process_steps_order` always uses `start_trigger = "StartAfterPrevious"` (or the equivalent default). For the first step, `"StartAfterPrevious"` means "start immediately" since there are no previous steps. This is correct behavior and must NOT be changed to `"StartWithPrevious"`.
+
+**CRITICAL — steps that appear CONSECUTIVE in the `octopusdeploy_process_steps_order` list and should run in parallel MUST use `start_trigger = "StartWithPrevious"` for the SECOND and subsequent steps in the parallel group.** If the prompt says `Set the start trigger to "Run in parallel with the previous step"` for a step, you must set `start_trigger = "StartWithPrevious"` — even if the step appears AFTER a step that itself uses `"StartAfterPrevious"`. The `start_trigger` on each step is evaluated independently: it controls how THAT step starts relative to the step immediately before it in the ordered list.
+
+**Negative example — consecutive parallel step incorrectly using StartAfterPrevious (COMMON MISTAKE)**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -canary-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **WRONG** Terraform (Rollback step uses StartAfterPrevious — FORBIDDEN when prompt says parallel):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_canary" {
+  start_trigger = "StartAfterPrevious"
+  ...
+}
+resource "octopusdeploy_process_step" "... rollback_internal" {
+  start_trigger = "StartAfterPrevious"  ← WRONG: prompt says "Run in parallel with the previous step"
+  ...
+}
+```
+
+The **CORRECT** Terraform (Rollback step uses StartWithPrevious as instructed):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_canary" {
+  start_trigger = "StartAfterPrevious"
+  ...
+}
+resource "octopusdeploy_process_step" "... rollback_internal" {
+  start_trigger = "StartWithPrevious"  ← CORRECT: matches "Run in parallel with the previous step"
+  ...
+}
+```
+
+**CRITICAL — in a 3-or-more-step parallel group, ALL steps after the first MUST use `start_trigger = "StartWithPrevious"`**: When three or more consecutive steps all have `Set the start trigger to "Run in parallel with the previous step"` (or the second and subsequent steps in a group do), every step except the first MUST use `StartWithPrevious`. The last step in the group is NOT a convergence point — it is still part of the parallel group. Only the step AFTER the entire group (the one with "Wait for all previous steps") is the convergence point.
+
+**Negative example — 3-step parallel group where the LAST parallel step incorrectly uses StartAfterPrevious (COMMON MISTAKE)**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Deploy -main-" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Run a kubectl script" step ... "Rollback -internal-" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Run a kubectl script" step ... "Rollback -canary-" ... Set the start trigger to "Run in parallel with the previous step".
+```
+
+The **WRONG** Terraform (Rollback -canary- uses StartAfterPrevious — FORBIDDEN):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_main" {
+  start_trigger = "StartAfterPrevious"  ← correct (first in parallel group)
+}
+resource "octopusdeploy_process_step" "... rollback_internal" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "... rollback_canary" {
+  start_trigger = "StartAfterPrevious"  ← WRONG: "Run in parallel" means StartWithPrevious, NOT StartAfterPrevious
+}
+```
+
+The **CORRECT** Terraform (all parallel steps except the first use StartWithPrevious):
+```hcl
+resource "octopusdeploy_process_step" "... deploy_main" {
+  start_trigger = "StartAfterPrevious"  ← first in group
+}
+resource "octopusdeploy_process_step" "... rollback_internal" {
+  start_trigger = "StartWithPrevious"  ← CORRECT
+}
+resource "octopusdeploy_process_step" "... rollback_canary" {
+  start_trigger = "StartWithPrevious"  ← CORRECT: LAST parallel step still uses StartWithPrevious
+}
+```
+
+**CRITICAL — in a 7-or-more-step parallel group, the LAST step MUST still use `start_trigger = "StartWithPrevious"`**: Large parallel groups with 7 or more members are particularly prone to this mistake. The 7th step in a 7-step parallel group is NOT a convergence point — it is a parallel group member. Only the step AFTER the 7th parallel step (annotated "Wait for all previous steps") is the convergence point.
+
+**Negative example — 7-step parallel group where the LAST (7th) parallel step incorrectly uses StartAfterPrevious (CONFIRMED REAL-WORLD BUG)**:
+
+Given that the prompt says:
+```
+* Add a "Deploy Kubernetes YAML" step ... "Manual Judgment" ... (no annotation — sequential entry)
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-A" ... Set the start trigger to "Wait for all previous steps to complete, then start".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-B" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-C" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-D" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-E" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-F" ... Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step ... "Deploy Service-G" ... Set the start trigger to "Run in parallel with the previous step". (This is the LAST of 7 parallel steps in this group — the next step is the convergence point and uses "Wait for all previous steps".)
+* Add a "Manual Intervention" step ... "Final Approval" ... Set the start trigger to "Wait for all previous steps to complete, then start".  ← convergence
+```
+
+The **WRONG** Terraform (Deploy Service-G, the 7th and LAST parallel step, incorrectly uses StartAfterPrevious — FORBIDDEN):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_service_a" {
+  start_trigger = "StartAfterPrevious"  ← correct: entry into parallel group (Wait for all)
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_b" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_c" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_d" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_e" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_f" {
+  start_trigger = "StartWithPrevious"  ← correct
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_g" {
+  start_trigger = "StartAfterPrevious"  ← WRONG: the 7th parallel step MUST use StartWithPrevious, NOT StartAfterPrevious
+}
+resource "octopusdeploy_process_step" "process_step_final_approval" {
+  start_trigger = "StartAfterPrevious"  ← correct: convergence point AFTER all 7 parallel steps
+}
+```
+
+The **CORRECT** Terraform (all 7 parallel steps use StartWithPrevious; only the convergence step uses StartAfterPrevious):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_service_a" {
+  start_trigger = "StartAfterPrevious"  ← entry into 7-step parallel group
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_b" {
+  start_trigger = "StartWithPrevious"  ← 2nd parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_c" {
+  start_trigger = "StartWithPrevious"  ← 3rd parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_d" {
+  start_trigger = "StartWithPrevious"  ← 4th parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_e" {
+  start_trigger = "StartWithPrevious"  ← 5th parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_f" {
+  start_trigger = "StartWithPrevious"  ← 6th parallel step
+}
+resource "octopusdeploy_process_step" "process_step_deploy_service_g" {
+  start_trigger = "StartWithPrevious"  ← CORRECT: 7th parallel step STILL uses StartWithPrevious
+}
+resource "octopusdeploy_process_step" "process_step_final_approval" {
+  start_trigger = "StartAfterPrevious"  ← CORRECT: convergence step AFTER all 7 parallel steps
+}
+```
+
+**The KEY CONFUSION to avoid**: The 7th step is the LAST MEMBER of the parallel group — it is NOT the convergence step. The convergence step is "Final Approval" which appears AFTER the 7th parallel step. Do NOT mistake the LAST parallel step for the convergence point just because it is the last step before the convergence.
+
+**MANDATORY SELF-CHECK — parallel step count verification**: Before finalizing generated Terraform, count the number of step prompts annotated with `"Run in parallel with the previous step"`. This count MUST equal the number of `octopusdeploy_process_step` resources with `start_trigger = "StartWithPrevious"`. If these counts do not match, find and fix the discrepancy before outputting. A count mismatch always indicates that one or more parallel steps incorrectly use `start_trigger = "StartAfterPrevious"`.
+
+**MANDATORY SELF-CHECK — sequential step after parallel group**: When a prompt contains a step annotated with `"Wait for all previous steps to complete, then start"` immediately following a parallel group (one or more steps with `"Run in parallel with the previous step"`), verify that step uses `start_trigger = "StartAfterPrevious"`. This is the default, but the self-check ensures it was not accidentally set to `"StartWithPrevious"` by a copy-paste error.
+
+**MANDATORY FINAL ANNOTATION SCAN — every "Run in parallel" annotation must map to StartWithPrevious**: After generating ALL `octopusdeploy_process_step` resources, perform a final line-by-line scan. For each step in the `octopusdeploy_process_steps_order` list, look up its corresponding prompt annotation:
+- If the prompt says `Set the start trigger to "Run in parallel with the previous step"` → the step's `start_trigger` MUST be `"StartWithPrevious"`. If you find `"StartAfterPrevious"`, **change it immediately** before outputting.
+- If the prompt says `Set the start trigger to "Wait for all previous steps to complete, then start"` → the step's `start_trigger` MUST be `"StartAfterPrevious"`. If you find `"StartWithPrevious"`, change it immediately.
+- If the prompt has NO start trigger annotation for a step → `"StartAfterPrevious"` is correct (the default).
+
+**MANDATORY FINAL ANNOTATION SCAN — for large parallel groups (5+ members), perform explicit per-step enumeration**: After generating ALL `octopusdeploy_process_step` resources, if any prompt annotation includes the phrase `(This is the LAST of N parallel steps in this group...)`, explicitly enumerate ALL N parallel steps and verify each one uses `start_trigger = "StartWithPrevious"`. Write out:
+1. Step 1 of N: `<step name>` — annotation: first in group → expected: `StartAfterPrevious` → actual: `<value>` — **MATCH/MISMATCH**
+2. Step 2 of N: `<step name>` — annotation: "Run in parallel" → expected: `StartWithPrevious` → actual: `<value>` — **MATCH/MISMATCH**
+...
+N. Step N of N: `<step name>` — annotation: "Run in parallel" (LAST) → expected: `StartWithPrevious` → actual: `<value>` — **MATCH/MISMATCH**
+
+Fix any MISMATCH before outputting. This enumeration is required whenever the prompt contains a large parallel group count annotation.
+
+**This scan is MANDATORY and must catch the common mistake where a step annotated `"Run in parallel"` accidentally receives `start_trigger = "StartAfterPrevious"` because the preceding step also uses `"StartAfterPrevious"` (as the first step in its own parallel group).** The `start_trigger` of each step is evaluated independently — the fact that the PREVIOUS step uses `"StartAfterPrevious"` does NOT mean the current step should also use `"StartAfterPrevious"`. They are independent attributes.
+
+**CRITICAL — parallel group members must appear CONSECUTIVE in the `steps` list of `octopusdeploy_process_steps_order`**: Every step with `start_trigger = "StartWithPrevious"` must be placed in the `steps` list IMMEDIATELY after the step it runs in parallel with. No step from a different parallel group or from a later phase may appear between two members of the same parallel group. If you have a parallel group {A, B} where B runs in parallel with A, and A has continuation steps C1, C2, then the `steps` list must be `[..., A, B, C1, C2, ...]`. The order `[..., A, C1, B, C2, ...]` is FORBIDDEN because B is separated from A by a step from a different phase.
+
+**Negative example — leaf-branch sibling placed after continuation steps (CRITICAL MISTAKE)**:
+
+Given a prompt where Stage A and Stage B are parallel siblings (both follow the same predecessor), and Stage B is a leaf (no continuation steps), while Stage A has continuation steps C1 and C2:
+```hcl
+# WRONG — B appears after C1, breaking the consecutive adjacency rule:
+resource "octopusdeploy_process_steps_order" "..." {
+  steps = [
+    octopusdeploy_process_step.step_a.id,       # A: first in {A, B} group
+    octopusdeploy_process_step.step_c1.id,      # WRONG: C1 inserted before B
+    octopusdeploy_process_step.step_b.id,       # WRONG: B should be right after A
+    octopusdeploy_process_step.step_c2.id,
+  ]
+}
+
+# CORRECT — B appears immediately after A, before any continuation steps:
+resource "octopusdeploy_process_steps_order" "..." {
+  steps = [
+    octopusdeploy_process_step.step_a.id,       # A: first in {A, B} group
+    octopusdeploy_process_step.step_b.id,       # CORRECT: B immediately after A
+    octopusdeploy_process_step.step_c1.id,      # C1: first continuation, converges after BOTH A and B
+    octopusdeploy_process_step.step_c2.id,
+  ]
+}
+```
+In the CORRECT version: A gets `start_trigger = "StartAfterPrevious"` (convergence after predecessor), B gets `start_trigger = "StartWithPrevious"` (parallel with A), C1 gets `start_trigger = "StartAfterPrevious"` (waits for BOTH A and B to complete).
+
+**MANDATORY SELF-CHECK — `steps` list adjacency validation**: Before finalizing the `octopusdeploy_process_steps_order` resource for each project, scan the `steps` list and for every step with `start_trigger = "StartWithPrevious"`, verify that its position in the `steps` list is EXACTLY one slot after the step it is parallel with. If a step with `start_trigger = "StartWithPrevious"` is NOT immediately adjacent to its parallel partner in the `steps` list, move it to be adjacent.
+
+**CRITICAL — a "convergence" step (start_trigger = "StartAfterPrevious") that follows a parallel group must appear in the `steps` list AFTER all parallel group members**: When a step annotated with "Wait for all previous steps to complete, then start" follows a parallel group {A, B, C}, this convergence step must appear at position N+1 in the `steps` list where N is the position of the LAST parallel group member. Verify this by checking that no parallel group member appears AFTER the convergence step in the `steps` list.
+
+**CRITICAL — sequential branch continuation ordering in the `steps` list**: When the prompt linearizes multiple branches sequentially (Branch A: A1→A2→A3, then Branch B: B1→B2→B3), the `steps` list must preserve the COMPLETE sequential ordering of each branch before the next branch begins. Specifically: ALL of Branch A's continuation steps (A1, A2, A3) must appear CONTIGUOUSLY and IN ORDER in the `steps` list before ANY of Branch B's continuation steps (B1, B2, B3). A step that appears LATER in the prompt's sequential chain for Branch A must have a HIGHER index in the `steps` list than all earlier Branch A steps. **The most common error is placing Branch B's root step (B1) between two sequential steps of Branch A (e.g., between A1 and A2), which causes A2 to run after B1 instead of after A1.** Before finalizing the `steps` list, for each pair of steps (X, Y) where X appears before Y in the prompt as sequential steps within the SAME branch chain, verify that X has a lower index than Y in the `steps` list. If X appears AFTER Y in the `steps` list, reorder them.
+
+**MANDATORY SELF-CHECK — sequential chain ordering validation**: Before finalizing the `octopusdeploy_process_steps_order` resource for each project, scan the prompt for each pair of steps where step B is described as "sequential after" step A (i.e., B appears right after A in the prompt with no "Run in parallel" annotation, only "Wait for all previous steps" or no annotation). Verify that in the `steps` list, A appears at a LOWER index than B. If B has a lower index than A in the `steps` list, the sequential order is inverted — swap them (and any steps between them that belong to the same branch chain). This check is MANDATORY when branches are linearized sequentially in the prompt, as each branch's internal sequence must be preserved verbatim in the `steps` list.
+
+**CRITICAL — the total count of `StartWithPrevious` steps in resources must match the count in the `steps` list**: When building the `octopusdeploy_process_steps_order` `steps` list, count how many `octopusdeploy_process_step` resources have `start_trigger = "StartWithPrevious"`. The `steps` list must contain ALL of these steps in the correct positions (each immediately after their parallel partner). If the count in resources does not match the adjacency structure of the `steps` list, there is an ordering error.
+
+**CRITICAL — large parallel group (7+ members) self-check using prompt count annotation**: When the prompt contains a parenthetical count annotation like `(This is the LAST of N parallel steps in this group...)`, use the value N as your verification target:
+1. Count the steps in the prompt that belong to this parallel group: the entry step (first member, no "Run in parallel" annotation) + all steps annotated with "Run in parallel" in this group.
+2. This count MUST equal N (total group size). If not, you have missed some parallel members.
+3. Verify that EXACTLY N-1 of those steps have `start_trigger = "StartWithPrevious"` in your generated Terraform. The entry step has `StartAfterPrevious`. All other N-1 members have `StartWithPrevious`.
+4. If your count of `StartWithPrevious` steps in this group is less than N-1, you have set one or more parallel members to `StartAfterPrevious` — fix them immediately.
+
+**CRITICAL — do NOT confuse the LAST parallel group member with the convergence step**: When a parallel group has N members (positions 1 through N in the steps list), the step at position N is the LAST PARALLEL MEMBER — it still uses `start_trigger = "StartWithPrevious"`. The convergence step is the step at position N+1 (the one annotated "Wait for all previous steps to complete, then start") — it uses `start_trigger = "StartAfterPrevious"`. NEVER set the last parallel group member to `StartAfterPrevious` just because it is the last step before the convergence point.
+
+**CRITICAL — step `notes` attribute as an additional parallel signal**: When a step's `notes` attribute (i.e., the step description from the prompt) contains phrases such as "runs in parallel with the deploy step", "runs in parallel with", or "parallel with the previous step", this is a strong signal that `start_trigger = "StartWithPrevious"` is intended for that step, even if the prompt annotation was accidentally omitted. Before finalizing, scan every step's `notes` value for these phrases. For any step whose `notes` indicates parallel execution and whose `start_trigger` is currently `"StartAfterPrevious"`, review the prompt annotation. If the annotation is absent but the step description clearly indicates parallel execution, set `start_trigger = "StartWithPrevious"`. **The step description (notes) and the start trigger annotation must always agree — a step that says "runs in parallel" in its notes but uses `StartAfterPrevious` as its trigger is self-contradictory and always wrong.**
+
+**MANDATORY SELF-CHECK — notes-to-trigger consistency**: After generating all `octopusdeploy_process_step` resources, scan every `notes` attribute value for the substring "runs in parallel". For each step where the `notes` attribute contains "runs in parallel" but `start_trigger = "StartAfterPrevious"`, this is a definite error — change `start_trigger` to `"StartWithPrevious"` before outputting.
+
+**CRITICAL — multi-phase project parallel group phase isolation**: When a project has multiple sequential phases each containing a parallel group (e.g., Phase 1: {A, B, C} → convergence step D → Phase 2: {E, F} → convergence step G), verify that:
+1. ALL members of Phase 1 ({A, B, C}) appear in the `steps` list BEFORE the Phase 1 convergence step (D).
+2. ALL members of Phase 2 ({E, F}) appear in the `steps` list AFTER D and BEFORE the Phase 2 convergence step (G).
+3. NO members of Phase 2 appear before D in the `steps` list, and NO members of Phase 1 appear after D.
+A step that belongs to Phase 1 but is placed after Phase 2's convergence step is a critical ordering error.
+
+**CRITICAL — `is_disabled` and `start_trigger` are completely independent attributes**: The `is_disabled = true` attribute marks a step as inactive at runtime, but it does NOT change the step's position in the deployment process or its `start_trigger`. A disabled step that belongs to a parallel group (not the first member) MUST still use `start_trigger = "StartWithPrevious"`. Do NOT change a step's `start_trigger` from `"StartWithPrevious"` to `"StartAfterPrevious"` just because the step is disabled. The `start_trigger` determines the step's execution ordering relationship — this relationship must be preserved even when the step is disabled so that re-enabling it later does not break the deployment process order.
+
+**Example — disabled step in a parallel group**:
+```hcl
+# CORRECT — disabled step preserves StartWithPrevious trigger
+resource "octopusdeploy_process_step" "process_step_rollback_canary" {
+  name          = "Rollback -canary-"
+  is_disabled   = true
+  start_trigger = "StartWithPrevious"  ← CORRECT: disabled but still parallel with previous step
+  # ... other attributes ...
+}
+
+# WRONG — disabled step incorrectly uses StartAfterPrevious
+resource "octopusdeploy_process_step" "process_step_rollback_canary" {
+  name          = "Rollback -canary-"
+  is_disabled   = true
+  start_trigger = "StartAfterPrevious"  ← WRONG: changing trigger because step is disabled
+  # ... other attributes ...
+}
+```
+
+**MANDATORY SELF-CHECK — `notes` attribute verbatim fidelity**: When a prompt says `Set the step description to "..."`, the value in double quotes MUST be reproduced VERBATIM as the `notes` attribute value in Terraform. Do NOT truncate, paraphrase, abbreviate, or summarize the description. All migration notes (including `NOTE (migration): ...` clauses) within the quoted text must be included in full. Incomplete notes make the migration rationale invisible to engineers reading the Octopus project and are always wrong.
+
+**MANDATORY SELF-CHECK — step `notes` completeness scan**: After generating all `octopusdeploy_process_step` resources, for each step where the prompt specified a description (via "Set the step description to ..."), compare the `notes` attribute value against the full quoted text from the prompt. If the `notes` value is shorter than the prompt description or is missing any `NOTE (migration):` clause that was present in the prompt, expand it to the full verbatim text.
+
+**CRITICAL — the `notes` verbatim fidelity rule applies equally to `octopusdeploy_process_templated_step` resources**: Community step template steps (`octopusdeploy_process_templated_step`) also support a `notes` attribute. When the prompt says `Set the step description to "..."` for a community step template step, set `notes = "<verbatim description text>"` on the `octopusdeploy_process_templated_step` resource. The same verbatim fidelity requirement applies — do NOT truncate, paraphrase, or omit migration NOTEs from a templated step's `notes` attribute.
+
+## Process Step Terraform Resource Creation Order
+
+* **`octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources MUST NOT be created with uncontrolled parallelism.** When Terraform applies a configuration without explicit `depends_on` between step resources, it may attempt to create all step resources concurrently. This can cause API rate limit errors or race conditions on the Octopus Deploy API. To ensure correct sequential creation order, each process step resource MUST include a `depends_on` attribute pointing to the IMMEDIATELY PRECEDING step resource in the deployment process.
+
+* The first step in a project's deployment process does NOT need a `depends_on` for step ordering (it only needs to wait for the `octopusdeploy_process` resource to be created, which is handled by `process_id`).
+
+* For subsequent steps (steps 2, 3, 4, etc. in the deployment process order), add `depends_on` pointing to the PREVIOUS step resource in the ordered sequence.
+
+**Example — step dependency chain for a 3-step project**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_step_1" {
+  name       = "Step 1"
+  process_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  # ... other attributes ...
+}
+
+resource "octopusdeploy_process_step" "process_step_my_project_step_2" {
+  name       = "Step 2"
+  process_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  depends_on = [octopusdeploy_process_step.process_step_my_project_step_1]
+  # ... other attributes ...
+}
+
+resource "octopusdeploy_process_step" "process_step_my_project_step_3" {
+  name       = "Step 3"
+  process_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  depends_on = [octopusdeploy_process_step.process_step_my_project_step_2]
+  # ... other attributes ...
+}
+```
+
+* For **parallel step groups** (steps with `start_trigger = "StartWithPrevious"`), all steps in the parallel group can share `depends_on` pointing to the last sequential step before the group (the group's "entry step"). They do NOT need to depend on each other since they will be created concurrently.
+
+* `octopusdeploy_process_templated_step` resources follow the same `depends_on` pattern as `octopusdeploy_process_step` resources.
+
+**CRITICAL — `depends_on` for step resources must reference ONLY the immediately preceding step, NOT all previous steps**: A common mistake is to add ALL previously-created steps to the `depends_on` list of the current step. This is FORBIDDEN. Each step's `depends_on` must reference ONLY the single step immediately before it in the deployment process order. Using all previous steps creates unnecessarily complex dependency graphs and can cause issues if any step is later removed.
+
+**Negative example — step `depends_on` listing all previous steps (FORBIDDEN)**:
+```hcl
+# Step 4 in a 4-step project — WRONG: depends_on lists ALL three previous steps
+resource "octopusdeploy_process_step" "process_step_my_project_step_4" {
+  name       = "Step 4"
+  depends_on = [
+    octopusdeploy_process_step.process_step_my_project_step_1,  ← WRONG: not the immediately preceding step
+    octopusdeploy_process_step.process_step_my_project_step_2,  ← WRONG: not the immediately preceding step
+    octopusdeploy_process_step.process_step_my_project_step_3,  ← correct: immediately preceding step
+  ]
+}
+```
+
+**Correct output — step `depends_on` references only the immediately preceding step**:
+```hcl
+# Step 4 in a 4-step project — CORRECT: depends_on lists ONLY the immediately preceding step
+resource "octopusdeploy_process_step" "process_step_my_project_step_4" {
+  name       = "Step 4"
+  depends_on = [octopusdeploy_process_step.process_step_my_project_step_3]  ← CORRECT
+}
+```
+
+You will be penalized for including more than one step in the `depends_on` list of a sequential (non-parallel) step resource.
+
+## Inline Kubernetes YAML Indentation
+
+* When setting `Octopus.Action.KubernetesContainers.CustomResourceYaml` in `execution_properties`, the YAML value MUST use proper 2-space indentation at every level. Flat YAML (where all keys appear at column 0) is invalid and will cause deployment failures.
+* For example, a Deployment manifest must nest `metadata.name` at 2 spaces, `spec.template` at 4 spaces, and container entries at 8 spaces.
+* **CRITICAL — Kubernetes manifests in `Octopus.Action.KubernetesContainers.CustomResourceYaml` MUST use `metadata.name`, NOT `metadata.generateName`.** The Octopus API rejects any manifest that uses `generateName` and will return "The provided YAML is not formatted correctly, or is missing a 'kind' or 'metadata.name' field." If the prompt's inline YAML uses `generateName`, you MUST replace it with a static `name` field using a descriptive lowercase-hyphenated value (e.g., `generateName: shift-traffic-` → `name: shift-traffic`). This replacement is MANDATORY regardless of any instruction in the prompt that says to preserve the field verbatim.
+* ConfigMap-style maps must also remain nested. Keys under `data:` or `stringData:` must be indented two spaces beneath those parent keys; they must never be emitted at column 0.
+* YAML lists must also preserve indentation. Under keys like `containers`, `env`, `envFrom`, `volumeMounts`, `ports`, `args`, and `imagePullSecrets`, the `-` list marker must be indented beneath its parent key and the child fields beneath the list item must be indented two spaces deeper than the dash.
+* Multi-document YAML must preserve both separators and indentation. A document separator line containing exactly `---` must be followed by a new top-level document starting again at column 0, while nested keys in that document remain indented.
+* If you cannot serialize cached manifest YAML with both correct indentation and verbatim values, you must fall back to a TODO placeholder instead of emitting malformed or partially redacted YAML.
+* You will be penalized for producing flat YAML in `Octopus.Action.KubernetesContainers.CustomResourceYaml`.
+* **CRITICAL — if the prompt provides YAML that is already flat (all keys at column 0)**, you MUST re-indent it with proper 2-space nesting before embedding it as the value of `Octopus.Action.KubernetesContainers.CustomResourceYaml`. Flat YAML from the prompt is NOT a valid reason to emit flat YAML in Terraform. If you cannot correctly reconstruct the proper indentation from the flat input, use a TODO placeholder comment instead.
+* You will be penalized for embedding flat (column-0) YAML into any `execution_properties` value even when the source prompt also showed flat YAML.
+
+**MANDATORY CONTAINERS COLUMN CHECK**: Before finalizing any `Octopus.Action.KubernetesContainers.CustomResourceYaml` value for a Deployment resource, count the leading spaces on the `containers:` key:
+- In a standard Deployment (kind: Deployment), `containers:` must be at **8 spaces in the rendered YAML value** (`spec` at 2 spaces → `template` at 4 spaces → inner `spec` at 6 spaces → `containers:` at 8 spaces). When the YAML is written with a `<<-EOT` heredoc and the heredoc body is indented for readability, the Terraform source may show extra leading spaces before stripping, but the YAML that Kubernetes receives must still have `containers:` indented to 8 spaces.
+- **The simplest check**: does the `containers:` line start at column 0 (no leading spaces)? If YES, the YAML is FLAT and WRONG. You MUST re-indent or replace with a TODO placeholder.
+- A `containers:` line at column 0 indicates that the entire pod-spec is flat. This is always wrong for a Deployment and must be corrected before outputting.
+- If you cannot correctly re-indent a flat Deployment+HPA or any multi-document manifest, replace it with `# TODO: replace with correctly indented manifest` and set `is_disabled = true` on the step.
+
+**CRITICAL — flat YAML re-indentation algorithm**: When the prompt provides flat YAML and you must reconstruct the correct indentation, use the following depth-tracking approach:
+1. Parse the flat keys by their Kubernetes schema knowledge. For a Deployment, `apiVersion`, `kind`, `metadata`, `spec` are at depth 0 (column 0). Keys inside `metadata` (`name`, `namespace`, `labels`, `annotations`) are at depth 1 (2 spaces). Keys inside `spec` are at depth 1 (2 spaces), unless they are inside `template` (depth 2, 4 spaces) or deeper.
+2. For lists (`containers`, `env`, `envFrom`, `volumeMounts`, `imagePullSecrets`, `ports`, `tolerations`, `volumes`), the list key itself is at its schema depth, the `-` marker appears at the same column as the list key, and the child fields of each list item appear at 2 spaces deeper than the `-`.
+3. Always verify: does each key appear at a deeper column than its parent key? If not, it is wrong.
+
+**Extended Deployment YAML depth table** (including complex pod-spec fields):
+* `apiVersion`, `kind`, `metadata`, `spec` → depth 0, column 0
+* `metadata.name`, `metadata.namespace`, `metadata.labels` → depth 1, 2 spaces
+* `spec.replicas`, `spec.selector`, `spec.template` → depth 1, 2 spaces
+* `spec.template.metadata`, `spec.template.spec` → depth 2, 4 spaces
+* `spec.template.spec.containers` (list key) → depth 3, 6 spaces
+* `spec.template.spec.containers[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.containers[0].name`, `.image`, `.env`, `.envFrom`, `.volumeMounts`, `.resources`, `.ports`, `.livenessProbe`, `.readinessProbe` → depth 4, 8 spaces
+* `spec.template.spec.containers[0].env[-]` (dash) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].env[0].name`, `.value` → depth 5, 10 spaces
+* `spec.template.spec.containers[0].envFrom[-]` (dash) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].envFrom[0].secretRef`, `.configMapRef` → depth 5, 10 spaces
+* `spec.template.spec.containers[0].envFrom[0].secretRef.name` → depth 6, 12 spaces
+* `spec.template.spec.containers[0].volumeMounts[-]` (dash) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].volumeMounts[0].name`, `.mountPath`, `.subPath` → depth 5, 10 spaces
+* `spec.template.spec.tolerations` (list key) → depth 3, 6 spaces
+* `spec.template.spec.tolerations[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.tolerations[0].key`, `.operator`, `.effect`, `.tolerationSeconds` → depth 4, 8 spaces
+* `spec.template.spec.nodeSelector` → depth 3, 6 spaces
+* `spec.template.spec.nodeSelector.cloud.google.com/gke-nodepool` → depth 4, 8 spaces
+* `spec.template.spec.imagePullSecrets` (list key) → depth 3, 6 spaces
+* `spec.template.spec.imagePullSecrets[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.imagePullSecrets[0].name` → depth 4, 8 spaces
+* `spec.template.spec.volumes` (list key) → depth 3, 6 spaces
+* `spec.template.spec.volumes[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.volumes[0].name`, `.secret`, `.configMap` → depth 4, 8 spaces
+* `spec.template.spec.volumes[0].secret.secretName` → depth 5, 10 spaces
+
+**Example — reconstructing a flat Deployment with tolerations, nodeSelector, and imagePullSecrets**:
+
+If the prompt says (flat YAML from conversion step):
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: worker
+namespace: app-0117-dev
+spec:
+replicas: 2
+template:
+spec:
+containers:
+- name: worker
+image: registry.example.invalid/image-0250
+envFrom:
+- secretRef:
+name: worker-secrets
+resources:
+requests:
+cpu: "100m"
+memory: "128Mi"
+limits:
+cpu: "500m"
+memory: "512Mi"
+volumeMounts:
+- name: config-volume
+mountPath: /config
+tolerations:
+- key: dedicated
+operator: Equal
+value: worker
+effect: NoSchedule
+nodeSelector:
+cloud.google.com/gke-nodepool: worker-pool
+imagePullSecrets:
+- name: registry-creds
+volumes:
+- name: config-volume
+configMap:
+name: worker-config
+```
+
+The **CORRECT** Terraform value re-indents each key based on schema depth:
+```hcl
+"Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: worker
+    namespace: app-0117-dev
+  spec:
+    replicas: 2
+    template:
+      spec:
+        containers:
+          - name: worker
+            image: registry.example.invalid/image-0250
+            envFrom:
+              - secretRef:
+                  name: worker-secrets
+            resources:
+              requests:
+                cpu: "100m"
+                memory: "128Mi"
+              limits:
+                cpu: "500m"
+                memory: "512Mi"
+            volumeMounts:
+              - name: config-volume
+                mountPath: /config
+        tolerations:
+          - key: dedicated
+            operator: Equal
+            value: worker
+            effect: NoSchedule
+        nodeSelector:
+          cloud.google.com/gke-nodepool: worker-pool
+        imagePullSecrets:
+          - name: registry-creds
+        volumes:
+          - name: config-volume
+            configMap:
+              name: worker-config
+  EOT
+```
+
+Note: `tolerations`, `nodeSelector`, `imagePullSecrets`, and `volumes` are direct children of `spec.template.spec`, NOT of the container. They sit at depth 3 (6 spaces) alongside `containers`.
+
+**CronJob YAML re-indentation**: CronJob has an extra `jobTemplate` nesting level compared to Deployment. The key depths are:
+* `apiVersion`, `kind`, `metadata`, `spec` → depth 0, column 0
+* `spec.schedule`, `spec.concurrencyPolicy`, `spec.successfulJobsHistoryLimit` etc. → depth 1, 2 spaces
+* `spec.jobTemplate` → depth 1, 2 spaces
+* `spec.jobTemplate.spec` → depth 2, 4 spaces
+* `spec.jobTemplate.spec.template` → depth 3, 6 spaces
+* `spec.jobTemplate.spec.template.spec` → depth 4, 8 spaces
+* `spec.jobTemplate.spec.template.spec.containers` → depth 5, 10 spaces (list key)
+* `spec.jobTemplate.spec.template.spec.containers[-]` (dash) → depth 5, 10 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].name` → depth 6, 12 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].env` → depth 6, 12 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].env[-]` (dash) → depth 6, 12 spaces
+* `spec.jobTemplate.spec.template.spec.containers[0].env[0].name` → depth 7, 14 spaces
+
+**Job YAML re-indentation**: Kubernetes `batch/v1 Job` manifests are commonly used for canary traffic-shifting, restore, derive-baseline, and derive-canary operations. A Job has the same `spec.template.spec` nesting as a Deployment (but without `spec.selector` or `spec.replicas`). The key depths are:
+* `apiVersion`, `kind`, `metadata`, `spec` → depth 0, column 0
+* `metadata.name`, `metadata.namespace`, `metadata.labels`, `metadata.generateName` → depth 1, 2 spaces
+* `spec.backoffLimit`, `spec.completions`, `spec.parallelism`, `spec.template` → depth 1, 2 spaces
+* `spec.template.metadata`, `spec.template.spec` → depth 2, 4 spaces
+* `spec.template.spec.containers` (list key), `spec.template.spec.restartPolicy`, `spec.template.spec.serviceAccountName`, `spec.template.spec.imagePullSecrets` → depth 3, 6 spaces
+* `spec.template.spec.containers[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.containers[0].name`, `.image`, `.command`, `.env`, `.envFrom` → depth 4, 8 spaces
+* `spec.template.spec.containers[0].command[-]` (dash and value) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].env[-]` (dash) → depth 4, 8 spaces
+* `spec.template.spec.containers[0].env[0].name`, `.value`, `.valueFrom` → depth 5, 10 spaces
+* `spec.template.spec.containers[0].env[0].valueFrom.fieldRef` → depth 6, 12 spaces
+* `spec.template.spec.containers[0].env[0].valueFrom.fieldRef.fieldPath` → depth 7, 14 spaces
+* `spec.template.spec.imagePullSecrets[-]` (dash) → depth 3, 6 spaces
+* `spec.template.spec.imagePullSecrets[0].name` → depth 4, 8 spaces
+
+**MANDATORY JOB COLUMN CHECK**: Before finalizing any `Octopus.Action.KubernetesContainers.CustomResourceYaml` value for a `kind: Job` resource, verify that `spec.template.spec.containers:` is indented at exactly 6 spaces. A `containers:` line at column 0 means the entire spec is flat — WRONG. A `containers:` line at 2 or 4 spaces is also wrong. It must be exactly 6 spaces for a Job manifest.
+
+**Example — correct Terraform YAML for a Kubernetes Job with containers and env vars**:
+```hcl
+"Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+  apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: shift-traffic
+    namespace: app-prod
+  spec:
+    backoffLimit: 0
+    template:
+      spec:
+        containers:
+          - command:
+              - shift-traffic
+              - -n
+              - $(NAMESPACE)
+            env:
+              - name: NAMESPACE
+                value: app-prod
+              - name: CJ_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+            image: registry.example.invalid/image-0434
+            name: shift-traffic
+        imagePullSecrets:
+          - name: my-pull-secret
+        restartPolicy: Never
+        serviceAccountName: spinnaker-custom-job
+  EOT
+```
+
+**Example — reconstructing a flat CronJob from the prompt into correct Terraform YAML**:
+
+If the prompt says (flat YAML from conversion step):
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+name: my-cronjob
+namespace: app-prod
+spec:
+schedule: "0 2 * * *"
+jobTemplate:
+spec:
+template:
+spec:
+containers:
+- name: my-task
+image: gcr.io/my-org/my-task:latest
+env:
+- name: ENV_VAR
+value: "production"
+restartPolicy: Never
+```
+
+The **CORRECT** Terraform value re-indents each key based on CronJob schema depth:
+```hcl
+"Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+  apiVersion: batch/v1
+  kind: CronJob
+  metadata:
+    name: my-cronjob
+    namespace: app-prod
+  spec:
+    schedule: "0 2 * * *"
+    jobTemplate:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: my-task
+                image: gcr.io/my-org/my-task:latest
+                env:
+                  - name: ENV_VAR
+                    value: "production"
+            restartPolicy: Never
+  EOT
+```
+
+**Example — reconstructing a flat Deployment + HPA multi-document from the prompt into correct Terraform YAML**:
+
+If the prompt says (flat YAML from conversion step):
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: gateway
+namespace: app-0126-dev
+spec:
+replicas: 2
+template:
+spec:
+containers:
+- name: gateway
+image: registry.example.invalid/image-0200
+envFrom:
+- secretRef:
+name: double-api-token
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+name: gateway-hpa
+spec:
+maxReplicas: 4
+minReplicas: 2
+```
+
+The **CORRECT** Terraform value re-indents each document based on schema depth:
+```hcl
+"Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: gateway
+    namespace: app-0126-dev
+  spec:
+    replicas: 2
+    template:
+      spec:
+        containers:
+          - name: gateway
+            image: registry.example.invalid/image-0200
+            envFrom:
+              - secretRef:
+                  name: double-api-token
+  ---
+  apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: gateway-hpa
+  spec:
+    maxReplicas: 4
+    minReplicas: 2
+  EOT
+```
+
+## Step Name Character Rules
+
+* Octopus Deploy step names may only contain letters, numbers, periods, commas, dashes, underscores, and hashes. Parentheses `()` and square brackets `[]` are NOT valid in step names.
+* If the prompt contains a step name with parentheses or square brackets that were replaced by dashes (e.g., `Deploy -Manifest-`), use the dash-replaced form exactly as written in the prompt. Do NOT re-introduce parentheses or other special characters.
+* Do NOT normalize prompt-provided dash replacements into underscores. For example, `Manual Judgment -Canary-` must stay `Manual Judgment -Canary-`, never `Manual Judgment _Canary_`.
+* You will be penalized for creating steps with parentheses or square brackets in their names.
+* The Terraform provider is stricter about step and project names than the Octopus API. This is why parentheses and square brackets are not supported.
+
+## Step Description Property
+
+* When the prompt says `Set the step description to "..."`, the description must be set as the top-level `notes` attribute on the `octopusdeploy_process_step` resource, NOT inside the `execution_properties` map.
+* When the prompt says `Set the step description to include: "..."` or otherwise instructs you to append text to an existing step description, you must build a SINGLE final description string in prompt order and store that combined value in `notes`. Do not emit multiple competing description properties.
+* If a step receives more than one description fragment in the prompt, concatenate them with a single space between fragments unless the prompt explicitly specifies different punctuation.
+* The description value must be the exact verbatim string from the prompt, including any quoted sub-strings.
+* You will be penalized for omitting a step description when the prompt explicitly instructs it to be set.
+* You will be penalized for placing the `notes` attribute inside `execution_properties` — `notes` is a top-level attribute of the `octopusdeploy_process_step` resource.
+* **CRITICAL — never add backslash-escaping to GCS paths or other URLs in step descriptions.** When a step description contains a GCS path like `gs://example-bucket/path/to/file.yaml`, reproduce it verbatim in the `notes` string without adding backslashes or extra quotation marks around the URL. For example, `notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."` — NOT `notes = "... at \"gs://example-bucket/path\"."`.
+* **CRITICAL — `NOTE (migration):` text must be preserved verbatim**: When a step description includes text of the form `NOTE (migration): ...`, this text MUST appear verbatim in the `notes` attribute. Do NOT drop, summarize, or rephrase migration notes. These notes communicate important information about conditional branching or preconditions that were lost during migration. For example, if the prompt says `Set the step description to "...; NOTE (migration): This step was originally on the SUCCESS branch after \"Manual Judgment\". In this migration, both branches now run in parallel."`, the `notes` value MUST include the full NOTE (migration) sentence.
+* **CRITICAL — `NOTE (migration):` text for rollback/rejection branches must be preserved verbatim**: When a prompt description for an `undoRolloutManifest` step includes `NOTE (migration): This step was originally on the rollback/rejection branch of a pipeline. In this migration it runs in parallel with the deploy step — configure this step to run only when the deploy step is not needed, or disable it and trigger rollbacks manually.`, this ENTIRE sentence MUST appear verbatim in the `notes` attribute. Do NOT drop this note, do NOT shorten it, and do NOT replace it with a generic migration note. This note is critical for engineers to understand that a rollback step running in parallel with a deploy step was originally a conditional branch that only ran on the NO/rejection path of a manual judgment.
+* **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` must be preserved verbatim**: When a `manualJudgment` stage had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit or shorten the timeout note.
+
+* **IMPORTANT — `NOTE (migration): ... timeout ...` text from `stageTimeoutMs` on non-`manualJudgment` stages must also be preserved verbatim**: When any non-`manualJudgment` stage (e.g., `deployManifest`, `runJobManifest`) had a `stageTimeoutMs` property, the converted prompt will include a sentence like `NOTE (migration): The original stage had a timeout of <N> minutes (stageTimeoutMs: <value>). Configure a step timeout in Octopus if required.` in the step description. This text MUST appear verbatim in the `notes` attribute. Never omit or shorten this migration note even for non-manualJudgment steps.
+
+* **IMPORTANT — `NOTE (migration):` text about branch A waiting for branch B in fork-without-reconvergence pipelines must be preserved verbatim**: When the prompt includes a step description containing `NOTE (migration): In the original Spinnaker pipeline, this step depended only on "<Branch A root stage name>" and did not wait for "<Branch B root stage(s)>". In this Octopus migration, this step implicitly waits for all preceding parallel steps including the Branch B stages.`, this ENTIRE sentence MUST appear verbatim in the `notes` attribute. Do NOT drop, shorten, or rephrase this note. It is critical for engineers to understand that the step's wait behavior has changed due to linearization of the parallel branches.
+
+* **IMPORTANT — `NOTE (migration):` text about `stageEnabled.expression` conditions must be preserved verbatim**: When the prompt includes a step description containing `NOTE (migration):` text describing a Spinnaker conditional execution condition that has no direct Octopus Deploy equivalent (including any suggestion about Octopus Variable run conditions or parameter-based expressions), this ENTIRE text MUST appear verbatim in the `notes` attribute. Do NOT drop the suggestion about using Octopus Variable run conditions — this guidance is important for engineers who want to replicate the conditional behavior.
+
+* **CRITICAL — when a step has multiple NOTE (migration): fragments in its description, ALL fragments must be concatenated into the single `notes` attribute**: A step prompt may include multiple separate `NOTE (migration):` sentences (for example, one about `stageEnabled.expression`, another about `stageTimeoutMs`, and another about branch linearization). All fragments must be combined with a single space between them into one `notes` value. You MUST NOT:
+  - Emit only the first NOTE and drop the rest
+  - Create separate `notes` attributes for each NOTE (only one `notes` attribute is allowed per resource)
+  - Omit any NOTE because it seems redundant
+**Negative example — GCS URL with incorrect backslash escaping in notes (FORBIDDEN)**:
+```hcl
+notes = "This step originally loaded its manifest from Google Cloud Storage at \"gs://example-bucket/storage-3209\". The manifest must be inlined."
+                                                                            ^WRONG: backslash-escaped quotes added around the GCS URL
+```
+**Correct output**:
+```hcl
+notes = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-3209. The manifest must be inlined."
+```
+
+**Example — correct placement of `notes` attribute**:
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_staging" {
+  name                  = "Deploy Staging"
+  notes                 = "This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path. The manifest must be inlined or reconfigured."
+  is_disabled           = true
+  execution_properties  = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: ..."
+    "Octopus.Action.Script.ScriptSource"                     = "Inline"
+  }
+}
+```
+
+**WRONG — `notes` inside `execution_properties` (FORBIDDEN)**:
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_staging" {
+  name                  = "Deploy Staging"
+  execution_properties  = {
+    "notes"                                                  = "This step originally..."  # WRONG
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: ..."
+  }
+}
+```
+
+## Wait Steps (Script Steps with Start-Sleep)
+
+* A `wait` stage converted to `Start-Sleep -Seconds <N>` must be implemented as an `octopusdeploy_process_step` of type `"Octopus.Script"` with `execution_properties` containing `"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds <N>"`, `"Octopus.Action.Script.Syntax" = "PowerShell"`, and `"Octopus.Action.Script.ScriptSource" = "Inline"`.
+* The step name must match the dash-replaced form from the prompt (e.g., `"Wait -15min-"`) — parentheses in the original stage name have been replaced with dashes.
+* You will be penalized for using a type other than `"Octopus.Script"` for wait steps.
+* **CRITICAL — Octostache variable references in `Start-Sleep` scripts must be preserved verbatim**: When the prompt specifies a script like `Start-Sleep -Seconds (#{waitMinutes} * 60)`, the Terraform `"Octopus.Action.Script.ScriptBody"` value MUST preserve this Octostache expression exactly as written. Do NOT evaluate the arithmetic expression or replace it with a hardcoded number. Octostache template references (`#{...}`) are evaluated at deployment runtime by Octopus, not at Terraform plan/apply time.
+
+**Negative example — Octostache expression evaluated to hardcoded number (WRONG)**:
+
+Given a prompt: `Start-Sleep -Seconds (#{waitMinutes} * 60)`
+
+The **WRONG** Terraform evaluates and hardcodes the result:
+```hcl
+"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds 900"
+```
+
+The **CORRECT** Terraform preserves the Octostache expression:
+```hcl
+"Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds (#{waitMinutes} * 60)"
+```
+
+## "Review Template-Derived Pipeline Behavior" Script Step
+
+* When the prompt includes `Add a "Run a Script" step with the name "Review template-derived pipeline behavior"`, create an `octopusdeploy_process_step` resource of type `"Octopus.Script"` with `execution_properties` containing:
+  * `"Octopus.Action.Script.ScriptBody"` — the inline PowerShell comment from the prompt (e.g., `# TODO: expand the pipeline template "pipeline://basic-gcs" using the templatedPipeline variables before considering this conversion complete.`)
+  * `"Octopus.Action.Script.Syntax" = "PowerShell"`
+  * `"Octopus.Action.Script.ScriptSource" = "Inline"`
+* This step does NOT require a `properties` block with `Octopus.Action.TargetRoles` — it runs on the server, not on a Kubernetes target.
+* This step MUST be the LAST entry in the `octopusdeploy_process_steps_order` `steps` array.
+
+**Example — "Review template-derived pipeline behavior" step in Terraform**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_review_template_derived_pipeline_behavior" {
+  count                = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name                 = "Review template-derived pipeline behavior"
+  type                 = "Octopus.Script"
+  process_id           = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  condition            = "Success"
+  package_requirement  = "LetOctopusDecide"
+  start_trigger        = "StartAfterPrevious"
+  execution_properties = {
+    "Octopus.Action.RunOnServer"         = "true"
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.Syntax"       = "PowerShell"
+    "Octopus.Action.Script.ScriptBody"   = "# TODO: expand the pipeline template \"pipeline://basic-gcs\" using the templatedPipeline variables before considering this conversion complete."
+  }
+}
+```
+
+## Multiple Description Fragments in `notes` (CRITICAL)
+
+When a step receives MULTIPLE description fragments from the prompt (e.g., an original stage name plus a stageTimeoutMs migration note), you MUST concatenate ALL fragments into one single `notes` value. Do NOT drop any fragment.
+
+For example, if the prompt says:
+```
+* Set the step name to "Review -Approval-".
+* Set the step description to "Original stage name: Review and Approval."
+* Append to the step description: "NOTE (migration): The original stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required."
+```
+
+The **WRONG** output includes only the first fragment:
+```hcl
+resource "octopusdeploy_process_step" "process_step_review_approval" {
+  name  = "Review -Approval-"
+  notes = "Original stage name: Review and Approval."   # WRONG: second fragment dropped
+  ...
+}
+```
+
+The **CORRECT** output concatenates all fragments in order, separated by a space:
+```hcl
+resource "octopusdeploy_process_step" "process_step_review_approval" {
+  name  = "Review -Approval-"
+  notes = "Original stage name: Review and Approval. NOTE (migration): The original stage had a timeout of 30 minutes (stageTimeoutMs: 1800000). Configure a Manual Intervention timeout in Octopus if required."
+  ...
+}
+```
+
+## kubectl Script Steps (KubernetesRunScript)
+
+* Steps of type `"Octopus.KubernetesRunScript"` (generated from `deleteManifest`, `scaleManifest`, and `undoRolloutManifest` stage types) MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. These steps run `kubectl` commands on Linux Kubernetes workers where Bash is the idiomatic shell.
+* You will be penalized for using `"Octopus.Action.Script.Syntax" = "PowerShell"` on an `"Octopus.KubernetesRunScript"` step.
+* The `execution_properties` for an `"Octopus.KubernetesRunScript"` step must include:
+  * `"Octopus.Action.RunOnServer" = "true"`
+  * `"OctopusUseBundledTooling" = "False"`
+  * `"Octopus.Action.Script.ScriptSource" = "Inline"`
+  * `"Octopus.Action.Script.Syntax" = "Bash"`
+  * `"Octopus.Action.Script.ScriptBody"` — the inline Bash kubectl command
+  * `"Octopus.Action.KubernetesContainers.Namespace"` — the Kubernetes namespace (if specified)
+* The `properties` block for a `"Octopus.KubernetesRunScript"` step must include `"Octopus.Action.TargetRoles"` set to the Kubernetes target tag.
+
+**CRITICAL — `undoRolloutManifest` steps use `Octopus.KubernetesRunScript` with `kubectl rollout undo`**: When the prompt says `Add a "Run a kubectl script" step` with a script like `kubectl rollout undo deployment/my-deployment -n my-namespace`, this step uses the SAME type (`Octopus.KubernetesRunScript`) and the SAME Bash syntax as `deleteManifest` and `scaleManifest` steps. Do NOT use `Octopus.Script` for these steps.
+
+**Negative example — `undoRolloutManifest` step incorrectly using `Octopus.Script` (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_rollback_internal" {
+  name   = "Rollback -internal-"
+  type   = "Octopus.Script"   ← WRONG: should be "Octopus.KubernetesRunScript"
+  ...
+  execution_properties = {
+    "Octopus.Action.Script.ScriptBody"   = "kubectl rollout undo deployment/my-deployment -n my-namespace"
+    "Octopus.Action.Script.Syntax"       = "PowerShell"   ← WRONG: should be "Bash"
+  }
+}
+```
+
+**Correct output** — `undoRolloutManifest` step using `Octopus.KubernetesRunScript` with Bash:
+```hcl
+resource "octopusdeploy_process_step" "process_step_rollback_internal" {
+  name                 = "Rollback -internal-"
+  type                 = "Octopus.KubernetesRunScript"   ← CORRECT
+  process_id           = "${length(data.octopusdeploy_projects.project_myproject.projects) != 0 ? null : octopusdeploy_process.process_myproject[0].id}"
+  package_requirement  = "LetOctopusDecide"
+  start_trigger        = "StartAfterPrevious"
+  properties           = {
+    "Octopus.Action.TargetRoles" = "Kubernetes"
+  }
+  execution_properties = {
+    "Octopus.Action.RunOnServer"                    = "true"
+    "OctopusUseBundledTooling"                      = "False"
+    "Octopus.Action.Script.ScriptSource"            = "Inline"
+    "Octopus.Action.Script.Syntax"                  = "Bash"   ← CORRECT
+    "Octopus.Action.Script.ScriptBody"              = "kubectl rollout undo deployment/dmp-market-web-internal -n app-0112-prod"
+  }
+}
+```
+
+**CRITICAL — `Octopus.Action.KubernetesContainers.Namespace` in KubernetesRunScript steps**: This property MUST ONLY be set when the prompt explicitly contains the instruction `Set the step namespace to "<namespace>"`. When the namespace appears ONLY in the kubectl command's `-n <namespace>` argument (i.e., the prompt does NOT include a separate `Set the step namespace to` instruction), do NOT add this execution property. It is already encoded in the script body and adding it separately is redundant and may cause unexpected behavior.
+
+**Example — correct `Octopus.KubernetesRunScript` step with Bash syntax**:
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_delete_manifest" {
+  name                  = "Delete -Manifest-"
+  type                  = "Octopus.KubernetesRunScript"
+  process_id            = "${length(data.octopusdeploy_projects.project_myproject.projects) != 0 ? null : octopusdeploy_process.process_myproject[0].id}"
+  condition             = "Success"
+  package_requirement   = "LetOctopusDecide"
+  start_trigger         = "StartAfterPrevious"
+  properties            = {
+    "Octopus.Action.TargetRoles" = "Kubernetes"
+  }
+  execution_properties  = {
+    "Octopus.Action.RunOnServer"                      = "true"
+    "OctopusUseBundledTooling"                        = "False"
+    "Octopus.Action.Script.ScriptSource"              = "Inline"
+    "Octopus.Action.Script.Syntax"                    = "Bash"
+    "Octopus.Action.Script.ScriptBody"                = "kubectl delete deployment my-deployment -n my-namespace"
+  }
+}
+```
+
+Note: The `"Octopus.Action.KubernetesContainers.Namespace"` property is omitted in this example. **Only add this property when the prompt explicitly says `Set the step namespace to "X"`.** When the namespace appears only in the kubectl command itself (e.g., `kubectl delete ... -n my-namespace`), do NOT add this execution property separately — it is already encoded in the script body.
+
+* A `Octopus.KubernetesRunScript` step must NOT include a `container` block unless the prompt explicitly requests a specific container image. `deleteManifest` and `scaleManifest` stage types run kubectl using the worker's native environment, not a containerized image.
+* When the prompt specifies a Kubernetes namespace in the step (e.g., `Set the step namespace to "my-namespace"`), set `"Octopus.Action.KubernetesContainers.Namespace" = "my-namespace"` in `execution_properties`. When no namespace is specified, omit this property entirely — do NOT set it to an empty string or null.
+* You will be penalized for adding a `container` block to an `Octopus.KubernetesRunScript` step when the prompt does not explicitly request one.
+
+## Container Block Rules
+
+* **CRITICAL — `container = { feed_id = "", image = "" }` is NEVER valid Terraform and MUST NEVER be generated.** An empty container block with blank `feed_id` and `image` values is a common mistake that produces invalid configuration. If a step does not use a container, the `container` attribute MUST be omitted entirely — do NOT include it with empty values.
+* **CRITICAL — `Octopus.Manual` steps (manual interventions) steps MUST NEVER include a `container` attribute.** These step types do not use Docker containers and the `container` attribute has no meaning for them. Omit the `container` attribute from ALL `Octopus.Manual` resources.
+* The `container` attribute is ONLY valid for step types that explicitly use containerized tooling: `Octopus.Script`, `Octopus.KubernetesDeployRawYaml`, `Octopus.TerraformPlan`, `Octopus.TerraformApply`, `Octopus.TerraformDestroy`, `Octopus.TerraformPlanDestroy`, `Octopus.AzurePowerShell`, `Octopus.AwsRunScript`, `Octopus.GoogleCloudScripting`, `Octopus.AzureWebApp`, and `Octopus.KubernetesRunScript` (only when a specific image is requested).
+* You will be penalized for including a `container` attribute on `Octopus.Manual` step resources.
+
+## Webhook / HTTP Script Steps
+
+* When the prompt says `Add a "Run a Script" step` with inline Bash code that contains a `curl` command (i.e., the step is an HTTP webhook call converted from a Spinnaker `webhook` stage), the `Octopus.Script` step MUST use `"Octopus.Action.Script.Syntax" = "Bash"` in `execution_properties`. Do NOT use `"PowerShell"` for `curl`-based script steps.
+* The `execution_properties` for a webhook/curl `"Octopus.Script"` step must include:
+  * `"Octopus.Action.RunOnServer" = "true"`
+  * `"Octopus.Action.Script.ScriptSource" = "Inline"`
+  * `"Octopus.Action.Script.Syntax" = "Bash"`
+  * `"Octopus.Action.Script.ScriptBody"` — the inline Bash `curl` command, preserving all `-H`, `-d`, and `-X` flags exactly as provided in the prompt.
+* You will be penalized for using `"Octopus.Action.Script.Syntax" = "PowerShell"` on a script step whose `ScriptBody` contains a `curl` command.
+* Do NOT set `worker_pool_id` or `worker_pool_variable` on a webhook/curl `Octopus.Script` step. These steps run on the Octopus server (`"Octopus.Action.RunOnServer" = "true"`) and do not use a worker pool. Leave both `worker_pool_id` and `worker_pool_variable` unset (or `null`) for server-side script steps.
+
+## Default Lifecycle Instructions
+
+* Use "data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id" when referencing the Default Lifecycle, for example `lifecycle_id = "${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"`.
+* You will be penalized for referencing the resource "octopusdeploy_lifecycle" "lifecycle_default_lifecycle" because it does not exist.
+* The "quantity_to_keep" attribute in a "release_retention_policy" or "tentacle_retention_policy" block in a "phase" block must be larger than 0.
+* You will be penalized for setting the "quantity_to_keep" attribute in a "release_retention_policy" or "tentacle_retention_policy" block in a "phase" block to 0.
+* You will be penalized for defining the "phase" block on a single line.
+* Each proprt of the "phase" block must be on a new line.
+
+## Retention Policy for New Project Creation Prompts
+
+**CRITICAL — when a new project creation prompt specifies a retention policy (e.g., "with a retention policy of 30 days for releases" or "Set the retention policy to 5 items")**:
+
+1. If the project uses the **Default Lifecycle** (looked up via data source only, NOT a resource), the retention policy from the prompt CANNOT be applied — the Default Lifecycle cannot be modified by Terraform. In this case, **ignore the retention policy instruction entirely** and do NOT add any `release_retention_policy` or `tentacle_retention_policy` blocks.
+
+2. If the project uses a **custom lifecycle being created** as a new `octopusdeploy_lifecycle` resource, apply the retention policy to the lifecycle resource's `release_retention_policy` block. The `unit` attribute MUST match what the prompt specifies:
+   - When the prompt says "N days" → use `unit = "Days"` and `quantity_to_keep = N`
+   - When the prompt says "N items" or "keep N releases" → use `unit = "Items"` and `quantity_to_keep = N`
+
+**⚠️ CRITICAL — do NOT default to 30 Days when the prompt specifies items**: If the prompt says "Set the retention policy to 5 items", the lifecycle MUST use `quantity_to_keep = 5` and `unit = "Items"`. Setting `quantity_to_keep = 30` and `unit = "Days"` is WRONG — it ignores the prompt instruction.
+
+**MANDATORY SELF-CHECK — retention policy verification**: Before finalizing any `octopusdeploy_lifecycle` resource, check:
+1. Did the prompt specify a retention policy? If YES → did you apply the correct `quantity_to_keep` and `unit` values?
+2. Did the prompt say "items"? If YES → is `unit = "Items"` (NOT `"Days"`)?
+3. Did the prompt say "days"? If YES → is `unit = "Days"` (NOT `"Items"`)?
+
+You will be penalized for using `unit = "Days"` when the prompt says "items", or using `unit = "Items"` when the prompt says "days".
+
+**Example — prompt says "Set the retention policy to 30 days"**:
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_my_lifecycle" {
+  name = "My Lifecycle"
+  release_retention_policy {
+    quantity_to_keep = 30
+    unit             = "Days"
+  }
+  tentacle_retention_policy {
+    quantity_to_keep = 30
+    unit             = "Days"
+  }
+  phase { ... }
+}
+```
+
+**Example — prompt says "Set the retention policy to 10 items"**:
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_my_lifecycle" {
+  name = "My Lifecycle"
+  release_retention_policy {
+    quantity_to_keep = 10
+    unit             = "Items"
+  }
+  tentacle_retention_policy {
+    quantity_to_keep = 10
+    unit             = "Items"
+  }
+  phase { ... }
+}
+```
+
+3. **NEVER add a `retention_policy` block to an `octopusdeploy_project` resource** — this is always forbidden regardless of prompt content.
+
+**Lifecycle Selection for New Project Creation Prompts**:
+
+* When the prompt says "Use the Default Lifecycle" — use ONLY `data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id`. Do NOT create an `octopusdeploy_lifecycle` resource.
+* When the prompt says "Use the [Name] lifecycle" for any non-Default lifecycle — create BOTH a `data "octopusdeploy_lifecycles"` data source AND an `octopusdeploy_lifecycle` resource for that lifecycle name.
+* When the lifecycle name in the prompt does not match "Default Lifecycle", create the lifecycle with phases corresponding to the environments mentioned in the prompt (e.g., "Development", "Test", "Production").
+
+**CRITICAL — when the prompt specifies the Default Lifecycle, the template's default lifecycle resource MUST NOT be created**: Each project type template includes a default lifecycle resource (e.g., `lifecycle_application` for Terraform templates, `lifecycle_devsecops` for Kubernetes templates). When the prompt says "Use the Default Lifecycle", these template-default lifecycle resources MUST NOT be created as `octopusdeploy_lifecycle` resources. Use ONLY the `data.octopusdeploy_lifecycles.lifecycle_default_lifecycle` data source for the project's `lifecycle_id`.
+
+**Negative example — creating a template-default lifecycle when prompt says "Use the Default Lifecycle" (FORBIDDEN)**:
+```hcl
+# Prompt says: Use the "Default Lifecycle" lifecycle
+# WRONG: template's default lifecycle resource is created even though Default Lifecycle was requested
+resource "octopusdeploy_lifecycle" "lifecycle_application" { ... }  ← WRONG: must not be created
+resource "octopusdeploy_project" "project_my_terraform_project" {
+  lifecycle_id = "${octopusdeploy_lifecycle.lifecycle_application[0].id}"  ← WRONG: must use Default Lifecycle
+}
+```
+
+**Correct output** — only the Default Lifecycle data source is used, no lifecycle resource is created:
+```hcl
+data "octopusdeploy_lifecycles" "lifecycle_default_lifecycle" {
+  ids          = null
+  partial_name = "Default Lifecycle"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_project" "project_my_terraform_project" {
+  lifecycle_id = "${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"
+}
+```
+
+You will be penalized for creating `octopusdeploy_lifecycle` resources (e.g., `lifecycle_application`, `lifecycle_devsecops`) when the prompt says to use the Default Lifecycle.
+
+**Example — prompt says "Use the Security lifecycle"**:
+```hcl
+data "octopusdeploy_lifecycles" "lifecycle_security" {
+  ids          = null
+  partial_name = "Security"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_lifecycle" "lifecycle_security" {
+  count = "${length(data.octopusdeploy_lifecycles.lifecycle_security.lifecycles) != 0 ? 0 : 1}"
+  name  = "Security"
+  phase {
+    name                         = "Development"
+    optional_deployment_targets  = ["${length(data.octopusdeploy_environments.environment_development.environments) != 0 ? data.octopusdeploy_environments.environment_development.environments[0].id : octopusdeploy_environment.environment_development[0].id}"]
+    automatic_deployment_targets = []
+    minimum_environments_before_promotion = 0
+    is_optional_phase = false
+  }
+}
+```
+
+## Data Resources Instructions
+
+* When getting the length of the "data" "octopusdeploy_projects" resource, the format is "${length(data.octopusdeploy_projects.<data name>.project) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_feeds" resource, the format is "${length(data.octopusdeploy_feeds.<data name>.feeds) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_worker_pools" resource, the format is "${length(data.octopusdeploy_worker_pools.<data name>.worker_pools) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_environments" resource, the format is "${length(data.octopusdeploy_environments.<data name>.environments) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_tag_sets" resource, the format is "${length(data.octopusdeploy_tag_sets.<data name>.tag_sets) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_lifecycles" resource, the format is "${length(data.octopusdeploy_lifecycles.<data name>.lifecycles) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_certificates" resource, the format is "${length(data.octopusdeploy_certificates.<data name>.certificates) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_git_credentials" resource, the format is "${length(data.octopusdeploy_git_credentials.<data name>.git_credentials) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_accounts" resource, the format is "${length(data.octopusdeploy_accounts.<data name>.accounts) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_machine_policies" resource, the format is "${length(data.octopusdeploy_machine_policies.<data name>.machine_policies) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_channels" resource, the format is "${length(data.octopusdeploy_channels.<data name>.channels) != 0 ? 0 : 1}".
+* When getting the length of the "data" "octopusdeploy_deployment_targets" resource, the format is "${length(data.octopusdeploy_deployment_targets.<data name>.deployment_targets) != 0 ? 0 : 1}".
+* The "<data name>" in the above examples must be replaced with the name of the data resource included in the output.
+* You will be penalized for using a "<data name>" that does not match the name of the data resource included in the output.
+
+## Account Data Instructions
+
+* The "account_type" in a "octopusdeploy_accounts" data source must be set to one of the following, matching the case exactly:
+  * "AmazonWebServicesAccount"
+  * "AmazonWebServicesRoleAccount"
+  * "AmazonWebServicesOidcAccount"
+  * "AzureServicePrincipal"
+  * "AzureOIDC"
+  * "AzureSubscription"
+  * "GenericOidcAccount"
+  * "GoogleCloudAccount"
+  * "None"
+  * "SshKeyPair"
+  * "Token"
+  * "UsernamePassword"
+
+* This is an example of a "octopusdeploy_accounts" data source with a correctly defined "account_type" attribute:
+
+```
+data "octopusdeploy_accounts" "account_azure" {
+  ids          = null
+  partial_name = "Azure"
+  skip         = 0
+  take         = 1
+  account_type = "AzureOIDC"
+}
+```
+
+* You will be penalized for setting the "account_type" to an empty value.
+
+## Data and Resource pairing instructions
+
+When a “data” resource is referenced in a resource’s attributes, the data resource must be included in the output.
+
+For example, when the “lifecycle_id” attribute is set to:
+
+```
+"${length(data.octopusdeploy_lifecycles.lifecycle_<data ame>.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_<data name>.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_<name>[0].id}"
+```
+
+Then the following "octopusdeploy_lifecycles" data resource must be included in the output:
+
+```
+data "octopusdeploy_lifecycles" "lifecycle_<data name>" {
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+When the "project_group_id" attribute is set to:
+
+```
+"${length(data.octopusdeploy_project_groups.project_group_<data name>.project_groups) != 0 ? data.octopusdeploy_project_groups.project_group_<data name>.project_groups[0].id : octopusdeploy_project_group.project_group_<name>[0].id}"
+```
+
+Then the following "octopusdeploy_project_groups" data resource must be included in the output:
+
+```
+data "octopusdeploy_project_groups" "project_group_<data name>" {
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+And the following "octopusdeploy_project_group" resource must be defined:
+
+```
+resource "octopusdeploy_project_group" "project_group_<name>" {
+  count = "${length(data.octopusdeploy_project_groups.project_group_<name>.project_groups) != 0 ? 0 : 1}"
+  name  = "<Name>"
+  ...
+}
+```
+
+When the "feed_id" attribute is set to:
+
+```
+"${length(data.octopusdeploy_feeds.feed_docker_hub.feeds) != 0 ? data.octopusdeploy_feeds.feed_docker_hub.feeds[0].id : octopusdeploy_docker_container_registry.feed_docker_hub[0].id}"
+```
+
+Then the following "octopusdeploy_feeds" data resource must be included in the output:
+
+```
+data "octopusdeploy_feeds" "<name>" {
+  feed_type    = "Docker"
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+And the following "octopusdeploy_docker_container_registry" resource must be defined:
+
+```
+resource "octopusdeploy_docker_container_registry" "<name>" {
+  count                                = "${length(data.octopusdeploy_feeds.feed_docker_hub.feeds) != 0 ? 0 : 1}"
+  name                                 = "<Name>"
+  # Populate the rest of the feed attributes here
+}
+```
+
+When the "environment_id" attribute is set to:
+
+```
+"${length(data.octopusdeploy_environments.environment_<data name>.environments) != 0 ? data.octopusdeploy_environments.environment_<data name>.environments[0].id : octopusdeploy_environment.environment_<name>[0].id}"
+```
+
+Then the following "octopusdeploy_environments" data resource must be included in the output:
+
+```
+data "octopusdeploy_environments" "environment_<name>" {
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+And the following "octopusdeploy_environment" resource must be defined:
+
+```
+resource "octopusdeploy_environment" "environment_<name>" {
+  count                        = "${length(data.octopusdeploy_environments.environment_<name>.environments) != 0 ? 0 : 1}"
+  name                         = "<Name>"
+  # Populate the rest of the environment attributes here
+}
+```
+
+You will be penalized for referencing a "octopusdeploy_environments" data source or "octopusdeploy_environment" resource that does not exist in the output.
+
+When the "project_id" attribute is set to "${length(data.octopusdeploy_projects.project_<name>.projects) != 0 ? 0 : 1}"
+
+```
+data "octopusdeploy_projects" "project_<name>" {
+  ids          = null
+  partial_name = "<Name>"
+  skip         = 0
+  take         = 1
+}
+```
+
+And the following "octopusdeploy_project" resource must be defined:
+
+```
+resource "octopusdeploy_project" "project_<name>" {
+    count = "${length(data.octopusdeploy_projects.project_<name>.projects) != 0 ? 0 : 1}"
+    name = "<Name>"
+    # Populate the rest of the project attributes here
+}
+```
+
+## Count Properties Instructions
+
+* The "count" parameter for any "octopusdeploy_process" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_templated_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource. This applies to ALL templated steps including Slack notification steps (Start, Finish, Complete), community step template steps, and any other step created with the `octopusdeploy_process_templated_step` resource type. You will be penalized for omitting `count` on any `octopusdeploy_process_templated_step` resource.
+* The "count" parameter for any "octopusdeploy_process_steps_order" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_child_step" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_process_child_steps_order" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameter for any "octopusdeploy_external_feed_create_release_trigger" resources must be the same as the "count" resource for the "octopusdeploy_project" resource.
+* The "count" parameters must be in the format "${length(data.<data type>.<data resource>.<collection>) != 0 ? 0 : 1}"
+* You will be penalized for using count arguments like this: "${length(data.<data type>.<data resource>.<collection>) != 0 ? 1 : 1}"
+* You will be penalized for using ternary operators that return the same value for both cases.
+
+**CRITICAL — `octopusdeploy_process` resource MUST include `depends_on` for any tag sets, tags, or other space-level resources it references**: When a deployment process references tenant tag sets or other space-level resources, the `octopusdeploy_process` resource MUST include a `depends_on` list pointing to those resources. This ensures the tag sets exist before the process is created. If the process does not reference any tag sets or other resources, `depends_on` may be omitted or set to an empty list.
+
+**Example — `octopusdeploy_process` with `depends_on` for tag sets**:
+```hcl
+resource "octopusdeploy_process" "process_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  depends_on = [octopusdeploy_tag_set.tagset_regions, octopusdeploy_tag.tagset_regions_tag_us_east]
+}
+```
+
+If the deployment process does not use tenant tag sets or other space resources, `depends_on` can be omitted from the `octopusdeploy_process` resource entirely.
+
+**MANDATORY SELF-CHECK before finalizing `octopusdeploy_process` and `octopusdeploy_process_step` resources**: Before outputting these resources, you MUST verify ALL of the following. A single NO means the resource is incomplete and MUST be fixed first:
+
+For every `octopusdeploy_process` resource:
+1. Does it have a `count` attribute using `"${length(data.octopusdeploy_projects.project_<name>.projects) != 0 ? 0 : 1}"`? **If NO → add it.**
+2. Does `project_id` use the FULL ternary lookup (NOT a direct reference)? **If NO → replace with ternary.**
+
+For every `octopusdeploy_process_step` (and `octopusdeploy_process_templated_step`) resource:
+1. Does it have a `count` attribute matching the project count pattern? **If NO → add it.**
+2. Does `process_id` use `"${length(data.octopusdeploy_projects.project_<name>.projects) != 0 ? null : octopusdeploy_process.process_<name>[0].id}"`? **If NO → replace with ternary-null pattern.**
+
+**Negative example — `octopusdeploy_process` missing `count` and using direct `project_id` reference (VERY COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process" "process_my_project" {
+  # WRONG: missing count attribute
+  project_id = "${octopusdeploy_project.project_my_project.id}"   # WRONG: direct reference, no ternary guard
+}
+```
+
+**Correct output — `octopusdeploy_process` with count and ternary `project_id`**:
+```hcl
+resource "octopusdeploy_process" "process_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"   # REQUIRED
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"   # REQUIRED: full ternary
+}
+```
+
+**Negative example — `octopusdeploy_process_step` missing `count` and using direct `process_id` (VERY COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  # WRONG: missing count attribute
+  name       = "Deploy"
+  process_id = "${octopusdeploy_process.process_my_project.id}"   # WRONG: direct reference without ternary-null
+}
+```
+
+**Correct output — `octopusdeploy_process_step` with count and ternary-null `process_id`**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"   # REQUIRED
+  name       = "Deploy"
+  process_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"   # REQUIRED: ternary-null pattern
+}
+```
+
+* You will be penalized for generating an `octopusdeploy_process` resource without a `count` attribute.
+* You will be penalized for generating an `octopusdeploy_process_step` resource without a `count` attribute.
+* You will be penalized for setting `process_id` on an `octopusdeploy_process_step` resource to a direct reference like `"${octopusdeploy_process.process_foo.id}"` — it MUST use the ternary-null pattern.
+
+* **MANDATORY SELF-CHECK before finalizing external feed triggers**: Before outputting an `octopusdeploy_external_feed_create_release_trigger` resource, verify that it has: (1) a `count` attribute matching the project's count pattern, (2) `project_id` using the ternary lookup pattern, (3) `channel_id` using the ternary lookup pattern, (4) a `lifecycle { prevent_destroy = true }` block, (5) a `depends_on` referencing `octopusdeploy_process_steps_order`. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
+
+**ABSOLUTE RULE — external feed trigger output gate — DO NOT OUTPUT until this checklist passes**: Before writing an `octopusdeploy_external_feed_create_release_trigger` resource to output, you MUST answer YES to ALL of the following. A single NO means the resource is incomplete and MUST be fixed first:
+
+1. Does the resource have a `count` attribute using the `"${length(data...) != 0 ? 0 : 1}"` pattern? **If NO → add it.**
+2. Does the resource have `project_id` using a ternary lookup (NOT a direct `octopusdeploy_project.<name>.id` reference)? **If NO → replace with ternary.**
+3. Does the resource have `channel_id` using a ternary lookup (NOT a direct `octopusdeploy_channel.<name>.id` reference)? **If NO → replace with ternary.**
+4. Does the resource have a `lifecycle { prevent_destroy = true }` block? **If NO → add it.**
+5. Does the resource have `depends_on` pointing to `octopusdeploy_process_steps_order`? **If NO → add it.**
+
+A direct reference like `"${octopusdeploy_project.project_foo.id}"` for `project_id` is WRONG — it must use the ternary pattern. A direct reference like `"${octopusdeploy_channel.channel_foo_application.id}"` for `channel_id` is WRONG — it must use the ternary pattern. You will be penalized for each missing or incorrect attribute.
+
+**STOP — verify external feed trigger before outputting**: An `octopusdeploy_external_feed_create_release_trigger` resource MUST contain ALL of the following attributes. If any are missing, the Terraform will fail on idempotent re-apply. Check each:
+
+```hcl
+# CORRECT: complete external feed trigger with ALL required attributes
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"   # REQUIRED
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"   # REQUIRED: ternary
+  name       = "External Feed Trigger"
+  channel_id = "${length(data.octopusdeploy_channels.channel_my_project_application.channels) != 0 ? data.octopusdeploy_channels.channel_my_project_application.channels[0].id : octopusdeploy_channel.channel_my_project_application[0].id}"   # REQUIRED: ternary
+  is_disabled = true   # when prompt says "The trigger must be disabled."
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]   # REQUIRED
+  lifecycle {
+    prevent_destroy = true   # REQUIRED
+  }
+}
+```
+
+Before outputting the trigger, answer YES/NO to each:
+- Has `count`? 
+- Has `project_id` with ternary lookup (NOT direct reference)?
+- Has `channel_id` with ternary lookup (NOT direct reference)?
+- Has `lifecycle { prevent_destroy = true }`?
+- Has `depends_on` pointing to `octopusdeploy_process_steps_order`?
+
+If any answer is NO, fix the resource before outputting.
+
+**Negative example — external feed trigger with missing required attributes (FORBIDDEN)**:
+
+The following is an example of an **INCORRECT** `octopusdeploy_external_feed_create_release_trigger` that is missing `count`, `lifecycle`, and uses direct references instead of ternary lookups. This MUST NEVER be generated:
+
+```hcl
+# WRONG: this trigger will fail on idempotent re-apply and is missing required attributes
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  space_id    = "${trimspace(var.octopus_space_id)}"
+  project_id  = "${octopusdeploy_project.project_my_project.id}"   ← WRONG: direct reference, must be ternary
+  name        = "External Feed Trigger"
+  channel_id  = "${octopusdeploy_channel.channel_my_project_application.id}"   ← WRONG: direct reference, must be ternary
+  is_disabled = true
+  depends_on  = [octopusdeploy_process_steps_order.process_step_order_my_project]
+  # MISSING: count
+  # MISSING: lifecycle { prevent_destroy = true }
+}
+```
+
+The **CORRECT** version includes ALL required attributes:
+
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  name       = "External Feed Trigger"
+  channel_id = "${length(data.octopusdeploy_channels.channel_my_project_application.channels) != 0 ? data.octopusdeploy_channels.channel_my_project_application.channels[0].id : octopusdeploy_channel.channel_my_project_application[0].id}"
+  is_disabled = true
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* You will be penalized for defining a "session_token" attribute on a "octopusdeploy_aws_account" resource.
+
+## Lifecycle Instructions
+
+* Custom lifecycles must include the environments "Development", "Test", and "Production" unless otherwise instructed.
+
+## Tenant Instructions
+
+**⚠️ EMERGENCY: TENANT RESOURCES ARE OFTEN OMITTED FROM TERRAFORM OUTPUT** — Your execution plan correctly creates tenant resources but your Terraform HCL output frequently omits them. When you create a `data "octopusdeploy_tenants"` data source, you MUST also create a matching `resource "octopusdeploy_tenant"`. This applies to all tenant-related resources: `octopusdeploy_tenant`, `octopusdeploy_tenant_project`, `octopusdeploy_tenant_project_variable`, `octopusdeploy_tag_set`, and `octopusdeploy_tag`. DO NOT create tenant data sources without the corresponding resource blocks.
+
+* If the prompt indicates that tenants are to be created or added, the "octopusdeploy_tenant" resources must be created in addition to the "octopusdeploy_project" resource.
+* You will be penalized for creating "octopusdeploy_tenant" resources without an associated "octopusdeploy_project" resource.
+* Each resource "octopusdeploy_tenant" must have an associated data "octopusdeploy_tenants". For example, if the following resource is defined:
+
+```
+resource "octopusdeploy_tenant" "tenant_australian_office" {
+  count       = "${length(data.octopusdeploy_tenants.tenant_australian_office.tenants) != 0 ? 0 : 1}"
+  name        = "Australian Office"
+  description = "An example tenant that represents an Australian office"
+  tenant_tags = []
+  depends_on  = []
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+Then the associated data resource must be defined as follows:
+
+```
+data "octopusdeploy_tenants" "tenant_australian_office" {
+  ids          = null
+  partial_name = "Australian Office"
+  skip         = 0
+  take         = 1
+  project_id   = ""
+  tags         = null
+}
+```
+
+* When the prompt includes instructions to define the value of project tenant variables, you must define the value for all environment unless explicitly instructed otherwise.
+* When the prompt includes instructions to link a tenant to a project, you must include a "octopusdeploy_tenant_project" resource.
+* You will be penalized for defining a "octopusdeploy_tags" data source as this data source does not exist.
+
+## Tenanted Deployment Participation for New Project Creation Prompts
+
+**CRITICAL — when a new project creation prompt specifies a tenanted deployment mode**, set the `tenanted_deployment_participation` attribute on the `octopusdeploy_project` resource to the appropriate value:
+
+- `"TenantedOrUntenanted"` — set when the prompt says "TenantedOrUntenanted deployments" or "both tenanted and untenanted"
+- `"Tenanted"` — set when the prompt says "tenanted deployments only" or "Tenanted"
+- `"Untenanted"` — set when the prompt says "untenanted deployments" or does not mention tenants at all (default)
+
+**When the prompt names a specific tenant** (e.g., "Acme Corp tenant"), you MUST create ALL of the following resources:
+
+1. `octopusdeploy_tenant` resource for the tenant
+2. `data "octopusdeploy_tenants"` data source paired with the resource
+3. `octopusdeploy_tenant_project` resource linking the tenant to the project (with all lifecycle environments)
+
+**When the prompt specifies tenant tags** (e.g., "Regions/US-East tag"), you MUST create:
+
+1. `octopusdeploy_tag_set` resource for the tag set (e.g., "Regions")
+2. `data "octopusdeploy_tag_sets"` data source paired with the resource
+3. `octopusdeploy_tag` resource for each tag (e.g., "US-East") referencing the tag set
+4. Connect tenant tags to the tenant's `tenant_tags` attribute in the format `"TagSetName/TagName"` (e.g., `"Regions/US-East"`)
+
+**Example — prompt specifies "Acme Corp tenant with the Regions/US-East tenant tag"**:
+```hcl
+data "octopusdeploy_tag_sets" "tagset_regions" {
+  ids          = null
+  partial_name = "Regions"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_tag_set" "tagset_regions" {
+  count = "${length(data.octopusdeploy_tag_sets.tagset_regions.tag_sets) != 0 ? 0 : 1}"
+  name  = "Regions"
+  lifecycle { prevent_destroy = true }
+}
+resource "octopusdeploy_tag" "tagset_regions_tag_us_east" {
+  count      = "${length(data.octopusdeploy_tag_sets.tagset_regions.tag_sets) != 0 ? 0 : 1}"
+  name       = "US-East"
+  tag_set_id = "${length(data.octopusdeploy_tag_sets.tagset_regions.tag_sets) != 0 ? data.octopusdeploy_tag_sets.tagset_regions.tag_sets[0].id : octopusdeploy_tag_set.tagset_regions[0].id}"
+  color      = "#333333"
+  lifecycle { prevent_destroy = true }
+}
+data "octopusdeploy_tenants" "tenant_acme_corp" {
+  ids          = null
+  partial_name = "Acme Corp"
+  skip         = 0
+  take         = 1
+  project_id   = ""
+  tags         = null
+}
+resource "octopusdeploy_tenant" "tenant_acme_corp" {
+  count       = "${length(data.octopusdeploy_tenants.tenant_acme_corp.tenants) != 0 ? 0 : 1}"
+  name        = "Acme Corp"
+  tenant_tags = ["Regions/US-East"]
+  depends_on  = [octopusdeploy_tag.tagset_regions_tag_us_east]
+  lifecycle { prevent_destroy = true }
+}
+resource "octopusdeploy_tenant_project" "tenant_project_acme_corp_my_project" {
+  count          = "${length(data.octopusdeploy_tenants.tenant_acme_corp.tenants) != 0 ? 0 : 1}"
+  tenant_id      = "${length(data.octopusdeploy_tenants.tenant_acme_corp.tenants) != 0 ? data.octopusdeploy_tenants.tenant_acme_corp.tenants[0].id : octopusdeploy_tenant.tenant_acme_corp[0].id}"
+  project_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  environment_ids = [
+    "${length(data.octopusdeploy_environments.environment_development.environments) != 0 ? data.octopusdeploy_environments.environment_development.environments[0].id : octopusdeploy_environment.environment_development[0].id}",
+    "${length(data.octopusdeploy_environments.environment_production.environments) != 0 ? data.octopusdeploy_environments.environment_production.environments[0].id : octopusdeploy_environment.environment_production[0].id}"
+  ]
+  lifecycle { prevent_destroy = true }
+}
+```
+
+**You will be penalized for**:
+- Creating a tenant without an `octopusdeploy_tenant_project` resource linking it to the project
+- Setting `tenanted_deployment_participation = "Untenanted"` when the prompt requests TenantedOrUntenanted or Tenanted
+- Omitting the `tenant_tags` attribute when the prompt specifies tags for the tenant
+- Omitting tag set and tag resources when the prompt specifies tenant tags
+
+## Tenant Project Variable Instructions
+
+**CRITICAL — `octopusdeploy_tenant_project_variable` REQUIRES a `template` block in the project**: The `octopusdeploy_tenant_project_variable` resource references `template_id` which points to a template block in the `octopusdeploy_project` resource. If the project has no `template` blocks, you CANNOT use `octopusdeploy_tenant_project_variable`. Before creating a `octopusdeploy_tenant_project_variable`, you MUST add one or more `template` blocks to the `octopusdeploy_project` resource. **When the prompt requests tenant variables for a project that has no steps or templates, you MUST add `template` blocks to the project resource to support the tenant variables.** For example, if the prompt says "Add tenant variables scoped to Production", and the project has no existing templates, add a single generic template like:
+```hcl
+template {
+  name              = "Tenant.Variable"
+  label             = "A tenant variable"
+  help_text         = "Define a tenant-specific value for this project."
+  default_value     = null
+  display_settings = { "Octopus.ControlType" = "SingleLineText" }
+ }
+```
+Then create the `octopusdeploy_tenant_project_variable` referencing this template by index (0 for the first template).
+
+**How tenant project variables work**:
+1. The `octopusdeploy_project` resource defines one or more `template` blocks (0-indexed).
+2. Each `octopusdeploy_tenant_project_variable` resource sets the value of a template for a specific tenant and environment.
+3. The `template_id` in `octopusdeploy_tenant_project_variable` references the project's template by index.
+4. **CRITICAL: Each `template` block inside `octopusdeploy_project` represents a variable template definition. When the prompt requests N tenant variables, you MUST add N `template` blocks (indexed 0 through N-1) or fewer if variables share the same template type. Each template block defines ONE variable template.**
+5. **You MUST NOT omit `template` blocks when tenant variables are requested. The absence of template blocks is the #1 cause of failed tenant variable creation.**
+
+**Example — project with template blocks for tenant variables**:
+```hcl
+resource "octopusdeploy_project" "project_my_project" {
+  count                             = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  name                              = "${var.project_my_project_name}"
+  lifecycle_id                      = "${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"
+  project_group_id                  = "${data.octopusdeploy_project_groups.project_group_default_project_group.project_groups[0].id}"
+  tenanted_deployment_participation = "Tenanted"
+
+  template {
+    name             = "Kubernetes.Namespace"
+    label            = "Kubernetes Namespace"
+    help_text        = "The Kubernetes namespace to deploy to."
+    default_value    = null
+    display_settings = { "Octopus.ControlType" = "SingleLineText" }
+  }
+
+  connectivity_policy {
+    allow_deployments_to_no_targets = true
+    exclude_unhealthy_targets       = false
+    skip_machine_behavior           = "None"
+    target_roles                    = []
+  }
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "octopusdeploy_tenant_project_variable" "tenantprojectvariable_acme_corp_my_project" {
+  count          = "${length(data.octopusdeploy_tenants.tenant_acme_corp.tenants) != 0 ? 0 : 1}"
+  environment_id = "${length(data.octopusdeploy_environments.environment_production.environments) != 0 ? data.octopusdeploy_environments.environment_production.environments[0].id : octopusdeploy_environment.environment_production[0].id}"
+  project_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  template_id    = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_project.project_my_project[0].template[0].id}"
+  tenant_id      = "${length(data.octopusdeploy_tenants.tenant_acme_corp.tenants) != 0 ? data.octopusdeploy_tenants.tenant_acme_corp.tenants[0].id : octopusdeploy_tenant.tenant_acme_corp[0].id}"
+  value          = "acme-production"
+  depends_on     = [octopusdeploy_tenant_project.tenant_project_acme_corp_my_project]
+  lifecycle {
+    prevent_destroy = true
+  }
+
+**Example — multiple tenant variables with multiple template blocks**:
+```hcl
+resource "octopusdeploy_project" "project_my_k8s_project" {
+  count                                = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? 0 : 1}"
+  name                                 = "${var.project_my_k8s_project_name}"
+  lifecycle_id                         = "${data.octopusdeploy_lifecycles.lifecycle_security.lifecycles[0].id}"
+  project_group_id                     = "${data.octopusdeploy_project_groups.project_group_default.project_groups[0].id}"
+  tenanted_deployment_participation = "Tenanted"
+
+  template {
+    name                = "DatabaseConnectionString"
+    label               = "Database Connection String"
+    help_text           = "The connection string for the database."
+    default_value       = "DefaultConnString"
+    display_settings = { "Octopus.ControlType" = "SingleLineText" }
+    }
+
+  template {
+    name                = "ApiEndpoint"
+    label               = "API Endpoint"
+    help_text           = "The endpoint URL for the API service."
+    default_value       = "https://api.example.com"
+    display_settings = { "Octopus.ControlType" = "SingleLineText" }
+    }
+
+  template {
+    name                = "EnableFeatureFlag"
+    label               = "Enable Feature Flag"
+    help_text           = "Whether to enable the feature flag."
+    default_value       = "true"
+    display_settings = { "Octopus.ControlType" = "Boolean" }
+    }
+
+  connectivity_policy {
+    allow_deployments_to_no_targets = true
+    exclude_unhealthy_targets         = false
+    skip_machine_behavior             = "None"
+    target_roles                      = []
+    }
+  lifecycle {
+    prevent_destroy = true
+    }
+}
+
+resource "octopusdeploy_tenant_project_variable" "tenantprojectvariable_prod_dbconn" {
+  count            = "${length(data.octopusdeploy_tenants.tenant_prod.tenants) != 0 ? 0 : 1}"
+  environment_id = "${length(data.octopusdeploy_environments.environment_staging.environments) != 0 ? data.octopusdeploy_environments.environment_staging.environments[0].id : octopusdeploy_environment.environment_staging[0].id}"
+  project_id       = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? data.octopusdeploy_projects.project_my_k8s_project.projects[0].id : octopusdeploy_project.project_my_k8s_project[0].id}"
+  template_id      = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? null : octopusdeploy_project.project_my_k8s_project[0].template[0].id}"
+  tenant_id        = "${length(data.octopusdeploy_tenants.tenant_prod.tenants) != 0 ? data.octopusdeploy_tenants.tenant_prod.tenants[0].id : octopusdeploy_tenant.tenant_prod[0].id}"
+  value            = "Server=prod-db.example.com"
+  depends_on       = [octopusdeploy_tenant_project.tenant_project_prod_my_k8s_project]
+  lifecycle {
+    prevent_destroy = true
+    }
+}
+
+resource "octopusdeploy_tenant_project_variable" "tenantprojectvariable_prod_api" {
+  count            = "${length(data.octopusdeploy_tenants.tenant_prod.tenants) != 0 ? 0 : 1}"
+  environment_id = "${length(data.octopusdeploy_environments.environment_staging.environments) != 0 ? data.octopusdeploy_environments.environment_staging.environments[0].id : octopusdeploy_environment.environment_staging[0].id}"
+  project_id       = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? data.octopusdeploy_projects.project_my_k8s_project.projects[0].id : octopusdeploy_project.project_my_k8s_project[0].id}"
+  template_id      = "${length(data.octopusdeploy_projects.project_my_k8s_project.projects) != 0 ? null : octopusdeploy_project.project_my_k8s_project[0].template[1].id}"
+  tenant_id        = "${length(data.octopusdeploy_tenants.tenant_prod.tenants) != 0 ? data.octopusdeploy_tenants.tenant_prod.tenants[0].id : octopusdeploy_tenant.tenant_prod[0].id}"
+  value            = "https://prod-api.example.com"
+  depends_on       = [octopusdeploy_tenant_project.tenant_project_prod_my_k8s_project]
+  lifecycle {
+    prevent_destroy = true
+    }
+}
+```
+
+}
+```
+
+**MANDATORY SELF-CHECK — tenant project variables require project templates**:
+1. Count the number of `octopusdeploy_tenant_project_variable` resources you are creating. You MUST have at least that many `template` blocks in the corresponding `octopusdeploy_project` resource. For example, if you create 3 tenant variable resources, you MUST have exactly 3 template blocks (template[0], template[1], template[2]).
+2. For each `tenant_project_variable`, verify that `template[N].id` references an existing template block index (0, 1, 2, ...) in the project resource.
+3. Before creating any `octopusdeploy_tenant_project_variable` resource, verify that the referenced `octopusdeploy_project` resource has at least one `template` block. If the project has NO `template` blocks, you MUST add `template` blocks to the project for each tenant variable before creating the tenant variable resources.
+4. The `template[N].id` index (0, 1, 2, ...) corresponds to the order in which `template` blocks appear in the project resource.
+5. You will be penalized for creating `octopusdeploy_tenant_project_variable` resources that reference `template[N].id` when the project has no `template` blocks defined.
+
+**Distinction between tenant project variables and tenant common variables**:
+- `octopusdeploy_tenant_project_variable`: Sets per-project, per-tenant values for variable templates defined in the `octopusdeploy_project` resource's `template` blocks. Use when the variable is specific to a project.
+- `octopusdeploy_tenant_common_variable`: Sets per-tenant values for variable templates defined in a library variable set's `template` blocks. Use when the variable is shared across projects via a library variable set.
+
+## Library Variable Set Instructions
+
+* Each resource "octopusdeploy_library_variable_set" must have an associated data "octopusdeploy_library_variable_sets". For example, if the following resource is defined:
+
+```
+resource "octopusdeploy_library_variable_set" "library_variable_set_variables_example_variable_set" {
+  count       = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets) != 0 ? 0 : 1}"
+  name        = "Example Variable Set"
+  description = ""
+}
+```
+
+Then the associated data resource must be defined as follows:
+
+```
+data "octopusdeploy_library_variable_sets" "library_variable_set_variables_example_variable_set" {
+  ids          = null
+  partial_name = "Example Variable Set"
+  skip         = 0
+  take         = 1
+}
+```
+
+* A library variable set "Variable Template" is defined in the "template" block of a "octopusdeploy_library_variable_set" resource.
+* A tenant "Common Variable" is defined in a "octopusdeploy_tenant_common_variable" resource.
+* A tenant common variable sets the value of a variable template defined in a library variable set.
+* When the prompt indicates that the variable template defines an AWS account, the "template" block must have the "display_settings" attribute set to `{ "Octopus.ControlType" = "AmazonWebServicesAccount" }`.
+* Every "octopusdeploy_tenant_common_variable" resource must have a "depends_on" attribute that is an array including the associated "octopusdeploy_tenant_project".
+* You will be penalized for creating a "octopusdeploy_tenant_common_variable" resource without a "depends_on" attribute.
+* The "label" attribute in a "template" block of a "octopusdeploy_library_variable_set" resource must be omitted if it is an empty string.
+* You will be penalized for defining the "label" attribute as an empty string in a "template" block of a "octopusdeploy_library_variable_set" resource.
+
+* You must define the "template_id" property for every "octopusdeploy_tenant_common_variable" resource, for example:
+
+```
+# This is the data source returning existing tenants
+data "octopusdeploy_tenants" "tenant_australian_office" {
+  ids          = null
+  partial_name = "Australian Office"
+  skip         = 0
+  take         = 1
+  project_id   = ""
+  tags         = null
+}
+
+# This is the data source returning existing library variable sets
+data "octopusdeploy_library_variable_sets" "library_variable_set_variables_example_variable_set" {
+  ids          = null
+  partial_name = "Example Variable Set"
+  skip         = 0
+  take         = 1
+}
+
+# This is the library variable set resource
+resource "octopusdeploy_library_variable_set" "library_variable_set_variables_example_variable_set" {
+  count       = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets) != 0 ? 0 : 1}"
+  name        = "Example Variable Set"
+  description = ""
+
+  template {
+    name             = "Common.Variable"
+    label            = "A common variable that must be defined for each tenant"
+    help_text        = "The help text associated with the variable is defined here."
+    default_value    = ""
+    display_settings = { "Octopus.ControlType" = "MultiLineText" }
+  }
+}
+
+# This is the tenant resource
+resource "octopusdeploy_tenant" "tenant_australian_office" {
+  count       = "${length(data.octopusdeploy_tenants.tenant_australian_office.tenants) != 0 ? 0 : 1}"
+  name        = "Australian Office"
+  description = "An example tenant that represents an Australian office"
+  tenant_tags = []
+}
+
+# This is the tenant common variable resource.
+resource "octopusdeploy_tenant_common_variable" "tenantcommonvariable5_australian_office" {
+  count                   = "${length(data.octopusdeploy_tenants.tenant_australian_office.tenants) != 0 ? 0 : 1}"
+  library_variable_set_id = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets) != 0 ? data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets[0].id : octopusdeploy_library_variable_set.library_variable_set_variables_example_variable_set[0].id}"
+  template_id             = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets) != 0 ? data.octopusdeploy_library_variable_sets.library_variable_set_variables_example_variable_set.library_variable_sets[0].template[0].id : octopusdeploy_library_variable_set.library_variable_set_variables_example_variable_set[0].template[0].id}"
+  tenant_id               = "${length(data.octopusdeploy_tenants.tenant_australian_office.tenants) != 0 ? data.octopusdeploy_tenants.tenant_australian_office.tenants[0].id : octopusdeploy_tenant.tenant_australian_office[0].id}"
+  value                   = "Option1"
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_tenant_common_variable" resource with an empty string for the "template_id" attribute.
+* You will be penalized for defining a "octopusdeploy_tenant_common_variable" resource with an empty string for the "library_variable_set_id" attribute.
+* The "library_variable_set_id" property for a "octopusdeploy_tenant_common_variable" resource must be defined.
+* You will be penalized for setting the "library_variable_set_id" property for a "octopusdeploy_tenant_common_variable" resource to an empty string or null.
+
+## Tenant Tag Instructions
+
+* The "tenant_tags" attribute must be an array with strings that looks like "<tag set name>/<tag name>", for example "Cities/Sydney" or "BU/Sales".
+* You will be penalized for defining an item in the "tenant_tags" array as a single string like "Sydney".
+* You will be penalized for defining an item in the "tenant_tags" array like "region:us-east".
+* The "<tag set name>" must match the name of a resource "octopusdeploy_tag_set".
+* The "<tag name>" must match the name of a resource "octopusdeploy_tag".
+* The "tenant_tags" attribute must only be defined in an "octopusdeploy_process_step" block.
+* You will be penalized for creating resources of type "octopusdeploy_project_tenant_tag".
+* For example, if the "tenant_tags" attribute is set to "Cities/Sydney", then the following data "octopusdeploy_tag_sets", resource "octopusdeploy_tag_set" and resource "octopusdeploy_tag" must be included in the output:
+
+```
+# A data resource to find the existing tag set
+# There is a one-to-one relationship between this resource and the data resource
+data "octopusdeploy_tag_sets" "tagset_cities" {
+  ids          = null
+  partial_name = "Cities"
+  skip         = 0
+  take         = 1
+}
+
+# If there is no existing tag set, create one with this resource
+# There is a one-to-one relationship between this resource and the data resource
+resource "octopusdeploy_tag_set" "tagset_cities" {
+  count       = "${length(data.octopusdeploy_tag_sets.tagset_cities.tag_sets) != 0 ? 0 : 1}"
+  name        = "Cities"
+  description = "An example tag set that captures cities"
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# If there is no existing tag set, create the tag with this resource
+# There is a one-to-many relationship between tag sets and tags
+resource "octopusdeploy_tag" "tagset_cities_tag_sydney" {
+  count       = length(try([for item in data.octopusdeploy_tag_sets.tagset_cities.tag_sets[0].tags : item if item.name == "Sydney"], [])) != 0 ? 0 : 1
+  name        = "Sydney"
+  tag_set_id  = "${length(data.octopusdeploy_tag_sets.tagset_cities.tag_sets) != 0 ? data.octopusdeploy_tag_sets.tagset_cities.tag_sets[0].id : octopusdeploy_tag_set.tagset_cities[0].id}"
+  # The colours are random
+  color       = "#333333"
+  description = ""
+}
+
+# If there is no existing tag set, create the tag with this resource
+# There is a one-to-many relationship between tag sets and tags
+resource "octopusdeploy_tag" "tagset_cities_tag_brisbane" {
+  count       = length(try([for item in data.octopusdeploy_tag_sets.tagset_cities.tag_sets[0].tags : item if item.name == "Brisbane"], [])) != 0 ? 0 : 1
+  name        = "Brisbane"
+  tag_set_id  = "${length(data.octopusdeploy_tag_sets.tagset_cities.tag_sets) != 0 ? data.octopusdeploy_tag_sets.tagset_cities.tag_sets[0].id : octopusdeploy_tag_set.tagset_cities[0].id}"
+  # The colours are random
+  color       = "#C5AEEE"
+  description = ""
+}
+```
+
+* The "count" attribute on the resource "octopusdeploy_tag" must be set to `length(try([for item in data.octopusdeploy_tag_sets.<tagset data name>.tag_sets[0].tags : item if item.name == "<tag name>"], [])) != 0 ? 0 : 1`
+* You will be penalized for using a "count" attribute on the resource "octopusdeploy_tag" using underscores in the place of brackets, question marks, and exclamation points like this: `length(try([for item in data.octopusdeploy_tag_sets.<tagset data name>.tag_sets[0].tags : item if item.name == "<tag name>"], []_ _= 0 _ 0 : 1`
+"
+
+## Lifecycle Instructions
+
+* When using a lifecycle other than the "Default Lifecycle", you must include a data "octopusdeploy_lifecycles" and a resource "octopusdeploy_lifecycle", for example:
+
+```
+data "octopusdeploy_lifecycles" "lifecycle_application" {
+  ids          = null
+  partial_name = "Application"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_lifecycle" "lifecycle_application" {
+  count       = "${length(data.octopusdeploy_lifecycles.lifecycle_application.lifecycles) != 0 ? 0 : 1}"
+  name        = "Application"
+  description = "This is an example lifecycle that automatically deploys to the first environment"
+
+  # You must define one or more "phase" blocks
+  phase {
+    # the phase is defined here
+  }
+}
+```
+
+* The resource "octopusdeploy_lifecycle" must have "phase" blocks with environments listed in either the "automatic_deployment_targets" array or the "optional_deployment_targets" array.
+* You must use the "optional_deployment_targets" array over the "automatic_deployment_targets" array unless instructed that the Environment should be deployed to automatically.
+* You will be penalized if you include environments in the "automatic_deployment_targets" array unless otherwise instructed.
+* You will be penalized for defining a lifecycle phase with no environments.
+* **CRITICAL — when the prompt explicitly names which lifecycle phases to include (e.g., "with phases for Development, Test, and Production environments"), ONLY those named phases should be created in the `octopusdeploy_lifecycle` resource.** Do NOT add extra phases from the template lifecycle. For example, if the prompt says "with phases for Development, Test, and Production", do NOT add a "Security" phase even if the named lifecycle (e.g., DevSecOps) template normally includes one. Similarly, do NOT create environments that are only needed for template phases not mentioned in the prompt. The lifecycle description may still reference the broader lifecycle purpose, but the `phase` blocks must only include the explicitly named phases. You will be penalized for adding lifecycle phases or environments that were not explicitly requested in the prompt.
+
+* The `unit` property in a `release_retention_policy` or `tentacle_retention_policy` block in a `phase` block must be set to `Days` or `Items`, for example:
+
+```
+resource "octopusdeploy_lifecycle" "simple_lifecycle" {
+  description = "A test lifecycle"
+  name        = "Simple"
+
+  release_retention_policy {
+    quantity_to_keep    = 1
+    unit                = "Days"
+  }
+
+  tentacle_retention_policy {
+    quantity_to_keep    = 30
+    unit                = "Items"
+  }
+
+  phase {
+    automatic_deployment_targets = []
+    optional_deployment_targets  = [octopusdeploy_environment.development_environment.id]
+    name                         = octopusdeploy_environment.development_environment.name
+
+    release_retention_policy {
+      quantity_to_keep    = 1
+      unit                = "Days"
+    }
+
+    tentacle_retention_policy {
+      quantity_to_keep    = 30
+      unit                = "Items"
+    }
+  }
+```
+
+* You will be penalized for setting the `unit` property in a `release_retention_policy` or `tentacle_retention_policy` block in a `phase` block to `Releases`.
+
+* **CRITICAL — properties inside `release_retention_policy` and `tentacle_retention_policy` blocks MUST use consistent 2-space indentation relative to the block opening brace.** The closing `}` must be at the same indentation level as the block keyword. Single-space indentation is FORBIDDEN. The closing `}` at column 0 (unindented) is FORBIDDEN. You will be penalized for using 1-space indentation inside retention policy blocks.
+
+**Negative example — `release_retention_policy` with 1-space indentation (FORBIDDEN)**:
+```hcl
+  release_retention_policy {
+ quantity_to_keep = 30
+ unit = "Items"
+}
+```
+
+**Correct example — `release_retention_policy` with proper 2-space indentation**:
+```hcl
+  release_retention_policy {
+    quantity_to_keep = 30
+    unit             = "Items"
+  }
+```
+
+## Variable Template Instructions
+
+* You must set the "default_value" in a "template" block to "null" when there is no default value, for example:
+
+```
+  template {
+    name             = "ConnectionString"
+    label            = "Database Connection String"
+    help_text        = "Provide the connection string for the API Gateway database."
+    default_value    = null
+    display_settings = { "Octopus.ControlType" = "SingleLineText" }
+  }
+```
+
+* You will be penalized for setting the "default_value" to an empty string.
+
+* You must always include the following data source:
+
+```
+data "octopusdeploy_lifecycles" "system_lifecycle_firstlifecycle" {
+  ids          = null
+  partial_name = ""
+  skip         = 0
+  take         = 1
+}
+```
+
+## GitHub Connection Instructions
+
+* You will be penalized for defining a data source of type "octopusdeploy_github_connections".
+
+## Resource and Data Instructions
+
+* When referencing a lifecycle, you must create the "resource" type "octopusdeploy_lifecycle" and the "data" type "octopusdeploy_lifecycles".
+* When referencing a project group, you must create the "resource" type "octopusdeploy_project_group" and the "data" type "octopusdeploy_project_groups".
+* When referencing a feed, you must create the "data" type "octopusdeploy_feeds" and one of the "resource" types:
+  * "octopusdeploy_docker_container_registry"
+  * "octopusdeploy_aws_elastic_container_registry"
+  * "octopusdeploy_maven_feed"
+  * "octopusdeploy_github_repository_feed"
+  * "octopusdeploy_helm_feed"
+  * "octopusdeploy_nuget_feed"
+  * "octopusdeploy_artifactory_generic_feed"
+  * "octopusdeploy_s3_feed"
+* The data "octopusdeploy_feeds" resource must have a "feed_type" attribute set to one of the following:
+  * "AwsElasticContainerRegistry"
+  * "BuiltIn"
+  * "Docker"
+  * "GitHub"
+  * "Helm"
+  * "Maven"
+  * "NuGet"
+  * "S3"
+  * "OciRegistry"
+  * "OctopusProject"
+  * "ArtifactoryGeneric"
+* You will be penalized for setting the "feed_type" attribute to "Git".
+
+## Feed Instructions
+
+* The data "octopusdeploy_feeds" with "type" set to "BuiltIn" must have an empty "partial_name" attribute.
+* You must define the data "octopusdeploy_feeds" "feed_docker_hub" once.
+* You will be penalized for defining the data "octopusdeploy_feeds" "feed_docker_hub" more than once.
+* You must always include a "octopusdeploy_feeds" data source that references the built-in feed, for example:
+
+```
+data "octopusdeploy_feeds" "feed_octopus_server__built_in_" {
+  feed_type    = "BuiltIn"
+  ids          = null
+  partial_name = ""
+  skip         = 0
+  take         = 1
+}
+```
+
+* You will be penalized for not including a "octopusdeploy_feeds" data source that references the built-in feed.
+* The built-in feed always exists and must not be created as a resource.
+
+* The "feed_type" attribute on a "octopusdeploy_feeds" data source must be set to one of the following values:
+  * "AwsElasticContainerRegistry"
+  * "BuiltIn"
+  * "Docker"
+  * "GitHub"
+  * "Helm"
+  * "Maven"
+  * "NuGet"
+  * "S3"
+  * "OciRegistry"
+  * "OctopusProject"
+* If the prompt specifies a "feed_type" that is not in the list, you must define the feed as "NuGet".
+* You will be penalized for setting "feed_type" to "Npm".
+* You will be penalized for setting the "password" property on a "octopusdeploy_docker_container_registry" resource to an empty string.
+* You will be penalized for creating a resource of type resource "octopusdeploy_feed".
+* You will be penalized for creating a resource of type resource "octopusdeploy_generic_artifact_feed".
+* When creating a Maven feed with anonymous authentication, you must set the "username" and "password" attributes to null.
+* When creating a Docker feed with anonymous authentication, you must set the "username" and "password" attributes to null.
+* You will be penalized for setting the "username" and "password" attributes to empty strings when creating a Maven feed with anonymous authentication.
+* You will be penalized for setting the "username" and "password" attributes to empty strings when creating a Docker feed with anonymous authentication.
+* The "is_enhanced_mode" property must only be defined on the "octopusdeploy_nuget_feed" resource.
+* You will be penalized for defining the "is_enhanced_mode" property on a "octopusdeploy_maven_feed" resource.
+* You will be penalized for creating a resource of type "octopusdeploy_builtin_feed"
+
+**CRITICAL — step environment scoping using `environments` vs `excluded_environments`**: When the prompt says "Set the step to scope to [Environment A] and [Environment B] environments only", use the `environments` attribute (allowlist) to explicitly list the allowed environments. Do NOT use `excluded_environments` as a workaround.
+
+- `environments` — specifies the ONLY environments in which this step runs (allowlist). Use this when the prompt says "scope to X and Y environments only".
+- `excluded_environments` — specifies environments where this step is SKIPPED (denylist). Use this only when the prompt says "exclude from X environment" or when using the DevSecOps lifecycle to exclude the Security environment.
+
+**Negative example — using excluded_environments when environments should be used (FORBIDDEN)**:
+```hcl
+# Prompt says: "Set the step to scope to Development and Production environments only"
+# WRONG: Uses excluded_environments instead of environments
+resource "octopusdeploy_process_step" "..." {
+  environments          = null                   ← WRONG: should list Development and Production
+  excluded_environments = ["${...security...}"]  ← WRONG: not a substitute for environments
+}
+```
+
+**Correct output — uses environments allowlist**:
+```hcl
+# CORRECT: Uses environments allowlist to scope to specific environments
+resource "octopusdeploy_process_step" "..." {
+  environments = [
+    "${length(data.octopusdeploy_environments.environment_development.environments) != 0 ? data.octopusdeploy_environments.environment_development.environments[0].id : octopusdeploy_environment.environment_development[0].id}",
+    "${length(data.octopusdeploy_environments.environment_production.environments) != 0 ? data.octopusdeploy_environments.environment_production.environments[0].id : octopusdeploy_environment.environment_production[0].id}"
+  ]
+  excluded_environments = null
+}
+```
+
+**Negative example — GCR API version embedded in feed_uri (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_docker_container_registry" "feed_google_container_registry" {
+  name     = "Google Container Registry"
+  feed_uri = "https://gcr.io/v2/"   ← WRONG: API version must be a separate attribute, not in the URI
+  ...
+}
+```
+← WRONG: `feed_uri` must contain only the registry base URL. A `feed_uri` like `"https://gcr.io/v2/"` or `"https://gcr.io/v2."` with the version embedded in the path is invalid.
+
+The **CORRECT** Terraform for a Google Container Registry feed:
+```hcl
+resource "octopusdeploy_docker_container_registry" "feed_google_container_registry" {
+  count        = "${length(data.octopusdeploy_feeds.feed_google_container_registry.feeds) != 0 ? 0 : 1}"
+  name         = "Google Container Registry"
+  feed_uri     = "https://gcr.io"  ← CORRECT: base URL only
+  api_version  = "v2"              ← CORRECT: API version as a separate attribute
+  username     = null
+  password     = null
+  lifecycle {
+    ignore_changes  = [password]
+    prevent_destroy = true
+  }
+}
+```
+
+**CRITICAL — GitHub Container Registry feed URI format**: Similarly, when the prompt specifies a GitHub Container Registry feed, use `feed_uri = "https://ghcr.io"` and `api_version = "v2"` as separate attributes — never embed `/v2` in the `feed_uri`.
+
+**CRITICAL — Docker Hub feed URI format**: For Docker Hub, use `feed_uri = "https://index.docker.io"` with `api_version = ""` (empty string). The `api_version` attribute on `octopusdeploy_docker_container_registry` is always specified separately from `feed_uri`.
+* You will be penalized for creating data or resource blocks with unbalanced brackets, for example:
+```
+data "octopusdeploy_feeds" "feed_octopus_server__built_in_" {
+  feed_type    = "BuiltIn"
+  ids          = null
+  partial_name = ""
+  skip         = 0
+  take         = 1
+  # This curly bracket is unbalanced and must be removed
+   }
+}
+
+resource "octopusdeploy_maven_feed" "feed_octopus_maven_feed" {
+  count                                = "${length(data.octopusdeploy_feeds.feed_octopus_maven_feed.feeds) != 0 ? 0 : 1}"
+  name                                 = "Octopus Maven Feed"
+  feed_uri                             = "http://octopus-sales-public-maven-repo.s3-website-ap-southeast-2.amazonaws.com/snapshot"
+  package_acquisition_location_options = ["Server", "ExecutionTarget"]
+  download_attempts                    = 5
+  download_retry_backoff_seconds       = 10
+  # The lifecycle block below has unbalanced brackets. There must be a closing curly bracket after the prevent_destroy attribute and before the closing curly bracket for the resource.
+  lifecycle {
+    ignore_changes  = [password]
+    prevent_destroy = true
+}
+```
+
+## Project Group Instructions
+
+* Only the "Default Project Group" data "octopusdeploy_project_groups" includes a "postcondition" attribute.
+* You will be penalized for including a "postcondition" attribute on a other data "octopusdeploy_project_groups".
+
+## Account Instructions
+
+* The "account_type" field must be one of the following, matching the case exactly:
+  * "AmazonWebServicesAccount"
+  * "AmazonWebServicesRoleAccount"
+  * "AmazonWebServicesOidcAccount"
+  * "AzureServicePrincipal"
+  * "AzureOIDC"
+  * "AzureSubscription"
+  * "GenericOidcAccount"
+  * "GoogleCloudAccount"
+  * "None"
+  * "SshKeyPair"
+  * "Token"
+  * "UsernamePassword"
+* You will be penalized for using an "account_type" of "AzureOidc". It must be "AzureOIDC".
+* You will be penalized for using an "account_type" of "Certificate".
+* Account resources types must be one of the following:
+  * "octopusdeploy_aws_openid_connect_account"
+  * "octopusdeploy_azure_openid_connect"
+  * "octopusdeploy_gcp_account"
+  * "octopusdeploy_azure_service_principal"
+  * "octopusdeploy_ssh_key_account"
+  * "octopusdeploy_token_account"
+  * "octopusdeploy_username_password_account"
+* The "role_arn" property on the resource "octopusdeploy_aws_openid_connect_account" is mandatory.
+* You will be penalized for omitting the "role_arn" property on the resource "octopusdeploy_aws_openid_connect_account".
+* The resource "octopusdeploy_aws_openid_connect_account" must have a "role_arn" property set to "arn:aws:iam::123456789012:role/MyRole"
+* The "azure_environment" attribute for a "octopusdeploy_azure_openid_connect" resource must be set to "AzureCloud" unless specifically instructed otherwise in the prompt.
+* The resource "octopusdeploy_azure_openid_connect" must have a "azure_environment" attribute set to one of:
+  * "AzureCloud"
+  * "AzureChinaCloud"
+  * "AzureGermanCloud"
+  * "AzureUSGovernment"
+* The "application_id" attribute for the resource "octopusdeploy_azure_service_principal" must be set to "00000000-0000-0000-0000-000000000000"
+* The "subscription_id" attribute for the resource "octopusdeploy_azure_service_principal" must be set to "00000000-0000-0000-0000-000000000000"
+* The "tenant_id" attribute for the resource "octopusdeploy_azure_service_principal" must be set to "00000000-0000-0000-0000-000000000000"
+
+**CRITICAL — Azure account type selection based on prompt keywords**: When the prompt mentions an Azure account, choose the resource type based on the authentication method specified:
+- If the prompt says "OIDC", "OpenID Connect", or "Workload Identity Federation" in the context of an Azure account → use `octopusdeploy_azure_openid_connect`
+- If the prompt says "Service Principal", "SP", or "client secret" in the context of an Azure account → use `octopusdeploy_azure_service_principal`
+- If the prompt does not specify the authentication method → use `octopusdeploy_azure_service_principal` (the template default)
+
+You will be penalized for using `octopusdeploy_azure_service_principal` when the prompt explicitly says "OIDC" or "OpenID Connect" for an Azure account.
+You will be penalized for using `octopusdeploy_azure_openid_connect` when the prompt explicitly says "Service Principal" for an Azure account.
+
+**Required attributes for `octopusdeploy_azure_openid_connect`**: When creating an `octopusdeploy_azure_openid_connect` resource, the following attributes MUST be set:
+- `name`: The verbatim account name from the prompt
+- `azure_environment`: `"AzureCloud"` (unless otherwise specified)
+- `subscription_id`: `"00000000-0000-0000-0000-000000000000"` (placeholder — must be configured post-deploy)
+- `client_id`: `"00000000-0000-0000-0000-000000000000"` (placeholder — must be configured post-deploy)
+- `tenant_id`: `"00000000-0000-0000-0000-000000000000"` (placeholder — must be configured post-deploy)
+
+## Octopus Runbook Instructions
+
+* The "retention_policy" block can only be defined for a resource "octopusdeploy_runbook".
+* You will be penalized for defining a "octopusdeploy_project_runbook" resource.
+* You will be penalized for defining the "unit" property in a "retention_policy" block in a "octopusdeploy_runbook" resource, for example, this resource "octopusdeploy_runbook" is invalid because it includes the "unit" property in the "retention_policy" block:
+
+```
+resource "octopusdeploy_runbook" "runbook_my_script_app_4_retrieve_logs" {
+    count                       = "${length(data.octopusdeploy_projects.project_my_script_app_4.projects) != 0 ? 0 : 1}"
+    name                        = "${var.runbook_my_script_app_4_retrieve_logs_name}"
+    project_id                  = "${length(data.octopusdeploy_projects.project_my_script_app_4.projects) != 0 ? data.octopusdeploy_projects.project_my_script_app_4.projects[0].id : octopusdeploy_project.project_my_script_app_4[0].id}"
+    environment_scope           = "Unscoped"
+    environments                = []
+    force_package_download      = false
+    default_guided_failure_mode = "EnvironmentDefault"
+    description                 = "Simulate the retrieval of logs"
+    multi_tenancy_mode          = "Untenanted"
+
+    retention_policy {
+      quantity_to_keep    = 1
+      # The unit property is invalid and must not be defined in a retention_policy block for a runbook resource
+      unit                = "Items"
+    }
+
+    connectivity_policy {
+      allow_deployments_to_no_targets = true
+      exclude_unhealthy_targets       = false
+      skip_machine_behavior           = "None"
+      target_roles                    = []
+    }
+}
+```
+
+* You will be penalized for setting both the "should_keep_forever" attribute and defining the "quantity_to_keep" attribute in a "octopusdeploy_runbook" resource.
+* If the "quantity_to_keep" attribute is defined in a "retention_policy" block in a "octopusdeploy_runbook" resource, the "should_keep_forever" attribute must be omitted.
+* When creating a runbook for an existing project:
+  * The "count" attribute on the "octopusdeploy_runbook" resource must be omitted.
+  * The "octopusdeploy_project" resource must be omitted.
+  * The "project_id" attribute on the "octopusdeploy_runbook" resource must be set to the ID of the existing project.
+
+## Octopus Project Instructions
+
+* The "name" attribute in a "octopusdeploy_project" resource can only contain letters, numbers, periods, commas, dashes, underscores, brackets, square brackets, or hashes.
+* The "slug" attribute in a "octopusdeploy_project" resource can only contain lower case letters, numbers, or dashes. The slug must NOT start or end with a dash; strip any leading or trailing dashes after generating it.
+* You will be penalized for replacing brackets with underscores in the "name" attribute of a "octopusdeploy_project" resource.
+* Retention policies do not apply to resource "octopusdeploy_project".
+* You must ignore any mention of retention policies when building the resource "octopusdeploy_project".
+* You will be penalized for adding a "retention_policy" block to a resource "octopusdeploy_project".
+* You will be penalized for creating "octopusdeploy_project_deployment_settings" resources.
+* You will be penalized for creating "octopusdeploy_project_retention_policy" resources.
+* The "skip_machine_behavior" property can be set to "None" or "SkipUnavailableMachines"
+* If a project name was specified in the prompt, you must use that name for the "name" attribute in the resource "octopusdeploy_project".
+* You must include the "lifecycle_id" attribute for every "octopusdeploy_project" resource.
+* The "is_version_controlled" attribute must always be "false".
+* You will be penalized for setting the "auto_create_release" attribute to "true".
+* The name of the data source much also match the name used when referencing a "project_id" attribute. For example, this data source:
+
+```
+data "octopusdeploy_projects" "project_aws_lambda" {
+	  ids          = null
+	  partial_name = "${var.project_aws_lambda_name}"
+	  skip         = 0
+	  take         = 1
+}
+```
+
+must be referenced in the "project_id" attribute like this:
+
+```
+"${length(data.octopusdeploy_projects.project_aws_lambda.projects) != 0 ? data.octopusdeploy_projects.project_aws_lambda.projects[0].id : octopusdeploy_project.project_aws_lambda[0].id}"
+```
+
+* You will be penalized for referencing a data source that does not exist in the output.
+* You will be penalized for defining the "tenant_tags" property on a resource "octopusdeploy_project".
+* If the prompt indicates that a project is associated with a tenant, and the prompt does not specify the project tenanted mode to use, the "tenanted_deployment_participation" property must be set to "TenantedOrUntenanted".
+* The only valid values for the "tenanted_deployment_participation" property are:
+  * "Untenanted"
+  * "Tenanted"
+  * "TenantedOrUntenanted"
+* You will be penalized for setting the "tenanted_deployment_participation" property to "TenantedOnly".
+* If the prompt indicates that a project is associated with a tenant, link the tenant to all the environments in the project's lifecycle.
+* You must include a variable that define the name of the project, for example:
+```
+variable "project_my_project_name" {
+  type        = string
+  nullable    = false
+  sensitive   = false
+  description = "The name of the project"
+  default     = "My Project"
+}
+
+resource "octopusdeploy_project" "project_my_project" {
+  name                                 = "${var.project_my_project_name}"
+  # Define other properties here
+}
+```
+
+* The instruction "Set the prompt to disabled" refers to the option to automatically create a new project.
+* The instruction "Set the prompt to disabled" does not change the enabled/disabled status of the project itself.
+* The instruction "Set the prompt to disabled" does not affect any part of creating the Terraform configuration.
+* You must ignore the instruction to "Set the prompt to disabled" when defining a resource "octopusdeploy_project".
+* You will be penalized for disabling a project in response to the instruction to "Set the prompt to disabled".
+* You must set project to enabled by default unless explicitly instructed otherwise.
+* **CRITICAL — when the prompt contains the line `* The project must be disabled.`, set `is_disabled = true` on the `octopusdeploy_project` resource.** This is distinct from the "Set the prompt to disabled" instruction above (which refers to the UI option for auto-creating projects). The `* The project must be disabled.` line in the prompt maps directly to `is_disabled = true` on the project resource.
+
+**Positive example — project disabled via prompt**:
+```
+resource "octopusdeploy_project" "project_my_project" {
+  name                                 = "${var.project_my_project_name}"
+  is_disabled                          = true
+  # ...other attributes
+}
+```
+
+**Negative example — project not disabled when prompt says "The project must be disabled." (COMMON MISTAKE)**:
+```
+resource "octopusdeploy_project" "project_my_project" {
+  name                                 = "${var.project_my_project_name}"
+  is_disabled                          = false   # WRONG: prompt says "The project must be disabled." — this must be true
+}
+```
+**MANDATORY SELF-CHECK — project `is_disabled` must only come from the prompt**: Before finalizing the `octopusdeploy_project` resource, check whether the prompt contains the EXACT line `* The project must be disabled.`. If and ONLY IF that exact line is present, set `is_disabled = true` on the project. The following do NOT justify `is_disabled = true` on the project resource:
+- Individual steps having `The step must be disabled.` instructions
+- All steps being disabled (e.g., all having TODO YAML placeholders)
+- Any trigger being disabled (`is_disabled` on the trigger resource)
+- Any parameter or variable named `suspend`, `disabled`, or similar
+If you added `is_disabled = true` to the project resource without finding the exact line `* The project must be disabled.` in the prompt, remove it. You will be penalized for incorrectly disabling a project.
+
+**CRITICAL — `octopusdeploy_project_versioning_strategy` MUST use count and ternary `project_id`**: When creating an `octopusdeploy_project_versioning_strategy` resource, it MUST follow the same count+ternary pattern as the project. Use `count` matching the project, and use a ternary expression for `project_id` that references either the existing project from the data source or the newly created project resource:
+```hcl
+resource "octopusdeploy_project_versioning_strategy" "project_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  template   = "#{Octopus.Version.LastMajor}.#{Octopus.Version.LastMinor}.#{Octopus.Version.NextPatch}"
+}
+```
+A versioning strategy resource without `count` will fail on idempotent re-apply. Do NOT create `octopusdeploy_project_versioning_strategy` without the count and ternary `project_id` pattern.
+
+**CRITICAL — `octopusdeploy_project_versioning_strategy` MUST NOT include `lifecycle { prevent_destroy = true }`**: Unlike feed resources and channel resources (which are space-scoped shared resources), the versioning strategy is a project-scoped sub-resource and does NOT require the `prevent_destroy` lifecycle guard. Adding `lifecycle { prevent_destroy = true }` to a versioning strategy resource causes unnecessary resource locks that prevent the project from being cleanly destroyed during testing. The correct pattern has `count` and ternary `project_id` but NO `lifecycle` block:
+
+```hcl
+resource "octopusdeploy_project_versioning_strategy" "project_my_project" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  template   = "#{Octopus.Version.LastMajor}.#{Octopus.Version.LastMinor}.#{Octopus.Version.NextPatch}"
+  # NO lifecycle block — this is project-scoped and does not need prevent_destroy
+}
+```
+
+You will be penalized for adding `lifecycle { prevent_destroy = true }` to an `octopusdeploy_project_versioning_strategy` resource.
+
+* Every project tenant variable must have a "template" block in the "octopusdeploy_project" resource defining the variable. If the prompt requests tenant variables but the project has no existing `template` blocks, you MUST add `template` blocks to the project resource BEFORE creating `octopusdeploy_tenant_project_variable` resources. **The number of `template` blocks must equal or exceed the number of `octopusdeploy_tenant_project_variable` resources.** Each template block defines ONE variable (with `name`, `label`, `help_text`, `default_value`, `display_settings`). Each tenant variable's `template_id` must reference `template[N].id` where N is 0-indexed. You will be penalized if you create tenant variable resources without sufficient template blocks.
+* You will be penalized for creating a resource of type "octopusdeploy_project_deployment_settings".
+* You will be penalized for adding whitespace to the "description" attribute of a resource "octopusdeploy_project", for example:
+```
+resource "octopusdeploy_project" "project_my_azure_web_app" {
+  # The whitespace characters at the end of the description are invalid
+  description = "This is a description with line breaks\n\n"
+}
+```
+* **CRITICAL — multiple migration notes in project description must be concatenated into a SINGLE `description` attribute**: When the prompt instructs you to append multiple migration notes to the project description (e.g., from `keepWaitingPipelines=false`, `limitConcurrent=true`, and `roles`), ALL notes MUST be combined into one single `description` attribute value. Do NOT emit multiple `description` attributes or create separate resource blocks for each note.
+
+**Negative example — multiple migration notes generating duplicate `description` attributes (WRONG)**:
+
+Given a prompt with multiple migration notes:
+```
+Set the project description to "NOTE (migration): keepWaitingPipelines=false..."
+Append to the project description: "NOTE (migration): limitConcurrent=true..."
+Append to the project description: "NOTE (migration): roles=[app-0299-prod]..."
+```
+
+The **WRONG** Terraform emits a separate description for each note:
+```hcl
+resource "octopusdeploy_project" "project_deploy_to_production" {
+  description = "NOTE (migration): keepWaitingPipelines=false..."
+  description = "NOTE (migration): limitConcurrent=true..."   ← WRONG: duplicate attribute
+  description = "NOTE (migration): roles=[app-0299-prod]..."  ← WRONG: duplicate attribute
+}
+```
+
+The **CORRECT** Terraform concatenates all notes into one `description` value:
+```hcl
+resource "octopusdeploy_project" "project_deploy_to_production" {
+  description = "NOTE (migration): The original Spinnaker pipeline had keepWaitingPipelines=false, which discarded queued executions when a new trigger fired. Octopus does not have a direct equivalent; configure a suitable concurrency policy if required. NOTE (migration): The original Spinnaker pipeline had limitConcurrent=true, which prevented concurrent pipeline executions. Configure a suitable deployment mutex or concurrency limit in Octopus if required. NOTE (migration): The original Spinnaker pipeline required the following roles for execution: app-0299-prod."
+}
+```
+* You will be penalized for splitting the "release_notes_template" attribute over two lines, for example:
+```
+resource "octopusdeploy_project" "project_my_k8s_webapp" {
+  # This is invalid because there is a line break after the equals sign and the value is on a new line.
+  release_notes_template =
+  "Here are the notes for the packages\n#{each package in Octopus.Release.Package}\n- #{package.PackageId} #{package.Version}\n#{each workItem in package.WorkItems}\n  - [#{workItem.Id}](#{workItem.LinkUrl}) - #{workItem.Description}\n#{/each}\n#{each commit in package.Commits}\n  - [#{commit.CommitId}](#{commit.LinkUrl}) - #{commit.Comment}\n#{/each}\n#{/each}"
+}
+```
+* When the prompt defines the slug for a project, it must be defined in the "slug" attribute of the "octopusdeploy_project" resource, for example:
+```
+resource "octopusdeploy_project" "project_my_project" {
+  name                                 = "${var.project_my_project_name}"
+  slug                                 = "my-project"
+  # Define other properties here
+}
+
+## Octopus Project Trigger Instructions
+
+* When defining the "once_daily_schedule" block in the resource "octopusdeploy_project_scheduled_trigger" adhere to the following rules:
+  * The "start_time" attribute value should be set to an ISO 8601 formatted string
+  * The "timezone" attribute value should be set to a valid "Windows Time Zone Identifier" string.
+* For example, this is an example of a scheduled project trigger, set to run at 09:00 each day in the Pacific Standard Time timezone:
+
+```
+resource "octopusdeploy_project_scheduled_trigger" "projecttrigger_aws_lambda_daily_security_scan" {
+  count       = "${length(data.octopusdeploy_projects.project_aws_lambda.projects) != 0 ? 0 : 1}"
+  space_id    = "${trimspace(var.octopus_space_id)}"
+  name        = "Daily Security Scan"
+  description = "This trigger reruns the deployment in the Security environment. This means any new vulnerabilities detected after a production deployment will be identified."
+  timezone    = "Pacific Standard Time"
+  is_disabled = false
+  project_id  = "${length(data.octopusdeploy_projects.project_aws_lambda.projects) != 0 ? data.octopusdeploy_projects.project_aws_lambda.projects[0].id : octopusdeploy_project.project_aws_lambda[0].id}"
+  tenant_ids  = []
+
+  once_daily_schedule {
+    start_time   = "2025-05-08T09:00:00"
+    days_of_week = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+  }
+
+  deploy_latest_release_action {
+    source_environment_id      = "${length(data.octopusdeploy_environments.environment_security.environments) != 0 ? data.octopusdeploy_environments.environment_security.environments[0].id : octopusdeploy_environment.environment_security[0].id}"
+    destination_environment_id = "${length(data.octopusdeploy_environments.environment_security.environments) != 0 ? data.octopusdeploy_environments.environment_security.environments[0].id : octopusdeploy_environment.environment_security[0].id}"
+    should_redeploy            = true
+  }
+}
+```
+
+* You will be penalized for providing an attribute value for "timezone" that isn't a valid "Windows Time Zone Identifier".
+* You will be penalized for providing an empty "project_id" attribute on a trigger.
+
+* The "deployment_action_slug" property in the "package" block of the "octopusdeploy_external_feed_create_release_trigger" resource must be set to the slug of a deployment action in the associated project, for example:
+
+```
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_every_step_project_external_feed_trigger" {
+  count      = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? 0 : 1}"
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? data.octopusdeploy_projects.project_every_step_project.projects[0].id : octopusdeploy_project.project_every_step_project[0].id}"
+  name       = "External Feed Trigger"
+  channel_id = "${length(data.octopusdeploy_channels.channel_frontend_application.channels) != 0 ? data.octopusdeploy_channels.channel_frontend_application.channels[0].id : octopusdeploy_channel.channel_frontend_application[0].id}"
+
+  package {
+    deployment_action_slug = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? null : octopusdeploy_process_step.process_step_every_step_project_run_a_script[0].slug}"
+    package_reference      = "mypackage"
+  }
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_every_step_project]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* If the prompt specifies that a external feed trigger is to be created, and does not specify that a channel is to be created, you must create a channel called "Application" and link that channel to the external feed trigger.
+
+**Negative example — external feed trigger created without creating the "Application" channel (CRITICAL MISTAKE)**:
+
+If the prompt says:
+```
+* Add a channel called "Application" to the project.
+* Add a single external feed trigger that creates a new release for each step that deploys a Docker image.
+```
+
+The **WRONG** output omits the `octopusdeploy_channel` resource and uses `"Channels-1"` as a fallback:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  channel_id = "Channels-1"  # WRONG: The "Application" channel was never created
+  ...
+}
+```
+
+The **CORRECT** output always creates the `octopusdeploy_channel` resource AND references it via ternary lookup:
+```hcl
+resource "octopusdeploy_channel" "channel_application" {
+  count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
+  name       = "Application"
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  channel_id = "${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_project_foo]
+  lifecycle {
+    prevent_destroy = true
+  }
+  ...
+}
+```
+* If the prompt specifies `Add a channel called "Application" to the project and configure a version rule that matches the regex "<regex>" for every step that deploys a Docker image.`, create an `octopusdeploy_channel` resource named "Application" with a `rule` block whose `tag` property is set to the exact regex from the prompt.
+* When that regex-based channel rule applies to steps that expose package metadata, add one `action_package` block per matching deployment action. **CRITICAL — if the matching steps are `Octopus.KubernetesDeployRawYaml` steps without `primary_package` or `packages` blocks, you MUST create the channel WITHOUT any `rule` block.** The Octopus API rejects `rule` blocks that have no `action_package` entries with the error "Version rules must specify a package step". Since `KubernetesDeployRawYaml` steps have no package references, do NOT add any `rule` block to the channel — create the channel as a bare named channel with no version rules. Do not drop the channel entirely.
+* If the prompt specifies both a regex-based `Application` channel and an external feed trigger, the `octopusdeploy_external_feed_create_release_trigger` resource must reference that regex-based channel instead of creating or linking to a second bare `Application` channel.
+* If the prompt specifies an external feed trigger for a project whose deployment steps are `Octopus.KubernetesDeployRawYaml` steps without a `primary_package` or `packages` block, create the `octopusdeploy_external_feed_create_release_trigger` resource without a `package` block. Do not drop the trigger merely because the referenced deployment step has no package metadata.
+* **CRITICAL — when the prompt says the external feed trigger must be disabled**, set `is_disabled = true` on the `octopusdeploy_external_feed_create_release_trigger` resource. The prompt will say something like `"The trigger must be disabled."` for migrated pipelines with Docker triggers that were originally disabled. You will be penalized for omitting `is_disabled = true` when the prompt explicitly disables the trigger.
+
+**Negative example — disabled trigger without `is_disabled = true` (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  ...
+  name       = "External Feed Trigger"
+  # WRONG: is_disabled attribute is missing even though prompt says "The trigger must be disabled."
+}
+```
+
+**Correct output — disabled trigger with `is_disabled = true`**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  ...
+  name        = "External Feed Trigger"
+  is_disabled = true   # Required because the prompt says "The trigger must be disabled."
+}
+```
+* You will be penalized for setting the "channel_id" attribute to a fixed value like "Channels-1".
+
+**CRITICAL — `channel_id` on ALL triggers MUST use the ternary lookup pattern, even when the channel was just created in the same Terraform configuration**: When a channel `octopusdeploy_channel.channel_application` is created in the same Terraform file, the external feed trigger's `channel_id` MUST still use the ternary pattern `"${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"`. Using the direct reference `"${octopusdeploy_channel.channel_application.id}"` is FORBIDDEN even when the channel resource exists in the same file.
+
+**Negative example — `channel_id` set to a hard-coded value (COMMON MISTAKE)**:
+
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  channel_id = "Channels-1"  # WRONG: hard-coded channel ID is never valid
+  name       = "External Feed Trigger"
+}
+```
+
+The **CORRECT** output uses a ternary lookup for `channel_id`:
+
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  count      = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  channel_id = "${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"
+  name       = "External Feed Trigger"
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_project_foo]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* The `project_id` attribute on an `octopusdeploy_external_feed_create_release_trigger` resource MUST use the ternary lookup pattern, just like the `project_id` on any other resource. You will be penalized for setting `project_id` to a direct resource reference such as `octopusdeploy_project.project_foo.id` without the ternary guard.
+
+**Negative example — `project_id` set to a direct resource reference WITHOUT ternary guard (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  project_id = "${octopusdeploy_project.project_foo.id}"   ← WRONG: no ternary guard
+  channel_id = "${octopusdeploy_channel.channel_application.id}"  ← WRONG: no ternary guard
+  ...
+}
+```
+
+**Correct output — both `project_id` and `channel_id` MUST use ternary lookup**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "example" {
+  project_id = "${length(data.octopusdeploy_projects.project_foo.projects) != 0 ? data.octopusdeploy_projects.project_foo.projects[0].id : octopusdeploy_project.project_foo[0].id}"
+  channel_id = "${length(data.octopusdeploy_channels.channel_application.channels) != 0 ? data.octopusdeploy_channels.channel_application.channels[0].id : octopusdeploy_channel.channel_application[0].id}"
+  ...
+}
+```
+
+* Every `octopusdeploy_external_feed_create_release_trigger` resource MUST include a `lifecycle { prevent_destroy = true }` block. You will be penalized for omitting this block.
+* The "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must have a "deployment_action_slug" property that references a deployment action in the associated project.
+* You will be penalized for setting the "deployment_action_slug" property in the "package" block of a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string or null when the step it references has no primary package.
+* The "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must have an empty string when referencing the "primary_package" of a step.
+* The "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource must be the name of a key in the "packages" block of the referenced step if referencing a named package. For example:
+
+```
+resource "octopusdeploy_process_step" "process_step" {
+  name          = "Run a script"
+  process_id    = "octopusdeploy_process.process_octopub.id"
+  packages      = {
+    # webapp is a named package
+    webapp = {
+        acquisition_location = "Server",
+        feed_id = "octopusdeploy_maven_feed.feed_octopus_maven_feed.id",
+        id = null,
+        package_id = "MyPackage",
+        properties = { Extract = "True", Purpose = "", SelectionMode = "immediate" }
+    }
+  }
+}
+
+resource "octopusdeploy_process" "process_octopub" {
+  project_id = "octopusdeploy_project.my_project.id}"
+}
+
+resource "octopusdeploy_external_feed_create_release_trigger" "project_trigger" {
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "octopusdeploy_project.my_project.id}"
+  name       = "Second External Feed Trigger"
+  channel_id = "octopusdeploy_channel.application.id}"
+
+  package {
+    deployment_action_slug = "run-a-script"
+    # The package_reference must match the key "webapp" from the "packages" block in the octopusdeploy_process_step resource because there is no primary package
+    package_reference      = "webapp"
+  }
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_every_step_project]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* You will be penalized for setting the "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string when the referenced step has no "primary_package" defined.
+* You will be penalized for setting the "package_reference" property in the "package" block in a "octopusdeploy_external_feed_create_release_trigger" resource to an empty string when the referenced step is of type "Octopus.KubernetesDeployRawYaml", as this step has no primary package.
+* You will be penalized for creating resources of type "octopusdeploy_project_automatic_release_trigger".
+* When creating a "octopusdeploy_external_feed_create_release_trigger" resource, but none of the project's steps define a "primary_package" or "packages" block, do not define the "package" block in the "octopusdeploy_external_feed_create_release_trigger" resource. This creates a placeholder trigger.
+
+**CRITICAL — placeholder triggers (no `package` block) MUST still follow ALL resource conventions**: A placeholder `octopusdeploy_external_feed_create_release_trigger` (created without a `package` block because the steps have no package references) is still a full Octopus resource and must include all required attributes. The absence of a `package` block does NOT exempt a trigger from the `lifecycle { prevent_destroy = true }` requirement, the ternary lookup requirement for `project_id` and `channel_id`, the `count` convention, or the `depends_on` requirement.
+
+**Negative example — placeholder trigger missing required attributes (VERY COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${octopusdeploy_project.project_my_project.id}"        ← WRONG: no ternary guard
+  name       = "External Feed Trigger"
+  channel_id = "${octopusdeploy_channel.channel_my_project_application.id}"  ← WRONG: no ternary guard
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]
+  # WRONG: missing count attribute
+  # WRONG: missing lifecycle { prevent_destroy = true }
+}
+```
+
+**Correct output — placeholder trigger with ALL required attributes**:
+```hcl
+resource "octopusdeploy_external_feed_create_release_trigger" "projecttrigger_my_project_external_feed_trigger" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  name       = "External Feed Trigger"
+  channel_id = "${length(data.octopusdeploy_channels.channel_my_project_application.channels) != 0 ? data.octopusdeploy_channels.channel_my_project_application.channels[0].id : octopusdeploy_channel.channel_my_project_application[0].id}"
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+## Tenant Variable Instructions
+
+* If the prompt specified that "octopusdeploy_tenant_project_variable" tenant variables are to be assigned to tenants, and does not specify which environment to define the variable for, you must define the tenant variable for all environments that the tenant is connected to.
+* You will be penalized for setting the "environment_id" property on a "octopusdeploy_tenant_project_variable" resource to "null" or an empty string.
+* You will be penalized for setting the "template_id" property on a "octopusdeploy_tenant_project_variable" resource to "null" or an empty string.
+* The "template_id" property on a "octopusdeploy_tenant_project_variable" resource must be set to a value like "${length(data.octopusdeploy_projects.<project name>.projects) != 0 ? null : octopusdeploy_project.<project name>[0].template[0].id}"
+
+## Environment Instructions
+
+* You will be penalized for defining the "use_guided_infrastructure" property on a resource "octopusdeploy_environment". This property is not valid for any environment and must not be included in any environment resource.
+
+## Octopus Project Channel Instructions
+
+* Channels defined as resource "octopusdeploy_channel" have the following required properties:
+    * "name"
+    * "project_id"
+* Channels can also have a number of optional properties:
+    * A "description"
+    * An "is_default" property that indicates whether this channel is the default resource. It should be set to "false" unless otherwise specified.
+    * A "lifecycle_id"
+    * A "rule" block is an optional nested block used to define package versioning rules per deployment step or package.
+    * A "space_id"
+    * A "tenant_tags" property is a list of strings, used to associate a channel with specific tenant tags
+* A project can have multiple "octopusdeploy_channel" resources.
+* The "count" attribute for the "octopusdeploy_channel" resource must be set to "${length(data.octopusdeploy_projects.<name>.projects) != 0 ? 0 : 1}" where "<name>" is the name of a data source "octopusdeploy_projects" that matches the name of the project that the channel is associated with.
+* Every "octopusdeploy_channel" resource must have an associated "octopusdeploy_channels" data source, for example:
+```
+data "octopusdeploy_channels" "application" {
+  ids          = []
+  partial_name = "Application"
+  project_id   = "${length(data.octopusdeploy_projects.project_my_argo_cd_webapp.projects) != 0 ? data.octopusdeploy_projects.project_my_argo_cd_webapp.projects[0].id : octopusdeploy_project.project_my_argo_cd_webapp[0].id}"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_channel" "application" {
+  # It is important that the "count" attribute references the "octopusdeploy_projects" data source and not the "octopusdeploy_channels" data source.
+  count         = "${length(data.octopusdeploy_projects.project_my_argo_cd_webapp.projects) != 0 ? 0 : 1}"
+  name          = "Application"
+  project_id    = "${length(data.octopusdeploy_projects.project_my_argo_cd_webapp.projects) != 0 ? data.octopusdeploy_projects.project_my_argo_cd_webapp.projects[0].id : octopusdeploy_project.project_my_argo_cd_webapp[0].id}"
+  is_default    = true
+  lifecycle_id  = "${length(data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_devsecops.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_devsecops[0].id}"
+  space_id      = "${trimspace(var.octopus_space_id)}"
+}
+```
+
+
+* You will be penalized for defining a "octopusdeploy_channel" resource without an associated "octopusdeploy_channels" data source.
+* You will be penalized for having the "count" attribute for the "octopusdeploy_channel" resource reference a "octopusdeploy_channels" data source, for example:
+
+```
+resource "octopusdeploy_channel" "channel_my_blue_green_app_hotfixing_hotfix" {
+    # This is invalid - it must not reference a data source "octopusdeploy_channels"
+    count       = "${length(data.octopusdeploy_channels.channel_my_blue_green_app_hot_fix.channels) != 0 ? 0 : 1}"
+}
+```
+
+* You will be penalized for referencing a data source "octopusdeploy_projects" that does not exist in the output.
+* You will be penalized for creating a "octopusdeploy_project_channel" resource to represent a channel.
+* Here is an example of a channel resource without a "rule" block:
+
+```
+data "octopusdeploy_projects" "project_lambda_hotfixing" {
+  ids          = null
+  partial_name = "Lambda Hotfixing"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
+  count         = "${length(data.octopusdeploy_projects.project_lambda_hotfixing.projects) != 0 ? 0 : 1}"
+  name          = "Hotfix"
+  project_id    = "${length(data.octopusdeploy_projects.project_lambda_hotfixing.projects) != 0 ? data.octopusdeploy_projects.project_lambda_hotfixing.projects[0].id : octopusdeploy_project.project_lambda_hotfixing[0].id}"
+  description   = "Hotfix channel for Lambda hotfixing"
+  is_default    = false
+  lifecycle_id  = "${length(data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_lambda_hotfix[0].id}"
+  space_id      = "${trimspace(var.octopus_space_id)}"
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* **CRITICAL — every `octopusdeploy_channel` resource MUST include a `lifecycle { prevent_destroy = true }` block.** You will be penalized for defining an `octopusdeploy_channel` resource without this block. This applies to ALL channel resources, including bare named channels created without `rule` blocks (e.g., the "Application" channel for external feed triggers).
+
+**MANDATORY SELF-CHECK before finalizing channels**: Before outputting any `octopusdeploy_channel` resource, verify that it has: (1) a `count` attribute using the project's data source length pattern (`"${length(data.octopusdeploy_projects...) != 0 ? 0 : 1}"`), (2) `project_id` using the ternary lookup pattern, (3) a `lifecycle { prevent_destroy = true }` block. If any of these are missing, correct them before outputting. You will be penalized for each missing attribute.
+
+**Negative example — `octopusdeploy_channel` resource missing `count`, ternary `project_id`, and `lifecycle` (VERY COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_channel" "channel_my_project_application" {
+  # WRONG: missing count attribute
+  name       = "Application"
+  project_id = "${octopusdeploy_project.project_my_project.id}"   # WRONG: direct reference, no ternary guard
+  is_default = false
+  # WRONG: missing lifecycle { prevent_destroy = true }
+}
+```
+
+**Correct output — channel with ALL required attributes**:
+```hcl
+data "octopusdeploy_channels" "channel_my_project_application" {
+  ids          = []
+  partial_name = "Application"
+  project_id   = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_channel" "channel_my_project_application" {
+  count      = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"   # REQUIRED
+  name       = "Application"
+  project_id = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? data.octopusdeploy_projects.project_my_project.projects[0].id : octopusdeploy_project.project_my_project[0].id}"   # REQUIRED: ternary
+  is_default = false
+  depends_on = [octopusdeploy_process_steps_order.process_step_order_my_project]   # REQUIRED
+  lifecycle {
+    prevent_destroy = true   # REQUIRED
+  }
+}
+```
+
+* **CRITICAL — every `octopusdeploy_channel` resource associated with an external feed trigger MUST include `depends_on = [octopusdeploy_process_steps_order.<project>]`** to ensure the channel is created after the deployment process is fully configured. Without this dependency, the external feed trigger may be created before the channel is fully associated with the project, causing deployment issues. You will be penalized for omitting `depends_on` from any `octopusdeploy_channel` resource that is referenced by an `octopusdeploy_external_feed_create_release_trigger`.
+
+Here is an example of a channel resource with a "rule" block that applies when the release version matches the tag hotfix (using the regex ^hotfix$), and it targets specific deployment actions (steps):
+
+```
+data "octopusdeploy_projects" "project_lambda_hotfixing" {
+  ids          = null
+  partial_name = "Lambda Hotfixing"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_channel" "channel_lambda_hotfixing_hotfix" {
+  count         = "${length(data.octopusdeploy_projects.project_lambda_hotfixing.projects) != 0 ? 0 : 1}"
+  name          = "Hotfix"
+  project_id    = "${length(data.octopusdeploy_projects.project_lambda_hotfixing.projects) != 0 ? data.octopusdeploy_projects.project_lambda_hotfixing.projects[0].id : octopusdeploy_project.project_lambda_hotfixing[0].id}"
+  description   = "Hotfix channel for Lambda hotfixing"
+  is_default    = false
+  lifecycle_id  = "${length(data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles) != 0 ? data.octopusdeploy_lifecycles.lifecycle_lambda_hotfix.lifecycles[0].id : octopusdeploy_lifecycle.lifecycle_lambda_hotfix[0].id}"
+  space_id      = "${trimspace(var.octopus_space_id)}"
+  rule {
+        action_package {
+          deployment_action = "deploy-database-changes"
+        }
+        action_package {
+          deployment_action = "deploy-rate-service"
+        }
+        action_package {
+          deployment_action = "deploy-trading-site"
+        }
+        tag           = "^hotfix$"
+        version_range = ""
+    }
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* Channel version rules must supply a package, for example:
+
+```
+resource "octopusdeploy_channel" "channel_every_step_project_hotfix" {
+  count       = "${length(data.octopusdeploy_projects.channel_every_step_project_hotfix.projects) != 0 ? 0 : 1}"
+  name        = "Hotfix"
+  description = "This is an example channel with package version rules"
+  project_id  = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? data.octopusdeploy_projects.project_every_step_project.projects[0].id : octopusdeploy_project.project_every_step_project[0].id}"
+  is_default  = false
+
+  rule {
+
+    action_package {
+      deployment_action = "Deploy a Helm Chart"
+    }
+
+    tag           = "^featurebranch$"
+    version_range = "[1.0,)"
+  }
+
+  tenant_tags = []
+  depends_on  = [octopusdeploy_process_steps_order.process_step_order_every_step_project,octopusdeploy_process_steps_order.process_step_order_every_step_project_example_runbook,octopusdeploy_process_steps_order.process_step_order_every_step_project_runbook_scoped_to_projects_lifecycle_environment,octopusdeploy_process_steps_order.process_step_order_every_step_project_runbook_with_no_environments]
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+* **ABSOLUTE RULE — every `rule` block in an `octopusdeploy_channel` resource MUST have at least one `action_package` block**: The Octopus API enforces this requirement and rejects channels with `rule` blocks that have no `action_package` entries, returning the error "Version rules must specify a package step". If there are no package-based deployment steps to reference (e.g., all steps are `Octopus.KubernetesDeployRawYaml` without package blocks), do NOT add any `rule` block to the channel at all. A channel without a `rule` block is valid and serves as a named channel for triggers.
+* **CRITICAL — `octopusdeploy_channel` resources with `rule` blocks MUST include `depends_on` referencing `octopusdeploy_process_steps_order`**: When a channel has a `rule` block with `action_package` entries that reference deployment action slugs, the slugs must already exist before the channel is created. You MUST add `depends_on = [octopusdeploy_process_steps_order.process_step_order_<project>]` to any channel with a `rule` block to ensure the step slugs are available. You will be penalized for omitting `depends_on` from a channel that has `rule` blocks.
+* You will be penalized for defining a "octopusdeploy_channel" resource with a "rule" block with an empty version, for example: 
+
+```
+resource "octopusdeploy_channel" "channel_dev_deployment_application" {
+  count      = "${length(data.octopusdeploy_projects.project_dev_deployment.projects) != 0 ? 0 : 1}"
+  name       = "Application"
+  project_id = "${length(data.octopusdeploy_projects.project_dev_deployment.projects) != 0 ? data.octopusdeploy_projects.project_dev_deployment.projects[0].id : octopusdeploy_project.project_dev_deployment[0].id}"
+  is_default = false
+  space_id   = "${trimspace(var.octopus_space_id)}"
+  rule {
+    tag           = "^master.*"
+    version_range = ""
+  }
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+```
+
+## Octopus Global Deployment Freeze Instructions
+
+* You will be penalized for adding the "description" property to the "octopusdeploy_deployment_freeze" resource.
+* You will be penalized for adding the "space_id" property to the "octopusdeploy_deployment_freeze" resource.
+* The "end" property of the "octopusdeploy_deployment_freeze" resource must be in the future.
+
+## Octopus Deployment Process Instructions
+
+* **CRITICAL — source system parameter references in script bodies must be converted to Octopus variable syntax**: Inline script bodies (in `Octopus.Action.Script.ScriptBody` or kubectl commands) generated from `deleteManifest`, `scaleManifest`, or `runJob` stage types may contain Spring Expression Language (SpEL) expressions that reference pipeline parameters, such as `${ parameters.model_version }`. These expressions use the `${ }` syntax which does NOT evaluate in Octopus Deploy. You MUST convert them to Octopus variable syntax: replace `${ parameters.<name> }` with `#{<name>}`. For example:
+  * `${ parameters.model_version }` → `#{model_version}`
+  * `${ parameters.namespace }` → `#{namespace}`
+  This conversion ensures the script uses the correct Octopus variable reference at runtime. If the script contains any such converted references, add a comment at the top of the script or in the step notes: `# NOTE: Source system parameter references have been converted to Octopus variable syntax (#{variable_name}).`
+
+* **CRITICAL — SpEL expressions in Terraform string values must escape the `$` character**: When a Terraform string value (e.g., in `parameters`, `notes`, or `execution_properties`) must contain a SpEL expression verbatim (because it could not be converted to Octopus variable syntax), the `$` character MUST be escaped as `$$` to prevent Terraform from treating it as a string interpolation sequence. For example, if the prompt contains the notification message text `${execution.name} has started.` and this text cannot be converted, the Terraform string must be `"$${execution.name} has started."`. Do NOT emit `"${execution.name} has started."` as Terraform will attempt to evaluate the expression and produce an error. Where the prompt provides already-converted Octopus variable syntax (e.g., `#{Octopus.Release.Number}`), no escaping is needed — only `${}` patterns require `$$`.
+
+* You must consider the attributes in the "execution_properties" block and the "properties" block of the example steps to be mandatory, unless otherwise specified (the properties on script steps that define inline scripts or those sourced from packages is an example where example properties should not be considered mandatory).
+* Every "octopusdeploy_project" resource must have an associated "octopusdeploy_process" resource.
+* Every "octopusdeploy_process" resource must have an associated "octopusdeploy_process_steps_order" resource.
+* Every "octopusdeploy_process_steps_order" resource must have an associated "octopusdeploy_process_step" resource.
+* You will be penalized for not defining steps for a project or runbook.
+* Steps are defined in the "octopusdeploy_process_step" and "octopusdeploy_process_child_step" resources.
+* The order of the steps are defined in the "octopusdeploy_process_steps_order" resource.
+* The order of child steps are defined in the "octopusdeploy_process_child_steps_order" resource.
+* If the prompt says `The step must be disabled.` because a stage was hard-disabled, you MUST still create the corresponding step resource, set `is_disabled = true`, and include the step in the `octopusdeploy_process_steps_order` resource. Hard-disabled stages are preserved placeholders, not omitted stages.
+* When a skipped or ignored stage is removed from the dependency graph, the Terraform step order must reflect the rewritten dependency chain from the prompt. Do not preserve an order that still assumes the skipped stage exists.
+* You will be penalized for using asterisks, for example "*****", as placeholders in step properties.
+* The "Octopus.Step.ConditionVariableExpression" property can only be defined in the "properties" block.
+* You will be penalized for defining the "Octopus.Step.ConditionVariableExpression" property in the "execution_properties" block.
+* The "condition" attribute on an "octopusdeploy_process_step" block must be set to one of the following:
+  * "Always"
+  * "Failure"
+  * "Success"
+  * "Variable"
+* The same `condition` values apply to `octopusdeploy_process_templated_step` resources — they accept the same valid values as `octopusdeploy_process_step`.
+* If the prompt specifies a condition that is not in the list above, you must set the "condition" attribute to "Success".
+* **CRITICAL — condition mapping for Slack notification step phrases in the prompt**:
+  * When the prompt says `Only run the step when the previous step has failed.` for a step, set `condition = "Failure"` on that step.
+  * When the prompt says `Always run the step.` for a step, set `condition = "Always"` on that step.
+  * When neither phrase is present (default), set `condition = "Success"` on that step.
+  * This mapping applies to both `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources.
+
+**Quick reference — condition value mapping table**:
+
+| Prompt phrase | `condition` value |
+|---|---|
+| `Only run the step when the previous step has failed.` | `"Failure"` |
+| `Always run the step.` | `"Always"` |
+| *(no condition phrase)* | `"Success"` ← default |
+| `Set condition to "Variable"` with expression | `"Variable"` |
+
+**MANDATORY SELF-CHECK — condition attribute verification**: After generating ALL `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources, scan every step prompt instruction and verify each step's `condition` attribute matches its prompt phrase. Specifically:
+1. For every step prompt that contains `Always run the step.`, verify its resource has `condition = "Always"`. If it has `condition = "Success"` instead, correct it immediately.
+2. For every step prompt that contains `Only run the step when the previous step has failed.`, verify its resource has `condition = "Failure"`.
+3. If neither phrase is present, the default `condition = "Success"` is correct.
+
+**Negative example — step with "Always run the step." using wrong condition (COMMON MISTAKE)**:
+
+```hcl
+# Prompt says: "Always run the step."
+resource "octopusdeploy_process_templated_step" "process_step_my_project_notification" {
+  condition = "Success"  ← WRONG: prompt said "Always run the step." but condition is "Success"
+  ...
+}
+```
+
+The **CORRECT** output:
+```hcl
+# Prompt says: "Always run the step."
+resource "octopusdeploy_process_templated_step" "process_step_my_project_notification" {
+  condition = "Always"  ← CORRECT: "Always run the step." maps to condition = "Always"
+  ...
+}
+```
+
+**MANDATORY SELF-CHECK — after generating all step resources, verify completeness of `octopusdeploy_process_steps_order`**: Before finalizing any Terraform output, scan every `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resource you created. For EACH such resource, confirm its ID appears in the `steps` array of the corresponding `octopusdeploy_process_steps_order` resource. If any step resource is missing from the steps order array, add it immediately. This applies to ALL steps including disabled steps, parallel steps, notification steps, and **"Review template-derived pipeline behavior" script steps**. A step resource that exists in Terraform but does not appear in `octopusdeploy_process_steps_order` will not execute at deployment time.
+
+**MANDATORY FINAL COUNT CHECK — the length of the `steps` list in `octopusdeploy_process_steps_order` MUST equal the total count of `octopusdeploy_process_step` + `octopusdeploy_process_templated_step` resources for that project.** Before outputting any Terraform:
+1. Count all `octopusdeploy_process_step` resources for this project: N₁
+2. Count all `octopusdeploy_process_templated_step` resources for this project: N₂
+3. Count the entries in the `steps` list of `octopusdeploy_process_steps_order`: N₃
+4. Verify: N₁ + N₂ = N₃
+
+If N₃ < N₁ + N₂, add the missing step IDs to the `steps` list. If N₃ > N₁ + N₂, there are duplicate step IDs in the `steps` list — remove the duplicates. A `steps` list with more entries than step resources is always wrong and indicates step IDs are being referenced more than once.
+
+**Negative example — "Review template-derived pipeline behavior" step resource defined but missing from steps_order (CRITICAL MISTAKE)**:
+```hcl
+# The step resource is defined:
+resource "octopusdeploy_process_step" "process_step_review_template_derived_pipeline_behavior" {
+  count  = ...
+  name   = "Review template-derived pipeline behavior"
+  type   = "Octopus.Script"
+  ...
+}
+
+# BUT it is missing from the steps array — WRONG:
+resource "octopusdeploy_process_steps_order" "process_step_order_my_project" {
+  count      = ...
+  process_id = ...
+  steps      = [
+    octopusdeploy_process_step.process_step_my_project_deploy_dev[0].id,
+    octopusdeploy_process_step.process_step_my_project_deploy_staging[0].id,
+    # ← MISSING: process_step_review_template_derived_pipeline_behavior[0].id
+  ]
+}
+```
+← WRONG: The review step resource was created but not added to steps. It will never execute.
+
+**Correct output** — review step is the LAST entry:
+```hcl
+resource "octopusdeploy_process_steps_order" "process_step_order_my_project" {
+  count      = ...
+  process_id = ...
+  steps      = [
+    octopusdeploy_process_step.process_step_my_project_deploy_dev[0].id,
+    octopusdeploy_process_step.process_step_my_project_deploy_staging[0].id,
+    octopusdeploy_process_step.process_step_review_template_derived_pipeline_behavior[0].id,  # ← CORRECT: added last
+  ]
+}
+```
+
+**CRITICAL — "Review template-derived pipeline behavior" step must be the LAST entry in `octopusdeploy_process_steps_order`**: When a `templatedPipeline` project contains a "Review template-derived pipeline behavior" script step, the reference to that step in the `steps` array of `octopusdeploy_process_steps_order` MUST appear as the LAST element. The correct order is: all Slack Notification - Start references, then all deployment stage references, then all Slack Notification - Finish references, then all Slack Notification - Complete references, and finally the "Review template-derived pipeline behavior" reference at the very end. Do NOT place the Review step reference between the Start notification and the Finish/Complete notification references.
+
+**Negative example — Review step placed between Start and Finish in steps order (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_steps_order" "process_step_order_my_project" {
+  count      = ...
+  process_id = ...
+  steps      = [
+    octopusdeploy_process_templated_step.process_step_slack_notification_start[0].id,
+    octopusdeploy_process_step.process_step_review_template[0].id,          # ← WRONG: before Finish/Complete
+    octopusdeploy_process_templated_step.process_step_slack_notification_finish[0].id,
+    octopusdeploy_process_templated_step.process_step_slack_notification_complete[0].id,
+  ]
+}
+```
+
+**Correct output** — Review step reference is LAST:
+```hcl
+resource "octopusdeploy_process_steps_order" "process_step_order_my_project" {
+  count      = ...
+  process_id = ...
+  steps      = [
+    octopusdeploy_process_templated_step.process_step_slack_notification_start[0].id,
+    octopusdeploy_process_templated_step.process_step_slack_notification_finish[0].id,
+    octopusdeploy_process_templated_step.process_step_slack_notification_complete[0].id,
+    octopusdeploy_process_step.process_step_review_template[0].id,          # ← CORRECT: last
+  ]
+}
+```
+* When the "condition"attribute is set to "Variable", the "properties" block must include the "Octopus.Step.ConditionVariableExpression" property.
+* You will be penalized for setting the "condition" attribute to "Variable" without defining the "Octopus.Step.ConditionVariableExpression" property in the "properties" block.
+* Adding a step requires a new "octopusdeploy_process_step" resource to be defined and then added to the "octopusdeploy_process_steps_order" resource in the "steps" array. For example, if this is the initial set of steps:
+
+```
+data "octopusdeploy_projects" "project_azure_web_app" {
+  ids          = null
+  partial_name = "My Project"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_project" "project_azure_web_app" {
+  count                                = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                                 = "My Project"
+  # ...
+}
+
+resource "octopusdeploy_process" "process_azure_web_app" {
+  count      = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? data.octopusdeploy_projects.project_azure_web_app.projects[0].id : octopusdeploy_project.project_azure_web_app[0].id}"
+  depends_on = []
+}
+
+resource "octopusdeploy_process_steps_order" "process_step_order_azure_web_app" {
+  count      = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  process_id = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process.process_azure_web_app[0].id}"
+  steps      = ["${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process_step.process_step_azure_web_app_validate_setup[0].id}"]
+}
+
+resource "octopusdeploy_process_step" "process_step_azure_web_app_validate_setup" {
+  count                 = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                  = "Validate setup"
+  # ...
+}
+```
+
+Then adding a new step called "Deploy an Azure Web App (Web Deploy)" would require the following changes:
+
+```
+data "octopusdeploy_projects" "project_azure_web_app" {
+  ids          = null
+  partial_name = "My Project"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_project" "project_azure_web_app" {
+  count                                = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                                 = "My Project"
+  # ...
+}
+
+resource "octopusdeploy_process" "process_azure_web_app" {
+  count      = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  project_id = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? data.octopusdeploy_projects.project_azure_web_app.projects[0].id : octopusdeploy_project.project_azure_web_app[0].id}"
+  depends_on = []
+}
+
+resource "octopusdeploy_process_steps_order" "process_step_order_azure_web_app" {
+  count      = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  process_id = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process.process_azure_web_app[0].id}"
+  # The new step is added to the steps array
+  steps      = [
+  "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process_step.process_step_azure_web_app_validate_setup[0].id}",
+  "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? null : octopusdeploy_process_step.process_step_azure_web_app_deploy_web_app[0].id}"
+  ]
+}
+
+resource "octopusdeploy_process_step" "process_step_azure_web_app_validate_setup" {
+  count                 = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                  = "Validate setup"
+  # ...
+}
+
+# This is the new step being added
+resource "octopusdeploy_process_step" "process_step_azure_web_app_deploy_web_app" {
+  count                 = "${length(data.octopusdeploy_projects.project_azure_web_app.projects) != 0 ? 0 : 1}"
+  name                  = "Deploy Web App (Web Deploy)"
+  # ...
+}
+```
+
+* The "name" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource can only contain letters, numbers, periods, commas, dashes, underscores or hashes.
+* The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource can only contain lower case letters, numbers, or dashes.
+* You will be penalized for using asterisks, for example "*****", as placeholders in the "slug" or "name" attributes.
+* You must set the "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource to a value like "step-name" derived from the "name" attribute by converting all letters to lowercase and replacing spaces with dashes.
+* The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must NOT start or end with a dash. After replacing spaces and special characters with dashes, you must strip any leading or trailing dashes from the result. For example, a step name `"Start (main)"` produces intermediate slug `"start--main-"` which after collapsing consecutive dashes and stripping leading/trailing dashes becomes `"start-main"`. A step name `"Deploy (Manifest)"` produces slug `"deploy-manifest"`.
+* You will be penalized for generating a "slug" attribute that starts or ends with a dash, such as "start-" or "-deploy".
+* The "slug" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
+* The "name" attribute in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource must be unique across the project.
+* You must include all the "octopusdeploy_process_step" resources referenced in the "octopusdeploy_process_steps_order" resource "steps" array, for example:
+* **MANDATORY SELF-CHECK — step count verification**: Before finalizing the Terraform output, count the number of `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources defined. Then count the number of step references in the `octopusdeploy_process_steps_order` `steps` array. These two counts MUST be equal. If any step resource is missing from the `steps` array, or if the `steps` array references a non-existent resource, correct the discrepancy before outputting.
+
+```
+data "octopusdeploy_projects" "project_my_app" {
+  ids          = null
+  partial_name = "My App"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_process_steps_order" "process_step_order_azure_function" {
+  count  = "${length(data.octopusdeploy_projects.project_my_app.projects) != 0 ? 0 : 1}"
+  steps  = ["${length(data.octopusdeploy_projects.project_my_app.projects) != 0 ? null : octopusdeploy_process_step.process_step_deploy_app[0].id}"]
+  # ...
+}
+
+resource "octopusdeploy_process_step" "process_step_deploy_app" {
+  count  = "${length(data.octopusdeploy_projects.project_my_app.projects) != 0 ? 0 : 1}"
+  # ...
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource with a duplicate "slug" attribute within the same project, for example, the following is invalid because the "slug" attribute is duplicated:
+
+```
+resource "octopusdeploy_process_step" "step1" {
+    slug = "step1"
+}
+
+resource "octopusdeploy_process_step" "step2" {
+    slug = "step2"
+}
+
+resource "octopusdeploy_process_step" "step3" {
+    slug = "step1"
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource with a duplicate "name" attribute within the same project, for example, the following is invalid because the "name" attribute is duplicated:
+
+```
+resource "octopusdeploy_process_step" "step1" {
+    name = "step1"
+}
+
+resource "octopusdeploy_process_step" "step2" {
+    name = "step2"
+}
+
+resource "octopusdeploy_process_step" "step3" {
+    name = "step1"
+}
+```
+
+* **CRITICAL — when a step name includes a numeric deduplication suffix (` 2`, ` 3`, etc.), both the Terraform resource name AND the `slug` attribute must incorporate that suffix**: When a step is named "Rollback -internal- 2" (i.e., the second of two steps with the same base name), the Terraform resource suffix becomes `rollback_internal_2` and the `slug` attribute becomes `rollback-internal-2`. The number suffix maps from a space-number pattern (` 2`) to an underscore-number suffix (`_2`) in the resource name and a dash-number suffix (`-2`) in the slug. Never omit the suffix from either the resource name or the slug — duplicate Terraform resource names and duplicate slugs both cause Terraform errors.
+
+**Correct example — two steps with the same base name, each with unique resource names and slugs**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_rollback_internal" {
+  name = "Rollback -internal-"
+  slug = "rollback-internal"
+  ...
+}
+
+resource "octopusdeploy_process_step" "process_step_my_project_rollback_internal_2" {
+  name = "Rollback -internal- 2"
+  slug = "rollback-internal-2"
+  ...
+}
+```
+
+* You will be penalized for defining a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource with a "name" attribute that contains any characters other than letters, numbers, periods, commas, dashes, underscores or hashes.
+* You will be penalized for defining a "name" attribute with the characters "/" and "\".
+* Target tags must only be defined in the "Octopus.Action.TargetRoles" properties on a "octopusdeploy_process_step", for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_every_step_project_deploy_an_azure_web_app__web_deploy_" {
+  count                 = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? 0 : 1}"
+  name                  = "Deploy an Azure Web App (Web Deploy)"
+  type                  = "Octopus.AzureWebApp"
+  process_id            = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? null : octopusdeploy_process.process_every_step_project[0].id}"
+  channels              = null
+  condition             = "Success"
+  environments          = null
+  excluded_environments = null
+  notes                 = "Note the Octopus.Action.TargetRoles key in the properties attribute which defines the target tags."
+  primary_package       = { acquisition_location = "Server", feed_id = "${data.octopusdeploy_feeds.feed_octopus_server__built_in_.feeds[0].id}", id = null, package_id = "WebAppPackage", properties = { SelectionMode = "immediate" } }
+  package_requirement   = "LetOctopusDecide"
+  start_trigger         = "StartAfterPrevious"
+  tenant_tags           = null
+  properties            = {
+        "Octopus.Action.TargetRoles" = "AzureWebApp"
+      }
+  execution_properties  = {
+        "Octopus.Action.RunOnServer" = "true"
+        "OctopusUseBundledTooling" = "False"
+        "Octopus.Action.Azure.UseChecksum" = "False"
+      }
+}
+```
+
+* You will be penalized for using target tags with the format "name=value" in the "target_roles" attribute.
+* You will be penalized for adding the "target_roles" attribute on an "action".
+* You will be penalized for adding the "excluded_environments" attribute on a "step".
+* You will be penalized for adding target tags to the "tenant_tags" attribute.
+* When the "Octopus.Action.Script.ScriptSource" property is set to "Package", the "Octopus.Action.Script.Syntax" and "Octopus.Action.Script.ScriptBody" property must not be defined, for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_every_step_project_run_a_script_from_a_package" {
+  name                  = "Run a Script from a package"
+  # The primary_package block is defined because the execution_properties "Octopus.Action.Script.ScriptSource" attribute is set to "Package"
+  primary_package       = {
+    acquisition_location = "Server"
+    feed_id = "${data.octopusdeploy_feeds.feed_octopus_server__built_in_.feeds[0].id}"
+    id = null
+    package_id = "${var.project_every_step_project_step_run_a_script_from_a_package_packageid}"
+    properties = {
+        SelectionMode = "immediate"
+    }
+  }
+  execution_properties  = {
+        "OctopusUseBundledTooling" = "False"
+        "Octopus.Action.RunOnServer" = "true"
+        "Octopus.Action.Script.ScriptSource" = "Package"
+        "Octopus.Action.Script.ScriptFileName" = "MyScript.ps1"
+      }
+}
+```
+
+**CRITICAL NOTE**: The `"Octopus.Action.Script.ScriptFileName"` property in the example above is ONLY valid for `Octopus.Script` steps (`type = "Octopus.Script"`). It MUST NOT be added to `Octopus.HelmChartUpgrade` steps. Even if a Helm step has `"Octopus.Action.Script.ScriptSource" = "Package"`, you MUST NOT include `"Octopus.Action.Script.ScriptFileName"` in its `execution_properties`. The two step types use `ScriptSource = "Package"` for different purposes and only `Octopus.Script` steps require `ScriptFileName`.
+
+* You will be penalized for using the "Octopus.Action.Script.Syntax" or "Octopus.Action.Script.ScriptBody" property when the "Octopus.Action.Script.ScriptSource" property is set to "Package".
+* When the "execution_properties" "Octopus.Action.Script.ScriptSource" property is set to "Inline", the "primary_package" property must not be defined in a "octopusdeploy_process_step" resource, for example:
+
+```
+resource "octopusdeploy_process_step" "my_step" {
+    name = "Open Firewall Port"
+    # There is no primary_package block because the "Octopus.Action.Script.ScriptSource" is set to "Inline"
+    execution_properties = {
+        "Octopus.Action.Azure.AccountId" = "aws-account"
+        "Octopus.Action.Script.ScriptBody" = "echo 'hi'"
+        "Octopus.Action.Script.ScriptSource" = "Inline"
+        "Octopus.Action.Script.Syntax" = "Bash"
+        "OctopusUseBundledTooling" = "False"
+    }
+}
+```
+
+* You will be penalized for using the "primary_package" property when the "Octopus.Action.Script.ScriptSource" property is set to "Inline".
+* If the prompt specifies an inline script as well as a script from a package, you must:
+    * Ignore the package
+    * Not define a "primary_package" block
+    * Only define the inline script in the "Octopus.Action.Script.ScriptBody" property in the "execution_properties" block
+    * Set the "Octopus.Action.Script.ScriptSource" property to "Inline" in the "execution_properties" block
+    * Exclude the "Octopus.Action.Script.Syntax" property in the "execution_properties" block
+
+* You will be penalized for defining a script step with no script.
+* Steps of type "Octopus.AzureAppService" must have at least one item in the "target_roles" attribute.
+* Steps of type "Octopus.AwsUploadS3" must have a "Octopus.Action.AwsAccount.Variable" property in the "execution_properties" block.
+* Steps of the following types must have a "primary_package" block:
+   * "Octopus.IIS"
+   * "Octopus.AzureWebApp"
+   * "Octopus.TentaclePackage"
+   * "Octopus.WindowsService"
+   * "Octopus.AwsUploadS3"
+   * "Octopus.JavaArchive"
+   * "Octopus.HelmChartUpgrade"
+   * "Octopus.AzureAppService"
+* You will be penalized for defining a "packages" block in steps with the types:
+   * "Octopus.IIS"
+   * "Octopus.AzureWebApp"
+   * "Octopus.TentaclePackage"
+   * "Octopus.WindowsService"
+   * "Octopus.AwsUploadS3"
+   * "Octopus.JavaArchive"
+   * "Octopus.HelmChartUpgrade"
+   * "Octopus.AzureAppService"
+* The step of type "Octopus.HelmChartUpgrade" must define a property "Octopus.Action.Helm.ClientVersion" with the value of "V3".
+* **CRITICAL — `Octopus.Action.Script.ScriptFileName` MUST NOT be included in the `execution_properties` of a step of type `Octopus.HelmChartUpgrade` unless the prompt explicitly requests a specific script file**: The canonical `Octopus.HelmChartUpgrade` execution properties are limited to `"Octopus.Action.Helm.ClientVersion"`, `"Octopus.Action.Helm.ResetValues"`, `"Octopus.Action.Helm.Namespace"`, `"Octopus.Action.RunOnServer"`, `"OctopusUseBundledTooling"`, `"Octopus.Action.Kubernetes.ResourceStatusCheck"`, and `"Octopus.Action.Script.ScriptSource"`. Do NOT copy the `"Octopus.Action.Script.ScriptFileName"` property from script-from-package steps into Helm steps — these are different step types with different properties.
+
+**Negative example — Helm step with ScriptFileName (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_helm_chart" {
+  type = "Octopus.HelmChartUpgrade"
+  execution_properties = {
+    "Octopus.Action.Helm.ClientVersion" = "V3"
+    "Octopus.Action.Script.ScriptSource" = "Package"
+    "Octopus.Action.Script.ScriptFileName" = "MyScript.ps1"  ← WRONG: ScriptFileName must NOT appear in Helm steps
+  }
+}
+```
+
+**Correct output — Helm step without ScriptFileName**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_helm_chart" {
+  type = "Octopus.HelmChartUpgrade"
+  execution_properties = {
+    "Octopus.Action.Helm.ClientVersion"             = "V3"
+    "Octopus.Action.Helm.ResetValues"               = "True"
+    "Octopus.Action.Helm.Namespace"                 = "#{App.Namespace}"
+    "Octopus.Action.Helm.ReleaseName"               = "my-release"
+    "Octopus.Action.RunOnServer"                    = "true"
+    "OctopusUseBundledTooling"                      = "False"
+    "Octopus.Action.Kubernetes.ResourceStatusCheck" = "True"
+    "Octopus.Action.Script.ScriptSource"            = "Package"
+  }
+}
+```
+
+You will be penalized for including `"Octopus.Action.Script.ScriptFileName"` in the `execution_properties` of an `Octopus.HelmChartUpgrade` step when no script file was specified in the prompt.
+* You will be penalized for adding the property "Octopus.Action.Azure.AccountId" to steps of type "Octopus.AzureWebApp".
+* You will be penalized for defining a "version" attribute on the "primary_package" block.
+* The "start_trigger" attribute must only be defined once.
+* You will be penalized for defining an empty "properties" block, for example "properties = {}".
+* You will be penalized for defining a "properties_additional" block.
+* You will be penalized for defining multiple "features" attributes.
+* You must include the "container" nested child block if one exists for a "octopusdeploy_process_step" resource in the sample Terraform configurations.
+* The "container" property is used to define the step's "Container Image".
+* Instructions that reference a step's "Container Image" result in the "container" property being defined or edited.
+* The "container" property has the following required properties:
+    * "feed_id"
+    * "image"
+* For example here is an example "container" property for a "octopusdeploy_process_step":
+```
+{
+    feed_id = "${length(data.octopusdeploy_feeds.feed_docker_hub.feeds) != 0 ? data.octopusdeploy_feeds.feed_docker_hub.feeds[0].id : octopusdeploy_docker_container_registry.feed_docker_hub[0].id}",
+    image = "octopuslabs/aws-workertools"
+}
+```
+* You will be penalized for editing the "packages" block with a prompt that includes details concerning a "Container Image".
+* For example, if the prompt asks to set the "Container Image" to "octopuslabs/k8s-workertools", and the sample Terraform defines a step with a package of "nginx", you must edit the "container" property with the specific image, while leaving the "packages" blocks unmodified:
+```
+resource "octopusdeploy_process_step" "deploy_k8s_yaml" {
+  # The prompt asks to set the Container Image to "octopuslabs/k8s-workertools"
+  container = {
+    feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+    image = "ghcr.io/octopusdeploylabs/k8s-workertools"
+  }
+  # The packages do not change, so we keep the existing package definition
+  packages = {
+      nginx = {
+          acquisition_location = "NotAcquired"
+          feed_id = "${length(data.octopusdeploy_feeds.docker.feeds) != 0 ? data.octopusdeploy_feeds.docker.feeds[0].id : octopusdeploy_docker_container_registry.docker[0].id}"
+          id = null
+          package_id = "nginx"
+          properties = { Extract = "False", Purpose = "DockerImageReference", SelectionMode = "immediate" }
+      }
+  }
+}
+```
+* The "container" property must have an equals sign "=" after the property name, for example:
+```
+container = {
+    # map properties here
+}
+```
+* You will be penalized for not including the "container" property if one exists in the sample Terraform configurations.
+* Steps with actions of the following types must have at least one role defined in the "target_roles" array:
+   * "Octopus.AzureWebApp"
+   * "Octopus.KubernetesDeployRawYaml"
+* The "Octopus.Action.DeployRelease.ProjectId" property for a step of type "Octopus.DeployRelease" must reference the project ID of a project from a data "octopusdeploy_projects", for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_orchestrator_project_deploy_a_release" {
+  type                  = "Octopus.DeployRelease"
+  execution_properties  = {
+    "Octopus.Action.DeployRelease.ProjectId" = "${data.octopusdeploy_projects.project_child_project.projects[0].id}"
+    ...
+  }
+  ...
+}
+```
+
+* You will be penalized for defining a step of type "Octopus.DeployRelease" with a string like "Projects-#" for the "Octopus.Action.DeployRelease.ProjectId" execution property.
+* You will be penalized for setting the "container" property on a step when the "Octopus.Action.RunOnServer" property is set to "false".
+* Steps of type "Octopus.AwsRunScript" must have the "Octopus.Action.Aws.Region" execution_property defined, for example:
+
+```
+resource "octopusdeploy_process_step" "aws_script_step" {
+  type                  = "Octopus.AwsRunScript"
+  execution_properties  = {
+    # The "Octopus.Action.Aws.Region" must be defined
+    "Octopus.Action.Aws.Region" = "us-east-1"
+  }
+}
+```
+
+* **CRITICAL — Steps of type "Octopus.AwsRunScript" with `"Octopus.Action.Script.ScriptSource" = "Inline"` MUST NOT define a `primary_package` block.** The Octopus API will reject the step with the error "Providing a package is not valid for inline scripts." if both an inline script and a package are specified. This error is fatal and prevents the Terraform apply from succeeding.
+
+**Forbidden pattern (CAUSES APPLY FAILURE)**:
+```hcl
+resource "octopusdeploy_process_step" "my_aws_lambda_step" {
+  type  = "Octopus.AwsRunScript"
+  # WRONG: primary_package is defined when ScriptSource is Inline
+  primary_package = { package_id = "my-lambda-function", ... }
+  execution_properties = {
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.ScriptBody"   = "aws lambda update-function-code ..."
+  }
+}
+```
+
+**Correct pattern for AWS Lambda deploy using an inline AWS CLI script (no package)**:
+```hcl
+resource "octopusdeploy_process_step" "my_aws_lambda_step" {
+  type  = "Octopus.AwsRunScript"
+  # NO primary_package when using an inline script
+  execution_properties = {
+    "Octopus.Action.Script.ScriptSource"        = "Inline"
+    "Octopus.Action.Script.ScriptBody"          = "aws lambda update-function-code --function-name my-function --zip-file fileb://function.zip"
+    "Octopus.Action.Script.Syntax"              = "PowerShell"
+    "Octopus.Action.AwsAccount.Variable"        = "Project.AWS.Account"
+    "Octopus.Action.AwsAccount.UseInstanceRole" = "False"
+    "Octopus.Action.Aws.Region"                 = "us-east-1"
+    "Octopus.Action.Aws.AssumeRole"             = "False"
+    "Octopus.Action.RunOnServer"                = "true"
+    "OctopusUseBundledTooling"                  = "False"
+  }
+}
+```
+
+* **For AWS Lambda deployment steps that require a package**: When a prompt says "deploy an AWS Lambda function" with a named package, use TWO separate steps following the canonical pattern:
+  1. An "Upload Lambda" step of type `"Octopus.AwsUploadS3"` with a `primary_package` to upload the zip to S3
+  2. A "Deploy Lambda" step of type `"Octopus.AwsRunScript"` (with inline script, NO `primary_package`) that calls `aws lambda update-function-code` referencing the S3 bucket/key
+
+* You will be penalized for creating a step of type `"Octopus.AwsRunScript"` with both `"Octopus.Action.Script.ScriptSource" = "Inline"` AND a `primary_package` block.
+
+* Steps of type "Octopus.AzureResourceGroup" and "Octopus.AzurePowerShell" must have the "Octopus.Action.Azure.AccountId" property in the execution_properties defined, for example:
+
+```
+resource "octopusdeploy_process_step" "azure_resource_group" {
+  type                  = "Octopus.AzureResourceGroup"
+  execution_properties  = {
+        "Octopus.Action.Azure.AccountId" = "${length(data.octopusdeploy_accounts.account_azure.accounts) != 0 ? data.octopusdeploy_accounts.account_azure.accounts[0].id : octopusdeploy_azure_openid_connect.account_azure[0].id}"
+      }
+}
+```
+
+* If no Azure account has been specified in the prompt, and a step of type "Octopus.AzureResourceGroup" or "Octopus.AzurePowerShell" is created, you must create an account of type "octopusdeploy_azure_openid_connect" with default settings and assign it to the "Octopus.Action.Azure.AccountId" property in the execution_properties.
+
+* **CRITICAL — When the prompt specifies an Azure account by name, ALL Azure steps that reference an account must use the prompt-specified account's data source**: Replace any reference to the template's default `account_octopussamples_azure_account` with the prompt-specified account. For example, if the prompt says 'Add an Azure OIDC account named "Azure Production Account"', all `Octopus.Action.Azure.AccountId` values must reference `data.octopusdeploy_accounts.account_azure_production_account` or `octopusdeploy_azure_openid_connect.account_azure_production_account`, NOT `account_octopussamples_azure_account`.
+
+**Negative example — Azure step using template's default account when prompt specifies a different account (FORBIDDEN)**:
+```hcl
+# Prompt says: Add an Azure OIDC account named "Azure Production Account"
+# WRONG: Step still references the template's account_octopussamples_azure_account
+"Octopus.Action.Azure.AccountId" = "${length(data.octopusdeploy_accounts.account_octopussamples_azure_account.accounts) != 0 ? data.octopusdeploy_accounts.account_octopussamples_azure_account.accounts[0].id : octopusdeploy_azure_service_principal.account_octopussamples_azure_account[0].id}"
+```
+
+**Correct output — Azure step references the prompt-specified account**:
+```hcl
+# Prompt says: Add an Azure OIDC account named "Azure Production Account"
+# CORRECT: Step references account_azure_production_account
+"Octopus.Action.Azure.AccountId" = "${length(data.octopusdeploy_accounts.account_azure_production_account.accounts) != 0 ? data.octopusdeploy_accounts.account_azure_production_account.accounts[0].id : octopusdeploy_azure_openid_connect.account_azure_production_account[0].id}"
+```
+
+* You will be penalized for defining a "Octopus.Action.Azure.AccountId" execution property with an empty string.
+
+* You will be penalized for defining a "primary_package" block when the "Octopus.Action.Script.ScriptSource" execution property is set to "Inline".
+
+* Steps of type "Octopus.Script" must have the "OctopusUseBundledTooling" execution_properties defined, for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_child_project_run_a_script" {
+  type                  = "Octopus.Script"
+  execution_properties  = {
+        "OctopusUseBundledTooling" = "False"
+      }
+}
+```
+
+* Orchestration or orcestrator projects contain steps of type "Octopus.DeployRelease" that deploy a child project.
+* Each "Octopus.DeployRelease" step must have a "Octopus.Action.DeployRelease.ProjectId" execution property and a "primary_package" with the "package_id" set to the child project ID.
+* The ID of the child project can be obtained from a data "octopusdeploy_projects" data source.
+* The following is an example of a "Octopus.DeployRelease" step that references a data "octopusdeploy_projects" data source for the child project ID and a data "octopusdeploy_feeds" data source for the feed ID:
+
+```
+# This data source is used to find an existing parent project by its name.
+data "octopusdeploy_projects" "project_every_step_project" {
+  ids          = null
+  partial_name = "Orchestrator Project"
+  skip         = 0
+  take         = 1
+}
+
+# This data source find the built-in Octopus Server Releases feed.
+data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_" {
+  feed_type    = "OctopusProject"
+  ids          = null
+  partial_name = "Octopus Server Releases"
+  skip         = 0
+  take         = 1
+}
+
+# This data source is used to find an existing child project by its name.
+data "octopusdeploy_projects" "project_every_step_project" {
+  ids          = null
+  # Replace this attribute with the name of the project you want to deploy
+  partial_name = "Child project name"
+  skip         = 0
+  take         = 1
+}
+
+# This resource creates a step that deploys the child project.
+resource "octopusdeploy_process_step" "process_step_every_step_project_deploy_a_release" {
+  count                 = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? 0 : 1}"
+  name                  = "Deploy a Release"
+  type                  = "Octopus.DeployRelease"
+  process_id            = "${length(data.octopusdeploy_projects.project_every_step_project.projects) != 0 ? null : octopusdeploy_process.process_every_step_project[0].id}"
+  channels              = null
+  condition             = "Success"
+  environments          = null
+  excluded_environments = null
+  notes                 = "This step is used to deploy a release of a child project."
+  package_requirement   = "LetOctopusDecide"
+  primary_package       = {
+    acquisition_location = "NotAcquired",
+    # The feed_id is set to the built-in Octopus Server Releases feed found in the data source
+    feed_id = "${data.octopusdeploy_feeds.feed_octopus_server_releases__built_in_.feeds[0].id}",
+    id = null,
+    # The package_id is set to the child project ID found via the data source
+    package_id = "${data.octopusdeploy_projects.project_child_project.projects[0].id}",
+    properties = null
+  }
+  slug                  = "deploy-a-release"
+  start_trigger         = "StartAfterPrevious"
+  tenant_tags           = null
+  properties            = {
+      }
+  execution_properties  = {
+        "Octopus.Action.RunOnServer" = "true"
+        "Octopus.Action.DeployRelease.DeploymentCondition" = "Always"
+        # The "Octopus.Action.DeployRelease.ProjectId" property is set to the child project ID found via the data source
+        "Octopus.Action.DeployRelease.ProjectId" = "${data.octopusdeploy_projects.project_child_project.projects[0].id}"
+      }
+}
+```
+
+* When the prompt says `Set the "Wait for deployment to complete" property to true`, add `"Octopus.Action.DeployRelease.WaitForDeployment" = "True"` to the `execution_properties` block of the `Octopus.DeployRelease` step.
+* When the prompt says `Set the "Wait for deployment to complete" property to false`, add `"Octopus.Action.DeployRelease.WaitForDeployment" = "False"` to the `execution_properties` block of the `Octopus.DeployRelease` step.
+* When the prompt does not specify a "Wait for deployment to complete" value for a `Octopus.DeployRelease` step, default to `"Octopus.Action.DeployRelease.WaitForDeployment" = "True"`.
+
+**CRITICAL — step name fallback for `Octopus.DeployRelease` steps**: When the prompt says "Add a 'Deploy a Release' step to the deployment process" WITHOUT specifying "with the name 'X'", you MUST derive the step name from the child project name specified in "Set the 'Project' property to X". Use X as the `name` attribute of the step. For example, if the prompt says "Add a 'Deploy a Release' step to the deployment process. Set the 'Project' property to 'Deploy Development Pipeline'.", the step `name` MUST be `"Deploy Development Pipeline"` — NOT `"Deploy a Release"`. This prevents multiple "Deploy a Release" steps from receiving identical names "Deploy a Release", "Deploy a Release 2", etc., which are not descriptive and may cause the Octopus API to reject the deployment process.
+
+**CRITICAL NEGATIVE EXAMPLE — all DeployRelease steps have generic names (FORBIDDEN)**:
+```hcl
+# WRONG: Three steps deploying different child projects but all have generic names
+resource "octopusdeploy_process_step" "process_step_deploy_a_release" {
+  name = "Deploy a Release"    # WRONG: generic name, not descriptive
+  type = "Octopus.DeployRelease"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_deploy_a_release_2" {
+  name = "Deploy a Release 2"  # WRONG: generic numbered name
+  type = "Octopus.DeployRelease"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_deploy_a_release_3" {
+  name = "Deploy a Release 3"  # WRONG: generic numbered name
+  type = "Octopus.DeployRelease"
+  ...
+}
+```
+
+**CORRECT EXAMPLE — DeployRelease steps have unique, descriptive names derived from child project names**:
+```hcl
+# CORRECT: Each step has a unique, descriptive name from the child project
+resource "octopusdeploy_process_step" "process_step_deploy_development_pipeline" {
+  name = "Deploy Development Pipeline"    # CORRECT: derived from child project name
+  type = "Octopus.DeployRelease"
+  slug = "deploy-development-pipeline"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_deploy_sandbox_pipeline" {
+  name = "Deploy Sandbox Pipeline"        # CORRECT: derived from child project name
+  type = "Octopus.DeployRelease"
+  slug = "deploy-sandbox-pipeline"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_deploy_production_pipeline" {
+  name = "Deploy Production Pipeline"     # CORRECT: derived from child project name
+  type = "Octopus.DeployRelease"
+  slug = "deploy-production-pipeline"
+  ...
+}
+```
+
+**CRITICAL — when the prompt says `Set the start trigger to "Run in parallel with the previous step"` for an `Octopus.DeployRelease` step**, set `start_trigger = "StartWithPrevious"` on that resource. When multiple "Deploy a Release" steps run in parallel (e.g., an orchestrator project triggering several child deployments simultaneously), the FIRST step gets `start_trigger = "StartAfterPrevious"` and ALL subsequent parallel steps get `start_trigger = "StartWithPrevious"`. This pattern mirrors how other parallel steps are handled in Octopus Terraform.
+
+**CRITICAL — each `Octopus.DeployRelease` step referencing a child project requires its own `data "octopusdeploy_projects"` data source lookup for that child project.** When an orchestrator project has N "Deploy a Release" steps, there must be N separate `data "octopusdeploy_projects"` data source blocks — one per child project. Each data source uses the child project name as its `partial_name`. Do NOT share a single data source lookup across multiple child project references.
+
+* The "Octopus.Action.DeployRelease.ProjectId" and "package_id" properties must reference only a data source.
+* You will be penalized for setting the "Octopus.Action.DeployRelease.ProjectId" or "package_id" property to something like `"${length(data.octopusdeploy_projects.project_reporting_microservice.projects) != 0 ? data.octopusdeploy_projects.project_reporting_microservice.projects[0].id : octopusdeploy_project.project_reporting_microservice[0].id}"`
+* You will be penalized for setting the "Octopus.Action.DeployRelease.ProjectId" property to a fixed value like "Projects-8916", "Projects-8915", and "Projects-8917".
+* You will be penalized for setting the "feed_id" attribute in the "primary_package" block to a fixed value like "Feeds-5936", "Feeds-5678", and "Feeds-91011".
+* You must not recreate the following, as these resources and data sources are only used to demonstrate the orchestration project step:
+    * data "octopusdeploy_projects" "project_child_project"
+    * resource "octopusdeploy_project" "project_child_project"
+* You must always include the `data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_"` data source.
+* The "feed_id" attribute in the "primary_package" block of a step of type "Octopus.DeployRelease" must always be set to the built-in Octopus Server Releases feed found in the `data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_"` data source.
+
+**CRITICAL — negative example for `Octopus.DeployRelease` step — DO NOT generate this pattern**: The following Terraform is **INCORRECT** because it shares a single `data "octopusdeploy_projects"` block for multiple children and omits required attributes. This MUST NEVER be generated:
+
+```hcl
+# WRONG: one data source used for multiple children
+data "octopusdeploy_projects" "project_child" {
+  partial_name = "Child Project"
+  skip         = 0
+  take         = 1
+}
+
+# WRONG: package_id references wrong data source, count omitted, process_id set to null unconditionally
+resource "octopusdeploy_process_step" "process_step_deploy_child_a" {
+  name       = "Deploy Child A"
+  type       = "Octopus.DeployRelease"
+  process_id = "${octopusdeploy_process.process_orchestrator[0].id}"   # WRONG: no ternary count guard
+  primary_package = {
+    acquisition_location = "NotAcquired",
+    feed_id    = "${data.octopusdeploy_feeds.feed_octopus_server_releases__built_in_.feeds[0].id}",
+    id         = null,
+    package_id = "${data.octopusdeploy_projects.project_child.projects[0].id}",   # WRONG: reused data source
+    properties = null
+  }
+  # MISSING: count, execution_properties.Octopus.Action.DeployRelease.ProjectId
+}
+```
+
+The **CORRECT** pattern for N child deployments requires N separate data source lookups, one per child project:
+
+```hcl
+data "octopusdeploy_projects" "project_child_a" {
+  ids = null; partial_name = "Child A"; skip = 0; take = 1
+}
+data "octopusdeploy_projects" "project_child_b" {
+  ids = null; partial_name = "Child B"; skip = 0; take = 1
+}
+resource "octopusdeploy_process_step" "process_step_deploy_child_a" {
+  count      = "${length(data.octopusdeploy_projects.project_orchestrator.projects) != 0 ? 0 : 1}"
+  name       = "Deploy Child A"
+  type       = "Octopus.DeployRelease"
+  process_id = "${length(data.octopusdeploy_projects.project_orchestrator.projects) != 0 ? null : octopusdeploy_process.process_orchestrator[0].id}"
+  primary_package = {
+    acquisition_location = "NotAcquired",
+    feed_id    = "${data.octopusdeploy_feeds.feed_octopus_server_releases__built_in_.feeds[0].id}",
+    id         = null,
+    package_id = "${data.octopusdeploy_projects.project_child_a.projects[0].id}",
+    properties = null
+  }
+  start_trigger        = "StartAfterPrevious"
+  execution_properties = {
+    "Octopus.Action.DeployRelease.ProjectId"            = "${data.octopusdeploy_projects.project_child_a.projects[0].id}"
+    "Octopus.Action.DeployRelease.DeploymentCondition"  = "Always"
+    "Octopus.Action.DeployRelease.WaitForDeployment"    = "True"
+    "Octopus.Action.RunOnServer"                        = "true"
+  }
+  # ... other required attributes
+}
+resource "octopusdeploy_process_step" "process_step_deploy_child_b" {
+  count      = "${length(data.octopusdeploy_projects.project_orchestrator.projects) != 0 ? 0 : 1}"
+  name       = "Deploy Child B"
+  type       = "Octopus.DeployRelease"
+  process_id = "${length(data.octopusdeploy_projects.project_orchestrator.projects) != 0 ? null : octopusdeploy_process.process_orchestrator[0].id}"
+  primary_package = {
+    acquisition_location = "NotAcquired",
+    feed_id    = "${data.octopusdeploy_feeds.feed_octopus_server_releases__built_in_.feeds[0].id}",
+    id         = null,
+    package_id = "${data.octopusdeploy_projects.project_child_b.projects[0].id}",   # separate data source
+    properties = null
+  }
+  start_trigger        = "StartAfterPrevious"   # or "StartWithPrevious" if parallel
+  execution_properties = {
+    "Octopus.Action.DeployRelease.ProjectId"            = "${data.octopusdeploy_projects.project_child_b.projects[0].id}"
+    "Octopus.Action.DeployRelease.DeploymentCondition"  = "Always"
+    "Octopus.Action.DeployRelease.WaitForDeployment"    = "True"
+    "Octopus.Action.RunOnServer"                        = "true"
+  }
+  # ... other required attributes
+}
+```
+* You must only define attributes on "execution_properties" and "properties" blocks that appear in the supplied examples.
+
+**MANDATORY SELF-CHECK — orchestrator project completeness**: When a project has one or more `Octopus.DeployRelease` steps, before finalizing the Terraform, answer YES/NO to ALL of the following. A single NO means the Terraform is incomplete and MUST be corrected before outputting:
+
+1. Is there exactly ONE `data "octopusdeploy_projects"` data source per child project (the count must equal the number of `Octopus.DeployRelease` steps)? **If NO → add the missing data source blocks.**
+2. Is the `data "octopusdeploy_feeds" "feed_octopus_server_releases__built_in_"` data source included? **If NO → add it.**
+3. Does each `Octopus.DeployRelease` step have `"Octopus.Action.DeployRelease.ProjectId"` set to the CHILD project's data source (NOT the orchestrator project's data source)? **If NO → correct the references.**
+4. Does each `Octopus.DeployRelease` step's `primary_package.package_id` reference the CORRECT child project's data source (one unique data source per child, NOT reused across multiple children)? **If NO → assign the correct per-child data source.**
+5. Does each `Octopus.DeployRelease` step appear in the `octopusdeploy_process_steps_order` `steps` list? **If NO → add the missing step IDs.**
+6. Does each `Octopus.DeployRelease` step have a UNIQUE and DESCRIPTIVE `name` attribute derived from the child project name (NOT a generic name like "Deploy a Release", "Deploy a Release 2", etc.)? **If NO → replace the generic names with descriptive names derived from the child project names (e.g., `name = "Deploy Development Pipeline"` for a step deploying the "Deploy Development Pipeline" project).**
+7. Does the `slug` attribute of each `Octopus.DeployRelease` step match the kebab-case version of its unique `name` (e.g., `name = "Deploy Development Pipeline"` → `slug = "deploy-development-pipeline"`)? **If NO → update the slug to match the name.**
+
+If any answer is NO, correct the issue before outputting the Terraform.
+* You will be penalized for defining attributes in the "execution_properties" and "properties" blocks that do not exist in the examples.
+* You will be penalized for defining properties that start with "Octopus.Action.Aws.CloudFormation" that do not exist in the examples.
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.Template".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.TemplateFile".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.TagsEnabled".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Aws.CloudFormation.StackName".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Manual.ResponsibleUserIds".
+* You will be penalized for defining a property in the "execution_properties" block called "Octopus.Action.Manual.Roles".
+* You will be penalized for defining the Octopus.Action.Manual.ResponsibleTeamIds" property as an empty string, for example:
+```
+resource "octopusdeploy_process_step" "process_step_my_azure_web_app_5_manual_intervention" {
+  execution_properties  = {
+    # An empty string is not a valid value for the "Octopus.Action.Manual.ResponsibleTeamIds" property
+    "Octopus.Action.Manual.ResponsibleTeamIds"         = ""
+  }
+}
+```
+
+
+* You will be penalized for defining multiple "execution_properties" blocks within a single resource.
+* The "execution_properties" property must be defined as a map, for example:
+```
+execution_properties = {
+    # Define properties here
+}
+```
+* You will be penalized for defining an "execution_properties" block like this, with "name" and "value" attributes:
+```
+execution_properties {
+  name  = "<some name>"
+  value = "<some value>"
+}
+```
+* You will be penalized for defining an "execution_properties" block like this without the equal sign:
+```
+execution_properties {
+}
+```
+* You will be penalized for defining an "properties" block like this without the equal sign:
+```
+properties {
+}
+```
+* You will be penalized for defining multiple "execution_properties" blocks within a single resource, for example:
+```
+execution_properties = {
+    # Define properties here
+}
+execution_properties {
+}
+```
+* You will be penalized for defining multiple "properties" blocks within a single resource, for example:
+```
+properties = {
+    # Define properties here
+}
+properties {
+}
+```
+* Each "octopusdeploy_community_step_template" resource has a corresponding "octopusdeploy_community_step_template" data source that must be used to check for the existence of the community step template before creating it, for example:
+```
+data "octopusdeploy_community_step_template" "my_community_step_template" {
+  website = "https://library.octopus.com/step-templates/<guid goes here>"
+}
+
+resource "octopusdeploy_community_step_template" "my_community_step_template" {
+  community_action_template_id = "${length(data.octopusdeploy_community_step_template.my_community_step_template.steps) != 0 ? data.octopusdeploy_community_step_template.my_community_step_template.steps[0].id : null}"
+  count                        = "${length(data.octopusdeploy_community_step_template.my_community_step_template.steps) != 0 ? 0 : 1}"
+}
+```
+* You will be penalized for referencing a "octopusdeploy_step_template" data source "actions" property, for example:
+```
+ count = "${length(try(data.octopusdeploy_step_template.my_step_template.step_template.actions, [])) != 0 ? 0 : 1}"
+```
+
+* You will be penalized for defining both the "environments" and "excluded_environments" attributes in a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource.
+* If the prompt defines both environments to include and environments to exclude for a step, you must only define the "environments" attribute.
+* You must escape the dollar sign and curly braces in the "Octopus.Action.Azure.ResourceGroupTemplate" property using a double dollar sign, for example:
+
+```
+"Octopus.Action.Azure.ResourceGroupTemplate" = "resource storageAccount 'Microsoft.Storage/storageAccounts@2021-04-01' = {\n  name: 'analytics$${uniqueString(resourceGroup().id)}'
+```
+
+* You must escape the dollar sign and curly braces in the "Octopus.Action.Aws.CloudFormationTemplate" property using a double dollar sign, for example:
+
+```
+"Octopus.Action.Aws.CloudFormationTemplate" = "AWSTemplateFormatVersion: '2010-09-09'\\nDescription: 'Lambda Blue/Green Deployment'\\nResources:\\n  LambdaFunction:\\n    Type: AWS::Lambda::Function\\n    Properties:\\n      FunctionName: !Sub '$${AWS::StackName}-function'\\n      Runtime: python3.9\\n      Handler: index.handler\\n      Code:\\n        S3Bucket: !Sub '$${Project.AWS.Lambda.S3.BucketName}'\\n        S3Key: 'lambda-function.zip'\\n      Environment:\\n        Variables:\\n          DB_HOST: $${DB_HOST}\\n          API_KEY: $${API_KEY}"
+
+```
+
+* The "Octopus.Action.RunOnServer" property in the "execution_properties" block must be set to "true" steps of type "Octopus.Script" that do not have any target roles.
+
+* You will be penalized for setting the "image" property in the "container" property to an empty string.
+* If the prompt indicates that a container image should be used, but does not specify an image name, you must set the "image" property in the "container" property to "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04".
+* If the "container" property is defined with a "feed_id" but the prompt does not specify a container image, you must set the "image" property in the "container" property to "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04".
+* Additional packages (also known as "referenced packages") are defined in the "packages" block of a "octopusdeploy_process_step" resource, for example:
+
+```
+packages = {
+    package-id = {
+        acquisition_location = "NotAcquired",
+        feed_id = "${length(data.octopusdeploy_feeds.feed_ghcr_anonymous.feeds) != 0 ? data.octopusdeploy_feeds.feed_ghcr_anonymous.feeds[0].id : octopusdeploy_docker_container_registry.feed_ghcr_anonymous[0].id}",
+        id = null,
+        package_id = "${var.project_kubernetes_web_app_step_deploy_a_kubernetes_web_app_via_yaml_package_octopub_selfcontained_packageid}",
+        properties = {
+            Extract = "False",
+            Purpose = "DockerImageReference",
+            SelectionMode = "immediate"
+        }
+    }
+}
+```
+
+* You will be penalized for only defining the last half of a "packages" block, for example:
+
+```
+", id = null, package_id = "mypackage", properties = { SelectionMode = "immediate" } }
+```
+
+* You will be penalized for defining values in the "execution_properties" block which are empty strings.
+* You will be penalized for defining the "target_roles" property on a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource.
+* When the prompt includes instructions to generate a custom script that is not provided by the example configurations, you must use provide a script comprised of comments about the intended functionality and a `echo` or `Write-Host` statement indicating that the script is a placeholder.
+* You will be penalized for generating complex scripts for script steps that are not copies of example configurations.
+* Using client side apply means the same as disabling server side apply for Kubernetes steps.
+* If the prompt includes instructions to enable client side apply for a Kubernetes step, you must set the "Octopus.Action.Kubernetes.ServerSideApply.Enabled" property in the "execution_properties" block to "False".
+* Steps of type "Octopus.Manual" must have a "Octopus.Action.Manual.Instructions" property in the "execution_properties" block.
+* Steps of type "Octopus.Manual" must set `"Octopus.Action.RunOnServer" = "true"` in the `execution_properties` block.
+* Steps of type "Octopus.Manual" must always include `"Octopus.Action.Manual.BlockConcurrentDeployments" = "True"` in the `execution_properties` block. Omitting this property is a common mistake that causes concurrent deployments to proceed past the manual intervention gate without pausing.
+* You will be penalized for defining the "Octopus.Step.Manual.Instructions" property in the "execution_properties" block.
+* When the prompt defines manual-intervention instructions, the value of "Octopus.Action.Manual.Instructions" must preserve the prompt text exactly. Do not rewrite `${ ... }` SpEL expressions into Octopus `#{...}` syntax, do not normalize punctuation, and do not strip or replace Unicode characters.
+* **CRITICAL — SpEL expressions preserved verbatim in `Octopus.Action.Manual.Instructions` MUST use `$$` escaping in Terraform HCL strings**: When the instructions text contains `${...}` patterns (e.g., Spinnaker SpEL expressions that were intentionally kept verbatim), the `$` character MUST be escaped as `$$` in the Terraform string value to prevent Terraform from treating the expression as a string interpolation sequence. For example, if the prompt instruction text is `release: *${trigger['tag']}* (NOTE: ...)`, the Terraform attribute MUST be written as `"Octopus.Action.Manual.Instructions" = "release: *$${trigger['tag']}* (NOTE: ...)"`. Without this escaping, Terraform will attempt to evaluate `${trigger['tag']}` and produce an error. Only `${...}` patterns need this escaping — Octostache `#{...}` patterns do NOT need escaping.
+* If the prompt appends a NOTE explaining that the instructions contain SpEL expressions, include that NOTE verbatim at the end of the same "Octopus.Action.Manual.Instructions" string. Do not "fix" the embedded expression text.
+* You will be penalized for defining a value in the "execution_properties" block with `jsonencode({})` and then ending with a double quote, for example:
+`"Octopus.Action.Azure.ResourceGroupTemplateParameters" = jsonencode({})"`
+* You must define a value in the "execution_properties" block with `jsonencode({})` without ending with a double quote or new line, for example:
+`"Octopus.Action.Azure.ResourceGroupTemplateParameters" = jsonencode({})`
+* You will be penalized for defining the "Octopus.Action.Aws.S3.BucketName" value in the "execution_properties" block for a step of type "Octopus.AwsRunCloudFormation".
+* You will be penalized for defining both the "excluded_environments" and "environments" attributes on a "octopusdeploy_process_step" or "octopusdeploy_process_child_step" resource.
+* You will be penalized for including an incomplete primary_package block, for example:
+```
+resource "octopusdeploy_process_step" "process_step_serverless_api_9231_deploy_lambda" {
+ count                 = "${length(data.octopusdeploy_projects.project_serverless_api_9231.projects) != 0 ? 0 : 1}"
+ name                  = "Deploy Lambda"
+ type                  = "Octopus.AwsRunScript"
+ process_id            = "${length(data.octopusdeploy_projects.project_serverless_api_9231.projects) != 0 ? null : octopusdeploy_process.process_serverless_api_9231[0].id}"
+ channels              = null
+ condition             = "Success"
+ container             = { feed_id = "${length(data.octopusdeploy_feeds.feed_ghcr_anonymous.feeds) != 0 ? data.octopusdeploy_feeds.feed_ghcr_anonymous.feeds[0].id : octopusdeploy_docker_container_registry.feed_ghcr_anonymous[0].id}", image = "octopuslabs/aws-workertools" }
+ environments          = null
+ excluded_environments = ["${length(data.octopusdeploy_environments.environment_security.environments) != 0 ? data.octopusdeploy_environments.environment_security.environments[0].id : octopusdeploy_environment.environment_security[0].id}"]
+ notes                 = "Deploy Lambda function from S3 package."
+ package_requirement   = "LetOctopusDecide"
+ # The primary_package block is incomplete
+ ", id = null, package_id = "${var.project_serverless_api_9231_step_deploy_lambda_packageid}", properties = { SelectionMode = "immediate" } }
+ slug                  = "deploy-lambda"
+ start_trigger         = "StartAfterPrevious"
+ tenant_tags           = null
+ worker_pool_variable  = "Project.WorkerPool"
+ 
+ execution_properties  = {
+       "Octopus.Action.Script.ScriptBody" = "Write-Host \"Deploying Lambda function from package\""
+       "Octopus.Action.Aws.Region" = "#{AWS_REGION}"
+       "Octopus.Action.AwsAccount.UseInstanceRole" = "False"
+       "Octopus.Action.RunOnServer" = "true"
+       "Octopus.Action.Script.ScriptSource" = "Inline"
+       "OctopusUseBundledTooling" = "False"
+       "Octopus.Action.Script.Syntax" = "PowerShell"
+       "Octopus.Action.Aws.AssumeRole" = "False"
+       "Octopus.Action.AwsAccount.Variable" = "Project.AWS.Account"
+     }
+}
+```
+* Every item in the "tenant_tags" array must reference a tag defined in a resource "octopusdeploy_tag" and the tag set defined in a resource "octopusdeploy_tag_set".
+* Step template and community step template steps must use the "octopusdeploy_process_templated_step" resource.
+* You will be penalized for using the "octopusdeploy_process_step" resource for steps that are based on step templates or community step templates.
+* You will be penalized for defining a property called "Octopus.Action.Script.FileName" in the execution_properties block of a "octopusdeploy_process_step" resource of type "Octopus.Script". The correct property name is "Octopus.Action.Script.ScriptFileName".
+* If the prompt includes instructions to retain the original steps from the sample Terraform configurations, you will be penalized for including comments like "# ... include all original Azure Web App steps here, in order" in place of the original steps.
+* Every step defined in a "octopusdeploy_process_steps_order" resource must also be defined as a resource, for example "octopusdeploy_process_step" or "octopusdeploy_process_templated_step".
+* You will be penalized for defining a step in a "octopusdeploy_process_steps_order" resource that is not defined as a resource.
+* When the prompt includes instructions to add runbooks or steps not found in the template project without explicilt defining the script code, you must only define a script with a single comment in the "Octopus.Action.Script.ScriptBody" property that indicates the intended functionality of the script, for example:
+
+```
+resource "octopusdeploy_process_step" "process_step_my_lambda_web_app_swap_loadbalancer" {
+  execution_properties  = {
+    "Octopus.Action.Script.ScriptBody" = "# This is a placeholder script that would swap load balancers"
+  }
+}
+```
+* You will be penalized for generating an example script in the "Octopus.Action.Script.ScriptBody" when the script is not provided in the sample Terraform configurations or in the prompt.
+* When the prompt contains instructions to create a script, you must recreate the script code exactly.
+* When a prompt defines a container image or other docker image, you must recreate the image name exactly.
+* You will be penalized for changing the image name in any way, for example, when hte prompt indicates to use the image "octopusdeploylabs/azure-workertools", you will be penalized for changing it to "octopuslabs/azure-workertools" or "octopusdeploylabs/azure-workertools:latest".
+* The name associated with a step must be unique within the process, and must not be the same as any other step name in the process.
+* You will be penalized for defining two steps with the same name within a process.
+* You will be penalized for writing long "notes" field with unbalanced quotes, for example:
+```
+resource "octopusdeploy_process_step" "process_step_argo_cd_manifest_update_update_argo_cd_application_manifests" {
+  # This is invalid syntax because the notes field does not have a closing quote
+  notes                 = "The projects is configured to use the sample application hosted at https://mockgit.octopus.com/repo/argocd in the `octopub-manifest` directory.\n\nThe repo requires credentials, but accepts any username and password, for example:\n\n
+}
+```
+* If the sample project contains a long "notes" field, you must recreate it exactly as it is, including all line breaks and special characters, and ensuring that all quotes are balanced.
+* You will be penalized for producing only half of the "notes" attribute.
+* The "notes" attribute can contain markdown, for example:
+resource "octopusdeploy_process_step" "process_step_argo_cd_manifest_update_update_argo_cd_application_manifests" {
+  notes                 = "Here is a code block\n\n```\n# This is some code in a code block\n```"
+}
+
+* The step start trigger is defined by the "start_trigger" attribute, and must be set to one of the following values:
+  * "StartWithPrevious"
+  * "StartAfterPrevious"
+* The "StartWithPrevious" setting corresponds with the "Run in parallel with the previous step" option in the UI.
+* The "StartAfterPrevious" setting corresponds with the "Wait for all previous steps to complete, then start" option in the UI.
+* **CRITICAL — in fork-without-reconvergence pipelines, the `steps` order in `octopusdeploy_process_steps_order` must reflect the fully-linearized branch sequence**: When the prompt describes a fork-without-reconvergence pattern (parallel group of branch roots followed by Branch A continuation steps, then Branch B continuation steps with a migration NOTE), the `steps` array MUST list all Branch A continuation steps BEFORE the first Branch B continuation step. Do NOT interleave Branch A and Branch B continuation steps. The presence of `start_trigger = "StartAfterPrevious"` on both a Branch A continuation and a Branch B continuation does NOT mean they can be reordered — each step's position in the `steps` array must exactly follow the prompt's instruction order.
+* A step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" must define a "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property. If no file name is specified in the prompt, you must set the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property to "custom-resource.yaml".
+* You will be penalized for defining a step of type "Octopus.KubernetesDeployRawYaml" with "Octopus.Action.Script.ScriptSource" set to "GitRepository" and not defining the "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" property.
+* **ABSOLUTE RULE — `file_path_filters` MUST be set from the "Set the File Paths to" instruction**: When the prompt includes `Set the File Paths to "<path>"` for a "Deploy Kubernetes YAML" step that uses "Files from a Git repository" as its YAML source, you MUST set `file_path_filters = ["<path>"]` in the `git_dependencies` block. Additionally, set `Octopus.Action.KubernetesContainers.CustomResourceYamlFileName = "<path>"` in the `execution_properties` block using the SAME value. Both `file_path_filters` and `CustomResourceYamlFileName` must reflect the exact file path string from the prompt instruction. Leaving `file_path_filters = null` when the prompt specifies a file path means the GitRepository source will not correctly filter to the specified file — this is a deployment-breaking error.
+* **ABSOLUTE RULE — you will be penalized for setting `file_path_filters = null` when the prompt specifies "Set the File Paths to '<path>'"** for a GitRepository-sourced Deploy Kubernetes YAML step. The null value is forbidden whenever a file path instruction is present.
+
+**Example — Deploy Kubernetes YAML step with File Paths instruction**:
+
+Given a prompt instruction: `Set the File Paths to "resource-0172".`
+
+The **CORRECT** Terraform sets both `file_path_filters` and `CustomResourceYamlFileName` to the same value:
+```
+git_dependencies = { "" = { default_branch = "master", file_path_filters = ["resource-0172"], git_credential_type = "Anonymous", repository_uri = "https://example.invalid/url-0234" } }
+execution_properties = {
+  "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" = "resource-0172"
+  "Octopus.Action.Script.ScriptSource" = "GitRepository"
+  ...
+}
+```
+
+The **WRONG** Terraform leaves `file_path_filters` as null — FORBIDDEN when a File Paths instruction is present:
+```
+git_dependencies = { "" = { default_branch = "master", file_path_filters = null, ... } }
+```
+* If the prompt says `Set the step namespace to "<namespace>".` for a step of type "Octopus.KubernetesDeployRawYaml", you must define `"Octopus.Action.KubernetesContainers.Namespace" = "<namespace>"` in the `execution_properties` block using that exact value.
+* A step of type "Octopus.KubernetesDeployRawYaml" with must not set the "Octopus.Action.KubernetesContainers.Namespace" property to an empty string. If the prompt does not specify a namespace, do not define the "Octopus.Action.KubernetesContainers.Namespace" property.
+* **CRITICAL — ALL inline `Octopus.KubernetesDeployRawYaml` steps MUST include these execution_properties** (unless the prompt explicitly says to use client-side apply):
+  * `"Octopus.Action.Script.ScriptSource" = "Inline"`
+  * `"Octopus.Action.KubernetesContainers.CustomResourceYaml"` — the inline YAML content (or a `# TODO:` placeholder)
+  * `"Octopus.Action.RunOnServer" = "true"`
+  * `"OctopusUseBundledTooling" = "False"`
+  * `"Octopus.Action.Kubernetes.ServerSideApply.Enabled" = "True"`
+  * `"Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts" = "True"`
+  * `"Octopus.Action.Kubernetes.ResourceStatusCheck" = "True"`
+  * `"Octopus.Action.Kubernetes.DeploymentTimeout" = "180"`
+* **CRITICAL — `Octopus.KubernetesDeployRawYaml` MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/k8s-workertools` image. This applies to BOTH enabled and disabled (TODO placeholder) steps and applies to both Inline script and scripts sources from a git repository:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/k8s-workertools"
+}
+```
+
+**ABSOLUTE RULE — the `container` block on an `Octopus.KubernetesDeployRawYaml` step MUST NEVER have empty `feed_id` or `image` values.** An empty container block (`container = { feed_id = "", image = "" }`) means the step will not be able to pull the required tooling image and will fail at runtime. This is the MOST COMMON MISTAKE when generating Terraform for Kubernetes deploy steps.
+
+**Negative example — empty container block (VERY COMMON MISTAKE — FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  type      = "Octopus.KubernetesDeployRawYaml"
+  container = { feed_id = "", image = "" }  ← WRONG: empty container block will cause runtime failure
+  ...
+}
+```
+← WRONG: `feed_id = ""` and `image = ""` are invalid. The container block MUST reference the GitHub Container Registry feed and the k8s-workertools image using the ternary expression.
+
+**Correct output — non-empty container block with k8s-workertools image**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  type      = "Octopus.KubernetesDeployRawYaml"
+  container = {
+    feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+    image   = "ghcr.io/octopusdeploylabs/k8s-workertools"
+  }
+  ...
+}
+```
+← CORRECT: container block has non-empty feed_id ternary and image values.
+* **CRITICAL — when a project contains one or more `Octopus.KubernetesDeployRawYaml` steps, the Terraform configuration MUST include both a `data "octopusdeploy_feeds" "feed_github_container_registry"` data source AND an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource** so that the `container` block's `feed_id` ternary expression can be evaluated. If the prompt does not reference a GitHub Container Registry feed for artifact purposes, you still MUST define these resources when any `KubernetesDeployRawYaml` step is present, because the `container` block requires the feed.
+* **CRITICAL — `octopusdeploy_docker_container_registry "feed_github_container_registry"` MUST use the count+data source idempotency pattern**: Always create this resource with `count = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"`. Without count, the resource cannot be applied idempotently and will fail if the feed already exists. The `feed_id` ternary in the `container` block uses `[0]` indexing which requires count to be present on the resource. The data source lookup MUST also always be defined alongside the resource.
+
+**Negative example — feed_github_container_registry created without count (COMMON MISTAKE)**:
+```hcl
+# WRONG — no count, no data source lookup, direct .id reference:
+resource "octopusdeploy_docker_container_registry" "feed_github_container_registry" {
+  name      = "GitHub Container Registry"
+  feed_uri  = "https://ghcr.io"
+  api_version = "v2"
+}
+container = { feed_id = "${octopusdeploy_docker_container_registry.feed_github_container_registry.id}", image = "ghcr.io/octopusdeploylabs/k8s-workertools" }
+```
+← WRONG: no count means duplicate resource creation fails on re-apply; `.id` (not `[0].id`) is inconsistent with the required ternary pattern.
+
+**Correct output — feed_github_container_registry with count, data source, and lifecycle**:
+```hcl
+data "octopusdeploy_feeds" "feed_github_container_registry" {
+  feed_type    = "Docker"
+  ids          = null
+  partial_name = "GitHub Container Registry"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_docker_container_registry" "feed_github_container_registry" {
+  count       = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"
+  name        = "GitHub Container Registry"
+  feed_uri    = "https://ghcr.io"
+  api_version = "v2"
+  username    = null
+  password    = null
+  package_acquisition_location_options = ["ExecutionTarget", "NotAcquired"]
+  lifecycle {
+    ignore_changes  = [password]
+    prevent_destroy = true
+  }
+}
+# feed_id ternary (uses [0] index, requires count above):
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image   = "ghcr.io/octopusdeploylabs/k8s-workertools"
+}
+```
+
+**MANDATORY SELF-CHECK before finalizing `feed_github_container_registry`**: Before outputting an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource, verify that it has ALL of the following. A single NO means the resource is incomplete and MUST be fixed:
+1. `count` attribute using the data source length ternary pattern (`"${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? 0 : 1}"`)
+2. Matching `data "octopusdeploy_feeds" "feed_github_container_registry"` data source block
+3. `username = null` and `password = null` attributes
+4. `lifecycle { ignore_changes = [password]; prevent_destroy = true }` block
+5. `container` blocks in all `Octopus.KubernetesDeployRawYaml` steps referencing this feed use `[0]` index in the ternary `feed_id` expression
+
+If any answer is NO, fix the resource before outputting. You will be penalized for omitting any of these attributes.
+
+**MANDATORY SELF-CHECK — `Octopus.KubernetesDeployRawYaml` step type enforcement**: When the prompt includes an instruction to "Add a 'Deploy Kubernetes YAML' step", the `type` attribute on that `octopusdeploy_process_step` resource MUST be `"Octopus.KubernetesDeployRawYaml"`. Before finalizing any Terraform that contains a "Deploy Kubernetes YAML" step instruction in the prompt, scan every corresponding `octopusdeploy_process_step` resource and verify:
+1. Is `type = "Octopus.KubernetesDeployRawYaml"`? — If NO (e.g., `"Octopus.Script"`, `"Octopus.KubernetesRunScript"`, or any other type), the step type is WRONG.
+2. Is the step using the `execution_properties` block with `"Octopus.Action.Script.ScriptSource"` and `"Octopus.Action.KubernetesContainers.CustomResourceYaml"` (for inline) or `git_dependencies` (for GitRepository)? — If NO, the step is not properly configured.
+
+**Negative example — "Deploy Kubernetes YAML" step with wrong step type (CRITICAL MISTAKE)**:
+```hcl
+# Prompt says: "Add a 'Deploy Kubernetes YAML' step named 'Restore Prod'."
+resource "octopusdeploy_process_step" "process_step_restore_prod" {
+  type = "Octopus.Script"  ← WRONG: "Deploy Kubernetes YAML" instructions require type = "Octopus.KubernetesDeployRawYaml", NEVER "Octopus.Script"
+  execution_properties = {
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.ScriptBody"   = "# YAML content here"  ← WRONG: YAML content must go in CustomResourceYaml, not ScriptBody
+  }
+}
+```
+← WRONG: Using `Octopus.Script` with `ScriptBody` for YAML content is FORBIDDEN. This converts a Kubernetes YAML deployment step into a bash script step, completely changing the runtime behavior.
+
+**Correct output — "Deploy Kubernetes YAML" step with correct type**:
+```hcl
+# Prompt says: "Add a 'Deploy Kubernetes YAML' step named 'Restore Prod'."
+resource "octopusdeploy_process_step" "process_step_restore_prod" {
+  type = "Octopus.KubernetesDeployRawYaml"  ← CORRECT
+  container = {
+    feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+    image   = "ghcr.io/octopusdeploylabs/k8s-workertools"
+  }
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = <<-EOT
+      apiVersion: batch/v1
+      kind: Job
+      ...
+    EOT
+    "Octopus.Action.Script.ScriptSource" = "Inline"  ← CORRECT for inline YAML
+  }
+}
+```
+
+
+1. Is `feed_id` non-empty (not `""`)? — If NO, set it to the ternary feed expression above.
+2. Is `image` set to `"ghcr.io/octopusdeploylabs/k8s-workertools"` (not `""`)? — If NO, set it to the correct image.
+If any `container` block has `feed_id = ""` or `image = ""`, STOP and fix the container block before outputting. An empty container block is ALWAYS wrong for `Octopus.KubernetesDeployRawYaml` steps.
+
+## Cloud Step Container Image Instructions
+
+* **CRITICAL — ALL `Octopus.TerraformPlan`, `Octopus.TerraformApply`, `Octopus.TerraformDestroy`, and `Octopus.TerraformPlanDestroy` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/terraform-workertools` image:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/terraform-workertools"
+}
+```
+* You will be penalized for omitting the `container` block from any `Octopus.TerraformPlan`, `Octopus.TerraformApply`, `Octopus.TerraformDestroy`, or `Octopus.TerraformPlanDestroy` step.
+* **CRITICAL — ALL `Octopus.AzurePowerShell` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/azure-workertools` image:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/azure-workertools"
+}
+```
+* **CRITICAL — ALL `Octopus.AwsRunScript` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/aws-workertools` image:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/aws-workertools"
+}
+```
+* **CRITICAL — ALL `Octopus.GoogleCloudScripting` steps MUST include a `container` block** referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/gcp-workertools` image:
+```hcl
+container = {
+  feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+  image = "ghcr.io/octopusdeploylabs/gcp-workertools"
+}
+```
+* When any Terraform, Azure PowerShell, AWS CLI, or GCP step is present, the Terraform configuration MUST include both a `data "octopusdeploy_feeds" "feed_github_container_registry"` data source AND an `octopusdeploy_docker_container_registry "feed_github_container_registry"` resource with the full idempotency pattern (same requirement as for Kubernetes steps).
+
+* A step of type "Octopus.KubernetesDeployRawYaml" must have property indented YAML content in the "Octopus.Action.KubernetesContainers.CustomResourceYaml" property if the YAML source is set to "Inline YAML".
+* When the prompt provides an inline YAML block for `Octopus.Action.KubernetesContainers.CustomResourceYaml`, copy that YAML content verbatim into the Terraform string while preserving its structure, list items, and indentation. Do not flatten nested keys, regenerate the YAML from a lossy intermediate representation, or remove `image`, `namespace`, `initContainers`, or other fields present in the prompt.
+* If the prompt's inline YAML block contains multiple YAML documents separated by standalone `---` lines, keep the ENTIRE multi-document payload in the single `Octopus.Action.KubernetesContainers.CustomResourceYaml` value. Do not split the YAML into multiple Terraform resources, multiple step resources, or separate prompt sections.
+* For multi-document inline YAML, preserve the original document order exactly, keep each `---` separator on its own line, and ensure each document restarts its top-level keys at column 0 while maintaining 2-space indentation inside that document.
+* For inline YAML copied from the prompt, treat the prompt's indentation as authoritative. Never left-shift nested keys such as `labels`, `annotations`, `containers`, `env`, `ports`, `metrics`, or `scaleTargetRef` to the same column as their parent key.
+* If the prompt includes a Deployment document followed by a HorizontalPodAutoscaler document in one inline YAML block, both documents must remain in the same `Octopus.Action.KubernetesContainers.CustomResourceYaml` value and both documents must preserve their own nested indentation after the `---` separator.
+* When the prompt explicitly says `The step must be disabled.`, set `is_disabled = true` on the corresponding `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resource. Do not omit the resource and do not change the step order to compensate.
+* **ABSOLUTE RULE — steps whose inline YAML content is a TODO placeholder comment MUST have `is_disabled = true`, regardless of whether the prompt explicitly says "The step must be disabled."**: Whenever the `Octopus.Action.KubernetesContainers.CustomResourceYaml` property value begins with `# TODO:`, you MUST set `is_disabled = true` on that step resource. Do NOT wait for the prompt to say "The step must be disabled." — the presence of a TODO placeholder in YAML is sufficient on its own to require disabling. A disabled step with a TODO YAML body is preserved in the deployment process so engineers can see it, but it will not execute until the TODO is resolved and the step is re-enabled.
+* **CRITICAL — "Files from a Git repository" steps MUST NOT be disabled unless the prompt explicitly says so**: When the prompt says `Set the YAML Source to "Files from a Git repository"`, the step does NOT have a TODO placeholder — it has a real git source. Such a step MUST NOT have `is_disabled = true` unless the prompt includes an explicit `The step must be disabled.` instruction. Do NOT apply the `is_disabled = true` rule for TODO placeholders to GitRepository steps — the two cases are distinct. Similarly, the `Octopus.Action.Script.ScriptSource` for a GitRepository step MUST be `"GitRepository"` — NEVER `"Inline"`. Using `"Inline"` for a git-sourced step is forbidden even if the step also has `Octopus.Action.KubernetesContainers.CustomResourceYaml` defined.
+
+**Negative example — GitRepository step incorrectly disabled and using "Inline" ScriptSource (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_manifest" {
+  name        = "Deploy -canary-"
+  is_disabled = true  # WRONG: the prompt did not say "The step must be disabled." and there is no TODO YAML
+  execution_properties = {
+    "Octopus.Action.Script.ScriptSource" = "Inline"  # WRONG: should be "GitRepository" for a git-sourced step
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = ""
+    ...
+  }
+}
+```
+
+**Correct output — GitRepository step enabled with correct ScriptSource**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_manifest" {
+  name        = "Deploy -canary-"
+  # No is_disabled — step is enabled by default because it has a real git source
+  git_dependencies = { "" = { default_branch = "main", file_path_filters = ["deploy-to-prod-canary.yaml"], git_credential_type = "Anonymous", repository_uri = "https://example.invalid/url-0034" } }
+  execution_properties = {
+    "Octopus.Action.Script.ScriptSource"                          = "GitRepository"  ← CORRECT
+    "Octopus.Action.KubernetesContainers.CustomResourceYamlFileName" = "deploy-to-prod-canary.yaml"
+    ...
+  }
+}
+```
+
+**Positive example — disabled step with TODO YAML (ALL required execution_properties and container block included)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_run_job_manifest" {
+  name                  = "Run Job -Manifest-"
+  type                  = "Octopus.KubernetesDeployRawYaml"
+  process_id            = "${octopusdeploy_process.process_my_project.id}"
+  is_disabled           = true   # Required because the YAML content is a TODO placeholder
+  condition             = "Success"
+  container             = {
+    feed_id = "${length(data.octopusdeploy_feeds.feed_github_container_registry.feeds) != 0 ? data.octopusdeploy_feeds.feed_github_container_registry.feeds[0].id : octopusdeploy_docker_container_registry.feed_github_container_registry[0].id}"
+    image = "ghcr.io/octopusdeploylabs/k8s-workertools"
+  }
+  notes                 = "Original stage name: Run Job (Manifest). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/path."
+  properties = {
+    "Octopus.Action.TargetRoles" = "Kubernetes"
+  }
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml"   = "# TODO: replace with manifest downloaded from gs://example-bucket/path"
+    "Octopus.Action.Script.ScriptSource"                       = "Inline"
+    "Octopus.Action.RunOnServer"                               = "true"
+    "OctopusUseBundledTooling"                                 = "False"
+    "Octopus.Action.Kubernetes.ServerSideApply.Enabled"        = "True"
+    "Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts" = "True"
+    "Octopus.Action.Kubernetes.ResourceStatusCheck"            = "True"
+    "Octopus.Action.Kubernetes.DeploymentTimeout"              = "180"
+  }
+}
+```
+
+**Negative example — TODO YAML step not disabled (COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_run_job_manifest" {
+  name                  = "Run Job -Manifest-"
+  is_disabled           = false  # WRONG: a TODO placeholder YAML step must be disabled
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with manifest..."
+  }
+}
+```
+
+**Negative example — TODO YAML step missing `is_disabled` entirely (ALSO A COMMON MISTAKE)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy" {
+  name                  = "Deploy"
+  type                  = "Octopus.KubernetesDeployRawYaml"
+  # WRONG: is_disabled = true is MISSING. Any step with a # TODO: YAML value must have is_disabled = true
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with correctly indented multi-document manifest..."
+  }
+}
+```
+* You will be penalized for defining the properties "Octopus.Action.GitRepository.ExternalRepositoryUrl" or "Octopus.Action.GitRepository.FilePathFilters" on a step of type "Octopus.KubernetesDeployRawYaml".
+* All steps must have a unique name. If two steps have the same name, add a number at the end of the step name to make it unique, for example "Deploy a Kubernetes Web App via YAML 2".
+* Any "octopusdeploy_process_templated_step" resource based on the community step template with the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" (which is the "Slack - Send Simple Notification" community step template) must set "Octopus.Action.RunOnServer" = "true" in the "execution_properties" block.
+* **CRITICAL — omit `ssn_Message` when the prompt does not specify a message value**: If the prompt instruction for a Slack notification step does NOT include `Set the "ssn_Message" property to "..."`, do NOT add an `"ssn_Message"` key to the `parameters` block at all. Only include `"ssn_Message"` when the prompt explicitly provides a message string. An absent `ssn_Message` is different from an empty string — do not substitute an empty string placeholder.
+* **ABSOLUTE RULE — do NOT add extra Slack notification parameters that are not mentioned in the prompt**: The only parameters to include in a Slack notification `parameters` block are those explicitly mentioned in the step prompt (e.g., `ssn_HookUrl`, `ssn_Channel`, `ssn_Message`). Do NOT add `ssn_IconUrl`, `ssn_Username`, `ssn_Color`, or any other parameter unless the prompt explicitly requests it. Adding unrequested parameters is a common mistake that causes review failures. If the prompt only says `Set the "ssn_HookUrl" property to "..."` and `Set the "ssn_Channel" property to "..."`, the resulting `parameters` block must contain ONLY `ssn_HookUrl` and `ssn_Channel` — nothing else.
+
+**Negative example — extra Slack parameters added without being in the prompt (COMMON MISTAKE AND FORBIDDEN)**:
+```hcl
+# Prompt only says: Set "ssn_HookUrl" and "ssn_Channel"
+parameters = {
+  "ssn_HookUrl"  = "#{Project.Slack.WebhookUrl}"
+  "ssn_Channel"  = "my-channel"
+  "ssn_IconUrl"  = "https://octopus.com/content/resources/favicon.png"  # WRONG: not in prompt
+  "ssn_Username" = "Octopus Deploy"                                        # WRONG: not in prompt
+  "ssn_Color"    = "good"                                                  # WRONG: not in prompt
+}
+```
+
+**Correct output — only parameters mentioned in the prompt**:
+```hcl
+parameters = {
+  "ssn_HookUrl" = "#{Project.Slack.WebhookUrl}"
+  "ssn_Channel" = "my-channel"
+}
+```
+* It is CRITICAL that the order of the steps in the prompt is maintained in the Terraform configurations. You MUST add each step, one by one, from top to bottom and left to right, as defined in the prompt.
+* The following prompt must define the "Slack Notification - Start" step first, then the "Deploy user-profile worker -dev-" step, and then the "Deploy user-track worker -dev-" step, in that specific order, in the "octopusdeploy_process_steps_order" resource:
+
+```
+Create a project called "Deploy Workers (dev&prod) and Cronjobs (dev&prod)" in the "Default Project Group" project group with no steps.
+* Set the project description to "Deploys all workers except the custom-attribute-backfill worker".
+* Add a community step template step with the name "Slack Notification - Start" and the URL "https://library.octopus.com/step-templates/99e6f203-3061-4018-9e34-4a3a9c3c3179" to the start of the deployment process. Set the "ssn_HookUrl" property to "#{Project.Slack.WebhookUrl}". Set the "ssn_Channel" property to "us-release".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-profile worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1626`. Set the target tag to Kubernetes. Set the step description to "Original stage name: Deploy user-profile worker (dev). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1626. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
+* Add a "Deploy Kubernetes YAML" step to the deployment process and name the step "Deploy user-track worker -dev-". Set the YAML Source to "Inline YAML". Set the YAML content to `# TODO: replace with manifest downloaded from gs://example-bucket/storage-1627`. Set the target tag to Kubernetes. Set the step description to "Original stage name: Deploy user-track worker (dev). This step originally loaded its manifest from Google Cloud Storage at gs://example-bucket/storage-1627. The manifest must be inlined or the step must be reconfigured to read from a supported source." Set the start trigger to "Run in parallel with the previous step".
+```
+
+* You will be penalized for not maintaining the order of the steps as defined in the prompt in the "octopusdeploy_process_steps_order" resource.
+* You must correctly escape dollar signs and curly braces.
+* This is an example of an incorrectly escaped value:
+
+```
+"ssn_Message" = "*Triggered by:* ${ trigger.user }\n*Container image:* ${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
+```
+
+* This is an example of a correctly escaped value:
+
+```
+"ssn_Message" = "*Triggered by:* $${ trigger.user }\n*Container image:* $${ #triggerResolvedArtifactByType(\"docker/image\")[\"reference\"] } (NOTE: Contains SpEL expressions — convert to Octopus variable syntax, e.g. #{Octopus.Deployment.Trigger.Name}, before use)"
+```
+
+* **CRITICAL — SpEL expressions MUST be escaped in ALL Terraform string values, not just ssn_Message**: Any Terraform property value (including `notes`, `"Octopus.Action.Manual.Instructions"`, and any other `execution_properties` value) that contains `${...}` SpEL syntax must escape the dollar sign as `$${...}`. Failure to do so causes Terraform to attempt to interpolate the expression and produce a Terraform validation error.
+* You will be penalized for generating Terraform where any execution_property value or notes value contains unescaped `${...}` expressions that are not Terraform variables.
+* **CRITICAL — when a prompt instruction contains SpEL expressions that have already been converted to Octopus variable syntax (e.g., `#{Octopus.Release.Number}`), do NOT re-escape them as `$${...}`**. Only apply the `$${...}` escaping to SpEL expressions that remain in `${...}` form. Octopus variable syntax using `#{...}` does not require any escaping in Terraform string values.
+* **CRITICAL — step descriptions with embedded string content**: When a `notes` attribute value is derived from a prompt instruction containing phrases like `at gs://...` or other path/URL references, do NOT add quotation marks around the URL or path inside the Terraform string value. The URL must appear without surrounding quotes in the `notes` string. For example:
+  * **WRONG**: `notes = "This step loaded its manifest from Google Cloud Storage at \"gs://my-bucket/path\". The manifest must be inlined."`
+  * **CORRECT**: `notes = "This step loaded its manifest from Google Cloud Storage at gs://my-bucket/path. The manifest must be inlined."`
+
+## Email Step Instructions
+
+* Steps of type "Octopus.Email" must set `"Octopus.Action.RunOnServer" = "true"` in the `execution_properties` block.
+* Steps of type "Octopus.Email" must define the following execution properties:
+  * `"Octopus.Action.Email.To"` — the recipient email address or Octopus variable expression
+  * `"Octopus.Action.Email.Subject"` — the email subject line
+  * `"Octopus.Action.Email.Body"` — the email body content
+* Optionally, steps of type "Octopus.Email" may define `"Octopus.Action.Email.Priority"` as `"Normal"` or `"High"`.
+* When the prompt specifies email subject or body text that contains Octopus variable syntax (e.g. `#{Octopus.Project.Name}`, `#{Octopus.Release.Number}`, `#{Octopus.Environment.Name}`), you MUST preserve the Octopus variable syntax verbatim in the corresponding `execution_properties` value. Do NOT replace variable references with plain text.
+* Steps of type "Octopus.Email" do NOT require `"Octopus.Action.TargetRoles"` in the `properties` block. Use `properties = {}` for email steps.
+* You will be penalized for omitting the `"Octopus.Action.Email.To"`, `"Octopus.Action.Email.Subject"`, or `"Octopus.Action.Email.Body"` properties from a step of type "Octopus.Email".
+
+Example email step:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_notify_deployment_complete" {
+  name                  = "Notify Deployment Complete"
+  type                  = "Octopus.Email"
+  process_id            = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? null : octopusdeploy_process.process_my_project[0].id}"
+  channels              = null
+  condition             = "Success"
+  environments          = null
+  excluded_environments = null
+  notes                 = "Sends an email notification when deployment is complete."
+  package_requirement   = "LetOctopusDecide"
+  slug                  = "notify-deployment-complete"
+  start_trigger         = "StartAfterPrevious"
+  tenant_tags           = null
+  worker_pool_id        = null
+  worker_pool_variable  = null
+  properties            = {}
+  execution_properties  = {
+    "Octopus.Action.RunOnServer"    = "true"
+    "Octopus.Action.Email.To"       = "team@example.com"
+    "Octopus.Action.Email.Subject"  = "Deployment #{Octopus.Project.Name} #{Octopus.Release.Number} complete"
+    "Octopus.Action.Email.Body"     = "The deployment to #{Octopus.Environment.Name} is complete."
+    "Octopus.Action.Email.Priority" = "Normal"
+  }
+}
+```
+
+## ArgoCD Step Instructions
+
+* Steps of type "Octopus.ArgoCDUpdateImageTags" update image tags in an ArgoCD application's values file.
+* Steps of type "Octopus.ArgoCDUpdateImageTags" must define the following execution properties:
+  * `"Octopus.Action.RunOnServer" = "true"`
+  * `"Octopus.Action.ArgoCD.CommitMethod" = "DirectCommit"`
+  * `"Octopus.Action.ArgoCD.CommitMessageSummary" = "Octopus Deploy updated image versions"`
+  * `"Octopus.Action.ArgoCD.Sync.Mode" = "AllEnvironments"`
+  * `"Octopus.Action.ArgoCD.StepVerification.Method" = "CommitCreated"`
+  * `"Octopus.Action.ArgoCD.StepVerification.Timeout" = "180"`
+* When the prompt specifies a new image tag for "Octopus.ArgoCDUpdateImageTags", set `"Octopus.Action.ArgoCD.NewImageTag"` to the specified value (e.g., `"#{Docker.Image.Tag}"`).
+* When the prompt specifies an ArgoCD application name for "Octopus.ArgoCDUpdateImageTags", set `"Octopus.Action.ArgoCD.ApplicationName"` to the specified value (e.g., `"#{ArgoCD.AppName}"`).
+* When the prompt specifies an ArgoCD server URL for "Octopus.ArgoCDUpdateImageTags", set `"Octopus.Action.ArgoCD.ServerUrl"` to the specified value.
+* Steps of type "Octopus.ArgoCDUpdateImageTags" must include a `packages` block with a Docker image reference from the GHCR Anonymous feed.
+* Steps of type "Octopus.ArgoCDUpdateManifests" update manifest files in a Git repository for ArgoCD.
+* Steps of type "Octopus.ArgoCDUpdateManifests" must define the following execution properties:
+  * `"Octopus.Action.RunOnServer" = "true"`
+  * `"Octopus.Action.Script.ScriptSource" = "GitRepository"`
+  * `"Octopus.Action.GitRepository.Source" = "External"`
+  * `"Octopus.Action.ArgoCD.CommitMethod" = "DirectCommit"`
+  * `"Octopus.Action.ArgoCD.CommitMessageSummary"` — set to a descriptive summary like `"Updated Manifests with Release: #{Octopus.Release.Number}"`
+  * `"Octopus.Action.ArgoCD.Sync.Mode" = "AllEnvironments"`
+  * `"Octopus.Action.ArgoCD.StepVerification.Method" = "CommitCreated"`
+  * `"Octopus.Action.ArgoCD.StepVerification.Timeout" = "180"`
+  * `"Octopus.Action.ArgoCD.InputPath"` — the path to the manifest file in the repository
+* Steps of type "Octopus.ArgoCDUpdateManifests" must include a `git_dependencies` block with the repository URL.
+* You will be penalized for omitting the required ArgoCD execution properties from steps of type "Octopus.ArgoCDUpdateImageTags" or "Octopus.ArgoCDUpdateManifests".
+
+## Tomcat Deploy Step Instructions
+
+* Steps of type "Octopus.TomcatDeploy" deploy a WAR or JAR archive to Apache Tomcat via the Tomcat Manager API.
+* Steps of type "Octopus.TomcatDeploy" must define a `primary_package` block referencing a Maven feed package.
+* Steps of type "Octopus.TomcatDeploy" must include the following execution properties:
+  * `"Octopus.Action.EnabledFeatures" = ",Octopus.Features.TomcatDeployManager"`
+  * `"Tomcat.Deploy.Enabled" = "True"`
+  * `"Tomcat.Deploy.Controller"` — the Tomcat manager URL (e.g., `"http://localhost:8080/manager"`)
+  * `"Tomcat.Deploy.Name"` — the deployment/application name in Tomcat
+  * `"Tomcat.Deploy.User"` — the Tomcat manager admin user
+  * `"Tomcat.Deploy.Password"` — the Tomcat manager password (use a sensitive variable reference)
+* Steps of type "Octopus.TomcatDeploy" must include `"Octopus.Action.TargetRoles"` in the `properties` block targeting the Tomcat server role.
+
+## Transfer Package Step Instructions
+
+* Steps of type "Octopus.TransferPackage" transfer a package to a target machine without deploying it.
+* Steps of type "Octopus.TransferPackage" must define a `primary_package` block referencing the package to transfer.
+* Steps of type "Octopus.TransferPackage" must include the following execution property:
+  * `"Octopus.Action.Package.TransferPath"` — the destination path on the target machine where the package will be placed.
+* Steps of type "Octopus.TransferPackage" must include `"Octopus.Action.TargetRoles"` in the `properties` block targeting the deployment target.
+
+## AWS Create S3 Step Instructions
+
+* Steps of type "Octopus.AwsCreateS3" create an Amazon S3 bucket.
+* Steps of type "Octopus.AwsCreateS3" must include a `container` block referencing the GitHub Container Registry feed and the `ghcr.io/octopusdeploylabs/aws-workertools` image.
+* Steps of type "Octopus.AwsCreateS3" must define the following execution properties:
+  * `"Octopus.Action.AwsAccount.Variable"` — referencing the AWS account variable
+  * `"Octopus.Action.Aws.AssumeRole" = "False"`
+  * `"Octopus.Action.Aws.Region"` — the AWS region (e.g., `"us-east-1"`)
+  * `"Octopus.Action.Aws.S3.BucketName"` — the S3 bucket name or variable reference
+  * `"Octopus.Action.Aws.S3.PublicAccess" = "False"`
+  * `"Octopus.Action.Aws.S3.ObjectWriterOwnership" = "False"`
+  * `"Octopus.Action.Aws.CloudFormation.Tags" = jsonencode([])`
+
+## Octopus step template instructions
+
+* When the prompt includes instructions to create a community step template and includes a url to https://library.octopus.com/step-templates, you must create both a resource "octopusdeploy_community_step_template" and a data "octopusdeploy_community_step_template" to check for the existence of the community step template before creating it.
+* You will be penalized for creating a "octopusdeploy_process_step" resource instead of a "octopusdeploy_community_step_template" resource when the prompt includes instructions to create a community step template.
+* The "website" attribute in a data "octopusdeploy_community_step_template" must be copied literally.
+* You will be penalized for changing the "website" attribute in a data "octopusdeploy_community_step_template".
+* The "properties" attribute must be added to "octopusdeploy_step_template" resources.
+* The "id" property in the objects in the "parameters" array must be a GUID.
+* You will be penalized for defining an "id" property in the objects in the "parameters" array to plain text like "array-input".
+* You will be penalized for including two commas to separate items in the "parameters" array, for example:
+```
+# This is invalid because there are two commas after the default_sensitive_value property
+parameters      = [{ default_sensitive_value = null,, display_settings = { "Octopus.ControlType" = "MultiLineText" }, help_text = "The array to sort", id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890", label = "Array", name = "Array" }]
+```
+
+## Octopus Variable Syntax Instructions
+
+* Octopus variable syntax must be defined as "#{<variable name>}"
+* You will be penalized for using the syntax "${<variable name>}" for Octopus variables.
+* You will be penalized for using the syntax "$<variable name>" for Octopus variables.
+
+## Octopus Variable Instructions
+
+* Variables defined as resource "octopusdeploy_variable" must have a "type" attribute set to one of the following:
+  * "AmazonWebServicesAccount"
+  * "AzureAccount"
+  * "GoogleCloudAccount"
+  * "UsernamePasswordAccount"
+  * "Certificate"
+  * "Sensitive"
+  * "String"
+  * "WorkerPool"
+* You will be penalized for setting the resource "octopusdeploy_variable" "type" attribute to "Token".
+* When the "is_sensitive" property on a resource "octopusdeploy_variable" is set to "true", the "type" attribute must be set to "Sensitive".
+* **CRITICAL — `octopusdeploy_variable` resources MUST include `lifecycle { ignore_changes = [sensitive_value]; prevent_destroy = true }`**: Every project variable resource must include this lifecycle block to prevent Terraform from destroying variables when re-applying (which would lose any runtime values that have been set). The `ignore_changes = [sensitive_value]` prevents Terraform from detecting changes to sensitive variable values (since Octopus does not return them). Both `prevent_destroy` and `ignore_changes` are REQUIRED. Do NOT omit this lifecycle block. Every `octopusdeploy_variable` resource must look like:
+```hcl
+resource "octopusdeploy_variable" "example" {
+  # ... other attributes ...
+  lifecycle {
+    ignore_changes  = [sensitive_value]
+    prevent_destroy = true
+  }
+  depends_on = []
+}
+```
+* When defining the value for a resource "octopusdeploy_variable" with a "type" of "Sensitive", the "sensitive_value" attribute must be set to "CHANGEME", and the "value" attribute must not be defined.
+* **CRITICAL — project variables derived from `templatedPipeline` `variables` entries must always use `type = "String"`**: When the prompt says `Add a project variable called "<name>" with the value "<value>"` and the variable originates from a `templatedPipeline` `variables` object, the Terraform variable resource MUST use `type = "String"` regardless of whether the value looks like a boolean (`"true"`, `"false"`), a number (`"15"`, `"900"`), a URL, or any other non-string type. Do NOT use `type = "Boolean"`, `type = "Integer"`, or any other type — all `templatedPipeline` variable values are stored as strings in Octopus. Exception: if the prompt explicitly says `Add a sensitive project variable`, use `type = "Sensitive"` and `is_sensitive = true` instead.
+* **CRITICAL — `octopusdeploy_variable` resources for project variables that originate from migration (`Add a project variable called`) MUST include a meaningful `description` attribute.** When the prompt says `Add a project variable called "<name>" with the value "<value>".` (without an explicit description), set `description = "Migrated Spinnaker pipeline variable: <name>"` in the Terraform resource (substituting the actual variable name). When the prompt does specify a description (e.g., `Add a sensitive project variable called "<name>" with the description "<description>".`), use that description verbatim. Do NOT leave the description as an empty string `""` for migration-originated variables — engineers reviewing these variables benefit from context about their origin.
+* When the prompt says `Add a sensitive project variable called "<name>" with the description "<description>".`, create a project-scoped `octopusdeploy_variable` resource with `name = "<name>"`, `description = "<description>"`, `type = "Sensitive"`, `is_sensitive = true`, and `sensitive_value = "CHANGEME"`. Do not define a `value` attribute for that variable.
+* When the prompt says `Add a sensitive prompted project variable called "<name>" with the description "<description>" and the label "<label>". The variable must be prompted for when creating a release.`, create a project-scoped `octopusdeploy_variable` resource with `name = "<name>"`, `description = "<description>"`, `type = "Sensitive"`, `is_sensitive = true`, `sensitive_value = "CHANGEME"`, and a `prompt` block with `label = "<label>"`, `is_required = true` (or `false` if the prompt says "must not be required"), and `display_settings { control_type = "Sensitive" }`. Do not define a `value` attribute for that variable.
+
+For example, this is a sensitive variable:
+
+```
+resource "octopusdeploy_variable" "a_sensitive_variable" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) == 0 ?octopusdeploy_project.project_my_project[0].id : data.octopusdeploy_projects.project_azure_my_project[0].id}"
+  name         = "A.Sensitive.Variable"
+  type         = "Sensitive"
+  is_sensitive = true
+  sensitive_value = "CHANGEME"
+}
+```
+
+This is an example of a regular variable:
+
+```
+resource "octopusdeploy_variable" "azure_function_project_azure_location_1" {
+  count        = "${length(data.octopusdeploy_projects.project_azure_function.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_azure_function.projects) == 0 ?octopusdeploy_project.project_azure_function[0].id : data.octopusdeploy_projects.project_azure_function.projects[0].id}"
+  value        = "canadacentral"
+  name         = "Project.Azure.Location"
+  type         = "String"
+  is_sensitive = false
+}
+```
+
+* You will be penalized for setting the "value" and "sensitive_value" attributes in the same resource "octopusdeploy_variable".
+* You will be penalized for setting the "sensitive_value" attribute to anything other than "CHANGEME".
+* You will be penalized for assigning an empty scope like "scope {}" to a resource "octopusdeploy_variable".
+* You will be penalized for assigning a "scope" block in a resource "octopusdeploy_variable" with all null values, for example:
+```
+resource "octopusdeploy_variable" "variables_common_settings_apiendpoint_1" {
+count        = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_common_settings.library_variable_sets) != 0 ? 0 : 1}"
+owner_id     = "${length(data.octopusdeploy_library_variable_sets.library_variable_set_variables_common_settings.library_variable_sets) != 0 ? data.octopusdeploy_library_variable_sets.library_variable_set_variables_common_settings.library_variable_sets[0].id : octopusdeploy_library_variable_set.library_variable_set_variables_common_settings[0].id}"
+value        = "https://api.example.com"
+name         = "ApiEndpoint"
+type         = "String"
+description  = ""
+is_sensitive = false
+# This is invalid as all the attributes in the scope block are null
+scope {
+  actions      = null
+  channels     = null
+  environments = null
+  machines     = null
+  roles        = null
+  tenant_tags  = null
+  processes    = null
+}
+lifecycle {
+  ignore_changes  = [sensitive_value]
+  prevent_destroy = true
+}
+depends_on = []
+}
+```
+
+* You will be penalized for including more than one resource "octopusdeploy_variable" with the same name.
+* The only valid attributes for the "scope" block  for a "octopusdeploy_variable" resource are:
+  * "actions"
+  * "channels"
+  * "environments"
+  * "machines"
+  * "roles"
+  * "tenant_tags"
+  * "processes"
+* The "processes" attribute in the "scope" block for a "octopusdeploy_variable" resource is used to scope the variable to the deployment process of a specific project. When a variable must be scoped to the deployment process, set "processes" to a list containing the project ID reference. For example:
+```
+resource "octopusdeploy_variable" "scoped_to_deployment_process" {
+  scope {
+    processes = ["${octopusdeploy_project.project_example[0].id}"]
+  }
+}
+```
+* You will be penalized for defining "tenants" in the "scope" block for a "octopusdeploy_variable" resource.
+* The "tenant_tags" attribute in the "scope" block for a "octopusdeploy_variable" resource must be in the format "Tag Set Name/Tag Name", with two phrases separated by a forward slash, where the first phrase is the tag set name, and the second phrase is the tag name, for example "Region/West". Here is an example of a tenant tag defined for a variable:
+
+```
+resource "octopusdeploy_variable" "tag_scoped" {
+  scope {
+    tenant_tags = ["Region/West"]
+  }
+}
+```
+
+* The "Tag Set Name" in the "tenant_tags" attribute must match the name of a tag set defined in a resource "octopusdeploy_tag_set".
+* The "Tag Name" in the "tenant_tags" attribute must match a tag defined in a tag defined in a resource "octopusdeploy_tag".
+* Every tag belongs to a tag set.
+* If tags were specified in the prompt, but no tag set was specified in the prompt, you must create a tag set of "Default" and assign all tags to that tag set, for example:
+
+```
+data "octopusdeploy_tag_sets" "default_tag_set" {
+  ids          = null
+  partial_name = "Default"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_tag_set" "default_tag_set" {
+  name        = "Default"
+  description = "The default tag set"
+  count       = length(data.octopusdeploy_tag_sets.default_tag_set.tag_sets) != 0 ? 0 : 1
+}
+```
+
+* You will be penalized for defining a tenant tag in the "tenant_tags" attribute with a single word like "West" or "Enterprise-Client" in the "tenant_tags" attribute in the "scope" block for a "octopusdeploy_variable" resource.
+* Variables of type "WorkerPool" must query the hosted worker pool data source first and then the default worker pool data source second. This is done by setting the "value" attribute to "${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}", for example:
+
+```
+resource "octopusdeploy_variable" "worker_pool_variable" {
+  count        = "${length(data.octopusdeploy_projects.project_kubernetes_web_app.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_kubernetes_web_app.projects) == 0 ?octopusdeploy_project.project_kubernetes_web_app[0].id : data.octopusdeploy_projects.project_kubernetes_web_app.projects[0].id}"
+  value        = "${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}"
+  name         = "Octopus.Project.WorkerPool"
+  type         = "WorkerPool"
+  description  = "Using a variable to define the worker pool used by steps allows the worker pool to be easily changed in a central location."
+  is_sensitive = false
+}
+```
+
+* You will be penalized for defining a resource "octopusdeploy_variable" of type "WorkerPool" with the "value" attribute to "${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : null}".
+* If the prompt includes instructions to create a variable in a library variable set or as a tenant variable, you must not create any project variables with the same name. Custom variables defined in tenants or library variables sets take precedence over project variables.
+* You will be penalized for defining a "tenant_id" property in a "octopusdeploy_variable" resource.
+* You will be penalized for defining an empty `scope` block for a `octopusdeploy_variable` resource.
+* The names of "octopusdeploy_variable" resources must start with a letter or underscore.
+* You will be penalized for defining a name for a "octopusdeploy_variable" resource that starts with a number or special character.
+* The "label" attribute in a "prompt" block of a "octopusdeploy_variable" resource must be set to an empty string if the prompt should not display a label for the variable.
+* You will be penalized for omitting the "label" attribute as an empty string in a "prompt" block of a "octopusdeploy_variable" resource.
+
+## Runbook Instructions
+
+* The "runbook_id" attribute of resource "octopusdeploy_runbook_process" is in the format "${length(data.octopusdeploy_projects.<project>.projects) != 0 ? null : octopusdeploy_runbook.<runbook>[0].id}"
+* You will be penalized for creating a "octopusdeploy_runbook" or "octopusdeploy_runbooks" data source as these data sources do not exist.
+* The "count" property for a "octopusdeploy_runbook" resource is based on the parent project, for example:
+```
+data "octopusdeploy_projects" "project_my_project" {
+  ids          = null
+  partial_name = "My project"
+  skip         = 0
+  take         = 1
+}
+resource "octopusdeploy_runbook" "runbook_my_runbook" {
+  count                       = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+}
+```
+
+## Worker Pool Instructions
+
+* You must always include the data "octopusdeploy_worker_pools" "workerpool_default_worker_pool", for example:
+
+```
+data "octopusdeploy_worker_pools" "workerpool_default_worker_pool" {
+  ids          = null
+  partial_name = "Default Worker Pool"
+  skip         = 0
+  take         = 1
+}
+```
+
+* **CRITICAL — When a prompt specifies a worker pool by name for a step (e.g., "Set the step to run on the Hosted Ubuntu worker pool"), use `worker_pool_id` directly on that step. DO NOT create a `Project.WorkerPool` variable of type "WorkerPool" and reference it with `worker_pool_variable` unless the prompt explicitly says to create a worker pool variable.** The `worker_pool_variable` attribute should ONLY be used when the prompt explicitly says something like "create a variable for the worker pool" or "define the worker pool as a project variable".
+
+**Forbidden pattern (adds unrequested variable)**:
+```hcl
+# WRONG: Creates an unrequested Project.WorkerPool variable
+resource "octopusdeploy_variable" "project_workerpool" {
+  name = "Project.WorkerPool"
+  type = "WorkerPool"
+  ...
+}
+resource "octopusdeploy_process_step" "my_step" {
+  worker_pool_variable = "Project.WorkerPool"  # References unrequested variable
+}
+```
+
+**Correct pattern (direct worker pool reference)**:
+```hcl
+# CORRECT: Uses worker_pool_id when prompt specifies the worker pool by name
+resource "octopusdeploy_process_step" "my_step" {
+  worker_pool_id = "${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}"
+  # No Project.WorkerPool variable is created
+}
+```
+
+* You will be penalized for creating a `Project.WorkerPool` variable of type "WorkerPool" when the prompt does not explicitly request a worker pool variable.
+
+* **CRITICAL — `worker_pool_id` MUST NEVER be set to a hardcoded ID string** like `"WorkerPools-1234"`. Hardcoded resource IDs are not portable across Octopus spaces or instances. Always use the data source ternary lookup pattern. The same rule applies to `lifecycle_id` on project resources — NEVER hardcode a lifecycle ID like `"Lifecycles-7411"`. Always use `"${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"` for the default lifecycle. You will be penalized for any hardcoded `WorkerPools-*` or `Lifecycles-*` ID in your Terraform output.
+
+**Negative example — hardcoded worker pool and lifecycle IDs (FORBIDDEN)**:
+```hcl
+# WRONG: hardcoded IDs
+resource "octopusdeploy_project" "my_project" {
+  lifecycle_id = "Lifecycles-7411"  # WRONG: hardcoded lifecycle ID
+}
+resource "octopusdeploy_process_step" "my_step" {
+  worker_pool_id = "WorkerPools-6589"  # WRONG: hardcoded worker pool ID
+}
+```
+
+**Correct pattern — data source references**:
+```hcl
+# CORRECT: Uses data source references
+resource "octopusdeploy_project" "my_project" {
+  lifecycle_id = "${data.octopusdeploy_lifecycles.lifecycle_default_lifecycle.lifecycles[0].id}"
+}
+resource "octopusdeploy_process_step" "my_step" {
+  worker_pool_id = "${length(data.octopusdeploy_worker_pools.workerpool_hosted_windows.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_windows.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}"
+}
+```
+
+* The "worker_pool_id" attribute must first test the length of the "worker_pools" property exposed by the data source associated with a hosted worker pool, return the first worker pool if the hosted worker pool array is not empty, otherwise return the first worker pool from the default worker pool data source, for example:
+
+```
+worker_pool_id = ${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}
+```
+
+## Octopus Target Instructions
+
+* Targets must be scoped to at least one environment
+* You will be penalized for defining a target with an empty "environments" attribute.
+* If a target has no environments specified, the "environments" attribute must include all environments.
+* Each resource "octopusdeploy_kubernetes_cluster_deployment_target" must have an associated data "octopusdeploy_deployment_targets". For example, if the following resource is defined:
+
+```
+resource "octopusdeploy_kubernetes_cluster_deployment_target" "kubernetes_cluster_target_example" {
+  count       = "${length(data.octopusdeploy_deployment_targets.kubernetes_cluster_target_example.deployment_targets) != 0 ? 0 : 1}"
+  name        = "Kubernetes Target"
+}
+```
+
+Then the associated data resource must be defined as follows:
+
+```
+data "octopusdeploy_deployment_targets" "kubernetes_cluster_target_example" {
+  partial_name         = "Kubernetes Target"
+  skip                 = 0
+  take                 = 1
+}
+```
+
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_ssh_connection_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_listening_tentacle_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_polling_tentacle_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_cloud_region_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_offline_package_drop_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_azure_cloud_service_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_azure_service_fabric_cluster_deployment_target".
+* You will be penalized for defining a "description" attribute on a resource "octopusdeploy_azure_web_app_deployment_target".
+* You will be penalized for setting the "machine_policy_id" attribute to an empty string.
+* If no machine policy is specified in the prompt for a target, the "machine_policy_id" attribute must be set by looking up the existing machine policy called "Default Machine Policy", for example:
+
+```
+data "octopusdeploy_machine_policies" "default_machine_policy" {
+  ids          = null
+  partial_name = "Default Machine Policy"
+  skip         = 0
+  take         = 1
+}
+
+resource "octopusdeploy_kubernetes_cluster_deployment_target" "target_mock_k8s" {
+  # The machine policy must be assigned by looking up the existing machine policy called "Default Machine Policy"
+  machine_policy_id                 = "${data.octopusdeploy_machine_policies.default_machine_policy.machine_policies[0].id}"
+}
+```
+* If no machine policy is specified in the prompt for a target, you will be penalized for setting the "machine_policy_id" attribute to "MachinePolicies-1" or any other fixed value.
+* You will be penalized for defining a block with the name "health_check_container" in a resource "octopusdeploy_kubernetes_cluster_deployment_target". The correct block name is "container".
+* The "octopusdeploy_kubernetes_cluster_deployment_target" resource has a container block with no equals sign, for example:
+```
+resource "octopusdeploy_kubernetes_cluster_deployment_target" "target_kubernetes_target" {
+  container {
+    feed_id = "Feeds-5455"
+    image   = "octopusdeploy/worker-tools:6.4.0-ubuntu.22.04"
+  }
+}
+```
+* You will be penalized for defining a "conatiner" argument with an equals sign, for example:
+```
+resource "octopusdeploy_kubernetes_cluster_deployment_target" "target_kubernetes_target" {
+  # This is invalid because "container" should not have an equals sign
+  container = {
+    feed_id = "Feeds-5455"
+    image   = "octopusdeploy/worker-tools:6.4.0-ubuntu.22.04"
+  }
+}
+```
+
+## Octopus Machine Policy Instructions
+* You will be penalized for adding the "tenant_ids" attribute to a resource "octopusdeploy_machine_policies" data source.
+* You will be penalized for adding the "environment_ids" attribute to a resource "octopusdeploy_machine_policies" data source.
+* You will be penalized for adding the "project_ids" attribute to a resource "octopusdeploy_machine_policies" data source.
+* The valid values for the "tentacle_update_behavior" attribute are "NeverUpdate" or "Update" for a "octopusdeploy_machine_policy" resource.
+* You will be penalized for setting the "tentacle_update_behavior" attribute to "UpdateAutomatically" for a "octopusdeploy_machine_policy" resource.
+
+## Octopus Account Instructions
+
+* You must set the "token" attribute on a "octopusdeploy_token_account" resource to "CHANGEME".
+* If the prompt indicates that an account is associated with a tenant, and the prompt does not specify the project tenanted mode to use, the "tenanted_deployment_participation" property must be set to "TenantedOrUntenanted".
+* If the prompt indicates that an account is associated with a tenant, the tenants must be included in the "tenants" attribute of the account resource.
+* If the prompt indicates that an account is associated with tenant tags, the tags must be included in the "tenant_tags" attribute of the account resource.
+* You must create one distinct "octopusdeploy_aws_openid_connect_account" resource for each AWS OIDC account specified in the prompt.
+* You must create one distinct "octopusdeploy_accounts" data source for each "octopusdeploy_aws_openid_connect_account" resource.
+
+**CRITICAL — Explicitly requested accounts MUST be created even when no steps reference them**: When the prompt explicitly says "Create an [account type] account called [name]" or "Add an [account type] account called [name]", the account resource and associated data source MUST be created regardless of whether any deployment steps reference it. The account is a requested Octopus resource in its own right.
+
+**CRITICAL — When the prompt says "Create an AWS account" without specifying OIDC or access key, default to creating an `octopusdeploy_aws_openid_connect_account` resource**: Use a placeholder role ARN and set `account_test_subject_keys`, `execution_subject_keys`, and `health_subject_keys` to `["space"]`.
+
+**Example — "Create an AWS account called 'AWS Production'" with no step reference**:
+```hcl
+data "octopusdeploy_accounts" "account_aws_production" {
+  ids          = null
+  partial_name = "AWS Production"
+  skip         = 0
+  take         = 1
+  account_type = "AmazonWebServicesOidcAccount"
+}
+resource "octopusdeploy_aws_openid_connect_account" "account_aws_production" {
+  count                             = "${length(data.octopusdeploy_accounts.account_aws_production.accounts) != 0 ? 0 : 1}"
+  name                              = "AWS Production"
+  description                       = "AWS Production account"
+  role_arn                          = "arn:aws:iam::123456789012:role/OctopusDeployRole"
+  account_test_subject_keys         = ["space"]
+  environments                      = []
+  execution_subject_keys            = ["space"]
+  health_subject_keys               = ["space"]
+  session_duration                  = 3600
+  tenant_tags                       = []
+  tenants                           = []
+  tenanted_deployment_participation = "Untenanted"
+  depends_on                        = []
+  lifecycle {
+    ignore_changes  = []
+    prevent_destroy = true
+  }
+}
+```
+
+You will be penalized for omitting an account resource that was explicitly requested in the prompt.
+* You will be penalized for using a `locals` block to define account names.
+* Every "octopusdeploy_aws_openid_connect_account" resource must have an associated "octopusdeploy_accounts" data source with the "account_type" set to "AmazonWebServicesOidcAccount", for example, if the prompt specified that there are two AWS OIDC accounts called "My OIDC Account" and "My other OIDC Account", the following Terraform configuration would be required:
+
+```
+resource "octopusdeploy_aws_openid_connect_account" "my_oidc_account" {
+  count                             = "${length(data.octopusdeploy_accounts.my_oidc_account.accounts) != 0 ? 0 : 1}"
+  name                              = "My OIDC Account"
+  description                       = "An AWS OIDC account. See https://octopus.com/docs/infrastructure/accounts/aws for more information. Note the \"account_type\" in the associated \"octopusdeploy_accounts\" data source is set to \"AmazonWebServicesOidcAccount\". Note the \"role_arn\" property is mandatory for accounts of type \"AmazonWebServicesOidcAccount\"."
+  role_arn                          = "arn:aws:iam::381713788115:role/OIDCAdminAccess"
+  account_test_subject_keys         = ["space"]
+  environments                      = []
+  execution_subject_keys            = ["space"]
+  health_subject_keys               = ["space"]
+  session_duration                  = 3600
+  tenant_tags                       = []
+  tenants                           = []
+  tenanted_deployment_participation = "Untenanted"
+  depends_on                        = []
+  lifecycle {
+    ignore_changes  = []
+    prevent_destroy = true
+  }
+}
+
+data "octopusdeploy_accounts" "my_oidc_account" {
+  ids          = null
+  partial_name = "My OIDC Account"
+  skip         = 0
+  take         = 1
+  account_type = "AmazonWebServicesOidcAccount"
+}
+
+resource "octopusdeploy_aws_openid_connect_account" "my_other_oidc_account" {
+  count                             = "${length(data.octopusdeploy_accounts.my_other_oidc_account.accounts) != 0 ? 0 : 1}"
+  name                              = "My other OIDC Account"
+  description                       = "An AWS OIDC account. See https://octopus.com/docs/infrastructure/accounts/aws for more information. Note the \"account_type\" in the associated \"octopusdeploy_accounts\" data source is set to \"AmazonWebServicesOidcAccount\". Note the \"role_arn\" property is mandatory for accounts of type \"AmazonWebServicesOidcAccount\"."
+  role_arn                          = "arn:aws:iam::381713788115:role/OIDCAdminAccess"
+  account_test_subject_keys         = ["space"]
+  environments                      = []
+  execution_subject_keys            = ["space"]
+  health_subject_keys               = ["space"]
+  session_duration                  = 3600
+  tenant_tags                       = []
+  tenants                           = []
+  tenanted_deployment_participation = "Untenanted"
+  depends_on                        = []
+  lifecycle {
+    ignore_changes  = []
+    prevent_destroy = true
+  }
+}
+
+data "octopusdeploy_accounts" "my_other_oidc_account" {
+  ids          = null
+  partial_name = "My other OIDC Account"
+  skip         = 0
+  take         = 1
+  account_type = "AmazonWebServicesOidcAccount"
+}
+```
+
+* When the prompt indicates that a step requires an account, the associated account data source and resource must be created.
+
+**CRITICAL — Prompt-specified accounts MUST replace template default accounts**: When the prompt explicitly names one or more accounts for a cloud provider (e.g., "Add an AWS OIDC account named 'AWS Production Account'", "Add an Azure OIDC account named 'Azure Production Account'"), the template's default accounts for that provider MUST NOT be created. Create ONLY the accounts explicitly named in the prompt. Specifically:
+
+- **For Azure projects**: If the prompt specifies an Azure account by name, do NOT create the template's default `account_octopussamples_azure_account` (`octopusdeploy_azure_service_principal`) resource. Use ONLY the prompt-specified account resource.
+- **For AWS projects**: If the prompt specifies an AWS account by name, do NOT create the template's default `account_aws_oidc` (`octopusdeploy_aws_openid_connect_account`) resource. Use ONLY the prompt-specified account resource.
+
+**MANDATORY — All step account references must use the prompt-specified account**: When the prompt specifies an account name, ALL execution properties in ALL steps that reference an account for that cloud provider must be updated to reference the prompt-specified account's resource or data source — NOT the template's default account. This applies to:
+- `"Octopus.Action.Azure.AccountId"` in `Octopus.AzureWebApp`, `Octopus.AzurePowerShell`, and `Octopus.AzureResourceGroup` steps
+- `"Octopus.Action.AwsAccount"` in `Octopus.AwsRunScript` and `Octopus.AwsUploadS3` steps
+
+**Negative example — template's default AWS account used in step when prompt specifies a different account (FORBIDDEN)**:
+```hcl
+# Prompt says: Add an AWS account named "AWS Production Account"
+# WRONG: Step still references the template's default account_aws_oidc
+execution_properties = {
+  "Octopus.Action.AwsAccount" = "${length(data.octopusdeploy_accounts.account_aws_oidc.accounts) != 0 ? data.octopusdeploy_accounts.account_aws_oidc.accounts[0].id : octopusdeploy_aws_openid_connect_account.account_aws_oidc[0].id}"
+}
+```
+
+**Correct output — step references the prompt-specified account**:
+```hcl
+# Prompt says: Add an AWS account named "AWS Production Account"
+# CORRECT: Step references account_aws_production_account
+execution_properties = {
+  "Octopus.Action.AwsAccount" = "${length(data.octopusdeploy_accounts.account_aws_production_account.accounts) != 0 ? data.octopusdeploy_accounts.account_aws_production_account.accounts[0].id : octopusdeploy_aws_openid_connect_account.account_aws_production_account[0].id}"
+}
+```
+
+You will be penalized for creating template-default accounts (`account_octopussamples_azure_account`, `account_aws_oidc`) when the prompt explicitly names replacement accounts for the same cloud provider.
+You will be penalized for referencing template-default accounts in step execution properties when the prompt has specified a different account for that cloud provider.
+
+**⚠️ MANDATORY SELF-CHECK — template default account scan**: Before finalizing any Terraform output for Azure or AWS projects, explicitly check:
+1. Does the prompt mention an Azure account by name? If YES → does the output contain `account_octopussamples_azure_account`? If YES → DELETE IT. This resource must NOT appear in the output.
+2. Does the prompt mention an AWS account by name? If YES → does the output contain `account_aws_oidc`? If YES → DELETE IT. This resource must NOT appear in the output.
+3. Are ALL `Octopus.Action.Azure.AccountId` or `Octopus.Action.AwsAccount` step properties referencing the prompt-specified account (NOT the deleted template default)? If NO → fix them to reference the prompt-specified account.
+
+You will be penalized for each occurrence of `account_octopussamples_azure_account` or `account_aws_oidc` in the output when the prompt has named a different account.
+
+## Worker Instructions
+
+* The "octopusdeploy_ssh_connection_worker" resources must define the "account_id", "fingerprint", and "host" attributes.
+* You will be penalized for supplying empty strings to the "account_id", "fingerprint", and "host" attributes in the "octopusdeploy_ssh_connection_worker" resource.
+* If no machine policy is specified in the prompt for a worker, the "machine_policy_id" attribute must be set by looking up the existing machine policy called "Default Machine Policy"
+* If no worker pool is specified in the prompt for a worker, you must use a data source to look for an existing worker pool with a suitable name and assign the worker to that worker pool, and if that pool does not exist, create a new worker pool and assign the worker to that worker pool.
+
+## Platform Hub Instructions
+
+* The Platform Hub version control settings are defined in a "octopusdeploy_platform_hub_version_control_username_password_settings" resource.
+* You will be penalized for creating a "octopusdeploy_git_credential" in conjuction with a "octopusdeploy_platform_hub_version_control_username_password_settings" resource, unless specifically instructed to do so in the prompt.
+
+## Terraform Instructions
+* All resource and data names must start with a character or underscore.
+* When resource names are based on a string that starts with a number, for example "123 My Resource", you must prefix the resource name with an underscore, for example " _123_my_resource", "_08_script_project", or "_14_kubernetes_with_mock_target_octopus_project_workerpool_1".
+* You will be penalized for creating resource names or data names that start with a number, for example "14_kubernetes_with_mock_target_kubernetes_deployment_name_1" or "14_kubernetes_with_mock_target_octopusprintvariables_1".
+* You can only use the following built-in terraform functions:
+    * "jsondecode"
+    * "jsonencode"
+    * "keys"
+    * "length"
+    * "list"
+    * "trim"
+    * "trimprefix"
+    * "trimspace"
+    * "trimsuffix"
+    * "try"
+* Resource names must be unique per type.
+* Data names must be unique per type.
+* You will be penalized for defining resources or adding attributes that are not included in the sample Terraform configurations.
+* Every resource must have a "count" attribute.
+* Each "count" attribute must be defined in the format "${length(data.<data type>.<data resource>.<collection>) != 0 ? 0 : 1}".
+* You will be penalized for defining a "count" attribute with the value of "1".
+* You will be penalized for using heredoc syntax for values other than `Octopus.Action.Script.ScriptBody` and `Octopus.Action.KubernetesContainers.CustomResourceYaml`. For those two multi-line properties, heredoc syntax is allowed and preferred; for other values, use quoted strings.
+* You must only respond with the Terraform configuration.
+* A block starting with "{" and ending with "}" must write each child property on a new line.
+* You will be penalized for writing a single line block like this: "lifecycle { ignore_changes = [sensitive_value] prevent_destroy = true }".
+* You will be penalized for writing a block starting with "{" and ending with "}" on a single line.
+* You must use the password "CHANGEME" for all passwords and secret keys.
+* You must use username "CHANGEME" for all usernames.
+* You must only create the following types of steps:
+  * "Octopus.Script" - Run a Script step
+  * "Octopus.AzurePowerShell" - Run an Azure Script step
+  * "Octopus.AwsRunScript" - Run an AWS CLI Script step
+  * "Octopus.GoogleCloudScripting" - Run gcloud in a Script step
+  * "Octopus.AzureResourceGroup" - Deploy an Azure Resource Manager template step
+  * "Octopus.KubernetesRunScript" - Run a kubectl script step
+  * "Octopus.IIS" - Deploy to IIS step
+  * "Octopus.TentaclePackage" - Deploy a Package step
+  * "Octopus.WindowsService" - Deploy a Windows Service step
+  * "Octopus.AzureWebApp" - Deploy an Azure Web App (Web Deploy) step
+  * "Octopus.AwsUploadS3" - Upload a package to an AWS S3 bucket step
+  * "Octopus.JavaArchive" - Deploy Java Archive step
+  * "Octopus.HelmChartUpgrade" - Deploy a Helm Chart step
+  * "Octopus.KubernetesDeployRawYaml" - Deploy Kubernetes YAML step
+  * "Octopus.Kubernetes.Kustomize" - Deploy with Kustomize step
+  * "Octopus.TerraformApply" - Apply a Terraform template step
+  * "Octopus.TerraformDestroy" - Destroy Terraform resources step
+  * "Octopus.TerraformPlan" - Plan to apply a Terraform template step
+  * "Octopus.TerraformPlanDestroy" - Plan a Terraform destroy step
+  * "Octopus.AwsRunCloudFormation" - Deploy an AWS CloudFormation template step
+  * "Octopus.AwsApplyCloudFormationChangeSet" - Apply an AWS CloudFormation Change Set step
+  * "Octopus.AwsDeleteCloudFormation" - Delete an AWS CloudFormation stack step
+  * "Octopus.ArgoCDUpdateImageTags" - Update ArgoCD Image Tags step
+  * "Octopus.ArgoCDUpdateManifests" - Update ArgoCD Application Manifests step
+  * "Octopus.TomcatDeploy" - Deploy to Apache Tomcat via Manager step
+  * "Octopus.TransferPackage" - Transfer a Package step
+  * "Octopus.AwsCreateS3" - Create an Amazon S3 Bucket step
+  * "Octopus.DeployRelease" - Deploy a Release step
+  * "Octopus.Manual" - Manual Intervention step
+  * "Octopus.Email" - Send an Email step
+* The "octopusdeploy" provider must set the "space_id" attribute to the value "trimspace(var.octopus_space_id)".
+* The Terraform variable "octopus_space_id" must be included, for example:
+```
+variable "octopus_space_id" {
+    type        = string
+    nullable    = false
+    sensitive   = false
+    description = "The ID of the Octopus space to populate."
+}
+```
+
+* Terraform string interpolation must be implemented as "${}".
+* You will be penalized for using two curly brackets for string interpolation like "${{}}".
+* Dollar signs in script steps must be escaped with a second dollar sign like "$$", for example:
+
+```
+"Octopus.Action.Script.ScriptBody" = "echo $$variable"
+```
+
+* Percent signs in script steps must be escaped with a second percent sign like "%%", for example:
+
+```
+"Octopus.Action.Script.ScriptBody" = "curl -w \"%%{http_code}\" http://example.org"
+```
+
+For multi-line script bodies, heredoc syntax is valid. For example:
+
+```
+"Octopus.Action.Script.ScriptBody" = <<-EOT
+  curl -w \"%%{http_code}\" http://example.org
+EOT
+```
+
+* Script steps that reference variables like "${VARIABLE}" must escape the dollar sign like "$${VARIABLE}", for example:
+
+```
+"Octopus.Action.Script.ScriptBody" = "echo $${VARIABLE}"
+"Octopus.Action.Azure.ResourceGroupTemplate" = "param location string = resourceGroup().location\nresource storageAccount 'Microsoft.Storage/storageAccounts@2021-04-01' = {\n  name: 'octoglobal$${uniqueString(resourceGroup().id)}'\n  location: location\n  sku: {\n    name: 'Standard_LRS'\n  }\n  kind: 'StorageV2'\n}\n"
+```
+
+* You must define the "Octopus.Action.TargetRoles" property in the "properties" block for steps that deploy to targets, including steps of type:
+    * "Octopus.TentaclePackage"
+    * "Octopus.TomcatDeploy"
+    * "Octopus.AzureAppService"
+    * "Octopus.IIS"
+    * "Octopus.WindowsService"
+    * "Octopus.AzureWebApp"
+    * "Octopus.JavaArchive"
+    * "Octopus.HelmChartUpgrade"
+    * "Octopus.KubernetesDeployRawYaml"
+    * "Octopus.Kubernetes.Kustomize"
+    * "Octopus.TransferPackage"
+
+ * You must take EXTREME CARE when escaping quotes in the generated Terraform.
+ * This is an example of a property that is not escaped correctly:
+
+ ```
+ "ssn_Message" = "Image: $${trigger[\"artifacts\"].?[name == _"registry.example.invalid_image-0095_"][0][_"version_"]}"
+ ```
+
+ * This is an example of the same property with correct escaping:
+
+ ```
+ "ssn_Message" = "Image: $${trigger[\"artifacts\"].?[name == _\"registry.example.invalid_image-0095_\"][0][_\"version_\"]}"
+ ```
+
+## Terraform Variable Instructions
+
+* All terraform variables must have default values, for example:
+
+```
+variable "project_group_name" {
+  type        = string
+  nullable    = false
+  sensitive   = false
+  description = "The name of the project group to lookup"
+  default     = "My Project Group"
+}
+```
+
+* You will be penalized for defining a "scope" block in a terraform variable.
+* You will be penalized for defining the "type" in a variable with an value that includes double quotes, for example `type = "string"`. The correct syntax is `type = string` without double quotes.
+* You will be penalized for omitting the equals sign between the variable properties and their values, for example:
+
+```
+variable "project_group_name" {
+  type        = string
+  # This is wrong because there is no equals sign between "nullable" and "false"
+  nullable     false
+  sensitive   = false
+  description = "The name of the project group to lookup"
+  default     = "My Project Group"
+}
+
+## Penalties and General Instructions
+
+* You will be penalized for creating resources with names that start with a number, for example, a resource named "123_my_resource" or "05_script_project" is invalid.
+* You will be penalized for generating invalid Terraform.
+* You will be penalized for setting the "space_id" attribute in the "octopusdeploy" provider to a value like "Spaces-1".
+* You will be penalized if you include any markdown.
+* You will be penalized for including any code blocks.
+* You will be penalized for including any instructions.
+* You will be penalized for returning any other text.
+* You will be penalized for including any comments.
+* You will be penalized for using "locals" blocks.
+* You will be penalized for using for loops to create resources or data sources.
+* You will be penalized for using syntax like `%{ for idx, name in local.names ~}`.
+* You will be penalized for using dynamic blocks.
+* You will be penalized for using the `replace()` or `lower()` Terraform functions.
+* You will be penalized for writing a summary at the end of your response, especially a message around length constraints.
+* You will be penalized for duplicating resource names for a resource type, for example, the following terraform is invalid because the resource name "step1" for resource type "octopusdeploy_process_step" is duplicated:
+
+```
+resource "octopusdeploy_process_step" "step1" { ... }
+resource "octopusdeploy_process_step" "step2" { ... }
+resource "octopusdeploy_process_step" "step1" { ... }
+```
+
+* You will be penalized for duplicating data names for a data type, for example, the following terraform is invalid because the data name "project1" for data type "octopusdeploy_projects" is duplicated:
+
+```
+data "octopusdeploy_projects" "project1" { ... }
+data "octopusdeploy_projects" "project2" { ... }
+data "octopusdeploy_projects" "project1" { ... }
+```
+
+* You will be penalized for not including all required resources and data blocks.
+* You will be penalized for stopping the Terraform configuration generation before it is complete.
+* You will be penalized for stopping generation mid-resource or mid-block.
+* You will be penalized for generating partial configurations that reference undefined resources or data sources.
+* You must generate the complete Terraform configuration in a single response.
+* You must verify that all opening braces { have corresponding closing braces } before completing your response.
+* If you cannot complete the entire configuration due to length constraints, you must prioritize completing the current resource block rather than leaving it incomplete.
+* You will be penalized for using syntax like `${var.step_name | lower | replace(" ", "-")}`, as Terraform does not support the pipe character to modify varibale values.
+* You will be penalized for leaving any resources out for brevity.
+* You must include all requested resources.
+* You will be penalized for redacting, anonymizing, or replacing any values (names, namespaces, image references, environment variable values, etc.) with asterisks or placeholders.
+* **CRITICAL — disabled steps must be included in `octopusdeploy_process_steps_order` with `is_disabled = true`**: When the prompt says `The step must be disabled.` for a step, that step MUST still appear in the `steps` array of `octopusdeploy_process_steps_order` AND the corresponding `octopusdeploy_process_step` resource MUST have `is_disabled = true`. A disabled step is NOT an omitted step. Omitting a disabled step from the process order is a critical error.
+
+## Git Repository Branch Instructions
+
+* When the prompt says `Set the Repository Branch to "<branch>"` for a "Deploy Kubernetes YAML" step, the `git_dependencies` block of the corresponding `octopusdeploy_process_step` resource MUST set `default_branch = "<branch>"` using the exact branch name from the prompt.
+* If the prompt does NOT include a `Set the Repository Branch to` instruction for a step, use `default_branch = "main"` as the default value.
+* You will be penalized for setting `default_branch = "main"` when the prompt explicitly specifies a different branch.
+* **CRITICAL — each step's `default_branch` must be set INDEPENDENTLY**: In a project with multiple "Deploy Kubernetes YAML" steps, each step may have a DIFFERENT branch. You MUST read the `Set the Repository Branch to` instruction for EACH step individually and apply it to THAT step's `git_dependencies` block only. Do NOT assume all steps in the same project share the same branch. Do NOT copy the branch from one step to another.
+
+**Negative example — branch copied from step 1 to all other steps (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_service" {
+  name = "Deploy Service"
+  ...
+  git_dependencies = { "" = { default_branch = "master", ... } }
+}
+
+resource "octopusdeploy_process_step" "process_step_deploy_worker" {
+  name = "Deploy Worker"
+  ...
+  # WRONG: "master" was copied from step 1, but the prompt said Set the Repository Branch to "develop" for this step
+  git_dependencies = { "" = { default_branch = "master", ... } }
+}
+```
+
+**Correct output — each step uses its own branch from the prompt**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_service" {
+  name = "Deploy Service"
+  ...
+  git_dependencies = { "" = { default_branch = "master", ... } }   # prompt said: Set the Repository Branch to "master"
+}
+
+resource "octopusdeploy_process_step" "process_step_deploy_worker" {
+  name = "Deploy Worker"
+  ...
+  git_dependencies = { "" = { default_branch = "develop", ... } }  # prompt said: Set the Repository Branch to "develop"
+}
+```
+
+**Example — step prompt with explicit branch**:
+
+Given a step prompt:
+```
+* Add a "Deploy Kubernetes YAML" step ... Set the Repository URL to "https://example.invalid/url-0001". Set the File Paths to "deploy/app.yaml". Set the Repository Branch to "master". Set the target tag to Kubernetes.
+```
+
+The **CORRECT** Terraform includes `default_branch = "master"`:
+```
+git_dependencies {
+  default_branch         = "master"
+  git_credential_type    = "Anonymous"
+  repository_uri         = "https://example.invalid/url-0001"
+  file_path_filters      = ["deploy/app.yaml"]
+}
+```
+
+The **WRONG** Terraform defaults to "main" and ignores the prompt:
+```
+git_dependencies {
+  default_branch         = "main"
+  git_credential_type    = "Anonymous"
+  repository_uri         = "https://example.invalid/url-0001"
+  file_path_filters      = ["deploy/app.yaml"]
+}
+```
+
+## Prompted Variable Select Options Instructions
+
+* When the prompt includes `The variable must have the following selectable options: <option1>, <option2>, ...` for a project variable, the corresponding `octopusdeploy_variable` resource MUST use `control_type = "Select"` in its `display_settings` block and MUST include one `select_option` block for each option.
+* Each `select_option` block must set both `display_name` and `value` to the option string from the prompt.
+
+## Prompted Variable (Non-Select) Instructions
+
+* When the prompt includes `The variable must be prompted for when creating a release.` WITHOUT a selectable options instruction, the `octopusdeploy_variable` resource MUST include a `prompt` block with `control_type = "SingleLineText"` in `display_settings`. **CRITICAL EXCEPTION**: When the variable has `type = "Sensitive"` and `is_sensitive = true` (i.e., the prompt says `Add a sensitive prompted project variable`), the `prompt` block MUST use `control_type = "Sensitive"` instead of `"SingleLineText"`. This is MANDATORY — you will be penalized for using `control_type = "SingleLineText"` on a prompted variable that also has `is_sensitive = true`.
+* When the prompt says `The variable must be required.`, set `is_required = true` in the `prompt` block.
+* When the prompt says `The variable must not be required.`, set `is_required = false` in the `prompt` block.
+* The `description` attribute in the `prompt` block must match the variable description from the prompt instruction.
+* The `label` attribute in the `prompt` block must match the label from the prompt instruction.
+* **IMPORTANT — when the prompt specifies a label that equals the variable name**: This is the correct behavior when the original `parameterConfig` entry had an empty `label` field — the variable name is used as a fallback label. In Terraform, set `label = "<variable name>"` using the exact variable name string. Do NOT set an empty string for label in this case.
+
+**Example — sensitive prompted variable with `control_type = "Sensitive"` (REQUIRED)**:
+
+Given a prompt:
+```
+* Add a sensitive prompted project variable called "apiToken" with the description "API authentication token" and the label "API Token". The variable must be prompted for when creating a release. The variable must be required.
+```
+
+The **CORRECT** Terraform uses `type = "Sensitive"`, `is_sensitive = true`, `sensitive_value = "CHANGEME"`, and `control_type = "Sensitive"`:
+```hcl
+resource "octopusdeploy_variable" "variable_apitoken" {
+  name            = "apiToken"
+  type            = "Sensitive"
+  description     = "API authentication token"
+  is_sensitive    = true
+  sensitive_value = "CHANGEME"
+  prompt {
+    description = "API authentication token"
+    label       = "API Token"
+    is_required = true
+    display_settings {
+      control_type = "Sensitive"
+    }
+  }
+}
+```
+
+The **WRONG** output (uses `SingleLineText` on a sensitive variable — FORBIDDEN):
+```hcl
+  prompt {
+    display_settings {
+      control_type = "SingleLineText"   ← WRONG for sensitive variables
+    }
+  }
+```
+
+**Example — prompted variable whose label equals the variable name (empty label fallback)**:
+
+Given a prompt:
+```
+* Add a project variable called "dryRun", with the description "dry run without making changes", and the label "dryRun". The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: false, true.
+```
+
+The **CORRECT** Terraform uses `label = "dryRun"` (same as the variable name):
+```hcl
+resource "octopusdeploy_variable" "variable_dryrun" {
+  name         = "dryRun"
+  type         = "String"
+  description  = "dry run without making changes"
+  value        = "false"
+  is_sensitive = false
+  prompt {
+    description = "dry run without making changes"
+    label       = "dryRun"
+    is_required = false
+    display_settings {
+      control_type = "Select"
+      select_option {
+        display_name = "false"
+        value        = "false"
+      }
+      select_option {
+        display_name = "true"
+        value        = "true"
+      }
+    }
+  }
+}
+```
+
+**Example — prompted string variable without selectable options**:
+
+Given a prompt:
+```
+* Add a project variable called "key", with a default value of "", the description "Identifier of the job", and the label "Job Key". The variable must be prompted for when creating a release. The variable must be required.
+```
+
+The **CORRECT** Terraform:
+```
+resource "octopusdeploy_variable" "variable_key" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) == 0 ? octopusdeploy_project.project_my_project[0].id : data.octopusdeploy_projects.project_my_project.projects[0].id}"
+  name         = "key"
+  type         = "String"
+  description  = "Identifier of the job"
+  value        = ""
+  is_sensitive = false
+  prompt {
+    description = "Identifier of the job"
+    label       = "Job Key"
+    is_required = true
+    display_settings {
+      control_type = "SingleLineText"
+    }
+  }
+}
+```
+
+The **WRONG** output (missing `prompt` block — the variable is not prompted for during release creation):
+```
+resource "octopusdeploy_variable" "variable_key" {
+  ...
+  name  = "key"
+  type  = "String"
+  value = ""
+  # WRONG: no prompt block, so this variable won't be prompted during release creation
+}
+```
+* Preserve the option order from the prompt exactly.
+* When the prompt includes an option named `(none)`, generate a `select_option` block with `display_name = "(none)"` and `value = ""`. The value MUST be an empty string `""` — do NOT use `"_none_"` or any other placeholder. Do NOT ignore or skip `(none)` options — they represent a valid empty-string choice for non-required variables.
+* You will be penalized for generating `value = "_none_"` — use `value = ""` for the `(none)` option.
+
+**Negative example — `(none)` option with wrong `value = "_none_"` (COMMON MISTAKE)**:
+
+Given a prompt that includes `The variable must have the following selectable options: (none), -is_retry=true`:
+
+The **WRONG** Terraform uses a non-empty placeholder for the `(none)` option:
+```hcl
+select_option {
+  display_name = ""
+  value        = "_none_"   ← WRONG: must use value = "" (empty string)
+}
+```
+
+The **CORRECT** Terraform uses an empty string value and `(none)` as the display name:
+```hcl
+select_option {
+  display_name = "(none)"
+  value        = ""
+}
+```
+
+* **CRITICAL — when `(none)` is the ONLY selectable option**: If the prompt says `The variable must have the following selectable options: (none)` with no other options listed, do NOT use `control_type = "Select"`. A Select control with only a `(none)` empty-string option is equivalent to a free-text input with no real choices. Use `control_type = "SingleLineText"` instead, and omit any `select_option` blocks. This situation arises when the original `hasOptions` was incorrectly set or when the only option is the empty-string placeholder.
+
+**Negative example — Select with ONLY `(none)` when `SingleLineText` should be used (COMMON MISTAKE)**:
+
+Given a prompt: `The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: (none).`
+
+The **WRONG** Terraform uses `control_type = "Select"` with a single empty option:
+```hcl
+display_settings {
+  control_type = "Select"
+  select_option {
+    display_name = "(none)"
+    value        = ""
+  }
+}
+```
+
+The **CORRECT** Terraform uses `control_type = "SingleLineText"` since `(none)` is the only option:
+```hcl
+display_settings {
+  control_type = "SingleLineText"
+}
+```
+
+* Ignore any empty option strings that are NOT represented as `(none)` in the prompt (i.e., empty strings that were never included in the prompt in the first place).
+* The top-level `description` attribute on `octopusdeploy_variable` MUST be set to the variable description from the prompt instruction. This is separate from the `description` field inside the `prompt` block. Both must be populated with the same value. Omitting the top-level `description` attribute is a bug.
+* **CRITICAL — the top-level `value` attribute of a prompted variable MUST be set to its default value**: When the prompt specifies `with a default value of "<X>"`, the `octopusdeploy_variable` resource MUST include `value = "<X>"` at the top level, even when a `prompt` block is present. Do NOT omit the `value` attribute or set it to an empty string unless the default value is explicitly `""`. The top-level `value` is the variable's default/current value, separate from the prompt configuration.
+
+**Negative example — prompted variable missing top-level `value` attribute (COMMON MISTAKE)**:
+
+Given a prompt: `* Add a project variable called "batch_size", with a default value of "50", the description "Batch size", and the label "Batch Size". The variable must be prompted for when creating a release. The variable must not be required.`
+
+The **WRONG** Terraform omits the `value` attribute:
+```hcl
+resource "octopusdeploy_variable" "variable_batch_size" {
+  name         = "batch_size"
+  type         = "String"
+  description  = "Batch size"
+  is_sensitive = false
+  # WRONG: value attribute is missing — default value "50" is lost
+  prompt {
+    description = "Batch size"
+    label       = "Batch Size"
+    is_required = false
+    display_settings {
+      control_type = "SingleLineText"
+    }
+  }
+}
+```
+
+The **CORRECT** Terraform includes `value = "50"`:
+```hcl
+resource "octopusdeploy_variable" "variable_batch_size" {
+  name         = "batch_size"
+  type         = "String"
+  description  = "Batch size"
+  value        = "50"
+  is_sensitive = false
+  prompt {
+    description = "Batch size"
+    label       = "Batch Size"
+    is_required = false
+    display_settings {
+      control_type = "SingleLineText"
+    }
+  }
+}
+```
+
+* If the prompt does NOT include a selectable options instruction, use `control_type = "SingleLineText"` in the `display_settings` block (the default).
+* You will be penalized for using `control_type = "SingleLineText"` when the prompt specifies selectable options.
+* You will be penalized for omitting any `select_option` block when selectable options are specified.
+
+**Example — prompted variable with selectable options**:
+
+Given a prompt:
+```
+* Add a project variable called "account-purpose", with a default value of "", the description "account purpose name", and the label "account-purpose". The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: wakai, mercoin, escrow, partner_invoice.
+```
+
+The **CORRECT** Terraform uses `control_type = "Select"` and includes `select_option` blocks:
+```
+resource "octopusdeploy_variable" "variable_account_purpose" {
+  ...
+  description = "account purpose name"
+  prompt {
+    description = "account purpose name"
+    label       = "account-purpose"
+    is_required = false
+    display_settings {
+      control_type = "Select"
+      select_option {
+        display_name = "wakai"
+        value        = "wakai"
+      }
+      select_option {
+        display_name = "mercoin"
+        value        = "mercoin"
+      }
+      select_option {
+        display_name = "escrow"
+        value        = "escrow"
+      }
+      select_option {
+        display_name = "partner_invoice"
+        value        = "partner_invoice"
+      }
+    }
+  }
+}
+```
+
+**Example — non-required selectable variable with `(none)` option (empty-string choice)**:
+
+Given a prompt:
+```
+* Add a project variable called "isretry", with a default value of "-is_retry=true", the description "Whether this is a retry run", and the label "Is Retry". The variable must be prompted for when creating a release. The variable must not be required. The variable must have the following selectable options: (none), -is_retry=true.
+```
+
+The **CORRECT** Terraform includes a `select_option` with `value = ""` for the `(none)` entry:
+```hcl
+resource "octopusdeploy_variable" "variable_isretry" {
+  name         = "isretry"
+  type         = "String"
+  description  = "Whether this is a retry run"
+  value        = "-is_retry=true"
+  is_sensitive = false
+  prompt {
+    description = "Whether this is a retry run"
+    label       = "Is Retry"
+    is_required = false
+    display_settings {
+      control_type = "Select"
+      select_option {
+        display_name = "(none)"
+        value        = ""
+      }
+      select_option {
+        display_name = "-is_retry=true"
+        value        = "-is_retry=true"
+      }
+    }
+  }
+}
+```
+
+## Step Description Notes from Runtime Artifact Binding
+
+* When the prompt says `Set the step description to "NOTE: This step originally required the following Docker images to be bound at runtime: ..."`, the description note MUST be set in the `notes` property of the `octopusdeploy_process_step` resource with the exact verbatim text from the prompt.
+* If the step already has an `notes` entry for another reason, the two description texts must be concatenated, separated by a space, in the same `notes` property.
+* Preserve the comma-separated Docker image list exactly as it appears in the prompt. Do not reorder the images, do not deduplicate them, and do not redact registry names, repositories, tags, or quotes.
+
+## Step Count Validation
+
+**ABSOLUTE RULE — the number of `octopusdeploy_process_step` resources MUST equal the number of non-notification steps described in the prompt**: Before finalizing your Terraform output, count the step prompts in the prompt (lines beginning with `* Add a "..."` or `* Add a community step template step`) and verify that you have created exactly the same number of `octopusdeploy_process_step` (or `octopusdeploy_process_templated_step`) resources. If the count differs, you have either missed a step or created a duplicate — both are bugs that MUST be corrected.
+
+**MANDATORY STEP UNIQUENESS CHECK**: Scan all `octopusdeploy_process_step` resource names in your Terraform output. If two resources have names ending in `_2`, `_3`, etc., verify that these correspond to steps in the prompt whose step NAMES are actually duplicated (e.g., two steps both named `"Deploy (Manifest)"`). If a `_2` suffix was added to a step whose prompt name is unique (different from all other step names), the suffix is wrong — use the step's actual unique name without the suffix.
+
+## Ordering of Parallel Steps in `octopusdeploy_process_steps_order`
+
+**CRITICAL — all steps in a parallel group must be CONSECUTIVE in `octopusdeploy_process_steps_order`**: In Octopus Deploy, `start_trigger = "StartWithPrevious"` means "start at the same time as the immediately preceding step in the list." For this to work correctly, all members of a parallel group MUST be adjacent (consecutive) in the `steps` array of `octopusdeploy_process_steps_order`. If a parallel group has members {A, B, C} and they are placed as A, B, [other step], C in the steps order, step C will run in parallel with [other step], not with A — which is wrong.
+
+**CRITICAL — duplicate step IDs in `octopusdeploy_process_steps_order` are FORBIDDEN**: Each step ID must appear exactly once in the `steps` array. If a prompt describes N steps, the `steps` array must contain exactly N elements. Having N+k elements (more than the prompt's steps) indicates that N steps from the prompt were duplicated, which is a bug.
+
+**CRITICAL — the `steps` array order in `octopusdeploy_process_steps_order` must EXACTLY match the step order from the prompt, left-to-right**: Every step must appear at the position corresponding to its order in the prompt. In fork-without-reconvergence scenarios, where Branch A continuation steps are listed before Branch B continuation steps, the `steps` array must preserve this same ordering. Do NOT reorder steps based on topological or dependency analysis — reproduce the prompt's ordering verbatim.
+
+**Negative example — duplicate steps in process_steps_order (FORBIDDEN)**:
+```hcl
+# WRONG: "deploy_cronjob_x" and "deploy_cronjob_x_2" both appear, but there is only ONE step named "Deploy cronjob-x" in the prompt
+steps = [
+  "${octopusdeploy_process_step.process_step_deploy_cronjob_x.id}",      # step 1
+  "${octopusdeploy_process_step.process_step_deploy_cronjob_x_2.id}",    # step 2 ← DUPLICATE
+]
+```
+
+**CORRECT output** (each step appears once):
+```hcl
+# CORRECT: each unique step from the prompt appears exactly once
+steps = [
+  "${octopusdeploy_process_step.process_step_deploy_cronjob_x.id}",      # appears once only ✓
+]
+```
+
+## Step Names Must Match Prompt Exactly
+
+**CRITICAL — the `name` attribute of each `octopusdeploy_process_step` MUST reproduce verbatim the step name from the prompt**: When the prompt says `name the step "Deploy cronjob-docomo-point-reconcile"`, the Terraform must contain `name = "Deploy cronjob-docomo-point-reconcile"`. Do NOT append ` 2`, ` 3`, or any suffix unless the prompt itself contains that suffix in the step name.
+
+**Negative example — suffix added to a step name that is unique in the prompt (FORBIDDEN)**:
+```hcl
+# Prompt says: name the step "Deploy cronjob-docomo-point-reconcile-sweep-days"
+# WRONG: suffix added even though this name is unique in the prompt
+resource "octopusdeploy_process_step" "process_step_deploy_cronjob_docomo_point_reconcile_sweep_days_2" {
+  name = "Deploy cronjob-docomo-point-reconcile-sweep-days 2"  ← WRONG: should be without " 2"
+  ...
+}
+```
+
+**CORRECT output** (name matches prompt exactly):
+```hcl
+resource "octopusdeploy_process_step" "process_step_deploy_cronjob_docomo_point_reconcile_sweep_days" {
+  name = "Deploy cronjob-docomo-point-reconcile-sweep-days"  ← CORRECT: verbatim from prompt
+  ...
+}
+```
+
+## `notes` Attribute Must Reproduce Step Descriptions Verbatim
+
+**CRITICAL — the `notes` attribute must reproduce the step description from the prompt verbatim, including any migration NOTEs about concurrent execution**: When the prompt says `Set the step description to "NOTE (migration): In the original pipeline, this step ran concurrently with ..."`, the `notes` value MUST include that text exactly as written. Do NOT omit the migration NOTE or summarize it. Do NOT redact service names, stage names, or namespace values that appear in the description.
+
+**CRITICAL — migration NOTEs from expression-based checkPreconditions stages must be preserved verbatim in the `notes` attribute**: When the prompt includes a step description starting with `NOTE (migration): This step was originally gated by an expression-based checkPreconditions stage...` or `NOTE (migration): This step was originally on a conditional branch controlled by an expression-based checkPreconditions stage...`, the entire NOTE text must appear verbatim in the `notes` attribute of the corresponding `octopusdeploy_process_step` resource. Do NOT omit, truncate, or paraphrase the expression NOTE.
+
+**CRITICAL — never redact names in `notes` fields**: Service names, stage names, namespace names, Kubernetes resource names, and GCS bucket paths that appear in the step description must all be reproduced verbatim in the `notes` attribute. The presence of words like `api`, `auth`, `key`, `token`, `secret`, `service`, or `credential` in a description does NOT make those words sensitive — they are resource identifiers that must be preserved exactly.
+
+## Slack Notification Step: Reproducing Explicit `ssn_Color` Instructions
+
+When the prompt explicitly says `Set the "ssn_Color" property to "danger"` (or any other value), the `parameters` block of the corresponding `octopusdeploy_process_templated_step` MUST include `"ssn_Color" = "danger"` (or the specified value). This is consistent with the general rule that all prompt-specified parameters must be reproduced.
+
+**CRITICAL — when the prompt says `Set the "ssn_Color" property to "danger"`, reproduce it exactly in the `parameters` block.** Do NOT substitute a different value or omit it.
+
+```hcl
+resource "octopusdeploy_process_templated_step" "process_step_my_project_slack_notification_finish" {
+  condition = "Failure"
+  ...
+  parameters = {
+    "ssn_Color"   = "danger"   ← CORRECT: verbatim from prompt — "Set the ssn_Color property to danger"
+    "ssn_HookUrl" = "#{Project.Slack.WebhookUrl}"
+    "ssn_Channel" = "my-channel"
+  }
+}
+```
+
+**NOTE**: Do NOT add `ssn_Color` unless the prompt explicitly mentions it. The prompt controls whether `ssn_Color` appears. If the prompt does not say `Set the "ssn_Color" property to "..."`, omit `ssn_Color` from the `parameters` block entirely.
+
+## Disabled TODO Script Steps (patchManifest and Unknown Stage Types)
+
+When the prompt includes a "Run a Script" step that must be disabled (i.e., the prompt contains `The step must be disabled.`), the generated `octopusdeploy_process_step` resource MUST include `is_disabled = true`. This applies to:
+
+* `patchManifest` stage TODO steps (which always must be disabled)
+* Any other stage type where the prompt says the step must be disabled
+* `"Deploy Kubernetes YAML"` steps whose YAML is a `# TODO:` placeholder (these must also have `is_disabled = true`)
+
+**CRITICAL — `is_disabled = true` is REQUIRED when the prompt says `The step must be disabled.`**: Do not omit this attribute.
+
+**CRITICAL — `is_disabled = true` applies equally to `Octopus.KubernetesDeployRawYaml` steps with TODO YAML**: When a "Deploy Kubernetes YAML" step has its `Octopus.Action.KubernetesContainers.CustomResourceYaml` set to a `# TODO:` placeholder, the step MUST have `is_disabled = true`. This is not optional — a TODO YAML step that is enabled will fail at deployment time.
+
+**Negative example — Kubernetes YAML step with TODO placeholder missing is_disabled (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_prod_server" {
+  name        = "Deploy prod server"
+  type        = "Octopus.KubernetesDeployRawYaml"
+  is_disabled = false   ← WRONG: step has TODO YAML and must be disabled
+  ...
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with manifest"
+  }
+}
+```
+
+**Correct output** (TODO YAML steps must be disabled):
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_prod_server" {
+  name        = "Deploy prod server"
+  type        = "Octopus.KubernetesDeployRawYaml"
+  is_disabled = true    ← CORRECT: TODO YAML means the step must be disabled
+  ...
+  execution_properties = {
+    "Octopus.Action.KubernetesContainers.CustomResourceYaml" = "# TODO: replace with manifest"
+  }
+}
+```
+
+```hcl
+resource "octopusdeploy_process_step" "process_step_patch_manifest_my_service" {
+  name          = "Patch -Manifest- my-service"
+  type          = "Octopus.Script"
+  process_id    = "${octopusdeploy_process.process_my_project[0].id}"
+  is_disabled   = true    ← REQUIRED when prompt says "The step must be disabled."
+  condition     = "Success"
+  start_trigger = "StartAfterPrevious"
+  execution_properties = {
+    "Octopus.Action.RunOnServer"         = "true"
+    "OctopusUseBundledTooling"           = "False"
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.Syntax"       = "PowerShell"
+    "Octopus.Action.Script.ScriptBody"   = <<-EOT
+      # TODO: convert Spinnaker patchManifest stage — no direct Octopus Deploy equivalent.
+      # Target resource: deployment my-service
+      # Namespace: my-namespace
+      # Merge strategy: strategic
+      # Patch body:
+      # spec:
+      #   template:
+      #     spec:
+      #       containers:
+      #         - name: my-service
+      #           env:
+      #             - name: FEATURE_FLAG
+      #               value: "#{feature_flag}"
+    EOT
+  }
+  properties = {}
+}
+```
+
+## `octopusdeploy_process_step` `properties` Block for Server-Side Script Steps
+
+Server-side "Run a Script" steps (`Octopus.Script`) that are generic TODO placeholders (not targeting a specific Kubernetes cluster) do NOT need `"Octopus.Action.TargetRoles"` in the `properties` block. These steps run on the Octopus server worker pool, not on a Kubernetes target.
+
+* For `Octopus.Script` steps that are generic TODO placeholders (e.g., `patchManifest` conversions, unknown stage type placeholders): use `properties = {}` (empty map) and do NOT include `"Octopus.Action.TargetRoles"`.
+* For `Octopus.KubernetesRunScript` steps (e.g., `deleteManifest`, `scaleManifest`, `undoRolloutManifest`): use `properties = { "Octopus.Action.TargetRoles" = "Kubernetes" }`.
+
+**Negative example — adding TargetRoles to a generic TODO script step (UNNECESSARY)**:
+```hcl
+resource "octopusdeploy_process_step" "..." {
+  type = "Octopus.Script"
+  properties = {
+    "Octopus.Action.TargetRoles" = "Kubernetes"   ← WRONG for generic Octopus.Script TODO steps
+  }
+}
+```
+
+**Correct output** (generic TODO script step has empty properties):
+```hcl
+resource "octopusdeploy_process_step" "..." {
+  type       = "Octopus.Script"
+  properties = {}   ← CORRECT for server-side generic script steps
+}
+```
+
+## `octopusdeploy_variable` Prompt Block for Prompted Variables with Select Options
+
+When the prompt says `The variable must have the following selectable options: <option1>, <option2>, ...`, the `octopusdeploy_variable` resource must include a `prompt` block with a `display_settings` block using `control_type = "Select"` and one `select_option` sub-block per option.
+
+```hcl
+resource "octopusdeploy_variable" "my_project_limit_credit_1" {
+  owner_id     = "${octopusdeploy_project.my_project[0].id}"
+  name         = "limit_credit"
+  type         = "String"
+  value        = "false"
+  is_sensitive = false
+
+  prompt {
+    label       = "limit_credit"
+    is_required = true
+
+    display_settings {
+      control_type = "Select"
+
+      select_option {
+        display_name = "false"
+        value        = "false"
+      }
+      select_option {
+        display_name = "true"
+        value        = "true"
+      }
+    }
+  }
+  lifecycle {
+    ignore_changes = [sensitive_value]
+  }
+  depends_on = []
+}
+```
+
+**CRITICAL — `control_type = "Select"` is REQUIRED when the prompt says the variable must have selectable options.** Do not use `control_type = "SingleLineText"` or omit the `display_settings` block when the prompt explicitly lists selectable options.
+
+## Step Count and Type Verification
+
+**MANDATORY SELF-CHECK — step count verification**: Before finalizing Terraform, count the number of "Add a ... step" instructions in the prompt (including community step template instructions). Count the `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources generated. These counts MUST match. If the generated count exceeds the prompt's step count, you have created duplicate step resources — identify and remove the duplicates.
+
+**CRITICAL — step type mapping**: The type of `octopusdeploy_process_step` MUST accurately reflect the step type named in the prompt:
+- `"Add a 'Run a Script' step"` → `type = "Octopus.Script"` — NEVER use `Octopus.KubernetesDeployRawYaml` or `Octopus.KubernetesRunScript` for steps described as "Run a Script".
+- `"Add a 'Deploy Kubernetes YAML' step"` → `type = "Octopus.KubernetesDeployRawYaml"`
+- `"Add a 'Run a kubectl script' step"` → `type = "Octopus.KubernetesRunScript"`
+- `"Add a 'Manual Intervention' step"` → `type = "Octopus.Manual"`
+
+**Negative example — "Run a Script" step incorrectly using KubernetesDeployRawYaml type (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_wait_20_min" {
+  name = "Wait -20 min-"
+  type = "Octopus.KubernetesDeployRawYaml"   ← WRONG: prompt says "Run a Script", must be "Octopus.Script"
+  ...
+  execution_properties = {
+    "Octopus.Action.Script.ScriptBody" = "Start-Sleep -Seconds 1200"
+    ...
+  }
+}
+```
+
+**Correct output** ("Run a Script" step uses Octopus.Script type):
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_wait_20_min" {
+  name = "Wait -20 min-"
+  type = "Octopus.Script"   ← CORRECT: "Run a Script" maps to Octopus.Script
+  ...
+  execution_properties = {
+    "Octopus.Action.RunOnServer"         = "true"
+    "OctopusUseBundledTooling"           = "False"
+    "Octopus.Action.Script.ScriptSource" = "Inline"
+    "Octopus.Action.Script.Syntax"       = "PowerShell"
+    "Octopus.Action.Script.ScriptBody"   = "Start-Sleep -Seconds 1200"
+  }
+}
+```
+
+**MANDATORY — every step in the prompt must appear as a resource**: When the prompt contains N "Add a ... step" instructions, the Terraform MUST contain exactly N `octopusdeploy_process_step` or `octopusdeploy_process_templated_step` resources. A step that appears in the prompt but is missing from Terraform will not execute. You will be penalized for each missing step resource.
+
+**MANDATORY — duplicate step resources are FORBIDDEN**: When the prompt lists "Deploy prod HTTP server primary" once, there must be EXACTLY ONE `process_step_..._deploy_prod_http_server_primary` resource in the Terraform. A step resource named `process_step_..._deploy_prod_http_server_primary_2` is only valid when the PROMPT explicitly lists a SECOND step with the same name (after deduplication rules). Do NOT create `_2` suffix resources based on your own interpretation — only create them when the prompt explicitly requests a second step with the same name.
+
+**MANDATORY — step `name` attribute values must be unique across ALL `octopusdeploy_process_step` and `octopusdeploy_process_templated_step` resources in a project**: Two steps cannot share the same `name` value. If a prompt-specified step has the same name as a template-included step, they must be merged into a single resource — do NOT generate two separate resources with the same `name` value. You will be penalized for creating two step resources with the same `name` attribute.
+
+**Negative example — two step resources with the same name (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_approve_production_deployment" {
+  name = "Approve Production Deployment"   ← duplicate name — two resources share this name
+  type = "Octopus.Manual"
+  ...
+}
+resource "octopusdeploy_process_step" "process_step_my_project_approve_production_deployment_manual" {
+  name = "Approve Production Deployment"   ← WRONG: same name as above
+  type = "Octopus.Manual"
+  ...
+}
+```
+
+**Correct output** — one step resource per unique name:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_approve_production_deployment" {
+  name = "Approve Production Deployment"   ← CORRECT: appears exactly once
+  type = "Octopus.Manual"
+  ...
+}
+```
+
+**MANDATORY — "Run a Script" wait steps must appear in Terraform as `Octopus.Script` resources**: When the prompt includes a step like `Add a "Run a Script" step with the name "Wait -20 min-" ... Set the script to the following inline PowerShell code: Start-Sleep -Seconds 1200`, it MUST produce an `octopusdeploy_process_step` resource with `type = "Octopus.Script"` and `execution_properties["Octopus.Action.Script.ScriptBody"] = "Start-Sleep -Seconds 1200"`. Never omit wait-script steps. If the prompt has a wait step, the Terraform MUST have a matching `Octopus.Script` resource.
+
+## Space ID Variable Instructions
+
+**MANDATORY — `octopus_space_id` variable must NOT have a default value**: The `octopus_space_id` Terraform variable must be declared without a `default` attribute. In particular, you must NEVER add `default = "Spaces-1"` or any other space ID as the default. The canonical example is:
+
+```hcl
+variable "octopus_space_id" {
+  type        = string
+  nullable    = false
+  sensitive   = false
+  description = "The ID of the Octopus space to populate."
+}
+```
+
+**Negative example — `octopus_space_id` with hardcoded default (FORBIDDEN)**:
+```hcl
+variable "octopus_space_id" {
+  type        = string
+  nullable    = false
+  sensitive   = false
+  description = "The ID of the Octopus space to populate."
+  default     = "Spaces-1"   ← WRONG: space ID hardcoded as default
+}
+```
+
+You will be penalized for adding `default = "Spaces-1"` or any specific space ID as the default value of the `octopus_space_id` variable. The space ID must always be provided externally (e.g., via a `terraform.tfvars` file or environment variable), not hardcoded.
+
+## Terraform HCL Indentation Instructions
+
+**MANDATORY — all Terraform HCL blocks must use consistent 2-space indentation**: Properties inside `variable`, `resource`, and `data` blocks MUST be indented with exactly 2 spaces. Properties inside nested blocks (such as `release_retention_policy`, `tentacle_retention_policy`, `connectivity_policy`, `phase`, `scope`, `lifecycle`, etc.) MUST be indented with 4 spaces total (2 spaces for the containing block + 2 more spaces for the nested block). You will be penalized for using 0-space, 1-space, or any non-standard indentation inside HCL blocks.
+
+**Negative example — variable block with 0-space indentation (FORBIDDEN)**:
+```hcl
+variable "octopus_space_id" {
+type = string              ← WRONG: 0-space indentation
+nullable = false           ← WRONG: 0-space indentation
+sensitive = false          ← WRONG: 0-space indentation
+description = "..."        ← WRONG: 0-space indentation
+}
+```
+
+**Correct output — variable block with 2-space indentation**:
+```hcl
+variable "octopus_space_id" {
+  type        = string     ← CORRECT: 2-space indentation
+  nullable    = false      ← CORRECT: 2-space indentation
+  sensitive   = false      ← CORRECT: 2-space indentation
+  description = "..."      ← CORRECT: 2-space indentation
+}
+```
+
+**Negative example — nested block with 1-space indentation (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_devsecops" {
+  release_retention_policy {
+ quantity_to_keep = 30   ← WRONG: 1-space indentation inside nested block
+ unit = "Days"           ← WRONG: 1-space indentation inside nested block
+}
+  connectivity_policy {
+ allow_deployments_to_no_targets = true  ← WRONG: 1-space indentation
+ exclude_unhealthy_targets = false       ← WRONG: 1-space indentation
+}
+}
+```
+
+**Correct output — nested block with proper 4-space indentation**:
+```hcl
+resource "octopusdeploy_lifecycle" "lifecycle_devsecops" {
+  release_retention_policy {
+    quantity_to_keep = 30   ← CORRECT: 4-space indentation inside nested block
+    unit             = "Days"
+  }
+  connectivity_policy {
+    allow_deployments_to_no_targets = true   ← CORRECT: 4-space indentation
+    exclude_unhealthy_targets       = false
+    skip_machine_behavior           = "None"
+    target_roles                    = []
+  }
+}
+```
+
+## Project Group Uniqueness Instructions
+
+**MANDATORY — only create project groups explicitly named in the prompt**: When the prompt specifies a project group name (e.g., "Kubernetes Apps"), create ONLY that project group resource. Do NOT create additional project groups from any default template (e.g., a generic "Kubernetes" project group alongside a requested "Kubernetes Apps" group). Every `octopusdeploy_project_group` resource MUST correspond to a project group explicitly named in the prompt. If the canonical template uses a different project group name than the prompt, use the prompt's name, not the template's name.
+
+**Negative example — extra project group not in prompt (FORBIDDEN)**:
+```hcl
+# Prompt says: use project group "Kubernetes Apps"
+resource "octopusdeploy_project_group" "project_group_kubernetes" { ... }      ← WRONG: "Kubernetes" was NOT in the prompt
+resource "octopusdeploy_project_group" "project_group_kubernetes_apps" { ... } ← correct
+```
+
+**Correct output**:
+```hcl
+resource "octopusdeploy_project_group" "project_group_kubernetes_apps" { ... } ← CORRECT: only the group named in the prompt
+```
+
+**Negative example — Terraform project creating extra template-default "Terraform" project group when prompt specifies "Infrastructure" (FORBIDDEN)**:
+```hcl
+# Prompt says: use project group "Infrastructure"
+resource "octopusdeploy_project_group" "project_group_terraform" { ... }      ← WRONG: "Terraform" was NOT in the prompt
+resource "octopusdeploy_project_group" "project_group_infrastructure" { ... } ← correct
+```
+
+**Correct output**:
+```hcl
+resource "octopusdeploy_project_group" "project_group_infrastructure" { ... } ← CORRECT: only the group named in the prompt
+```
+
+You will be penalized for creating project group resources not explicitly requested in the prompt.
+
+## Project Uniqueness Instructions
+
+**MANDATORY — only create the project(s) explicitly named in the prompt**: When a prompt asks to create a single project (e.g., "Create a Script project called 'My Script Project 6174'"), the generated Terraform MUST contain exactly ONE `octopusdeploy_project` resource — the one named in the prompt. Do NOT create additional template projects (e.g., a generic "Script" project or "Empty Project") alongside the requested project. Every `octopusdeploy_project` resource MUST correspond to a project explicitly named in the prompt.
+
+**Negative example — extra project not in prompt (FORBIDDEN)**:
+```hcl
+# Prompt says: create project "My Script Project 6174"
+resource "octopusdeploy_project" "project_my_script_project_6174" { ... }   ← correct
+resource "octopusdeploy_project" "project_script" { name = "Script" ... }   ← WRONG: "Script" was NOT in the prompt
+```
+
+**Correct output**:
+```hcl
+resource "octopusdeploy_project" "project_my_script_project_6174" { ... }   ← CORRECT: only the project named in the prompt
+```
+
+You will be penalized for creating `octopusdeploy_project` resources not explicitly requested in the prompt.
+
+## Environment Uniqueness and Naming Instructions
+
+**MANDATORY — environment names must match the prompt exactly**: When the prompt specifies environment names (e.g., "Create environments called 'Dev', 'Test', and 'Production'"), create environments with EXACTLY those names. Do NOT rename prompt-specified environments to template defaults. For example, if the prompt says "Dev", the environment name must be `"Dev"`, NOT `"Development"`. If the prompt says "Staging", the environment name must be `"Staging"`, NOT `"Test"`.
+
+**Negative example — renaming a prompt-specified environment (FORBIDDEN)**:
+```hcl
+# Prompt says: Create environments called "Dev", "Test", "Production"
+# WRONG: "Dev" was renamed to "Development"
+resource "octopusdeploy_environment" "environment_development" {
+  name = "Development"  ← WRONG: prompt specified "Dev", not "Development"
+}
+```
+
+**Correct output — environment name matches prompt exactly**:
+```hcl
+# CORRECT: uses the exact name from the prompt
+resource "octopusdeploy_environment" "environment_dev" {
+  name = "Dev"  ← CORRECT: exact name from prompt
+}
+```
+
+**MANDATORY — ALL environments explicitly named in the prompt must be created**: If the prompt says "Create environments called 'Dev', 'Test', and 'Production'", then THREE environment resources must be created — one for each named environment. Do NOT skip any environment named in the prompt.
+
+**Negative example — omitting a prompt-specified environment (FORBIDDEN)**:
+```hcl
+# Prompt says: Create environments called "Dev", "Test", "Production"
+# WRONG: "Test" was omitted
+resource "octopusdeploy_environment" "environment_dev" { name = "Dev" }
+resource "octopusdeploy_environment" "environment_production" { name = "Production" }
+# "Test" is missing — this is WRONG
+```
+
+**Correct output — all prompt-specified environments are created**:
+```hcl
+resource "octopusdeploy_environment" "environment_dev" { name = "Dev" }        ← CORRECT
+resource "octopusdeploy_environment" "environment_test" { name = "Test" }      ← CORRECT
+resource "octopusdeploy_environment" "environment_production" { name = "Production" }  ← CORRECT
+```
+
+You will be penalized for creating environments with names different from those specified in the prompt.
+You will be penalized for omitting environments that were explicitly named in the prompt.
+
+**NOTE**: Template environments (such as "Security") may still be created if they are required by a template lifecycle (e.g., DevSecOps). However, these must NOT replace or rename the explicitly requested environments.
+
+## Security Environment Exclusion for Kubernetes Steps
+
+**MANDATORY — Kubernetes deploy steps must exclude the Security environment when the project uses the DevSecOps lifecycle**: When a project uses the DevSecOps lifecycle (which includes a Security environment used for daily security scanning), Kubernetes deployment steps (`Octopus.KubernetesDeployRawYaml`, `Octopus.KubernetesRunScript`, `Octopus.HelmChartUpgrade`, `Octopus.Kubernetes.Kustomize`, etc.) MUST set `excluded_environments` to include the Security environment ID. The Security environment is only used for vulnerability scanning (the "Scan for Vulnerabilities" step), not for actual Kubernetes deployments.
+
+**Canonical pattern — K8s deploy step excludes Security environment**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_app" {
+  name                  = "Deploy App"
+  type                  = "Octopus.KubernetesDeployRawYaml"
+  excluded_environments = ["${length(data.octopusdeploy_environments.environment_security.environments) != 0 ? data.octopusdeploy_environments.environment_security.environments[0].id : octopusdeploy_environment.environment_security[0].id}"]
+  ...
+}
+```
+
+**Negative example — K8s deploy step with null excluded_environments when DevSecOps lifecycle is used (FORBIDDEN)**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_app" {
+  excluded_environments = null   ← WRONG: K8s deploy steps must exclude Security when using DevSecOps lifecycle
+  ...
+}
+```
+
+You will be penalized for setting `excluded_environments = null` on Kubernetes deployment steps when the project uses the DevSecOps lifecycle.
+* Words such as `api`, `server`, `worker`, `web`, `auth`, `gateway`, `proxy`, `backend`, `frontend`, `key`, `token`, `service`, `manager`, `scheduler`, `cache`, `queue`, `db` are NOT secrets, API keys, or credentials and MUST NOT be replaced with asterisks (`*****`) or any other anonymization placeholder.
+## Variable Scoping for New Project Creation Prompts
+
+**CRITICAL — when a new project creation prompt specifies that variables should be scoped to specific environments**, the `scope` block of the corresponding `octopusdeploy_variable` resource MUST include those environment IDs. The environment IDs must be looked up using the appropriate data source and resource ternary pattern.
+
+**Example — a variable scoped to the Production environment**:
+```hcl
+resource "octopusdeploy_variable" "my_project_connection_string_production" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) == 0 ? octopusdeploy_project.project_my_project[0].id : data.octopusdeploy_projects.project_my_project.projects[0].id}"
+  name         = "Project.ConnectionString"
+  type         = "String"
+  value        = "Server=prod-db;Database=myapp"
+  is_sensitive = false
+  scope {
+    environments = ["${length(data.octopusdeploy_environments.environment_production.environments) != 0 ? data.octopusdeploy_environments.environment_production.environments[0].id : octopusdeploy_environment.environment_production[0].id}"]
+  }
+  lifecycle {
+    ignore_changes  = [sensitive_value]
+    prevent_destroy = true
+  }
+  depends_on = []
+}
+```
+
+**When a variable has NO scope restriction**, do NOT include a `scope` block at all — omit it entirely rather than including an empty `scope {}` block.
+
+**You will be penalized for**:
+- Defining a `scope {}` block with no attributes inside it (empty scope)
+- Omitting the `scope` block when the prompt specifies that a variable should be scoped to specific environments
+- Including incorrect or non-existent environment names in the `scope` block
+
+## Kubernetes Step Worker Pool for New Project Creation Prompts
+
+**CRITICAL — for Kubernetes steps (`Octopus.KubernetesDeployRawYaml`, `Octopus.KubernetesRunScript`, `Octopus.HelmChartUpgrade`, `Octopus.Kubernetes.Kustomize`, etc.) in Kubernetes project creation prompts, the canonical pattern is to use `worker_pool_variable = "Octopus.Project.WorkerPool"` with an associated `Octopus.Project.WorkerPool` variable**:
+
+When the prompt does NOT specify a worker pool for a Kubernetes deploy step:
+- Set `worker_pool_variable = "Octopus.Project.WorkerPool"` on each step
+- Set `worker_pool_id = null` on each step
+- Create an `octopusdeploy_variable` resource named `Octopus.Project.WorkerPool` of `type = "WorkerPool"` with its value pointing to the Hosted Ubuntu worker pool (with Default Worker Pool as fallback)
+
+**Required data sources** (MUST always be included when any Kubernetes step is present):
+```hcl
+data "octopusdeploy_worker_pools" "workerpool_hosted_ubuntu" {
+  ids          = null
+  partial_name = "Hosted Ubuntu"
+  skip         = 0
+  take         = 1
+}
+
+data "octopusdeploy_worker_pools" "workerpool_default_worker_pool" {
+  ids          = null
+  partial_name = "Default Worker Pool"
+  skip         = 0
+  take         = 1
+}
+```
+
+**Correct pattern for Kubernetes project worker pool variable** (MUST be created for every Kubernetes project):
+```hcl
+resource "octopusdeploy_variable" "my_project_octopus_project_workerpool_1" {
+  count        = "${length(data.octopusdeploy_projects.project_my_project.projects) != 0 ? 0 : 1}"
+  owner_id     = "${length(data.octopusdeploy_projects.project_my_project.projects) == 0 ? octopusdeploy_project.project_my_project[0].id : data.octopusdeploy_projects.project_my_project.projects[0].id}"
+  value        = "${length(data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools) != 0 ? data.octopusdeploy_worker_pools.workerpool_hosted_ubuntu.worker_pools[0].id : data.octopusdeploy_worker_pools.workerpool_default_worker_pool.worker_pools[0].id}"
+  name         = "Octopus.Project.WorkerPool"
+  type         = "WorkerPool"
+  description  = "Using a variable to define the worker pool used by steps allows the worker pool to be easily changed in a central location."
+  is_sensitive = false
+  lifecycle {
+    ignore_changes  = [sensitive_value]
+    prevent_destroy = true
+  }
+  depends_on = []
+}
+```
+
+**Correct pattern for Kubernetes deploy step worker pool**:
+```hcl
+resource "octopusdeploy_process_step" "process_step_my_project_deploy_app" {
+  name                 = "Deploy App"
+  type                 = "Octopus.KubernetesDeployRawYaml"
+  worker_pool_variable = "Octopus.Project.WorkerPool"
+  worker_pool_id       = null
+  ...
+}
+```
+
+You will be penalized for setting `worker_pool_id` directly on a Kubernetes step instead of using `worker_pool_variable = "Octopus.Project.WorkerPool"` with a corresponding `Octopus.Project.WorkerPool` project variable.

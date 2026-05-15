@@ -73,6 +73,8 @@ const Router = (() => {
 
     // Scroll to top
     document.querySelector('.main').scrollTop = 0;
+
+    Analytics.trackPageView(viewName);
   }
 
   function refresh() {

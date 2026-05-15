@@ -39,6 +39,10 @@ This is an example of the JSON entry to include in the `promptsv#.json` file to 
 }
 ```
 
+## Example Dashboard
+
+See the [example dashboard](example) for a simple example of a dashboard that interacts with the Octopus API and sends prompts to the AI Assistant.
+
 ## Testing
 
 You can open the page for testing without needing to modify the `promptsv#.json` file by running the `showDashboard()` function from the service worker in the Chrome extension developer tools.
@@ -69,3 +73,7 @@ showDashboard({
 ## Use of Gen AI in Dashboards
 
 It is expected that dashboards will be built using Gen AI. The [Copilot Instructions](../.github/copilot-instructions.md) can be passed to your LLM to produce code that meets the requirements for dashboards.
+
+## Octopus API LLM Documentation
+
+See https://deploy.octopus.app/api/experimental/llms.txt for the REST API documentation designed for use by LLMs.
