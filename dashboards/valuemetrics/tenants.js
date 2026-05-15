@@ -224,7 +224,21 @@ const TenantView = (() => {
     }
 
     function showLoading(visible) {
-        const el = document.getElementById('tv-loading-state');
+        let el = document.getElementById('tv-loading-state');
+
+        if (visible && !el) {
+            const loadingHost =
+                document.getElementById('tv-tenant-rows') ||
+                document.getElementById('tv-dashboard-content');
+
+            if (!loadingHost) return;
+
+            el = document.createElement('div');
+            el.id = 'tv-loading-state';
+            el.textContent = 'Loading...';
+            loadingHost.prepend(el);
+        }
+
         if (el) el.style.display = visible ? 'block' : 'none';
     }
 
