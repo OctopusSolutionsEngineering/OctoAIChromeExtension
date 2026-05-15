@@ -650,7 +650,16 @@ const TenantView = (() => {
                 };
             })
             .filter(tenant => {
-                if (tenantsState.filters.environment && tenant.environment !== tenantsState.filters.environment) return false;
+                if (tenantsState.filters.environment) {
+                    const selectedEnvironment = tenantsState.filters.environment;
+                    const tenantEnvironments = Array.isArray(tenant.environment)
+                        ? tenant.environment
+                        : typeof tenant.environment === 'string'
+                            ? tenant.environment.split(',').map(env => env.trim()).filter(Boolean)
+                            : [tenant.environment].filter(Boolean);
+
+                    if (!tenantEnvironments.includes(selectedEnvironment)) return false;
+                }
                 if (tenantsState.tagFilter.length > 0) {
                     if (!tenantsState.tagFilter.every(tag => tenant.tags.includes(tag))) return false;
                 }
