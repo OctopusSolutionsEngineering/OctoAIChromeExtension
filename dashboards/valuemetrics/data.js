@@ -787,7 +787,7 @@ const DashboardData = (() => {
       dayMap[key] = {
         dateKey: key,
         year: d.getUTCFullYear(),
-        month: d.getUTCMonth() + 1,
+        month: d.getUTCMonth(),
         day: d.getUTCDate(),
         success: 0,
         failed: 0,
