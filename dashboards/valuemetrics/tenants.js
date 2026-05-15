@@ -319,7 +319,7 @@ const TenantView = (() => {
                                     projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
                                     releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
                                     taskType: 'Deployment',
-                                    taskState: 'Success',
+                                    taskState: 'Unknown',
                                     startedAt: dep.Created ? new Date(dep.Created) : new Date(),
                                     duration: '–',
                                     machines: [],
@@ -868,7 +868,7 @@ const TenantView = (() => {
             : '';
 
         const header = `
-            <button class="tv-tenant-row-header tv-tenant-grid${isExpanded ? ' is-expanded' : ''}" data-tenant-id="${tenant.id}">
+            <button class="tv-tenant-row-header tv-tenant-grid${isExpanded ? ' is-expanded' : ''}" data-tenant-id="${escHtml(tenant.id)}">
                 <div style="color:var(--colorTextTertiary);display:flex;justify-content:center">${chevron}</div>
                 <div>
                     ${nameCell}
@@ -908,7 +908,7 @@ const TenantView = (() => {
         }
 
         const failuresOnlyBtn = failureCount > 0 ? `
-            <button class="btn btn-secondary btn-sm${failuresOnly ? ' tv-active-filter' : ''}" data-action="toggle-failures-only" data-tenant-id="${tenant.id}">
+            <button class="btn btn-secondary btn-sm${failuresOnly ? ' tv-active-filter' : ''}" data-action="toggle-failures-only" data-tenant-id="${escHtml(tenant.id)}">
                 <i class="fa-solid fa-filter"></i> Failures only
             </button>
         ` : '';
@@ -918,7 +918,7 @@ const TenantView = (() => {
             : visibleTasks.map(task => renderTaskRowHtml(tenant, task)).join('');
 
         const detail = `
-            <div class="tv-tenant-detail" data-detail-for="${tenant.id}">
+            <div class="tv-tenant-detail" data-detail-for="${escHtml(tenant.id)}">
                 <div class="tv-detail-toolbar">
                     <span style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary)">${escHtml(tenant.name)}</span>
                     <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">(${escHtml(tenant.tenantDisplayId)})</span>
@@ -930,7 +930,7 @@ const TenantView = (() => {
                         <div style="position:relative">
                             <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--colorTextTertiary);font-size:11px;pointer-events:none"></i>
                             <input type="text" class="tv-detail-search" placeholder="Filter projects…"
-                                data-tenant-id="${tenant.id}" value="${escHtml(detailSearch)}"
+                                data-tenant-id="${escHtml(tenant.id)}" value="${escHtml(detailSearch)}"
                                 style="height:28px;width:180px;padding:0 8px 0 26px;background:var(--colorBackgroundPrimaryDefault);border:1px solid var(--colorBorderDefault);border-radius:var(--radiusMedium);font:var(--textBodyRegularSmall);color:var(--colorTextPrimary)">
                         </div>
                     </div>
@@ -967,7 +967,7 @@ const TenantView = (() => {
         const confirming  = tenantsState.confirmingRetryId === task.id;
 
         const errorIcon = hasError
-            ? `<i class="fa-solid fa-triangle-exclamation" style="color:var(--colorDangerLight);cursor:pointer;margin-right:4px" data-action="toggle-error" data-task-id="${task.id}"></i>`
+            ? `<i class="fa-solid fa-triangle-exclamation" style="color:var(--colorDangerLight);cursor:pointer;margin-right:4px" data-action="toggle-error" data-task-id="${escHtml(task.id)}"></i>`
             : '';
 
         let actionCell;
@@ -977,12 +977,12 @@ const TenantView = (() => {
             actionCell = `
                 <span style="display:inline-flex;align-items:center;gap:var(--space-xs)">
                     <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary)">Retry?</span>
-                    <button class="btn btn-primary btn-sm" data-action="confirm-retry" data-task-id="${task.id}" data-tenant-id="${tenant.id}">Confirm</button>
-                    <button class="btn btn-secondary btn-sm" data-action="cancel-retry" data-task-id="${task.id}">Cancel</button>
+                    <button class="btn btn-primary btn-sm" data-action="confirm-retry" data-task-id="${escHtml(task.id)}" data-tenant-id="${escHtml(tenant.id)}">Confirm</button>
+                    <button class="btn btn-secondary btn-sm" data-action="cancel-retry" data-task-id="${escHtml(task.id)}">Cancel</button>
                 </span>`;
         } else if (canRetry) {
             actionCell = `
-                <button class="btn btn-secondary btn-sm" data-action="start-retry" data-task-id="${task.id}">
+                <button class="btn btn-secondary btn-sm" data-action="start-retry" data-task-id="${escHtml(task.id)}">
                     <i class="fa-solid fa-rotate-right"></i> Retry
                 </button>`;
         } else {
@@ -1006,7 +1006,7 @@ const TenantView = (() => {
             : `<span style="font-family:var(--fontFamilyCode);font-size:0.75rem;color:var(--colorTextTertiary)">${escHtml(task.serverTaskId)}</span>`;
 
         const mainRow = `
-            <tr style="${rowBg}" data-task-id="${task.id}">
+            <tr style="${rowBg}" data-task-id="${escHtml(task.id)}">
                 <td>${errorIcon}<strong>${escHtml(task.projectName)}</strong></td>
                 <td>${taskIdCell}</td>
                 <td style="font-family:var(--fontFamilyCode);font-size:0.75rem;color:var(--colorTextTertiary)">${escHtml(task.releaseVersion)}</td>
@@ -1088,7 +1088,7 @@ const TenantView = (() => {
     function refreshDetail(tenantId) {
         const detail = document.querySelector(`[data-detail-for="${tenantId}"]`);
         if (!detail) return;
-        const tenant = tenantsState.allTenants.find(t => t.id === tenantId);
+        const tenant = tenantsState.filteredTenants.find(t => t.id === tenantId);
         if (!tenant) return;
         const temp = document.createElement('div');
         temp.innerHTML = renderTenantDetailHtml(tenant);
@@ -1166,17 +1166,23 @@ const TenantView = (() => {
                 .map(([v]) => v);
         });
 
-        // Per-tenant per-project: latest task state + last-known-good version
+        // Per-tenant per-project: latest task state + last-known-good version.
+        // Pre-index tasks by project to avoid O(n²) filter+sort inside the nested forEach.
         const cells = {};
         tenants.forEach(tenant => {
+            const tasksByProject = {};
+            tenant.tasks.forEach(t => {
+                if (!tasksByProject[t.projectName]) tasksByProject[t.projectName] = [];
+                tasksByProject[t.projectName].push(t);
+            });
+            Object.values(tasksByProject).forEach(arr => arr.sort((a, b) => b.startedAt - a.startedAt));
+
             cells[tenant.id] = {};
             allProjects.forEach(project => {
-                const tasks = tenant.tasks
-                    .filter(t => t.projectName === project)
-                    .sort((a, b) => b.startedAt - a.startedAt);
-                if (tasks.length === 0) { cells[tenant.id][project] = null; return; }
-                const latest     = tasks[0];
-                const lastGood   = tasks.find(t => t.taskState === 'Success');
+                const tasks = tasksByProject[project];
+                if (!tasks || tasks.length === 0) { cells[tenant.id][project] = null; return; }
+                const latest   = tasks[0];
+                const lastGood = tasks.find(t => t.taskState === 'Success');
                 cells[tenant.id][project] = {
                     version:        latest.releaseVersion,
                     taskState:      latest.taskState,
