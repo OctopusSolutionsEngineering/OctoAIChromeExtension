@@ -2997,6 +2997,11 @@ tbody tr:last-child td {
   background: var(--colorBackgroundCardHover);
 }
 
+.tv-tenant-row-header:focus-visible {
+  outline: 2px solid var(--colorFocusRing, var(--colorPrimaryLight));
+  outline-offset: -2px;
+}
+
 .tv-tenant-row-header.is-expanded {
   background: var(--colorBackgroundTertiary);
 }

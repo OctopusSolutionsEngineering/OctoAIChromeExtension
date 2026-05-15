@@ -371,7 +371,7 @@ const TenantView = (() => {
                                     serverTaskId: dep.TaskId || '–',
                                     projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
                                     releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
-                                    taskType: 'Deployment',
+                                    taskType: dep.RunbookId ? 'Runbook Run' : 'Deployment',
                                     taskState: 'Unknown',
                                     startedAt: dep.Created ? new Date(dep.Created) : new Date(),
                                     duration: '–',
@@ -383,7 +383,7 @@ const TenantView = (() => {
                                 serverTaskId: dep.TaskId,
                                 projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
                                 releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
-                                taskType: task.Name === 'RunbookRun' ? 'Runbook Run' : 'Deployment',
+                                taskType: dep.RunbookId ? 'Runbook Run' : 'Deployment',
                                 taskState: task.State || 'Unknown',
                                 startedAt: task.StartTime ? new Date(task.StartTime) : new Date(),
                                 duration: task.Duration || '–',
@@ -865,8 +865,14 @@ const TenantView = (() => {
         emptyState.classList.add('hidden');
         container.innerHTML = tenantsState.filteredTenants.map(renderTenantRowHtml).join('');
 
-        container.querySelectorAll('.tv-tenant-row-header').forEach(btn => {
-            btn.addEventListener('click', () => toggleExpand(btn.dataset.tenantId));
+        container.querySelectorAll('.tv-tenant-row-header').forEach(row => {
+            row.addEventListener('click', () => toggleExpand(row.dataset.tenantId));
+            row.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleExpand(row.dataset.tenantId);
+                }
+            });
         });
     }
 
@@ -928,7 +934,7 @@ const TenantView = (() => {
             : '';
 
         const header = `
-            <button class="tv-tenant-row-header tv-tenant-grid${isExpanded ? ' is-expanded' : ''}" data-tenant-id="${escHtml(tenant.id)}">
+            <div class="tv-tenant-row-header tv-tenant-grid${isExpanded ? ' is-expanded' : ''}" role="button" tabindex="0" data-tenant-id="${escHtml(tenant.id)}">
                 <div style="color:var(--colorTextTertiary);display:flex;justify-content:center">${chevron}</div>
                 <div>
                     ${nameCell}
@@ -939,7 +945,7 @@ const TenantView = (() => {
                 <div style="text-align:center;font:var(--textBodyRegularMedium);color:var(--colorTextSecondary)">${freqLabel}</div>
                 <div>${successRateCell}</div>
                 <div style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary);white-space:nowrap">${staleIcon}${formatRelativeTime(tenant.lastUpdated)}</div>
-            </button>
+            </div>
         `;
 
         const detail = isExpanded ? renderTenantDetailHtml(tenant) : '';
