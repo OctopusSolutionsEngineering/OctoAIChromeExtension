@@ -824,12 +824,19 @@ const TenantView = (() => {
         document.getElementById('tv-tab-inprogress').textContent = allFiltered.filter(t => t.status === 'In progress').length;
     }
 
+    function getTenantEnvironments(tenant) {
+        return String(tenant.environment || '')
+            .split(',')
+            .map(environment => environment.trim())
+            .filter(Boolean);
+    }
+
     function getPreTabFilteredTenants() {
         const from = tenantsState.filters.dateFrom;
         const to   = tenantsState.filters.dateTo;
         const q    = tenantsState.searchQuery.trim().toLowerCase();
         return tenantsState.allTenants.filter(tenant => {
-            if (tenantsState.filters.environment && tenant.environment !== tenantsState.filters.environment) return false;
+            if (tenantsState.filters.environment && !getTenantEnvironments(tenant).includes(tenantsState.filters.environment)) return false;
             if (tenantsState.filters.taskTypes.length > 0 && tenant.tasks.length > 0 && !tenant.tasks.some(t => tenantsState.filters.taskTypes.includes(t.taskType))) return false;
             if (tenantsState.filters.projects.length > 0 && !tenant.tasks.some(t => tenantsState.filters.projects.includes(t.projectName))) return false;
             if (tenantsState.tagFilter.length > 0 && !tenantsState.tagFilter.every(tag => tenant.tags.includes(tag))) return false;
