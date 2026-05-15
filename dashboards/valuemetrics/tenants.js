@@ -585,33 +585,73 @@ const TenantView = (() => {
 
     /* ─── Filtering ──────────────────────────────────────────────────────── */
 
+    function taskMatchesFilters(task, filters, from, to) {
+        if (filters.taskTypes.length > 0 && !filters.taskTypes.includes(task.taskType)) return false;
+        if (filters.projects.length > 0 && !filters.projects.includes(task.projectName)) return false;
+
+        if (from || to) {
+            const d = task.startedAt;
+            if (from && d < from) return false;
+            if (to   && d > to)   return false;
+        }
+
+        return true;
+    }
+
+    function getFilteredLastUpdated(tenant, visibleTasks) {
+        if (!visibleTasks.length) return tenant.lastUpdated;
+
+        return visibleTasks.reduce((latest, task) => {
+            const taskDate = task.startedAt || task.completedAt || tenant.lastUpdated;
+            return taskDate > latest ? taskDate : latest;
+        }, visibleTasks[0].startedAt || visibleTasks[0].completedAt || tenant.lastUpdated);
+    }
+
+    function getFilteredStatus(tenant, visibleTasks, hasTaskScopedFilters) {
+        if (!hasTaskScopedFilters) return tenant.status;
+        if (!visibleTasks.length) return tenant.status;
+
+        const states = visibleTasks.map(task => task.taskState);
+        if (states.some(state => ['Executing', 'Queued', 'Canceling', 'Cancelling'].includes(state))) return 'In progress';
+        if (states.every(state => state === 'Success')) return 'All succeeded';
+        if (states.every(state => state === 'Failed')) return 'All failed';
+        if (states.some(state => state === 'Failed')) return 'Some failed';
+
+        return tenant.status;
+    }
+
     function applyFilters() {
         const from = tenantsState.filters.dateFrom;
         const to   = tenantsState.filters.dateTo;
+        const hasTaskScopedFilters =
+            tenantsState.filters.taskTypes.length > 0 ||
+            tenantsState.filters.projects.length > 0 ||
+            Boolean(from || to);
 
-        let list = tenantsState.allTenants.filter(tenant => {
-            if (tenantsState.filters.environment && tenant.environment !== tenantsState.filters.environment) return false;
-            if (tenantsState.filters.taskTypes.length > 0 && tenant.tasks.length > 0) {
-                if (!tenant.tasks.some(t => tenantsState.filters.taskTypes.includes(t.taskType))) return false;
-            }
-            if (tenantsState.filters.projects.length > 0) {
-                if (!tenant.tasks.some(t => tenantsState.filters.projects.includes(t.projectName))) return false;
-            }
-            if (tenantsState.tagFilter.length > 0) {
-                if (!tenantsState.tagFilter.every(tag => tenant.tags.includes(tag))) return false;
-            }
-            // Date filter only applied when user has explicitly set dates
-            if (from || to) {
-                const hasTaskInRange = tenant.tasks.some(t => {
-                    const d = t.startedAt;
-                    if (from && d < from) return false;
-                    if (to   && d > to)   return false;
-                    return true;
-                });
-                if (!hasTaskInRange) return false;
-            }
-            return true;
-        });
+        let list = tenantsState.allTenants
+            .map(tenant => {
+                const allTasks = tenant.tasks || [];
+                const visibleTasks = allTasks.filter(task =>
+                    taskMatchesFilters(task, tenantsState.filters, from, to)
+                );
+
+                return {
+                    ...tenant,
+                    allTasks,
+                    visibleTasks,
+                    tasks: visibleTasks,
+                    lastUpdated: getFilteredLastUpdated(tenant, visibleTasks),
+                    status: getFilteredStatus(tenant, visibleTasks, hasTaskScopedFilters)
+                };
+            })
+            .filter(tenant => {
+                if (tenantsState.filters.environment && tenant.environment !== tenantsState.filters.environment) return false;
+                if (tenantsState.tagFilter.length > 0) {
+                    if (!tenantsState.tagFilter.every(tag => tenant.tags.includes(tag))) return false;
+                }
+                if (hasTaskScopedFilters && tenant.visibleTasks.length === 0) return false;
+                return true;
+            });
 
         if (tenantsState.searchQuery.trim()) {
             const q = tenantsState.searchQuery.toLowerCase();
