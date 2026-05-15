@@ -145,6 +145,7 @@ const TenantView = (() => {
     const tenantsState = {
         allTenants: [],
         filteredTenants: [],
+        preTabFilteredTenants: [],
         activeTab: 'all',
         searchQuery: '',
         expandedIds: new Set(),
@@ -178,6 +179,7 @@ const TenantView = (() => {
         // Reset mutable state
         tenantsState.allTenants = [];
         tenantsState.filteredTenants = [];
+        tenantsState.preTabFilteredTenants = [];
         tenantsState.activeTab = 'all';
         tenantsState.searchQuery = '';
         tenantsState.expandedIds = new Set();
@@ -756,6 +758,9 @@ const TenantView = (() => {
             );
         }
 
+        // Snapshot pre-tab list so renderStats uses the same computed statuses as the rows
+        tenantsState.preTabFilteredTenants = list;
+
         if (tenantsState.activeTab !== 'all') {
             list = list.filter(t => t.status === tenantsState.activeTab);
         }
@@ -810,7 +815,7 @@ const TenantView = (() => {
     }
 
     function renderStats() {
-        const allFiltered = getPreTabFilteredTenants();
+        const allFiltered = tenantsState.preTabFilteredTenants;
         const s = calculateStats(allFiltered);
 
         document.getElementById('tv-stat-total').textContent      = s.total;
@@ -831,25 +836,6 @@ const TenantView = (() => {
             .filter(Boolean);
     }
 
-    function getPreTabFilteredTenants() {
-        const from = tenantsState.filters.dateFrom;
-        const to   = tenantsState.filters.dateTo;
-        const q    = tenantsState.searchQuery.trim().toLowerCase();
-        return tenantsState.allTenants.filter(tenant => {
-            if (tenantsState.filters.environment && !getTenantEnvironments(tenant).includes(tenantsState.filters.environment)) return false;
-            if (tenantsState.filters.taskTypes.length > 0 && tenant.tasks.length > 0 && !tenant.tasks.some(t => tenantsState.filters.taskTypes.includes(t.taskType))) return false;
-            if (tenantsState.filters.projects.length > 0 && !tenant.tasks.some(t => tenantsState.filters.projects.includes(t.projectName))) return false;
-            if (tenantsState.tagFilter.length > 0 && !tenantsState.tagFilter.every(tag => tenant.tags.includes(tag))) return false;
-            if (q && !tenant.name.toLowerCase().includes(q) && !tenant.tenantDisplayId.toLowerCase().includes(q) && !tenant.tags.some(tag => tag.toLowerCase().includes(q))) return false;
-            if ((from || to) && !tenant.tasks.some(t => {
-                const d = t.startedAt;
-                if (from && d < from) return false;
-                if (to   && d > to)   return false;
-                return true;
-            })) return false;
-            return true;
-        });
-    }
 
     function renderTenantRows() {
         const container  = document.getElementById('tv-tenant-rows');
@@ -1170,8 +1156,8 @@ const TenantView = (() => {
             delete tenantsState.detailSearchQueries[tenantId];
         } else {
             tenantsState.expandedIds.add(tenantId);
-            // Auto-enable failures-only for tenants with failures
-            const tenant = tenantsState.allTenants.find(t => t.id === tenantId);
+            // Auto-enable failures-only for tenants with failures (use filteredTenants for computed status)
+            const tenant = tenantsState.filteredTenants.find(t => t.id === tenantId);
             if (tenant && tenant.status === 'Has failures') {
                 tenantsState.failuresOnlyIds.add(tenantId);
             }
