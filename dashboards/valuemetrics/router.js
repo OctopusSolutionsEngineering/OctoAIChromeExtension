@@ -16,6 +16,7 @@ const Router = (() => {
     projects:     { title: 'Projects',            icon: 'fa-solid fa-diagram-project' },
     environments: { title: 'Environments',        icon: 'fa-solid fa-server' },
     teams:        { title: 'Teams',               icon: 'fa-solid fa-users' },
+    tenants:      { title: 'Tenants',             icon: 'fa-solid fa-building-user' },
   };
 
   let _current = 'overview';
@@ -54,7 +55,9 @@ const Router = (() => {
       }
       Views.wireOverviewEvents();
     } else {
-      if (!summary) {
+      // Views that fetch their own data don't need the main dashboard summary
+      const SELF_LOADING = new Set(['tenants']);
+      if (!summary && !SELF_LOADING.has(viewName)) {
         main.innerHTML = `<div style="text-align:center;padding:var(--space-xl);color:var(--colorTextTertiary);">
           <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem;display:block;margin-bottom:var(--space-md);"></i>
           Loading data&hellip;
