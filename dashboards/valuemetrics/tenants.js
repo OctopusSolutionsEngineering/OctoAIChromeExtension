@@ -140,6 +140,8 @@ const TenantView = (() => {
 
     /* ─── State ──────────────────────────────────────────────────────────── */
 
+    let _docListenersAttached = false;
+
     const tenantsState = {
         allTenants: [],
         filteredTenants: [],
@@ -307,7 +309,7 @@ const TenantView = (() => {
                                 id: dep.Id,
                                 serverTaskId: dep.TaskId,
                                 projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
-                                releaseVersion: dep.ReleaseVersion || dep.ReleaseId || '–',
+                                releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
                                 taskType: task.Name === 'RunbookRun' ? 'Runbook Run' : 'Deployment',
                                 taskState: task.State || 'Unknown',
                                 startedAt: task.StartTime ? new Date(task.StartTime) : new Date(),
@@ -324,8 +326,8 @@ const TenantView = (() => {
                             .flat()
                             .map(t => t.split('/').pop());
 
-                        const firstDep = tenantDeployments[apiTenant.Id][0];
-                        const envName = firstDep ? (envMap[firstDep.EnvironmentId] || firstDep.EnvironmentId || '') : '';
+                        const envNames = [...new Set(deps.map(dep => envMap[dep.EnvironmentId] || dep.EnvironmentId).filter(Boolean))];
+                        const envName = envNames.join(', ');
 
                         return {
                             id: apiTenant.Id,
@@ -421,14 +423,57 @@ const TenantView = (() => {
             document.getElementById('tv-projects-menu').classList.toggle('hidden');
         });
 
-        // Capture phase fires before any element's stopPropagation, so outside-clicks reliably close the menu
-        document.addEventListener('click', e => {
-            const multiselect = document.getElementById('tv-projects-multiselect');
-            if (!multiselect) return;
-            if (!multiselect.contains(e.target)) {
-                document.getElementById('tv-projects-menu').classList.add('hidden');
+        // Delegated handler for the projects multi-select options
+        document.getElementById('tv-projects-options').addEventListener('click', e => {
+            const allBtn = e.target.closest('#tv-projects-all-option');
+            const optBtn = e.target.closest('.tv-multiselect__option');
+            if (allBtn) {
+                tenantsState.filters.projects = [];
+                updateProjectCheckboxes();
+                applyFilters();
+                renderTenantRows();
+                renderStats();
+            } else if (optBtn) {
+                const proj = optBtn.dataset.project;
+                const idx  = tenantsState.filters.projects.indexOf(proj);
+                if (idx === -1) tenantsState.filters.projects.push(proj);
+                else tenantsState.filters.projects.splice(idx, 1);
+                if (tenantsState.filters.projects.length === tenantsState.projects.length) {
+                    tenantsState.filters.projects = [];
+                }
+                updateProjectCheckboxes();
+                applyFilters();
+                renderTenantRows();
+                renderStats();
             }
-        }, true);
+        });
+
+        // Delegated handler for tag filter chips
+        document.getElementById('tv-tag-filter-chips').addEventListener('click', e => {
+            const chip = e.target.closest('.tv-tag-filter-chip');
+            if (!chip) return;
+            const tag = chip.dataset.tag;
+            const idx = tenantsState.tagFilter.indexOf(tag);
+            if (idx === -1) tenantsState.tagFilter.push(tag);
+            else tenantsState.tagFilter.splice(idx, 1);
+            chip.classList.toggle('active', tenantsState.tagFilter.includes(tag));
+            applyFilters();
+            renderTenantRows();
+            renderStats();
+        });
+
+        // Capture phase fires before any element's stopPropagation, so outside-clicks reliably close the menu.
+        // Guard prevents stacking listeners across repeated navigations.
+        if (!_docListenersAttached) {
+            document.addEventListener('click', e => {
+                const multiselect = document.getElementById('tv-projects-multiselect');
+                if (!multiselect) return;
+                if (!multiselect.contains(e.target)) {
+                    document.getElementById('tv-projects-menu').classList.add('hidden');
+                }
+            }, true);
+            _docListenersAttached = true;
+        }
 
         // View toggle: Tenant Status ↔ Version Adoption
         document.getElementById('tv-view-toggle').addEventListener('click', e => {
@@ -511,34 +556,6 @@ const TenantView = (() => {
                 </button>
             `).join('')}
         `;
-
-        container.addEventListener('click', e => {
-            const allBtn = e.target.closest('#tv-projects-all-option');
-            const optBtn = e.target.closest('.tv-multiselect__option');
-
-            if (allBtn) {
-                tenantsState.filters.projects = [];
-                updateProjectCheckboxes();
-                applyFilters();
-                renderTenantRows();
-                renderStats();
-            } else if (optBtn) {
-                const proj = optBtn.dataset.project;
-                const idx = tenantsState.filters.projects.indexOf(proj);
-                if (idx === -1) {
-                    tenantsState.filters.projects.push(proj);
-                } else {
-                    tenantsState.filters.projects.splice(idx, 1);
-                }
-                if (tenantsState.filters.projects.length === projects.length) {
-                    tenantsState.filters.projects = [];
-                }
-                updateProjectCheckboxes();
-                applyFilters();
-                renderTenantRows();
-                renderStats();
-            }
-        });
     }
 
     function updateProjectCheckboxes() {
@@ -569,18 +586,6 @@ const TenantView = (() => {
         container.innerHTML = tags.map(tag =>
             `<button class="tv-tag-filter-chip${tenantsState.tagFilter.includes(tag) ? ' active' : ''}" data-tag="${escHtml(tag)}">${escHtml(tag)}</button>`
         ).join('');
-        container.addEventListener('click', e => {
-            const chip = e.target.closest('.tv-tag-filter-chip');
-            if (!chip) return;
-            const tag = chip.dataset.tag;
-            const idx = tenantsState.tagFilter.indexOf(tag);
-            if (idx === -1) tenantsState.tagFilter.push(tag);
-            else tenantsState.tagFilter.splice(idx, 1);
-            chip.classList.toggle('active', tenantsState.tagFilter.includes(tag));
-            applyFilters();
-            renderTenantRows();
-            renderStats();
-        });
     }
 
     /* ─── Filtering ──────────────────────────────────────────────────────── */
@@ -851,6 +856,7 @@ const TenantView = (() => {
         const failureCount  = tenant.tasks.filter(t =>
             t.taskState === 'Failed' || t.taskState === 'TimedOut' || t.taskState === 'Canceled'
         ).length;
+        const uniqueProjectCount = new Set(tenant.tasks.map(t => t.projectName)).size;
 
         const failuresOnly  = tenantsState.failuresOnlyIds.has(tenant.id);
         const detailSearch  = tenantsState.detailSearchQueries[tenant.id] || '';
@@ -881,7 +887,7 @@ const TenantView = (() => {
                     <span style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary)">${escHtml(tenant.name)}</span>
                     <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">(${escHtml(tenant.tenantDisplayId)})</span>
                     <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">— ${escHtml(tenant.environment)}</span>
-                    <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">${tenant.tasks.length} project${tenant.tasks.length !== 1 ? 's' : ''}</span>
+                    <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">${uniqueProjectCount} project${uniqueProjectCount !== 1 ? 's' : ''}</span>
                     ${failureCount > 0 ? `<span style="font:var(--textBodyBoldSmall);color:var(--colorTextDanger)">(${failureCount} failed)</span>` : ''}
                     <div style="margin-left:auto;display:flex;align-items:center;gap:var(--space-sm)">
                         ${failuresOnlyBtn}
