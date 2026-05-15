@@ -612,17 +612,24 @@ const TenantView = (() => {
         }, visibleTasks[0].startedAt || visibleTasks[0].completedAt || tenant.lastUpdated);
     }
 
+    function normalizeTenantStatus(status) {
+        if (status === 'In progress') return 'In progress';
+        if (status === 'All succeeded') return 'All succeeded';
+        if (status === 'Has failures' || status === 'All failed' || status === 'Some failed') return 'Has failures';
+        return 'All succeeded';
+    }
+
     function getFilteredStatus(tenant, visibleTasks, hasTaskScopedFilters) {
-        if (!hasTaskScopedFilters) return tenant.status;
-        if (!visibleTasks.length) return tenant.status;
+        if (!hasTaskScopedFilters) return normalizeTenantStatus(tenant.status);
+        if (!visibleTasks.length) return normalizeTenantStatus(tenant.status);
 
         const states = visibleTasks.map(task => task.taskState);
         if (states.some(state => ['Executing', 'Queued', 'Canceling', 'Cancelling'].includes(state))) return 'In progress';
         if (states.every(state => state === 'Success')) return 'All succeeded';
-        if (states.every(state => state === 'Failed')) return 'All failed';
-        if (states.some(state => state === 'Failed')) return 'Some failed';
+        if (states.every(state => state === 'Failed')) return 'Has failures';
+        if (states.some(state => state === 'Failed')) return 'Has failures';
 
-        return tenant.status;
+        return normalizeTenantStatus(tenant.status);
     }
 
     function applyFilters() {
