@@ -266,34 +266,73 @@ const TenantView = (() => {
                 else fromDate.setFullYear(fromDate.getFullYear() - 10);
                 const fromDateStr = encodeURIComponent(fromDate.toISOString());
                 const deployTake  = lookbackMonths <= 3 ? 500 : lookbackMonths <= 6 ? 1000 : lookbackMonths <= 12 ? 2000 : 5000;
+                const relatedResourceBatchSize = 50;
 
-                const [rawEnvs, projectList, tenantList, rawDeploymentsData, runbookRunsData, tasksData, releasesData] = await Promise.all([
+                const chunkArray = (items, size) => {
+                    const chunks = [];
+                    for (let i = 0; i < items.length; i += size) {
+                        chunks.push(items.slice(i, i + size));
+                    }
+                    return chunks;
+                };
+
+                const fetchResourcesByIds = async (resourceName, ids) => {
+                    const uniqueIds = [...new Set((ids || []).filter(Boolean))];
+                    if (!uniqueIds.length) return [];
+
+                    const cache = new Map();
+                    const results = [];
+
+                    for (const idBatch of chunkArray(uniqueIds, relatedResourceBatchSize)) {
+                        const batchResults = await Promise.all(idBatch.map(async (id) => {
+                            if (cache.has(id)) return cache.get(id);
+                            try {
+                                const item = await OctopusApi.get(`/api/${spaceId}/${resourceName}/${encodeURIComponent(id)}`);
+                                cache.set(id, item || null);
+                                return item || null;
+                            } catch (fetchErr) {
+                                cache.set(id, null);
+                                return null;
+                            }
+                        }));
+                        results.push(...batchResults.filter(Boolean));
+                    }
+
+                    return results;
+                };
+
+                const [rawEnvs, projectList, tenantList, rawDeploymentsData, runbookRunsData] = await Promise.all([
                     OctopusApi.get(`/api/${spaceId}/environments/all`),
                     OctopusApi.get(`/api/${spaceId}/projects/all`),
                     OctopusApi.get(`/api/${spaceId}/tenants/all`),
                     OctopusApi.get(`/api/${spaceId}/deployments?fromDate=${fromDateStr}&take=${deployTake}`),
                     OctopusApi.get(`/api/${spaceId}/runbookRuns?fromDate=${fromDateStr}&take=${deployTake}`),
-                    OctopusApi.get(`/api/${spaceId}/tasks?skip=0&take=${deployTake}`),
-                    OctopusApi.get(`/api/${spaceId}/releases?take=${deployTake}`),
                 ]);
 
                 const deploymentItems = rawDeploymentsData.Items || rawDeploymentsData || [];
                 const runbookRunItems = runbookRunsData.Items || runbookRunsData || [];
+                const combinedDeploymentItems = deploymentItems.concat(runbookRunItems.map(rr => ({
+                    Id: rr.Id,
+                    TaskId: rr.TaskId,
+                    TenantId: rr.TenantId,
+                    EnvironmentId: rr.EnvironmentId,
+                    ProjectId: rr.ProjectId,
+                    ReleaseId: rr.ReleaseId || null,
+                    RunbookId: rr.RunbookId || null,
+                    RunbookSnapshotId: rr.RunbookSnapshotId || null,
+                    Created: rr.Created,
+                    QueueTime: rr.QueueTime,
+                    TaskType: 'RunbookRun',
+                })));
+
+                const [tasksData, releasesData] = await Promise.all([
+                    fetchResourcesByIds('tasks', combinedDeploymentItems.map(item => item.TaskId)),
+                    fetchResourcesByIds('releases', combinedDeploymentItems.map(item => item.ReleaseId)),
+                ]);
+
                 const deploymentsData = {
                     ...(rawDeploymentsData && !Array.isArray(rawDeploymentsData) ? rawDeploymentsData : {}),
-                    Items: deploymentItems.concat(runbookRunItems.map(rr => ({
-                        Id: rr.Id,
-                        TaskId: rr.TaskId,
-                        TenantId: rr.TenantId,
-                        EnvironmentId: rr.EnvironmentId,
-                        ProjectId: rr.ProjectId,
-                        ReleaseId: rr.ReleaseId || null,
-                        RunbookId: rr.RunbookId || null,
-                        RunbookSnapshotId: rr.RunbookSnapshotId || null,
-                        Created: rr.Created,
-                        QueueTime: rr.QueueTime,
-                        TaskType: 'RunbookRun',
-                    }))),
+                    Items: combinedDeploymentItems,
                 };
 
                 envs = rawEnvs;
