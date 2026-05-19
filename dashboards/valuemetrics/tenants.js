@@ -126,7 +126,6 @@ const TenantView = (() => {
             else fromDate.setFullYear(fromDate.getFullYear() - 10);
             const fromDateStr = encodeURIComponent(fromDate.toISOString());
             const deployTake  = lookbackMonths <= 3 ? 500 : lookbackMonths <= 6 ? 1000 : lookbackMonths <= 12 ? 2000 : 5000;
-            const relatedResourceBatchSize = 50;
 
             const chunkArray = (items, size) => {
                 const chunks = [];
@@ -136,29 +135,28 @@ const TenantView = (() => {
                 return chunks;
             };
 
+            // Fetch resources in bulk using ?ids= — one request per 100 IDs instead of one per ID.
+            // Auth errors (401/403) are re-thrown so the outer catch can surface them to the user.
             const fetchResourcesByIds = async (resourceName, ids) => {
                 const uniqueIds = [...new Set((ids || []).filter(Boolean))];
                 if (!uniqueIds.length) return [];
 
-                const cache = new Map();
+                const BULK_BATCH = 100;
                 const results = [];
 
-                for (const idBatch of chunkArray(uniqueIds, relatedResourceBatchSize)) {
-                    const batchResults = await Promise.all(idBatch.map(async (id) => {
-                        if (cache.has(id)) return cache.get(id);
-                        try {
-                            const resourcePath = resourceName === 'tasks'
-                                ? `/api/tasks/${encodeURIComponent(id)}`
-                                : `/api/${spaceId}/${resourceName}/${encodeURIComponent(id)}`;
-                            const item = await OctopusApi.get(resourcePath);
-                            cache.set(id, item || null);
-                            return item || null;
-                        } catch (fetchErr) {
-                            cache.set(id, null);
-                            return null;
-                        }
-                    }));
-                    results.push(...batchResults.filter(Boolean));
+                for (const idBatch of chunkArray(uniqueIds, BULK_BATCH)) {
+                    const idParam = idBatch.join(',');
+                    const path = resourceName === 'tasks'
+                        ? `/api/tasks?ids=${idParam}&take=${BULK_BATCH}`
+                        : `/api/${spaceId}/${resourceName}?ids=${idParam}&take=${BULK_BATCH}`;
+                    try {
+                        const result = await OctopusApi.get(path);
+                        const items = result?.Items || (Array.isArray(result) ? result : []);
+                        results.push(...items);
+                    } catch (err) {
+                        if (err?.status === 401 || err?.status === 403) throw err;
+                        // non-auth errors: skip batch, continue with partial data
+                    }
                 }
 
                 return results;
@@ -248,9 +246,9 @@ const TenantView = (() => {
                             projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
                             releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
                             taskType: dep.RunbookId ? 'Runbook Run' : 'Deployment',
-                            taskState: task.State || 'Unknown',
+                            taskState: (task.State === 'Cancelled' ? 'Canceled' : task.State) || 'Unknown',
                             environmentName: envMap[dep.EnvironmentId] || dep.EnvironmentId || '',
-                            startedAt: task.StartTime ? new Date(task.StartTime) : new Date(),
+                            startedAt: task.StartTime ? new Date(task.StartTime) : dep.Created ? new Date(dep.Created) : dep.QueueTime ? new Date(dep.QueueTime) : null,
                             duration: task.Duration || '–',
                             machines: [],
                             errorMessage: task.ErrorMessage || undefined,
@@ -275,7 +273,7 @@ const TenantView = (() => {
                         status,
                         tags,
                         tasks,
-                        lastUpdated: new Date(Math.max(...tasks.map(t => t.startedAt.getTime()))),
+                        lastUpdated: new Date(Math.max(...tasks.map(t => t.startedAt ? t.startedAt.getTime() : 0).filter(Boolean))),
                     };
                 })
                 .filter(Boolean);
@@ -1219,6 +1217,7 @@ const TenantView = (() => {
     }
 
     function formatRelativeTime(date) {
+        if (!date) return '–';
         const diff = Date.now() - date.getTime();
         const secs = Math.floor(diff / 1000);
         if (secs < 60) return `${secs}s ago`;
@@ -1230,6 +1229,7 @@ const TenantView = (() => {
     }
 
     function formatDateTime(date) {
+        if (!date) return '–';
         const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const h = String(date.getHours()).padStart(2, '0');
         const m = String(date.getMinutes()).padStart(2, '0');
