@@ -62,9 +62,13 @@ const TenantView = (() => {
             const spaces = await OctopusApi.get('/api/spaces/all');
 
             tenantsState.spaces = spaces;
-            spacesSelect.innerHTML = spaces.map(s =>
-                `<option value="${escHtml(s.Id)}">${escHtml(s.Name)}</option>`
-            ).join('');
+            spacesSelect.replaceChildren();
+            spaces.forEach(s => {
+                const option = document.createElement('option');
+                option.value = s.Id;
+                option.textContent = s.Name;
+                spacesSelect.appendChild(option);
+            });
 
             if (spaces.length > 0) {
                 await onSpaceChange(spaces[0].Id);
