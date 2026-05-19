@@ -537,6 +537,9 @@ const TenantView = (() => {
             trigger.innerHTML = `${tenantsState.filters.projects.length} projects <i class="fa-solid fa-chevron-down tv-multiselect__caret"></i>`;
         }
 
+        const allCheck = document.getElementById('tv-all-projects-check');
+        if (allCheck) allCheck.textContent = allSelected ? '☑' : '☐';
+
         document.querySelectorAll('.tv-projects-checkbox').forEach(cb => {
             cb.checked = allSelected || tenantsState.filters.projects.includes(cb.dataset.project);
         });
@@ -770,7 +773,7 @@ const TenantView = (() => {
         }).join('');
 
         // Deployments + frequency
-        const deploymentCount = tenant.tasks.filter(t => t.taskType === 'Deployment').length || tenant.tasks.length;
+        const deploymentCount = tenant.tasks.filter(t => t.taskType === 'Deployment').length;
         const parsedLookbackMonths = parseInt(document.getElementById('lookback-select')?.value || '3', 10);
         const lookbackMonths  = Number.isNaN(parsedLookbackMonths) ? 3 : parsedLookbackMonths;
         const lookbackWeeks   = lookbackMonths * 4.33;
