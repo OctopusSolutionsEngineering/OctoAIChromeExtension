@@ -228,20 +228,29 @@ const TenantView = (() => {
     function showLoading(visible) {
         let el = document.getElementById('tv-loading-state');
 
-        if (visible && !el) {
-            const loadingHost =
-                document.getElementById('tv-tenant-rows') ||
-                document.getElementById('tv-dashboard-content');
+        if (!el) {
+            const loadingHost = document.getElementById('tv-dashboard-content');
 
             if (!loadingHost) return;
 
             el = document.createElement('div');
             el.id = 'tv-loading-state';
-            el.textContent = 'Loading...';
+            el.className = 'tv-loading-state';
+
+            const spinner = document.createElement('div');
+            spinner.className = 'tv-loading-state__spinner';
+            spinner.setAttribute('aria-hidden', 'true');
+
+            const message = document.createElement('div');
+            message.className = 'tv-loading-state__message';
+            message.textContent = 'Loading...';
+
+            el.appendChild(spinner);
+            el.appendChild(message);
             loadingHost.prepend(el);
         }
 
-        if (el) el.style.display = visible ? 'block' : 'none';
+        el.style.display = visible ? 'block' : 'none';
     }
 
     async function onSpaceChange(spaceId) {
