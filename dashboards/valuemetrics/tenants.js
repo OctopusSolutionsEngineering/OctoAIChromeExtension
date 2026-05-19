@@ -147,7 +147,10 @@ const TenantView = (() => {
                     const batchResults = await Promise.all(idBatch.map(async (id) => {
                         if (cache.has(id)) return cache.get(id);
                         try {
-                            const item = await OctopusApi.get(`/api/${spaceId}/${resourceName}/${encodeURIComponent(id)}`);
+                            const resourcePath = resourceName === 'tasks'
+                                ? `/api/tasks/${encodeURIComponent(id)}`
+                                : `/api/${spaceId}/${resourceName}/${encodeURIComponent(id)}`;
+                            const item = await OctopusApi.get(resourcePath);
                             cache.set(id, item || null);
                             return item || null;
                         } catch (fetchErr) {
