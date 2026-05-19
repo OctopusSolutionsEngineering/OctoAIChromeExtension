@@ -1051,7 +1051,7 @@ const TenantView = (() => {
 
         const root     = tenantsState.serverConfigured ? OctopusApi.getInstanceUrl() : null;
         const taskHref = root && tenantsState.spaceId
-            ? `${root}/app#/${tenantsState.spaceId}/tasks/${task.serverTaskId}`
+            ? `${root}/app#/${encodeURIComponent(tenantsState.spaceId)}/tasks/${encodeURIComponent(task.serverTaskId)}`
             : null;
         const taskIdCell = taskHref
             ? `<a href="${escHtml(taskHref)}" target="_blank" rel="noopener" style="font-family:var(--fontFamilyCode);font-size:0.75rem;color:var(--colorPrimaryLight)">${escHtml(task.serverTaskId)}</a>`
