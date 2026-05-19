@@ -2234,8 +2234,25 @@ const Views = (() => {
     </div>`;
   }
 
+  function showTenantInitError(error) {
+    console.error('Failed to initialize tenant view', error);
+
+    const errorBanner = document.getElementById('tv-error-banner');
+    const dashboardContent = document.getElementById('tv-dashboard-content');
+    const message = (error && error.message) ? error.message : 'Failed to load tenant dashboard.';
+
+    if (dashboardContent) {
+      dashboardContent.classList.add('hidden');
+    }
+
+    if (errorBanner) {
+      errorBanner.textContent = message;
+      errorBanner.classList.remove('hidden');
+    }
+  }
+
   function wireTenantsEvents() {
-    TenantView.init();
+    TenantView.init().catch(showTenantInitError);
   }
 
   // ---- Public API ----
