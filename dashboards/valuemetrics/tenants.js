@@ -1215,15 +1215,6 @@ const TenantView = (() => {
             .replace(/'/g, '&#39;');
     }
 
-    function escAttr(str) {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
     function formatRelativeTime(date) {
         const diff = Date.now() - date.getTime();
         const secs = Math.floor(diff / 1000);
