@@ -871,7 +871,7 @@ const TenantView = (() => {
         // Octopus deep link
         const root = tenantsState.serverConfigured ? OctopusApi.getInstanceUrl() : null;
         const tenantHref = root && tenantsState.spaceId
-            ? `${root}/app#/${tenantsState.spaceId}/tenants/${tenant.id}/overview`
+            ? `${root}/app#/${encodeURIComponent(tenantsState.spaceId)}/tenants/${encodeURIComponent(tenant.id)}/overview`
             : null;
 
         const nameCell = tenantHref
