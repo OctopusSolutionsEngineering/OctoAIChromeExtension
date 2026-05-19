@@ -875,9 +875,8 @@ const TenantView = (() => {
             : null;
 
         const nameCell = tenantHref
-            ? `<a href="${escHtml(tenantHref)}" target="_blank" rel="noopener"
-                  style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary);text-decoration:none"
-                  title="Open in Octopus" onclick="event.stopPropagation()">${escHtml(tenant.name)}<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.65rem;margin-left:5px;color:var(--colorTextTertiary)"></i></a>`
+            ? `<span style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary)"
+                  title="Open in Octopus">${escHtml(tenant.name)}<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.65rem;margin-left:5px;color:var(--colorTextTertiary)"></i></span>`
             : `<span style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary)">${escHtml(tenant.name)}</span>`;
 
         // Tags — active filter chips are highlighted
