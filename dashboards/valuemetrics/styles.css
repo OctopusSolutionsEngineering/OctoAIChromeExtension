@@ -3296,3 +3296,81 @@ tbody tr:last-child td {
   font-family: var(--fontFamilyCode);
   font-size: 0.65rem;
 }
+
+/* Version adoption rows inside each cell */
+.tv-ma-cell {
+  padding: 5px 6px;
+  vertical-align: top;
+  text-align: left;
+  min-width: 160px;
+  max-width: 240px;
+}
+
+.tv-ma-project-cell {
+  min-width: 180px;
+  max-width: 260px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.tv-ma-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: var(--radiusSmall);
+  margin-bottom: 2px;
+  font-family: var(--fontFamilyCode);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.tv-ma-version-row:last-child {
+  margin-bottom: 0;
+}
+
+.tv-ma-count {
+  font-size: 0.63rem;
+  opacity: 0.8;
+  min-width: 1.6em;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.tv-ma-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tv-ma-legend-dot.tv-mc--current  { background: rgba(70, 188, 120, 0.7); }
+.tv-ma-legend-dot.tv-mc--behind-1  { background: rgba(247, 155, 60, 0.7); }
+.tv-ma-legend-dot.tv-mc--behind-many { background: rgba(214, 61, 61, 0.7); }
+
+.tv-ma-tenant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 6px 5px 10px;
+  border-left: 2px solid currentColor;
+  margin: 2px 0 4px;
+  opacity: 0.9;
+}
+
+.tv-ma-tenant-name {
+  font: var(--textBodyRegularXSmall);
+  color: var(--colorTextSecondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  display: block;
+}
+
+a.tv-ma-tenant-name:hover {
+  color: var(--colorPrimaryLighter);
+  text-decoration: underline;
+}

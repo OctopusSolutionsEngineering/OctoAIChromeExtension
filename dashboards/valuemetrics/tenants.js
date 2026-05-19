@@ -1,142 +1,9 @@
 /* ==========================================================================
    TenantView — Multi-Tenanted Deployment Dashboard
-   Ported from lucy.spence@octopus.com's tenantsdashboard prototype (PR #17).
-   Adapted to run inside the valuemetrics SPA using OctopusApi for data access.
    ========================================================================== */
 
 const TenantView = (() => {
     'use strict';
-
-    /* ─── Mock data ──────────────────────────────────────────────────────── */
-
-    function _minsAgo(n) { return new Date(Date.now() - n * 60 * 1000); }
-    function _hoursAgo(n) { return new Date(Date.now() - n * 60 * 60 * 1000); }
-
-    const MOCK_TENANTS = [
-        {
-            id: 'tenant-1', tenantDisplayId: 'Tenants-1001',
-            name: 'Acme Corp', environment: 'Production',
-            status: 'All succeeded', tags: ['Enterprise', 'Americas'],
-            lastUpdated: _minsAgo(2),
-            tasks: [
-                { id: 't1-1', serverTaskId: 'ServerTasks-8841', projectName: 'Web API', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(14), duration: '6m 22s', machines: [{ id: 'm1', name: 'web-prod-01', status: 'Success' }, { id: 'm2', name: 'web-prod-02', status: 'Success' }] },
-                { id: 't1-2', serverTaskId: 'ServerTasks-8842', projectName: 'Database Migrator', releaseVersion: '2.4.0', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(22), duration: '4m 07s', machines: [{ id: 'm3', name: 'db-prod-01', status: 'Success' }] },
-                { id: 't1-3', serverTaskId: 'ServerTasks-8843', projectName: 'Background Worker', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(18), duration: '8m 21s', machines: [{ id: 'm4', name: 'worker-prod-01', status: 'Success' }, { id: 'm5', name: 'worker-prod-02', status: 'Success' }, { id: 'm6', name: 'worker-prod-03', status: 'Success' }] },
-            ],
-        },
-        {
-            id: 'tenant-2', tenantDisplayId: 'Tenants-1002',
-            name: 'Globex Corp', environment: 'Production',
-            status: 'All succeeded', tags: ['Enterprise', 'EMEA'],
-            lastUpdated: _minsAgo(8),
-            tasks: [
-                { id: 't2-1', serverTaskId: 'ServerTasks-8850', projectName: 'Web API', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(35), duration: '7m 14s', machines: [{ id: 'm10', name: 'web-prod-01', status: 'Success' }, { id: 'm11', name: 'web-prod-02', status: 'Success' }] },
-                { id: 't2-2', serverTaskId: 'ServerTasks-8851', projectName: 'Auth Service', releaseVersion: '1.9.3', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(40), duration: '3m 52s', machines: [{ id: 'm12', name: 'auth-prod-01', status: 'Success' }] },
-                { id: 't2-3', serverTaskId: 'ServerTasks-8852', projectName: 'Database Migrator', releaseVersion: '2.4.0', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(45), duration: '5m 01s', machines: [{ id: 'm13', name: 'db-prod-01', status: 'Success' }] },
-            ],
-        },
-        {
-            id: 'tenant-3', tenantDisplayId: 'Tenants-1003',
-            name: 'Initech Solutions', environment: 'Production',
-            status: 'All succeeded', tags: ['Enterprise', 'APAC'],
-            lastUpdated: _minsAgo(22),
-            tasks: [
-                { id: 't3-1', serverTaskId: 'ServerTasks-8860', projectName: 'Web API', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(55), duration: '9m 43s', machines: [{ id: 'm20', name: 'web-prod-01', status: 'Success' }] },
-                { id: 't3-2', serverTaskId: 'ServerTasks-8861', projectName: 'Notification Service', releaseVersion: '3.1.0', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(60), duration: '2m 18s', machines: [{ id: 'm21', name: 'notify-prod-01', status: 'Success' }] },
-            ],
-        },
-        {
-            id: 'tenant-4', tenantDisplayId: 'Tenants-1004',
-            name: 'Umbrella Ltd', environment: 'Production',
-            status: 'All succeeded', tags: ['Enterprise', 'EMEA', 'Regulated'],
-            lastUpdated: _hoursAgo(1),
-            tasks: [
-                { id: 't4-1', serverTaskId: 'ServerTasks-8870', projectName: 'Web API', releaseVersion: '2.3.9', taskType: 'Deployment', taskState: 'Success', startedAt: _hoursAgo(1.5), duration: '11m 05s', machines: [{ id: 'm30', name: 'web-prod-01', status: 'Success' }, { id: 'm31', name: 'web-prod-02', status: 'Success' }] },
-                { id: 't4-2', serverTaskId: 'ServerTasks-8871', projectName: 'Compliance Reporter', releaseVersion: '1.2.0', taskType: 'Runbook Run', taskState: 'Success', startedAt: _hoursAgo(1.4), duration: '1m 44s', machines: [{ id: 'm32', name: 'compliance-prod-01', status: 'Success' }] },
-            ],
-        },
-        {
-            id: 'tenant-5', tenantDisplayId: 'Tenants-1005',
-            name: 'Soylent Corp', environment: 'Staging',
-            status: 'All succeeded', tags: ['Starter', 'Americas'],
-            lastUpdated: _minsAgo(5),
-            tasks: [
-                { id: 't5-1', serverTaskId: 'ServerTasks-8880', projectName: 'Web API', releaseVersion: '2.5.0', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(12), duration: '5m 30s', machines: [{ id: 'm40', name: 'web-staging-01', status: 'Success' }] },
-            ],
-        },
-        {
-            id: 'tenant-6', tenantDisplayId: 'Tenants-1006',
-            name: 'Stark Industries', environment: 'Production',
-            status: 'Has failures', tags: ['Enterprise', 'Americas', 'High Priority'],
-            lastUpdated: _minsAgo(14),
-            tasks: [
-                { id: 't6-1', serverTaskId: 'ServerTasks-8891', projectName: 'Web API', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Failed', startedAt: _minsAgo(26), duration: '12m 34s', errorMessage: 'Step "Deploy Web API" failed on 2 of 4 machines — connection timeout on web-prod-03 and web-prod-04', machines: [{ id: 'm50', name: 'web-prod-01', status: 'Success' }, { id: 'm51', name: 'web-prod-02', status: 'Success' }, { id: 'm52', name: 'web-prod-03', status: 'Failed' }, { id: 'm53', name: 'web-prod-04', status: 'Failed' }] },
-                { id: 't6-2', serverTaskId: 'ServerTasks-8892', projectName: 'Database Migrator', releaseVersion: '2.4.0', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(38), duration: '4m 07s', machines: [{ id: 'm54', name: 'db-prod-01', status: 'Success' }] },
-                { id: 't6-3', serverTaskId: 'ServerTasks-8893', projectName: 'Background Worker', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(32), duration: '8m 21s', machines: [{ id: 'm55', name: 'worker-prod-01', status: 'Success' }, { id: 'm56', name: 'worker-prod-02', status: 'Success' }, { id: 'm57', name: 'worker-prod-03', status: 'Success' }] },
-            ],
-        },
-        {
-            id: 'tenant-7', tenantDisplayId: 'Tenants-1007',
-            name: 'Contoso Ltd', environment: 'Production',
-            status: 'Has failures', tags: ['Enterprise', 'EMEA'],
-            lastUpdated: _minsAgo(31),
-            tasks: [
-                { id: 't7-1', serverTaskId: 'ServerTasks-8900', projectName: 'Auth Service', releaseVersion: '1.9.3', taskType: 'Deployment', taskState: 'Failed', startedAt: _minsAgo(50), duration: '8m 02s', errorMessage: 'Health check endpoint returned 503 after deployment', machines: [{ id: 'm60', name: 'auth-prod-01', status: 'Failed' }, { id: 'm61', name: 'auth-prod-02', status: 'Success' }] },
-                { id: 't7-2', serverTaskId: 'ServerTasks-8901', projectName: 'Web API', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(55), duration: '6m 15s', machines: [{ id: 'm62', name: 'web-prod-01', status: 'Success' }] },
-                { id: 't7-3', serverTaskId: 'ServerTasks-8902', projectName: 'Email Service', releaseVersion: '2.0.1', taskType: 'Deployment', taskState: 'TimedOut', startedAt: _minsAgo(65), duration: '30m 00s', errorMessage: 'Deployment timed out after 30 minutes waiting for health check', machines: [{ id: 'm63', name: 'email-prod-01', status: 'Failed' }] },
-            ],
-        },
-        {
-            id: 'tenant-8', tenantDisplayId: 'Tenants-1008',
-            name: 'Wonka Industries', environment: 'Production',
-            status: 'Has failures', tags: ['SMB', 'EMEA'],
-            lastUpdated: _minsAgo(47),
-            tasks: [
-                { id: 't8-1', serverTaskId: 'ServerTasks-8910', projectName: 'Web API', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Canceled', startedAt: _minsAgo(60), duration: '2m 11s', errorMessage: 'Deployment was canceled by operator', machines: [{ id: 'm70', name: 'web-prod-01', status: 'Failed' }] },
-            ],
-        },
-        {
-            id: 'tenant-9', tenantDisplayId: 'Tenants-1009',
-            name: 'Weyland Corp', environment: 'Staging',
-            status: 'Has failures', tags: ['Enterprise', 'Beta'],
-            lastUpdated: _minsAgo(19),
-            tasks: [
-                { id: 't9-1', serverTaskId: 'ServerTasks-8920', projectName: 'Data Pipeline', releaseVersion: '4.0.1', taskType: 'Deployment', taskState: 'Failed', startedAt: _minsAgo(30), duration: '15m 44s', errorMessage: 'Database migration step failed: constraint violation on table users', machines: [{ id: 'm80', name: 'pipeline-staging-01', status: 'Failed' }, { id: 'm81', name: 'pipeline-staging-02', status: 'Failed' }] },
-                { id: 't9-2', serverTaskId: 'ServerTasks-8921', projectName: 'Web API', releaseVersion: '4.0.1', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(35), duration: '7m 02s', machines: [{ id: 'm82', name: 'web-staging-01', status: 'Success' }] },
-            ],
-        },
-        {
-            id: 'tenant-10', tenantDisplayId: 'Tenants-1010',
-            name: 'Cyberdyne Systems', environment: 'Production',
-            status: 'In progress', tags: ['Enterprise', 'Americas', 'Managed'],
-            lastUpdated: new Date(Date.now() - 12 * 1000),
-            tasks: [
-                { id: 't10-1', serverTaskId: 'ServerTasks-8930', projectName: 'Web API', releaseVersion: '2.4.2', taskType: 'Deployment', taskState: 'Executing', startedAt: _minsAgo(4), duration: '4m 12s', machines: [{ id: 'm90', name: 'web-prod-01', status: 'Executing' }, { id: 'm91', name: 'web-prod-02', status: 'Queued' }] },
-                { id: 't10-2', serverTaskId: 'ServerTasks-8931', projectName: 'Database Migrator', releaseVersion: '2.4.1', taskType: 'Deployment', taskState: 'Queued', startedAt: _minsAgo(1), duration: '–', machines: [{ id: 'm92', name: 'db-prod-01', status: 'Queued' }] },
-                { id: 't10-3', serverTaskId: 'ServerTasks-8932', projectName: 'Background Worker', releaseVersion: '2.4.2', taskType: 'Deployment', taskState: 'Success', startedAt: _minsAgo(18), duration: '8m 55s', machines: [{ id: 'm93', name: 'worker-prod-01', status: 'Success' }, { id: 'm94', name: 'worker-prod-02', status: 'Success' }] },
-            ],
-        },
-        {
-            id: 'tenant-11', tenantDisplayId: 'Tenants-1011',
-            name: 'Initrode Global', environment: 'Production',
-            status: 'In progress', tags: ['SMB', 'APAC'],
-            lastUpdated: new Date(Date.now() - 8 * 1000),
-            tasks: [
-                { id: 't11-1', serverTaskId: 'ServerTasks-8940', projectName: 'Auth Service', releaseVersion: '1.9.4', taskType: 'Deployment', taskState: 'Executing', startedAt: _minsAgo(6), duration: '6m 03s', machines: [{ id: 'm100', name: 'auth-prod-01', status: 'Executing' }] },
-                { id: 't11-2', serverTaskId: 'ServerTasks-8941', projectName: 'Web API', releaseVersion: '2.4.2', taskType: 'Deployment', taskState: 'Queued', startedAt: _minsAgo(2), duration: '–', machines: [{ id: 'm101', name: 'web-prod-01', status: 'Queued' }, { id: 'm102', name: 'web-prod-02', status: 'Queued' }] },
-            ],
-        },
-        {
-            id: 'tenant-12', tenantDisplayId: 'Tenants-1012',
-            name: 'Delos Incorporated', environment: 'Staging',
-            status: 'In progress', tags: ['Enterprise', 'Americas', 'Beta'],
-            lastUpdated: new Date(Date.now() - 3 * 1000),
-            tasks: [
-                { id: 't12-1', serverTaskId: 'ServerTasks-8950', projectName: 'Web API', releaseVersion: '3.0.0', taskType: 'Deployment', taskState: 'Cancelling', startedAt: _minsAgo(8), duration: '8m 14s', machines: [{ id: 'm110', name: 'web-staging-01', status: 'Executing' }] },
-                { id: 't12-2', serverTaskId: 'ServerTasks-8951', projectName: 'ML Inference', releaseVersion: '1.0.0', taskType: 'Deployment', taskState: 'Queued', startedAt: _minsAgo(1), duration: '–', machines: [{ id: 'm111', name: 'ml-staging-01', status: 'Queued' }] },
-            ],
-        },
-    ];
 
     /* ─── State ──────────────────────────────────────────────────────────── */
 
@@ -151,9 +18,7 @@ const TenantView = (() => {
         expandedIds: new Set(),
         failuresOnlyIds: new Set(),
         errorExpandedIds: new Set(),
-        retriedTaskIds: new Set(),
         detailSearchQueries: {},
-        confirmingRetryId: null,
         showFilters: false,
         filters: {
             environment: '',
@@ -170,7 +35,6 @@ const TenantView = (() => {
         tagFilter: [],
         viewMode: 'status',
         spaceId: null,
-        serverConfigured: false,
     };
 
     /* ─── Init ───────────────────────────────────────────────────────────── */
@@ -185,26 +49,17 @@ const TenantView = (() => {
         tenantsState.expandedIds = new Set();
         tenantsState.failuresOnlyIds = new Set();
         tenantsState.errorExpandedIds = new Set();
-        tenantsState.retriedTaskIds = new Set();
         tenantsState.detailSearchQueries = {};
-        tenantsState.confirmingRetryId = null;
         tenantsState.showFilters = false;
         tenantsState.sortBy = 'lastUpdated';
         tenantsState.sortDir = 'desc';
         tenantsState.tagFilter = [];
         tenantsState.viewMode = 'status';
         tenantsState.filters = { environment: '', projects: [], taskTypes: ['Deployment', 'Runbook Run'], dateFrom: null, dateTo: null };
-        tenantsState.serverConfigured = OctopusApi.isConfigured();
-
         const spacesSelect = document.getElementById('tv-spaces-select');
 
         try {
-            let spaces;
-            if (tenantsState.serverConfigured) {
-                spaces = await OctopusApi.get('/api/spaces/all');
-            } else {
-                spaces = [{ Id: 'mock-space', Name: 'Mock Data Preview' }];
-            }
+            const spaces = await OctopusApi.get('/api/spaces/all');
 
             tenantsState.spaces = spaces;
             spacesSelect.innerHTML = spaces.map(s =>
@@ -215,7 +70,7 @@ const TenantView = (() => {
                 await onSpaceChange(spaces[0].Id);
             }
         } catch (err) {
-            showError('Failed to load spaces: ' + err.message);
+            showError('Failed to load spaces: ' + (err.body || err.message));
         }
 
         spacesSelect.addEventListener('change', () => {
@@ -261,171 +116,162 @@ const TenantView = (() => {
         try {
             let envs, rawProjects, tenants;
 
-            if (!tenantsState.serverConfigured) {
-                envs = [
-                    { Id: 'Environments-1', Name: 'Production' },
-                    { Id: 'Environments-2', Name: 'Staging' },
-                    { Id: 'Environments-3', Name: 'UAT' },
-                ];
-                rawProjects = [...new Set(MOCK_TENANTS.flatMap(t => t.tasks.map(tk => tk.projectName)))]
-                    .sort().map(n => ({ Id: n, Name: n }));
-                tenants = MOCK_TENANTS;
-            } else {
-                const lookbackMonths = parseInt(document.getElementById('lookback-select')?.value || '3', 10);
-                const fromDate = new Date();
-                if (lookbackMonths > 0) fromDate.setMonth(fromDate.getMonth() - lookbackMonths);
-                else fromDate.setFullYear(fromDate.getFullYear() - 10);
-                const fromDateStr = encodeURIComponent(fromDate.toISOString());
-                const deployTake  = lookbackMonths <= 3 ? 500 : lookbackMonths <= 6 ? 1000 : lookbackMonths <= 12 ? 2000 : 5000;
-                const relatedResourceBatchSize = 50;
+            const lookbackMonths = parseInt(document.getElementById('lookback-select')?.value || '3', 10);
+            const fromDate = new Date();
+            if (lookbackMonths > 0) fromDate.setMonth(fromDate.getMonth() - lookbackMonths);
+            else fromDate.setFullYear(fromDate.getFullYear() - 10);
+            const fromDateStr = encodeURIComponent(fromDate.toISOString());
+            const deployTake  = lookbackMonths <= 3 ? 500 : lookbackMonths <= 6 ? 1000 : lookbackMonths <= 12 ? 2000 : 5000;
+            const relatedResourceBatchSize = 50;
 
-                const chunkArray = (items, size) => {
-                    const chunks = [];
-                    for (let i = 0; i < items.length; i += size) {
-                        chunks.push(items.slice(i, i + size));
-                    }
-                    return chunks;
-                };
+            const chunkArray = (items, size) => {
+                const chunks = [];
+                for (let i = 0; i < items.length; i += size) {
+                    chunks.push(items.slice(i, i + size));
+                }
+                return chunks;
+            };
 
-                const fetchResourcesByIds = async (resourceName, ids) => {
-                    const uniqueIds = [...new Set((ids || []).filter(Boolean))];
-                    if (!uniqueIds.length) return [];
+            const fetchResourcesByIds = async (resourceName, ids) => {
+                const uniqueIds = [...new Set((ids || []).filter(Boolean))];
+                if (!uniqueIds.length) return [];
 
-                    const cache = new Map();
-                    const results = [];
+                const cache = new Map();
+                const results = [];
 
-                    for (const idBatch of chunkArray(uniqueIds, relatedResourceBatchSize)) {
-                        const batchResults = await Promise.all(idBatch.map(async (id) => {
-                            if (cache.has(id)) return cache.get(id);
-                            try {
-                                const item = await OctopusApi.get(`/api/${spaceId}/${resourceName}/${encodeURIComponent(id)}`);
-                                cache.set(id, item || null);
-                                return item || null;
-                            } catch (fetchErr) {
-                                cache.set(id, null);
-                                return null;
-                            }
-                        }));
-                        results.push(...batchResults.filter(Boolean));
-                    }
+                for (const idBatch of chunkArray(uniqueIds, relatedResourceBatchSize)) {
+                    const batchResults = await Promise.all(idBatch.map(async (id) => {
+                        if (cache.has(id)) return cache.get(id);
+                        try {
+                            const item = await OctopusApi.get(`/api/${spaceId}/${resourceName}/${encodeURIComponent(id)}`);
+                            cache.set(id, item || null);
+                            return item || null;
+                        } catch (fetchErr) {
+                            cache.set(id, null);
+                            return null;
+                        }
+                    }));
+                    results.push(...batchResults.filter(Boolean));
+                }
 
-                    return results;
-                };
+                return results;
+            };
 
-                const [rawEnvs, projectList, tenantList, rawDeploymentsData, runbookRunsData] = await Promise.all([
-                    OctopusApi.get(`/api/${spaceId}/environments/all`),
-                    OctopusApi.get(`/api/${spaceId}/projects/all`),
-                    OctopusApi.get(`/api/${spaceId}/tenants/all`),
-                    OctopusApi.get(`/api/${spaceId}/deployments?fromDate=${fromDateStr}&take=${deployTake}`),
-                    OctopusApi.get(`/api/${spaceId}/runbookRuns?fromDate=${fromDateStr}&take=${deployTake}`),
-                ]);
+            const [rawEnvs, projectList, tenantList, rawDeploymentsData, runbookRunsData] = await Promise.all([
+                OctopusApi.get(`/api/${spaceId}/environments/all`),
+                OctopusApi.get(`/api/${spaceId}/projects/all`),
+                OctopusApi.get(`/api/${spaceId}/tenants/all`),
+                OctopusApi.get(`/api/${spaceId}/deployments?fromDate=${fromDateStr}&take=${deployTake}`),
+                OctopusApi.get(`/api/${spaceId}/runbookRuns?fromDate=${fromDateStr}&take=${deployTake}`),
+            ]);
 
-                const deploymentItems = rawDeploymentsData.Items || rawDeploymentsData || [];
-                const runbookRunItems = runbookRunsData.Items || runbookRunsData || [];
-                const combinedDeploymentItems = deploymentItems.concat(runbookRunItems.map(rr => ({
-                    Id: rr.Id,
-                    TaskId: rr.TaskId,
-                    TenantId: rr.TenantId,
-                    EnvironmentId: rr.EnvironmentId,
-                    ProjectId: rr.ProjectId,
-                    ReleaseId: rr.ReleaseId || null,
-                    RunbookId: rr.RunbookId || null,
-                    RunbookSnapshotId: rr.RunbookSnapshotId || null,
-                    Created: rr.Created,
-                    QueueTime: rr.QueueTime,
-                    TaskType: 'RunbookRun',
-                })));
+            const deploymentItems = rawDeploymentsData.Items || rawDeploymentsData || [];
+            const runbookRunItems = runbookRunsData.Items || runbookRunsData || [];
+            const combinedDeploymentItems = deploymentItems.concat(runbookRunItems.map(rr => ({
+                Id: rr.Id,
+                TaskId: rr.TaskId,
+                TenantId: rr.TenantId,
+                EnvironmentId: rr.EnvironmentId,
+                ProjectId: rr.ProjectId,
+                ReleaseId: rr.ReleaseId || null,
+                RunbookId: rr.RunbookId || null,
+                RunbookSnapshotId: rr.RunbookSnapshotId || null,
+                Created: rr.Created,
+                QueueTime: rr.QueueTime,
+                TaskType: 'RunbookRun',
+            })));
 
-                const [tasksData, releasesData] = await Promise.all([
-                    fetchResourcesByIds('tasks', combinedDeploymentItems.map(item => item.TaskId)),
-                    fetchResourcesByIds('releases', combinedDeploymentItems.map(item => item.ReleaseId)),
-                ]);
+            const [tasksData, releasesData] = await Promise.all([
+                fetchResourcesByIds('tasks', combinedDeploymentItems.map(item => item.TaskId)),
+                fetchResourcesByIds('releases', combinedDeploymentItems.map(item => item.ReleaseId)),
+            ]);
 
-                const deploymentsData = {
-                    ...(rawDeploymentsData && !Array.isArray(rawDeploymentsData) ? rawDeploymentsData : {}),
-                    Items: combinedDeploymentItems,
-                };
+            const deploymentsData = {
+                ...(rawDeploymentsData && !Array.isArray(rawDeploymentsData) ? rawDeploymentsData : {}),
+                Items: combinedDeploymentItems,
+            };
 
-                envs = rawEnvs;
-                rawProjects = projectList;
+            envs = rawEnvs;
+            rawProjects = projectList;
 
-                const envMap = {};
-                rawEnvs.forEach(e => { envMap[e.Id] = e.Name; });
+            const envMap = {};
+            rawEnvs.forEach(e => { envMap[e.Id] = e.Name; });
 
-                const projectMap = {};
-                projectList.forEach(p => { projectMap[p.Id] = p.Name; });
+            const projectMap = {};
+            projectList.forEach(p => { projectMap[p.Id] = p.Name; });
 
-                const taskMap = {};
-                (tasksData.Items || tasksData).forEach(t => { taskMap[t.Id] = t; });
+            const taskMap = {};
+            (tasksData.Items || tasksData).forEach(t => { taskMap[t.Id] = t; });
 
-                // Releases: map ReleaseId → version string (e.g. "Releases-123" → "2.4.1")
-                const releaseMap = {};
-                (releasesData.Items || releasesData).forEach(r => { releaseMap[r.Id] = r.Version; });
+            // Releases: map ReleaseId → version string (e.g. "Releases-123" → "2.4.1")
+            const releaseMap = {};
+            (releasesData.Items || releasesData).forEach(r => { releaseMap[r.Id] = r.Version; });
 
-                const tenantDeployments = {};
-                (deploymentsData.Items || deploymentsData).forEach(dep => {
-                    const tenantId = dep.TenantId || dep.tenantId;
-                    if (!tenantId) return;
-                    dep.TenantId = tenantId;
-                    if (!tenantDeployments[dep.TenantId]) tenantDeployments[dep.TenantId] = [];
-                    tenantDeployments[dep.TenantId].push(dep);
-                });
+            const tenantDeployments = {};
+            (deploymentsData.Items || deploymentsData).forEach(dep => {
+                const tenantId = dep.TenantId || dep.tenantId;
+                if (!tenantId) return;
+                dep.TenantId = tenantId;
+                if (!tenantDeployments[dep.TenantId]) tenantDeployments[dep.TenantId] = [];
+                tenantDeployments[dep.TenantId].push(dep);
+            });
 
-                tenants = tenantList
-                    .map(apiTenant => {
-                        const deps = tenantDeployments[apiTenant.Id] || [];
-                        const tasks = deps.map(dep => {
-                            const task = taskMap[dep.TaskId];
-                            if (!task) {
-                                return {
-                                    id: dep.Id,
-                                    serverTaskId: dep.TaskId || '–',
-                                    projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
-                                    releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
-                                    taskType: dep.RunbookId ? 'Runbook Run' : 'Deployment',
-                                    taskState: 'Unknown',
-                                    startedAt: dep.Created ? new Date(dep.Created) : new Date(),
-                                    duration: '–',
-                                    machines: [],
-                                };
-                            }
+            tenants = tenantList
+                .map(apiTenant => {
+                    const deps = tenantDeployments[apiTenant.Id] || [];
+                    const tasks = deps.map(dep => {
+                        const task = taskMap[dep.TaskId];
+                        if (!task) {
                             return {
                                 id: dep.Id,
-                                serverTaskId: dep.TaskId,
+                                serverTaskId: dep.TaskId || '–',
                                 projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
                                 releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
                                 taskType: dep.RunbookId ? 'Runbook Run' : 'Deployment',
-                                taskState: task.State || 'Unknown',
-                                startedAt: task.StartTime ? new Date(task.StartTime) : new Date(),
-                                duration: task.Duration || '–',
+                                taskState: 'Unknown',
+                                environmentName: envMap[dep.EnvironmentId] || dep.EnvironmentId || '',
+                                startedAt: dep.Created ? new Date(dep.Created) : new Date(),
+                                duration: '–',
                                 machines: [],
-                                errorMessage: task.ErrorMessage || undefined,
                             };
-                        }).filter(Boolean);
-
-                        if (tasks.length === 0) return null;
-
-                        const status = deriveTenantStatus(tasks);
-                        const tags = Object.values(apiTenant.TenantTags || {})
-                            .flat()
-                            .map(t => t.split('/').pop());
-
-                        const envNames = [...new Set(deps.map(dep => envMap[dep.EnvironmentId] || dep.EnvironmentId).filter(Boolean))];
-                        const envName = envNames.join(', ');
-
+                        }
                         return {
-                            id: apiTenant.Id,
-                            tenantDisplayId: apiTenant.Id,
-                            name: apiTenant.Name,
-                            environment: envName,
-                            status,
-                            tags,
-                            tasks,
-                            lastUpdated: new Date(Math.max(...tasks.map(t => t.startedAt.getTime()))),
+                            id: dep.Id,
+                            serverTaskId: dep.TaskId,
+                            projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
+                            releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
+                            taskType: dep.RunbookId ? 'Runbook Run' : 'Deployment',
+                            taskState: task.State || 'Unknown',
+                            environmentName: envMap[dep.EnvironmentId] || dep.EnvironmentId || '',
+                            startedAt: task.StartTime ? new Date(task.StartTime) : new Date(),
+                            duration: task.Duration || '–',
+                            machines: [],
+                            errorMessage: task.ErrorMessage || undefined,
                         };
-                    })
-                    .filter(Boolean);
-            }
+                    }).filter(Boolean);
+
+                    if (tasks.length === 0) return null;
+
+                    const status = deriveTenantStatus(tasks);
+                    const tags = Object.values(apiTenant.TenantTags || {})
+                        .flat()
+                        .map(t => t.split('/').pop());
+
+                    const envNames = [...new Set(deps.map(dep => envMap[dep.EnvironmentId] || dep.EnvironmentId).filter(Boolean))];
+                    const envName = envNames.join(', ');
+
+                    return {
+                        id: apiTenant.Id,
+                        tenantDisplayId: apiTenant.Id,
+                        name: apiTenant.Name,
+                        environment: envName,
+                        status,
+                        tags,
+                        tasks,
+                        lastUpdated: new Date(Math.max(...tasks.map(t => t.startedAt.getTime()))),
+                    };
+                })
+                .filter(Boolean);
 
             tenantsState.environments = envs;
             tenantsState.projects = rawProjects.map(p => p.Name || p);
@@ -447,7 +293,7 @@ const TenantView = (() => {
             showLoading(false);
 
         } catch (err) {
-            showError('Failed to load data: ' + err.message);
+            showError('Failed to load data: ' + (err.body || err.message));
             showLoading(false);
         }
     }
@@ -838,14 +684,6 @@ const TenantView = (() => {
         document.getElementById('tv-tab-inprogress').textContent = allFiltered.filter(t => t.status === 'In progress').length;
     }
 
-    function getTenantEnvironments(tenant) {
-        return String(tenant.environment || '')
-            .split(',')
-            .map(environment => environment.trim())
-            .filter(Boolean);
-    }
-
-
     function renderTenantRows() {
         const container  = document.getElementById('tv-tenant-rows');
         const emptyState = document.getElementById('tv-empty-state');
@@ -878,7 +716,7 @@ const TenantView = (() => {
             : '<i class="fa-solid fa-chevron-right"></i>';
 
         // Octopus deep link
-        const root = tenantsState.serverConfigured ? OctopusApi.getInstanceUrl() : null;
+        const root = OctopusApi.getInstanceUrl();
         const tenantHref = root && tenantsState.spaceId
             ? `${root}/app#/${encodeURIComponent(tenantsState.spaceId)}/tenants/${encodeURIComponent(tenant.id)}/overview`
             : null;
@@ -1020,34 +858,14 @@ const TenantView = (() => {
     }
 
     function renderTaskRowHtml(tenant, task) {
-        const hasError    = !!task.errorMessage;
+        const isProblematic = ['Failed', 'TimedOut', 'Canceled'].includes(task.taskState);
+        const hasError    = isProblematic && !!task.errorMessage;
         const isErrorExpanded = tenantsState.errorExpandedIds.has(task.id);
-        const isRetried   = tenantsState.retriedTaskIds.has(task.id);
-        const canRetry    = !isRetried && (task.taskState === 'Failed' || task.taskState === 'Canceled' || task.taskState === 'TimedOut');
-        const confirming  = tenantsState.confirmingRetryId === task.id;
-
         const errorIcon = hasError
             ? `<i class="fa-solid fa-triangle-exclamation" style="color:var(--colorDangerLight);cursor:pointer;margin-right:4px" data-action="toggle-error" data-task-id="${escHtml(task.id)}"></i>`
             : '';
 
-        let actionCell;
-        if (isRetried) {
-            actionCell = `<span style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary)"><i class="fa-solid fa-spinner fa-spin"></i> Queued</span>`;
-        } else if (confirming) {
-            actionCell = `
-                <span style="display:inline-flex;align-items:center;gap:var(--space-xs)">
-                    <span style="font:var(--textBodyRegularSmall);color:var(--colorTextSecondary)">Retry?</span>
-                    <button class="btn btn-primary btn-sm" data-action="confirm-retry" data-task-id="${escHtml(task.id)}" data-tenant-id="${escHtml(tenant.id)}">Confirm</button>
-                    <button class="btn btn-secondary btn-sm" data-action="cancel-retry" data-task-id="${escHtml(task.id)}">Cancel</button>
-                </span>`;
-        } else if (canRetry) {
-            actionCell = `
-                <button class="btn btn-secondary btn-sm" data-action="start-retry" data-task-id="${escHtml(task.id)}">
-                    <i class="fa-solid fa-rotate-right"></i> Retry
-                </button>`;
-        } else {
-            actionCell = '';
-        }
+        const actionCell = '';
 
         const isFailedRow    = task.taskState === 'Failed' || task.taskState === 'TimedOut';
         const isExecutingRow = task.taskState === 'Executing' || task.taskState === 'Cancelling';
@@ -1057,12 +875,12 @@ const TenantView = (() => {
             ? 'background:rgba(26,119,202,0.06)'
             : '';
 
-        const root     = tenantsState.serverConfigured ? OctopusApi.getInstanceUrl() : null;
+        const root     = OctopusApi.getInstanceUrl();
         const taskHref = root && tenantsState.spaceId
             ? `${root}/app#/${encodeURIComponent(tenantsState.spaceId)}/tasks/${encodeURIComponent(task.serverTaskId)}`
             : null;
         const taskIdCell = taskHref
-            ? `<a href="${escHtml(taskHref)}" target="_blank" rel="noopener" style="font-family:var(--fontFamilyCode);font-size:0.75rem;color:var(--colorPrimaryLight)">${escHtml(task.serverTaskId)}</a>`
+            ? `<a href="${escHtml(taskHref)}" target="_blank" rel="noopener noreferrer" style="font-family:var(--fontFamilyCode);font-size:0.75rem;color:var(--colorPrimaryLight)">${escHtml(task.serverTaskId)}</a>`
             : `<span style="font-family:var(--fontFamilyCode);font-size:0.75rem;color:var(--colorTextTertiary)">${escHtml(task.serverTaskId)}</span>`;
 
         const mainRow = `
@@ -1114,23 +932,6 @@ const TenantView = (() => {
                 tenantsState.errorExpandedIds.has(tid)
                     ? tenantsState.errorExpandedIds.delete(tid)
                     : tenantsState.errorExpandedIds.add(tid);
-                refreshDetail(tenantId);
-            }
-        });
-
-        detail.addEventListener('click', e => {
-            const startBtn   = e.target.closest('[data-action="start-retry"]');
-            const confirmBtn = e.target.closest('[data-action="confirm-retry"]');
-            const cancelBtn  = e.target.closest('[data-action="cancel-retry"]');
-            if (startBtn) {
-                tenantsState.confirmingRetryId = startBtn.dataset.taskId;
-                refreshDetail(tenantId);
-            } else if (confirmBtn) {
-                tenantsState.retriedTaskIds.add(confirmBtn.dataset.taskId);
-                tenantsState.confirmingRetryId = null;
-                refreshDetail(tenantId);
-            } else if (cancelBtn) {
-                tenantsState.confirmingRetryId = null;
                 refreshDetail(tenantId);
             }
         });
@@ -1201,73 +1002,73 @@ const TenantView = (() => {
 
     /* ─── Version adoption matrix ───────────────────────────────────────── */
 
-    function buildVersionMatrix() {
+    function buildVersionAdoption() {
         const tenants = tenantsState.filteredTenants;
 
-        // Collect unique projects across all visible tenants
+        const isVersionedDeployment = task =>
+            task.taskType !== 'Runbook Run' &&
+            task.releaseVersion &&
+            task.releaseVersion !== '–' &&
+            task.environmentName;
+
+        // Environments in server-defined order, restricted to those that appear in versioned deployment data
+        const usedEnvs = new Set();
+        tenants.forEach(t => t.tasks.forEach(task => {
+            if (isVersionedDeployment(task)) usedEnvs.add(task.environmentName);
+        }));
+        const allEnvs = tenantsState.environments
+            .map(e => e.Name)
+            .filter(name => usedEnvs.has(name));
+        usedEnvs.forEach(e => { if (!allEnvs.includes(e)) allEnvs.push(e); });
+
+        // Projects sorted alphabetically (only those with versioned deployments)
         const projectSet = new Set();
-        tenants.forEach(t => t.tasks.forEach(task => projectSet.add(task.projectName)));
+        tenants.forEach(t => t.tasks.forEach(task => {
+            if (isVersionedDeployment(task)) projectSet.add(task.projectName);
+        }));
         const allProjects = [...projectSet].sort();
 
-        // Rank versions per project by most-recently-seen deploy date across all tenants.
-        // Index 0 = latest released version, 1 = one behind, etc.
-        const projectVersionOrder = {};
-        allProjects.forEach(project => {
-            const versionDates = {};
-            tenants.forEach(tenant => {
-                tenant.tasks.filter(t => t.projectName === project).forEach(task => {
-                    if (!versionDates[task.releaseVersion] || task.startedAt > versionDates[task.releaseVersion]) {
-                        versionDates[task.releaseVersion] = task.startedAt;
-                    }
-                });
-            });
-            projectVersionOrder[project] = Object.entries(versionDates)
-                .sort(([, a], [, b]) => b - a)
-                .map(([v]) => v);
+        // data[project][env][version] = { tenants: [{id, name}], latestDate }
+        const data = {};
+        allProjects.forEach(p => {
+            data[p] = {};
+            allEnvs.forEach(e => { data[p][e] = {}; });
         });
 
-        // Per-tenant per-project: latest task state + last-known-good version.
-        // Pre-index tasks by project to avoid O(n²) filter+sort inside the nested forEach.
-        const cells = {};
+        // For each tenant, take their latest versioned deployment per project×env pair
         tenants.forEach(tenant => {
-            const tasksByProject = {};
-            tenant.tasks.forEach(t => {
-                if (!tasksByProject[t.projectName]) tasksByProject[t.projectName] = [];
-                tasksByProject[t.projectName].push(t);
+            const latestByKey = {};
+            tenant.tasks.forEach(task => {
+                if (!isVersionedDeployment(task)) return;
+                const key = `${task.projectName}|${task.environmentName}`;
+                if (!latestByKey[key] || task.startedAt > latestByKey[key].startedAt) {
+                    latestByKey[key] = task;
+                }
             });
-            Object.values(tasksByProject).forEach(arr => arr.sort((a, b) => b.startedAt - a.startedAt));
 
-            cells[tenant.id] = {};
-            allProjects.forEach(project => {
-                const tasks = tasksByProject[project];
-                if (!tasks || tasks.length === 0) { cells[tenant.id][project] = null; return; }
-                const latest   = tasks[0];
-                const lastGood = tasks.find(t => t.taskState === 'Success');
-                cells[tenant.id][project] = {
-                    version:        latest.releaseVersion,
-                    taskState:      latest.taskState,
-                    runningVersion: lastGood ? lastGood.releaseVersion : null,
-                };
+            Object.values(latestByKey).forEach(task => {
+                const p = task.projectName;
+                const e = task.environmentName;
+                const v = task.releaseVersion;
+                if (!data[p] || !data[p][e]) return;
+                if (!data[p][e][v]) data[p][e][v] = { tenants: [], latestDate: task.startedAt };
+                data[p][e][v].tenants.push({ id: tenant.id, name: tenant.name });
+                if (task.startedAt > data[p][e][v].latestDate) data[p][e][v].latestDate = task.startedAt;
             });
         });
 
-        // Per-project adoption summary: how many tenants are on the latest version
-        const adoption = {};
-        allProjects.forEach(project => {
-            const latest = projectVersionOrder[project][0];
-            let onLatest = 0, total = 0;
-            if (latest) {
-                tenants.forEach(tenant => {
-                    const cell = cells[tenant.id][project];
-                    if (!cell) return;
-                    total++;
-                    if ((cell.runningVersion || cell.version) === latest) onLatest++;
-                });
-            }
-            adoption[project] = { onLatest, total, latest };
+        // Sort versions newest-first per project×env
+        const versionOrder = {};
+        allProjects.forEach(p => {
+            versionOrder[p] = {};
+            allEnvs.forEach(e => {
+                versionOrder[p][e] = Object.entries(data[p][e])
+                    .sort(([, a], [, b]) => b.latestDate - a.latestDate)
+                    .map(([v]) => v);
+            });
         });
 
-        return { allProjects, projectVersionOrder, cells, adoption };
+        return { allProjects, allEnvs, data, versionOrder };
     }
 
     function renderVersionMatrix() {
@@ -1280,98 +1081,79 @@ const TenantView = (() => {
             return;
         }
 
-        const { allProjects, projectVersionOrder, cells, adoption } = buildVersionMatrix();
+        const { allProjects, allEnvs, data, versionOrder } = buildVersionAdoption();
+
         if (allProjects.length === 0) {
-            container.innerHTML = '<div class="tv-empty-state">No deployment data found for these tenants.</div>';
+            container.innerHTML = '<div class="tv-empty-state">No versioned deployments found for the current filters. Runbook runs are excluded from this view.</div>';
             return;
         }
 
-        const legend = `
-            <div class="tv-matrix-legend">
-                <span class="tv-matrix-legend-item"><span class="tv-matrix-badge tv-mc--current">v1.0</span> Current</span>
-                <span class="tv-matrix-legend-item"><span class="tv-matrix-badge tv-mc--behind-1">v0.9</span> 1 behind</span>
-                <span class="tv-matrix-legend-item"><span class="tv-matrix-badge tv-mc--behind-many">v0.8</span> 2+ behind</span>
-                <span class="tv-matrix-legend-item"><span class="tv-matrix-badge tv-mc--progress">…</span> Deploying</span>
-                <span class="tv-matrix-legend-item"><span class="tv-matrix-badge tv-mc--failed">vX</span> Failed</span>
-                <span class="tv-matrix-legend-item"><span class="tv-matrix-badge tv-mc--none">—</span> Never deployed</span>
-            </div>`;
+        const root = OctopusApi.getInstanceUrl();
 
-        const theadCells = allProjects.map(project => {
-            const { onLatest, total } = adoption[project];
-            const pct = total > 0 ? Math.round(onLatest / total * 100) : 0;
-            const barCls = pct === 100 ? 'success' : pct >= 70 ? 'warning' : 'danger';
-            return `
-                <th class="tv-matrix-col-head">
-                    <div class="tv-matrix-project-name" title="${escHtml(project)}">${escHtml(project)}</div>
-                    <div class="tv-matrix-adoption-row">
-                        <div class="progress-bar tv-matrix-adoption-bar">
-                            <div class="progress-fill ${barCls}" style="width:${pct}%"></div>
-                        </div>
-                        <span class="tv-matrix-adoption-label">${onLatest}/${total}</span>
-                    </div>
-                </th>`;
-        }).join('');
+        const theadCells = allEnvs.map(env =>
+            `<th class="tv-matrix-col-head">
+                <div class="tv-matrix-project-name" title="${escHtml(env)}">${escHtml(env)}</div>
+            </th>`
+        ).join('');
 
-        const root = tenantsState.serverConfigured ? OctopusApi.getInstanceUrl() : null;
-
-        const tbodyRows = tenants.map(tenant => {
-            const tenantCells = allProjects.map(project => {
-                const cell = cells[tenant.id][project];
-                if (!cell) return `<td class="tv-matrix-cell tv-mc--none" title="Never deployed to this project">—</td>`;
-
-                const order    = projectVersionOrder[project];
-                const running  = cell.runningVersion || cell.version;
-                const vIdx     = order.indexOf(running);
-                const isLive   = ['Executing','Queued','Cancelling'].includes(cell.taskState);
-                const isFailed = ['Failed','TimedOut','Canceled'].includes(cell.taskState);
-
-                let cls, icon = '', tip;
-                if (isLive) {
-                    cls  = 'tv-mc--progress';
-                    icon = '<i class="fa-solid fa-spinner fa-spin" style="font-size:0.55rem;margin-right:2px"></i>';
-                    tip  = `Deploying ${cell.version}${cell.runningVersion ? ` — currently running ${cell.runningVersion}` : ''}`;
-                } else if (vIdx === 0) {
-                    cls = isFailed ? 'tv-mc--failed' : 'tv-mc--current';
-                    tip = isFailed ? `Failed on latest (${cell.version})` : `Up to date — ${running}`;
-                } else if (vIdx === 1) {
-                    cls = isFailed ? 'tv-mc--failed' : 'tv-mc--behind-1';
-                    tip = `1 version behind — on ${running}, latest is ${order[0]}${isFailed ? ' (last deploy failed)' : ''}`;
-                } else if (vIdx > 1) {
-                    cls = isFailed ? 'tv-mc--failed' : 'tv-mc--behind-many';
-                    tip = `${vIdx} versions behind — on ${running}, latest is ${order[0]}${isFailed ? ' (last deploy failed)' : ''}`;
-                } else {
-                    cls = 'tv-mc--unknown';
-                    tip = running;
+        const tbodyRows = allProjects.map(project => {
+            const envCells = allEnvs.map(env => {
+                const versions = versionOrder[project][env];
+                if (!versions || versions.length === 0) {
+                    return `<td class="tv-matrix-cell tv-ma-cell tv-mc--none">—</td>`;
                 }
 
-                const label = running.length > 9 ? running.slice(0, 9) + '…' : running;
-                return `<td class="tv-matrix-cell ${cls}" title="${escHtml(tip)}">${icon}${escHtml(label)}</td>`;
+                const rows = versions.map((version, idx) => {
+                    const { tenants: vTenants } = data[project][env][version];
+                    const count = vTenants.length;
+                    const cls   = idx === 0 ? 'tv-mc--current' : idx === 1 ? 'tv-mc--behind-1' : 'tv-mc--behind-many';
+                    const label = version.length > 18 ? version.slice(0, 18) + '…' : version;
+
+                    const versionBar = `<div class="tv-ma-version-row ${cls}">
+                        <span class="tv-ma-version" title="${escHtml(version)}">${escHtml(label)}</span>
+                        <span class="tv-ma-count">${count} tenant${count !== 1 ? 's' : ''}</span>
+                    </div>`;
+
+                    if (idx === 0) return versionBar;
+
+                    // Behind versions: list the actual tenant names so they're actionable
+                    const tenantLinks = vTenants
+                        .slice()
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map(t => {
+                            const href = root && tenantsState.spaceId
+                                ? `${root}/app#/${encodeURIComponent(tenantsState.spaceId)}/tenants/${encodeURIComponent(t.id)}/overview`
+                                : null;
+                            return href
+                                ? `<a class="tv-ma-tenant-name" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer">${escHtml(t.name)}</a>`
+                                : `<span class="tv-ma-tenant-name">${escHtml(t.name)}</span>`;
+                        }).join('');
+
+                    return `${versionBar}<div class="tv-ma-tenant-list">${tenantLinks}</div>`;
+                }).join('');
+
+                return `<td class="tv-matrix-cell tv-ma-cell">${rows}</td>`;
             }).join('');
 
-            const href = root && tenantsState.spaceId
-                ? `${root}/app#/${tenantsState.spaceId}/tenants/${tenant.id}/overview`
-                : null;
-            const nameEl = href
-                ? `<a href="${escHtml(href)}" target="_blank" rel="noopener" style="color:var(--colorTextPrimary);text-decoration:none">${escHtml(tenant.name)}</a>`
-                : escHtml(tenant.name);
-
-            return `
-                <tr>
-                    <td class="tv-matrix-tenant-cell">
-                        <div style="font:var(--textBodyBoldSmall);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nameEl}</div>
-                        <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary)">${escHtml(tenant.environment)}</div>
-                    </td>
-                    ${tenantCells}
-                </tr>`;
+            return `<tr>
+                <td class="tv-matrix-tenant-cell tv-ma-project-cell">
+                    <div style="font:var(--textBodyBoldSmall)">${escHtml(project)}</div>
+                </td>
+                ${envCells}
+            </tr>`;
         }).join('');
 
         container.innerHTML = `
-            ${legend}
+            <div class="tv-matrix-legend">
+                <span class="tv-matrix-legend-item"><span class="tv-ma-legend-dot tv-mc--current"></span> Latest version</span>
+                <span class="tv-matrix-legend-item"><span class="tv-ma-legend-dot tv-mc--behind-1"></span> 1 version behind</span>
+                <span class="tv-matrix-legend-item"><span class="tv-ma-legend-dot tv-mc--behind-many"></span> 2+ versions behind</span>
+            </div>
             <div class="tv-matrix-wrap">
                 <table class="tv-matrix">
                     <thead>
                         <tr>
-                            <th class="tv-matrix-tenant-col">Tenant</th>
+                            <th class="tv-matrix-tenant-col">Project</th>
                             ${theadCells}
                         </tr>
                     </thead>
