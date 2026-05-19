@@ -1382,53 +1382,7 @@ const TenantView = (() => {
 
     /* ─── CSV export ─────────────────────────────────────────────────────── */
 
-    function exportCSV() {
-        const tenants = tenantsState.filteredTenants;
-        if (tenants.length === 0) return;
 
-        const headers = ['Tenant', 'Tenant Display ID', 'Environment', 'Deployments', 'Success Rate', 'Project', 'Release Version', 'Task Type', 'Task State', 'Started', 'Duration'];
-
-        const rows = [];
-        tenants.forEach(tenant => {
-            const successCount = tenant.tasks.filter(t => t.taskState === 'Success').length;
-            const successRate  = tenant.tasks.length > 0 ? Math.round(successCount / tenant.tasks.length * 100) + '%' : '--';
-            tenant.tasks.forEach(task => {
-                rows.push([
-                    tenant.name,
-                    tenant.tenantDisplayId,
-                    tenant.environment,
-                    tenant.tasks.filter(t => t.taskType === 'Deployment').length || tenant.tasks.length,
-                    successRate,
-                    task.projectName,
-                    task.releaseVersion,
-                    task.taskType,
-                    task.taskState,
-                    formatDateTime(task.startedAt),
-                    task.duration,
-                ]);
-            });
-        });
-
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => row.map(v => {
-                const s = String(v);
-                return (s.includes(',') || s.includes('"') || s.includes('\n'))
-                    ? `"${s.replace(/"/g, '""')}"`
-                    : s;
-            }).join(','))
-        ].join('\n');
-
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
-        a.download = `tenant-deployments-${formatDateInput(new Date())}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
 
     /* ─── Utilities ──────────────────────────────────────────────────────── */
 
