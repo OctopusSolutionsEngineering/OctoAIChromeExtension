@@ -1752,9 +1752,9 @@ const DashboardUI = (() => {
 
   function formatDailyAxisLabel(d, prev) {
     const M = MONTH_NAMES;
-    if (!prev) return `${d.day}<br>${M[d.month - 1]}<br>${d.year}`;
-    if (d.year !== prev.year) return `${d.day}<br>${M[d.month - 1]}<br>${d.year}`;
-    if (d.month !== prev.month) return `${d.day}<br>${M[d.month - 1]}`;
+    if (!prev) return `${d.day}<br>${M[d.month]}<br>${d.year}`;
+    if (d.year !== prev.year) return `${d.day}<br>${M[d.month]}<br>${d.year}`;
+    if (d.month !== prev.month) return `${d.day}<br>${M[d.month]}`;
     return String(d.day);
   }
 
