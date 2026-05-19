@@ -1425,11 +1425,16 @@ const TenantView = (() => {
     /* ─── Utilities ──────────────────────────────────────────────────────── */
 
     function escHtml(str) {
+        return DOMPurify.sanitize(String(str));
+    }
+
+    function escAttr(str) {
         return String(str)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function formatRelativeTime(date) {
