@@ -734,7 +734,8 @@ const TenantView = (() => {
 
         // Deployments + frequency
         const deploymentCount = tenant.tasks.filter(t => t.taskType === 'Deployment').length || tenant.tasks.length;
-        const lookbackMonths  = parseInt(document.getElementById('lookback-select')?.value || '3', 10) || 3;
+        const parsedLookbackMonths = parseInt(document.getElementById('lookback-select')?.value || '3', 10);
+        const lookbackMonths  = Number.isNaN(parsedLookbackMonths) ? 3 : parsedLookbackMonths;
         const lookbackWeeks   = lookbackMonths * 4.33;
         const freqPerWeek     = lookbackWeeks > 0 ? (deploymentCount / lookbackWeeks) : 0;
         const freqLabel       = freqPerWeek >= 1
