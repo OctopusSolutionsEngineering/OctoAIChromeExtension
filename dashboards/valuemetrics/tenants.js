@@ -470,22 +470,52 @@ const TenantView = (() => {
 
     function populateEnvironmentFilter(envs) {
         const select = document.getElementById('tv-environment-select');
-        select.innerHTML = '<option value="">All environments</option>' +
-            envs.map(e => `<option value="${escHtml(e.Name)}">${escHtml(e.Name)}</option>`).join('');
+        select.textContent = '';
+
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = 'All environments';
+        select.appendChild(allOption);
+
+        envs.forEach(e => {
+            const option = document.createElement('option');
+            option.value = e.Name;
+            option.textContent = e.Name;
+            select.appendChild(option);
+        });
     }
 
     function populateProjectsFilter(projects) {
         const container = document.getElementById('tv-projects-options');
-        container.innerHTML = `
-            <button class="tv-multiselect__all-option" id="tv-projects-all-option">
-                <span id="tv-all-projects-check">☑</span> All projects
-            </button>
-            ${projects.map(p => `
-                <button class="tv-multiselect__option" data-project="${escHtml(p)}">
-                    <input type="checkbox" checked class="tv-projects-checkbox" data-project="${escHtml(p)}" style="pointer-events:none"> ${escHtml(p)}
-                </button>
-            `).join('')}
-        `;
+        container.textContent = '';
+
+        const allButton = document.createElement('button');
+        allButton.className = 'tv-multiselect__all-option';
+        allButton.id = 'tv-projects-all-option';
+
+        const allCheck = document.createElement('span');
+        allCheck.id = 'tv-all-projects-check';
+        allCheck.textContent = '☑';
+        allButton.appendChild(allCheck);
+        allButton.appendChild(document.createTextNode(' All projects'));
+        container.appendChild(allButton);
+
+        projects.forEach(p => {
+            const button = document.createElement('button');
+            button.className = 'tv-multiselect__option';
+            button.dataset.project = p;
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = true;
+            checkbox.className = 'tv-projects-checkbox';
+            checkbox.dataset.project = p;
+            checkbox.style.pointerEvents = 'none';
+
+            button.appendChild(checkbox);
+            button.appendChild(document.createTextNode(` ${p}`));
+            container.appendChild(button);
+        });
     }
 
     function updateProjectCheckboxes() {
