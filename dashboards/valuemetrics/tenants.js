@@ -10,6 +10,7 @@ const TenantView = (() => {
     let _docListenersAttached = false;
     const _wireTimeouts = {};
     let _spaceLoadId = 0;
+    const _detailSearchCursors = {};
 
     const tenantsState = {
         allTenants: [],
@@ -1085,18 +1086,14 @@ const TenantView = (() => {
         const searchInput = detail.querySelector('.tv-detail-search');
         if (searchInput) {
             searchInput.addEventListener('input', e => {
-                const pos = e.target.selectionStart;
+                _detailSearchCursors[tenantId] = e.target.selectionStart;
                 tenantsState.detailSearchQueries[tenantId] = e.target.value;
                 refreshDetail(tenantId);
-                // refreshDetail replaces the DOM — find the new input and restore cursor
-                const newInput = document.querySelector(`[data-detail-for="${tenantId}"] .tv-detail-search`);
-                if (newInput) {
-                    newInput.focus();
-                    newInput.setSelectionRange(pos, pos);
-                }
             });
             searchInput.focus();
-            searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+            const savedPos = _detailSearchCursors[tenantId];
+            const cursorPos = savedPos != null ? Math.min(savedPos, searchInput.value.length) : searchInput.value.length;
+            searchInput.setSelectionRange(cursorPos, cursorPos);
         }
     }
 
