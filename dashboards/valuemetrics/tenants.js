@@ -764,7 +764,7 @@ const TenantView = (() => {
             : null;
 
         const nameCell = tenantHref
-            ? `<a class="tv-tenant-link" href="${escAttr(tenantHref)}" title="Open in Octopus"
+            ? `<a class="tv-tenant-link" href="${escHtml(tenantHref)}" title="Open in Octopus"
                   style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary);text-decoration:none">${escHtml(tenant.name)}<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.65rem;margin-left:5px;color:var(--colorTextTertiary)"></i></a>`
             : `<span style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary)">${escHtml(tenant.name)}</span>`;
 
