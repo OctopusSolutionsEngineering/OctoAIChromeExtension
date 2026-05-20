@@ -299,9 +299,7 @@ const TenantView = (() => {
                         };
                     }).filter(Boolean);
 
-                    if (tasks.length === 0) return null;
-
-                    const status = deriveTenantStatus(tasks);
+                    const status = tasks.length > 0 ? deriveTenantStatus(tasks) : 'Inactive';
                     const tags = Object.values(apiTenant.TenantTags || {})
                         .flat()
                         .map(t => t.split('/').pop());
