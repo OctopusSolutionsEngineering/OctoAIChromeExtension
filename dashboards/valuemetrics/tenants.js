@@ -10,6 +10,7 @@ const TenantView = (() => {
     let _docListenersAttached = false;
     const _wireTimeouts = {};
     let _spaceLoadId = 0;
+    const _detailSearchCursors = {};
 
     const tenantsState = {
         allTenants: [],
@@ -466,11 +467,16 @@ const TenantView = (() => {
                 renderStats();
             } else if (optBtn) {
                 const proj = optBtn.dataset.project;
-                const idx  = tenantsState.filters.projects.indexOf(proj);
-                if (idx === -1) tenantsState.filters.projects.push(proj);
-                else tenantsState.filters.projects.splice(idx, 1);
-                if (tenantsState.filters.projects.length === tenantsState.projects.length) {
-                    tenantsState.filters.projects = [];
+                if (tenantsState.filters.projects.length === 0) {
+                    // All were selected — deselect this one by selecting everything else
+                    tenantsState.filters.projects = tenantsState.projects.filter(p => p !== proj);
+                } else {
+                    const idx = tenantsState.filters.projects.indexOf(proj);
+                    if (idx === -1) tenantsState.filters.projects.push(proj);
+                    else tenantsState.filters.projects.splice(idx, 1);
+                    if (tenantsState.filters.projects.length === tenantsState.projects.length) {
+                        tenantsState.filters.projects = [];
+                    }
                 }
                 updateProjectCheckboxes();
                 applyFilters();
@@ -1080,10 +1086,14 @@ const TenantView = (() => {
         const searchInput = detail.querySelector('.tv-detail-search');
         if (searchInput) {
             searchInput.addEventListener('input', e => {
+                _detailSearchCursors[tenantId] = e.target.selectionStart;
                 tenantsState.detailSearchQueries[tenantId] = e.target.value;
                 refreshDetail(tenantId);
             });
             searchInput.focus();
+            const savedPos = _detailSearchCursors[tenantId];
+            const cursorPos = savedPos != null ? Math.min(savedPos, searchInput.value.length) : searchInput.value.length;
+            searchInput.setSelectionRange(cursorPos, cursorPos);
         }
     }
 
