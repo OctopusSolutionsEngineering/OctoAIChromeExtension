@@ -142,24 +142,37 @@ const TenantView = (() => {
                 if (!uniqueIds.length) return [];
 
                 const BULK_BATCH = 100;
-                const results = [];
+                const MAX_CONCURRENT_BATCHES = 4;
+                const batches = chunkArray(uniqueIds, BULK_BATCH);
+                const batchResults = new Array(batches.length);
+                let nextBatchIndex = 0;
 
-                for (const idBatch of chunkArray(uniqueIds, BULK_BATCH)) {
+                const fetchBatch = async (idBatch) => {
                     const idParam = idBatch.join(',');
                     const path = resourceName === 'tasks'
                         ? `/api/tasks?ids=${idParam}&take=${BULK_BATCH}`
                         : `/api/${spaceId}/${resourceName}?ids=${idParam}&take=${BULK_BATCH}`;
-                    try {
-                        const result = await OctopusApi.get(path);
-                        const items = result?.Items || (Array.isArray(result) ? result : []);
-                        results.push(...items);
-                    } catch (err) {
-                        if (err?.status === 401 || err?.status === 403) throw err;
-                        // non-auth errors: skip batch, continue with partial data
-                    }
-                }
+                    const result = await OctopusApi.get(path);
+                    return result?.Items || (Array.isArray(result) ? result : []);
+                };
 
-                return results;
+                const worker = async () => {
+                    while (nextBatchIndex < batches.length) {
+                        const currentIndex = nextBatchIndex++;
+                        try {
+                            batchResults[currentIndex] = await fetchBatch(batches[currentIndex]);
+                        } catch (err) {
+                            if (err?.status === 401 || err?.status === 403) throw err;
+                            // non-auth errors: skip batch, continue with partial data
+                            batchResults[currentIndex] = [];
+                        }
+                    }
+                };
+
+                const workerCount = Math.min(MAX_CONCURRENT_BATCHES, batches.length);
+                await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+                return batchResults.flat();
             };
 
             const [rawEnvs, projectList, tenantList, rawDeploymentsData, runbookRunsData] = await Promise.all([
