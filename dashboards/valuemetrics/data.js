@@ -36,7 +36,6 @@ const DashboardData = (() => {
   let _serverInfo = null;
   let _licenseUsage = null;
   let _licenseStatus = null;
-  let _taskCapInfo = { executing: null, queued: null, cap: null };
   let _crossSpaceTasks = [];
   let _activeSpaceIds = [];
   let _lastFetch = null;
@@ -54,21 +53,12 @@ const DashboardData = (() => {
 
     // Phase 1: Global data (no per-space iteration)
     report('Connecting to Octopus...');
-    const [serverInfo, spacesResponse, licenseUsage, licenseStatus, executingResp, queuedResp, serverConfig] = await Promise.all([
+    const [serverInfo, spacesResponse, licenseUsage, licenseStatus] = await Promise.all([
       OctopusApi.get('/api'),
       OctopusApi.get('/api/spaces?take=100&partialName='),
       safeGet('/api/licenses/licenses-current-usage'),
       safeGet('/api/licenses/licenses-current-status'),
-      safeGet('/api/tasks?states=Executing&take=0'),
-      safeGet('/api/tasks?states=Queued&take=0'),
-      safeGet('/api/configuration/serverconfig'),
     ]);
-
-    _taskCapInfo = {
-      executing: typeof executingResp?.TotalResults === 'number' ? executingResp.TotalResults : null,
-      queued:    typeof queuedResp?.TotalResults    === 'number' ? queuedResp.TotalResults    : null,
-      cap:       typeof serverConfig?.TaskCap       === 'number' ? serverConfig.TaskCap       : null,
-    };
 
     _serverInfo = serverInfo;
     _spaces = spacesResponse.Items || [];
@@ -742,7 +732,6 @@ const DashboardData = (() => {
       cancelledCount: totalCancelled,
 
       teamsInsight,
-      taskCapInfo: _taskCapInfo,
     };
   }
 
@@ -2074,115 +2063,6 @@ const DashboardUI = (() => {
     return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
   }
 
-  // ---- Task Activity line chart ----
-
-  function renderTaskActivityChart(dailyTrend, taskCapInfo) {
-    const el = document.getElementById('chart-task-activity');
-    if (!el) return;
-
-    const days = (dailyTrend || []).filter(d => d.total > 0);
-    if (days.length === 0) {
-      el.innerHTML = `<div class="text-tertiary" style="text-align:center;padding:var(--space-lg);">
-        <i class="fa-solid fa-chart-line" style="font-size:2rem;display:block;margin-bottom:var(--space-sm);"></i>
-        No task activity data available yet.
-      </div>`;
-      return;
-    }
-
-    const W = 800, H = 160, PL = 38, PR = 12, PT = 12, PB = 28;
-    const chartW = W - PL - PR;
-    const chartH = H - PT - PB;
-    const maxVal = Math.max(...days.map(d => d.total), taskCapInfo?.cap || 0, 1);
-    const yScale = v => PT + chartH - (v / maxVal) * chartH;
-    const xScale = i => PL + (i / Math.max(days.length - 1, 1)) * chartW;
-
-    // Build polyline points and area path
-    const pts = days.map((d, i) => `${xScale(i).toFixed(1)},${yScale(d.total).toFixed(1)}`).join(' ');
-    const areaPath = [
-      `M${xScale(0).toFixed(1)},${yScale(0).toFixed(1)}`,
-      ...days.map((d, i) => `L${xScale(i).toFixed(1)},${yScale(d.total).toFixed(1)}`),
-      `L${xScale(days.length - 1).toFixed(1)},${yScale(0).toFixed(1)}Z`,
-    ].join(' ');
-
-    // Y axis labels (3 levels)
-    const yLabels = [0, Math.round(maxVal / 2), maxVal].map(v => ({
-      v,
-      y: yScale(v),
-    }));
-
-    // X axis labels (sample ~6 evenly)
-    const xStep = Math.max(1, Math.floor(days.length / 6));
-    const xLabels = days
-      .map((d, i) => ({ i, d }))
-      .filter(({ i }) => i % xStep === 0 || i === days.length - 1)
-      .map(({ i, d }) => ({ x: xScale(i), label: `${d.day}/${d.month + 1}` }));
-
-    // Optional cap reference line
-    const capLine = taskCapInfo?.cap
-      ? `<line x1="${PL}" y1="${yScale(taskCapInfo.cap).toFixed(1)}" x2="${W - PR}" y2="${yScale(taskCapInfo.cap).toFixed(1)}"
-           stroke="var(--colorWarningLight)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.8"/>
-         <text x="${W - PR - 2}" y="${(yScale(taskCapInfo.cap) - 4).toFixed(1)}" fill="var(--colorWarningLight)"
-           font-size="9" text-anchor="end" font-family="var(--fontFamilyCode)">cap ${taskCapInfo.cap}</text>`
-      : '';
-
-    // Tooltip circles (invisible, shown via CSS title)
-    const circles = days.map((d, i) =>
-      `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(d.total).toFixed(1)}" r="4"
-        fill="var(--colorPrimaryLighter)" stroke="var(--colorBackgroundPrimaryDefault)" stroke-width="1.5"
-        opacity="0" class="task-chart-dot"
-        title="${d.dateKey}: ${d.total} task${d.total !== 1 ? 's' : ''} (${d.success} success, ${d.failed} failed)">
-        <title>${d.dateKey}: ${d.total} task${d.total !== 1 ? 's' : ''} (${d.success} success, ${d.failed} failed)</title>
-      </circle>`
-    ).join('');
-
-    el.innerHTML = `
-      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block;overflow:visible">
-        <!-- Grid lines -->
-        ${yLabels.map(({ v, y }) => `
-          <line x1="${PL}" y1="${y.toFixed(1)}" x2="${W - PR}" y2="${y.toFixed(1)}"
-            stroke="var(--colorBorderSubtle, rgba(255,255,255,0.06))" stroke-width="1"/>
-          <text x="${PL - 4}" y="${(y + 3.5).toFixed(1)}" fill="var(--colorTextTertiary)"
-            font-size="9" text-anchor="end" font-family="var(--fontFamilyCode)">${v}</text>
-        `).join('')}
-        <!-- Area fill -->
-        <path d="${areaPath}" fill="rgba(26,119,202,0.12)"/>
-        <!-- Cap line -->
-        ${capLine}
-        <!-- Trend line -->
-        <polyline points="${pts}" fill="none" stroke="var(--colorPrimaryLighter)" stroke-width="2" stroke-linejoin="round"/>
-        <!-- Dots -->
-        ${circles}
-        <!-- X axis labels -->
-        ${xLabels.map(({ x, label }) => `
-          <text x="${x.toFixed(1)}" y="${H - 4}" fill="var(--colorTextTertiary)"
-            font-size="9" text-anchor="middle" font-family="var(--fontFamilyCode)">${label}</text>
-        `).join('')}
-      </svg>
-      <style>
-        .task-chart-dot { transition: opacity 0.1s; cursor: default; }
-        #chart-task-activity:hover .task-chart-dot { opacity: 1; }
-      </style>`;
-
-    // Update KPI cards with live data
-    if (taskCapInfo) {
-      const execEl = document.getElementById('kpi-tasks-executing');
-      const labelEl = document.getElementById('kpi-tasks-label');
-      if (execEl) {
-        execEl.textContent = taskCapInfo.executing !== null
-          ? (taskCapInfo.cap !== null
-            ? `${taskCapInfo.executing} / ${taskCapInfo.cap}`
-            : taskCapInfo.executing.toString())
-          : '--';
-      }
-      if (labelEl) {
-        const parts = [];
-        if (taskCapInfo.queued !== null) parts.push(`${taskCapInfo.queued} queued`);
-        if (taskCapInfo.cap !== null) parts.push(`cap ${taskCapInfo.cap}`);
-        labelEl.textContent = parts.length ? parts.join(' · ') : 'executing now';
-      }
-    }
-  }
-
   // ---- Render overview from existing summary (no fetch) ----
 
   function renderOverview(summary) {
@@ -2208,7 +2088,6 @@ const DashboardUI = (() => {
     }
 
     renderLicenseInfo(summary.licenseInfo);
-    renderTaskActivityChart(summary.dailyTrend, summary.taskCapInfo);
   }
 
   // ---- Public ----

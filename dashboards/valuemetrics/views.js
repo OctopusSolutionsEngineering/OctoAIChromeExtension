@@ -206,14 +206,6 @@ const Views = (() => {
         <span class="kpi-value" id="kpi-releases">--</span>
         <span class="kpi-trend neutral"><i class="fa-solid fa-code-branch"></i> <span>across all projects</span></span>
       </div>
-      <div class="kpi-card">
-        <div class="flex items-center justify-between">
-          <span class="kpi-label">Current Tasks</span>
-          <div class="kpi-icon blue"><i class="fa-solid fa-list-check"></i></div>
-        </div>
-        <span class="kpi-value" id="kpi-tasks-executing">--</span>
-        <span class="kpi-trend neutral"><i class="fa-solid fa-hourglass-half"></i> <span id="kpi-tasks-label">executing now</span></span>
-      </div>
     </div>
 
     <!-- Charts Section Header -->
@@ -259,28 +251,6 @@ const Views = (() => {
           <div class="chart-container" id="chart-success-failure">
             <i class="fa-solid fa-chart-pie" style="font-size:2rem;margin-right:var(--space-sm);"></i>
             Loading...
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Task Activity Section -->
-    <div class="section-header">
-      <h2 class="section-title"><i class="fa-solid fa-list-check"></i> Task Activity</h2>
-    </div>
-    <div class="dashboard-grid mb-lg">
-      <div class="card col-span-12 card--chart-tooltips">
-        <div class="card-header">
-          <h3 class="card-title">Daily Task Volume</h3>
-          <div class="flex gap-xs" style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);">
-            <span>Tasks executed per day (last 30 days)</span>
-            <span style="margin-left:var(--space-md)"><span style="display:inline-block;width:24px;height:2px;background:var(--colorWarningLight);vertical-align:middle;border-bottom:2px dashed var(--colorWarningLight);margin-right:4px;"></span>Task cap</span>
-          </div>
-        </div>
-        <div class="card-body">
-          <div id="chart-task-activity" style="padding:var(--space-sm) 0;">
-            <i class="fa-solid fa-chart-line" style="font-size:2rem;margin-right:var(--space-sm);"></i>
-            Loading task activity...
           </div>
         </div>
       </div>
