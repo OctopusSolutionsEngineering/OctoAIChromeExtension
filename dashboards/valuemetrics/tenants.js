@@ -347,10 +347,21 @@ const TenantView = (() => {
     }
 
     function deriveTenantStatus(tasks) {
-        if (tasks.some(t => t.taskState === 'Failed' || t.taskState === 'TimedOut' || t.taskState === 'Canceled')) {
+        if (tasks.some(t => {
+            const taskState = (t.taskState || '').toLowerCase();
+            return taskState === 'failed'
+                || taskState === 'timedout'
+                || taskState === 'canceled'
+                || taskState === 'cancelled';
+        })) {
             return 'Has failures';
         }
-        if (tasks.some(t => t.taskState === 'Executing' || t.taskState === 'Queued' || t.taskState === 'Cancelling')) {
+        if (tasks.some(t => {
+            const taskState = (t.taskState || '').toLowerCase();
+            return taskState === 'executing'
+                || taskState === 'queued'
+                || taskState === 'cancelling';
+        })) {
             return 'In progress';
         }
         return 'All succeeded';
