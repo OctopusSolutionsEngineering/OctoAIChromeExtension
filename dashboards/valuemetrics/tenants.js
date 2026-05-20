@@ -273,7 +273,7 @@ const TenantView = (() => {
                         status,
                         tags,
                         tasks,
-                        lastUpdated: new Date(Math.max(...tasks.map(t => t.startedAt ? t.startedAt.getTime() : 0).filter(Boolean))),
+                        lastUpdated: new Date(Math.max(...tasks.map(t => t.startedAt ? t.startedAt.getTime() : 0))),
                     };
                 })
                 .filter(Boolean);
