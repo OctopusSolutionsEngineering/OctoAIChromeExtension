@@ -9,6 +9,7 @@ const TenantView = (() => {
 
     let _docListenersAttached = false;
     const _wireTimeouts = {};
+    let _spaceLoadId = 0;
 
     const tenantsState = {
         allTenants: [],
@@ -144,6 +145,7 @@ const TenantView = (() => {
     }
 
     async function onSpaceChange(spaceId) {
+        const loadId = ++_spaceLoadId;
         tenantsState.spaceId = spaceId;
         document.getElementById('tv-dashboard-content').classList.remove('hidden');
         showLoading(true);
@@ -320,6 +322,9 @@ const TenantView = (() => {
                 })
                 .filter(Boolean);
 
+            // Discard if a newer space selection has already started loading
+            if (loadId !== _spaceLoadId) return;
+
             tenantsState.environments = envs;
             tenantsState.projects = rawProjects.map(p => p.Name || p);
             tenantsState.allTenants = tenants;
@@ -340,6 +345,7 @@ const TenantView = (() => {
             showLoading(false);
 
         } catch (err) {
+            if (loadId !== _spaceLoadId) return;
             showError('Failed to load data: ' + (err.body || err.message));
             showLoading(false);
         }
@@ -894,7 +900,7 @@ const TenantView = (() => {
             : '';
 
         const header = `
-            <div class="tv-tenant-row-header tv-tenant-grid${isExpanded ? ' is-expanded' : ''}" role="button" tabindex="0" data-tenant-id="${escHtml(tenant.id)}">
+            <div class="tv-tenant-row-header tv-tenant-grid${isExpanded ? ' is-expanded' : ''}" role="button" tabindex="0" data-tenant-id="${escHtml(tenant.id)}" aria-expanded="${isExpanded}" aria-controls="tv-detail-${escHtml(tenant.id)}">
                 <div style="color:var(--colorTextTertiary);display:flex;justify-content:center">${chevron}</div>
                 <div>
                     ${nameCell}
@@ -944,7 +950,7 @@ const TenantView = (() => {
             : visibleTasks.map(task => renderTaskRowHtml(tenant, task)).join('');
 
         const detail = `
-            <div class="tv-tenant-detail" data-detail-for="${escHtml(tenant.id)}">
+            <div class="tv-tenant-detail" id="tv-detail-${escHtml(tenant.id)}" data-detail-for="${escHtml(tenant.id)}">
                 <div class="tv-detail-toolbar">
                     <span style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary)">${escHtml(tenant.name)}</span>
                     <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">(${escHtml(tenant.tenantDisplayId)})</span>
