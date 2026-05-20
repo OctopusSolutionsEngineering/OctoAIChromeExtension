@@ -275,7 +275,7 @@ const TenantView = (() => {
                                 id: dep.Id,
                                 serverTaskId: dep.TaskId || '–',
                                 projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
-                                releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
+                                releaseVersion: releaseMap[dep.ReleaseId] || '–',
                                 taskType: dep.RunbookId ? 'Runbook Run' : 'Deployment',
                                 taskState: 'Unknown',
                                 environmentName: envMap[dep.EnvironmentId] || dep.EnvironmentId || '',
@@ -288,7 +288,7 @@ const TenantView = (() => {
                             id: dep.Id,
                             serverTaskId: dep.TaskId,
                             projectName: projectMap[dep.ProjectId] || dep.ProjectId || 'Unknown project',
-                            releaseVersion: releaseMap[dep.ReleaseId] || dep.ReleaseId || '–',
+                            releaseVersion: releaseMap[dep.ReleaseId] || '–',
                             taskType: dep.RunbookId ? 'Runbook Run' : 'Deployment',
                             taskState: (task.State === 'Cancelled' ? 'Canceled' : task.State) || 'Unknown',
                             environmentName: envMap[dep.EnvironmentId] || dep.EnvironmentId || '',
@@ -317,7 +317,7 @@ const TenantView = (() => {
                         status,
                         tags,
                         tasks,
-                        lastUpdated: new Date(Math.max(...tasks.map(t => t.startedAt ? t.startedAt.getTime() : 0))),
+                        lastUpdated: (() => { const times = tasks.map(t => t.startedAt ? t.startedAt.getTime() : 0).filter(t => t > 0); return new Date(times.length ? Math.max(...times) : 0); })(),
                     };
                 })
                 .filter(Boolean);
@@ -381,6 +381,7 @@ const TenantView = (() => {
         document.getElementById('tv-filter-toggle-btn').addEventListener('click', () => {
             tenantsState.showFilters = !tenantsState.showFilters;
             document.getElementById('tv-advanced-filters').classList.toggle('hidden', !tenantsState.showFilters);
+            document.getElementById('tv-filter-toggle-btn').setAttribute('aria-expanded', String(tenantsState.showFilters));
             document.getElementById('tv-filter-toggle-label').textContent =
                 tenantsState.showFilters ? 'Hide filters' : 'Show advanced filters';
         });
@@ -618,10 +619,8 @@ const TenantView = (() => {
         if (filters.projects.length > 0 && !filters.projects.includes(task.projectName)) return false;
 
         if (from || to) {
-            const taskDate = new Date(task.startedAt);
-            const taskTime = taskDate.getTime();
-
-            if (Number.isNaN(taskTime)) return false;
+            if (!task.startedAt) return false;
+            const taskTime = task.startedAt.getTime();
             if (from && taskTime < from.getTime()) return false;
             if (to   && taskTime > to.getTime())   return false;
         }
@@ -1304,7 +1303,7 @@ const TenantView = (() => {
     }
 
     function safeInstanceUrl() {
-        const url = safeInstanceUrl();
+        const url = OctopusApi.getInstanceUrl();
         if (!url) return null;
         try {
             const { protocol } = new URL(url);

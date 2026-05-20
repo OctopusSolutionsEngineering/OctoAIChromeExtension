@@ -2108,7 +2108,7 @@ const Views = (() => {
             <i class="fa-solid fa-magnifying-glass tv-search-wrap__icon"></i>
             <input id="tv-tenant-search" type="text" placeholder="Filter by tenant name…" aria-label="Filter tenants by name" class="tv-search-input">
           </div>
-          <button id="tv-filter-toggle-btn" class="btn btn-secondary btn-sm">
+          <button id="tv-filter-toggle-btn" class="btn btn-secondary btn-sm" aria-expanded="false" aria-controls="tv-advanced-filters">
             <i class="fa-solid fa-sliders"></i>
             <span id="tv-filter-toggle-label">Show advanced filters</span>
           </button>
