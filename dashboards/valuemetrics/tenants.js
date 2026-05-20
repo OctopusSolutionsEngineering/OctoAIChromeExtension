@@ -758,13 +758,13 @@ const TenantView = (() => {
             : '<i class="fa-solid fa-chevron-right"></i>';
 
         // Octopus deep link
-        const root = OctopusApi.getInstanceUrl();
+        const root = safeInstanceUrl();
         const tenantHref = root && tenantsState.spaceId
             ? `${root}/app#/${encodeURIComponent(tenantsState.spaceId)}/tenants/${encodeURIComponent(tenant.id)}/overview`
             : null;
 
         const nameCell = tenantHref
-            ? `<a class="tv-tenant-link" href="${tenantHref}" title="Open in Octopus"
+            ? `<a class="tv-tenant-link" href="${escAttr(tenantHref)}" title="Open in Octopus"
                   style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary);text-decoration:none">${escHtml(tenant.name)}<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.65rem;margin-left:5px;color:var(--colorTextTertiary)"></i></a>`
             : `<span style="font:var(--textBodyBoldMedium);color:var(--colorTextPrimary)">${escHtml(tenant.name)}</span>`;
 
@@ -918,7 +918,7 @@ const TenantView = (() => {
             ? 'background:rgba(26,119,202,0.06)'
             : '';
 
-        const root     = OctopusApi.getInstanceUrl();
+        const root     = safeInstanceUrl();
         const taskHref = root && tenantsState.spaceId
             ? `${root}/app#/${encodeURIComponent(tenantsState.spaceId)}/tasks/${encodeURIComponent(task.serverTaskId)}`
             : null;
@@ -1131,7 +1131,7 @@ const TenantView = (() => {
             return;
         }
 
-        const root = OctopusApi.getInstanceUrl();
+        const root = safeInstanceUrl();
 
         const theadCells = allEnvs.map(env =>
             `<th class="tv-matrix-col-head">
@@ -1242,6 +1242,17 @@ const TenantView = (() => {
 
     function formatDateInput(date) {
         return date.toISOString().slice(0, 10);
+    }
+
+    function safeInstanceUrl() {
+        const url = safeInstanceUrl();
+        if (!url) return null;
+        try {
+            const { protocol } = new URL(url);
+            return (protocol === 'http:' || protocol === 'https:') ? url : null;
+        } catch {
+            return null;
+        }
     }
 
     function showError(msg) {
