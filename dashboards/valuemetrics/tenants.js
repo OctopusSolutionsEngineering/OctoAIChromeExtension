@@ -665,9 +665,10 @@ const TenantView = (() => {
                 case 'name':
                     return dir * a.name.localeCompare(b.name);
                 case 'deployments': {
-                    const da = a.tasks.filter(t => t.taskType === 'Deployment').length || a.tasks.length;
-                    const db = b.tasks.filter(t => t.taskType === 'Deployment').length || b.tasks.length;
-                    return dir * (da - db);
+                    const da = a.tasks.filter(t => t.taskType === 'Deployment').length;
+                    const db = b.tasks.filter(t => t.taskType === 'Deployment').length;
+                    if (da !== db) return dir * (da - db);
+                    return dir * (a.tasks.length - b.tasks.length);
                 }
                 case 'successRate': {
                     const ra = a.tasks.length > 0 ? a.tasks.filter(t => t.taskState === 'Success').length / a.tasks.length : -1;
