@@ -563,9 +563,12 @@ const TenantView = (() => {
         if (filters.projects.length > 0 && !filters.projects.includes(task.projectName)) return false;
 
         if (from || to) {
-            const d = task.startedAt;
-            if (from && d < from) return false;
-            if (to   && d > to)   return false;
+            const taskDate = new Date(task.startedAt);
+            const taskTime = taskDate.getTime();
+
+            if (Number.isNaN(taskTime)) return false;
+            if (from && taskTime < from.getTime()) return false;
+            if (to   && taskTime > to.getTime())   return false;
         }
 
         return true;
