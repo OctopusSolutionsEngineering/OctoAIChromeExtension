@@ -2086,6 +2086,175 @@ const Views = (() => {
   }
 
 
+  // ==================================================================
+  // TENANTS — Multi-Tenanted Deployment Dashboard
+  // ==================================================================
+
+  function renderTenants() {
+    return `
+    <div class="tv-view">
+      <div class="tv-space-bar">
+        <label class="tv-space-bar__label" for="tv-spaces-select">Space</label>
+        <select id="tv-spaces-select" class="tv-select">
+          <option value="">Loading spaces…</option>
+        </select>
+      </div>
+
+      <div id="tv-error-banner" class="tv-error-banner hidden"></div>
+
+      <div id="tv-dashboard-content" class="tv-dashboard-content hidden">
+        <div class="tv-toolbar">
+          <div class="tv-search-wrap">
+            <i class="fa-solid fa-magnifying-glass tv-search-wrap__icon"></i>
+            <input id="tv-tenant-search" type="text" placeholder="Filter by tenant name…" aria-label="Filter tenants by name" class="tv-search-input">
+          </div>
+          <button id="tv-filter-toggle-btn" class="btn btn-secondary btn-sm" aria-expanded="false" aria-controls="tv-advanced-filters">
+            <i class="fa-solid fa-sliders"></i>
+            <span id="tv-filter-toggle-label">Show advanced filters</span>
+          </button>
+        </div>
+
+        <div id="tv-advanced-filters" class="tv-advanced-filters hidden">
+          <div class="tv-filter-row">
+            <div class="tv-filter-group">
+              <label class="tv-filter-label" for="tv-environment-select">Environment</label>
+              <select id="tv-environment-select" class="tv-select">
+                <option value="">All environments</option>
+              </select>
+            </div>
+            <div class="tv-filter-group">
+              <label class="tv-filter-label">Projects</label>
+              <div class="tv-multiselect" id="tv-projects-multiselect">
+                <button class="tv-multiselect__trigger" id="tv-projects-trigger" type="button">
+                  All projects <i class="fa-solid fa-chevron-down tv-multiselect__caret"></i>
+                </button>
+                <div class="tv-multiselect__menu hidden" id="tv-projects-menu">
+                  <div id="tv-projects-options"></div>
+                </div>
+              </div>
+            </div>
+            <div class="tv-filter-group">
+              <label class="tv-filter-label">Task Types</label>
+              <div class="tv-checkbox-row">
+                <label class="tv-checkbox-label">
+                  <input type="checkbox" id="tv-type-deployment" checked> Deployment
+                </label>
+                <label class="tv-checkbox-label">
+                  <input type="checkbox" id="tv-type-runbook" checked> Runbook Run
+                </label>
+              </div>
+            </div>
+            <div class="tv-filter-group">
+              <label class="tv-filter-label">Date Range</label>
+              <div class="tv-date-range">
+                <input type="date" id="tv-date-from" class="tv-date-input">
+                <span style="color:var(--colorTextTertiary)">–</span>
+                <input type="date" id="tv-date-to" class="tv-date-input">
+              </div>
+            </div>
+          </div>
+          <div class="tv-filter-row" style="margin-top:var(--space-sm)">
+            <div class="tv-filter-group" id="tv-tag-filter-group">
+              <label class="tv-filter-label">Filter by tag</label>
+              <div class="tv-tag-filter-chips" id="tv-tag-filter-chips"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Total Tenants</div>
+            <div style="display:flex;align-items:baseline;gap:var(--space-xs)">
+              <span id="tv-stat-total" style="font:var(--textHeadingMedium);color:var(--colorTextPrimary)">0</span>
+              <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">customers</span>
+            </div>
+          </div>
+          <div class="kpi-card" style="border-color:var(--colorSuccessLight)">
+            <div class="kpi-label" style="color:var(--colorTextSuccess)">All Succeeded</div>
+            <div style="display:flex;align-items:baseline;gap:var(--space-xs)">
+              <span id="tv-stat-succeeded" style="font:var(--textHeadingMedium);color:var(--colorTextSuccess)">0</span>
+              <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">successful</span>
+            </div>
+          </div>
+          <div class="kpi-card" style="border-color:var(--colorDangerLight)">
+            <div class="kpi-label" style="color:var(--colorTextDanger)">Has Failures</div>
+            <div style="display:flex;align-items:baseline;gap:var(--space-xs)">
+              <span id="tv-stat-failures" style="font:var(--textHeadingMedium);color:var(--colorTextDanger)">0</span>
+              <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">with issues</span>
+            </div>
+          </div>
+          <div class="kpi-card" style="border-color:var(--colorPrimaryLight)">
+            <div class="kpi-label" style="color:var(--colorPrimaryLighter)">In Progress</div>
+            <div style="display:flex;align-items:baseline;gap:var(--space-xs)">
+              <span id="tv-stat-inprogress" style="font:var(--textHeadingMedium);color:var(--colorPrimaryLighter)">0</span>
+              <span class="text-tertiary" style="font:var(--textBodyRegularSmall)">deploying</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="tv-view-toggle" id="tv-view-toggle">
+            <button class="tv-view-btn active" data-view="status">
+              <i class="fa-solid fa-list-ul"></i> Tenant Status
+            </button>
+            <button class="tv-view-btn" data-view="matrix">
+              <i class="fa-solid fa-table-cells"></i> Version Adoption
+            </button>
+          </div>
+
+          <div id="tv-status-pane">
+            <div class="tv-status-tabs" id="tv-status-tabs">
+              <button class="tv-status-tab active" data-filter="all">All (<span id="tv-tab-all">0</span>)</button>
+              <button class="tv-status-tab" data-filter="All succeeded">Succeeded (<span id="tv-tab-succeeded">0</span>)</button>
+              <button class="tv-status-tab" data-filter="Has failures">Failures (<span id="tv-tab-failures">0</span>)</button>
+              <button class="tv-status-tab" data-filter="In progress">In Progress (<span id="tv-tab-inprogress">0</span>)</button>
+            </div>
+            <div class="tv-tenant-grid tv-tenant-grid--header" id="tv-tenant-grid-header">
+              <div></div>
+              <div data-sort="name" class="tv-sortable-header">Tenant <i class="tv-sort-icon fa-solid fa-sort"></i></div>
+              <div>Tags</div>
+              <div>Status</div>
+              <div style="text-align:center" data-sort="deployments" class="tv-sortable-header">Deployments <i class="tv-sort-icon fa-solid fa-sort"></i></div>
+              <div data-sort="successRate" class="tv-sortable-header">Success Rate <i class="tv-sort-icon fa-solid fa-sort"></i></div>
+              <div data-sort="lastUpdated" class="tv-sortable-header is-sorted">Last Updated <i class="tv-sort-icon fa-solid fa-sort-down"></i></div>
+            </div>
+            <div id="tv-tenant-rows">
+              <div class="tv-loading-state" id="tv-loading-state">
+                <i class="fa-solid fa-spinner fa-spin"></i> Loading tenants…
+              </div>
+            </div>
+            <div id="tv-empty-state" class="tv-empty-state hidden">
+              No tenants match the current filters.
+            </div>
+          </div>
+
+          <div id="tv-matrix-container" class="hidden"></div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function showTenantInitError(error) {
+    console.error('Failed to initialize tenant view', error);
+
+    const errorBanner = document.getElementById('tv-error-banner');
+    const dashboardContent = document.getElementById('tv-dashboard-content');
+    const message = (error && error.message) ? error.message : 'Failed to load tenant dashboard.';
+
+    if (dashboardContent) {
+      dashboardContent.classList.add('hidden');
+    }
+
+    if (errorBanner) {
+      errorBanner.textContent = message;
+      errorBanner.classList.remove('hidden');
+    }
+  }
+
+  function wireTenantsEvents() {
+    TenantView.init().catch(showTenantInitError);
+  }
+
   // ---- Public API ----
 
   return {
@@ -2106,6 +2275,9 @@ const Views = (() => {
     renderEnvironments,
     wireEnvironmentsEvents,
     renderTeams,
+    // Tenant view
+    renderTenants,
+    wireTenantsEvents,
   };
 
 })();

@@ -16,12 +16,14 @@ const Router = (() => {
     projects:     { title: 'Projects',            icon: 'fa-solid fa-diagram-project' },
     environments: { title: 'Environments',        icon: 'fa-solid fa-server' },
     teams:        { title: 'Teams',               icon: 'fa-solid fa-users' },
+    tenants:      { title: 'Tenants',             icon: 'fa-solid fa-building-user' },
   };
 
   let _current = 'overview';
 
-  function navigate(viewName) {
+  function navigate(viewName, { force = false } = {}) {
     if (!VIEWS[viewName]) return;
+    const prevView = _current;
     _current = viewName;
 
     // Update hash (overview = no hash)
@@ -54,7 +56,12 @@ const Router = (() => {
       }
       Views.wireOverviewEvents();
     } else {
-      if (!summary) {
+      // Views that fetch their own data don't need the main dashboard summary
+      const SELF_LOADING = new Set(['tenants']);
+      // Don't re-init a self-loading view that's already showing unless forced.
+      // User navigation away and back triggers re-init; background refresh() uses force=true.
+      if (SELF_LOADING.has(viewName) && viewName === prevView && !force) return;
+      if (!summary && !SELF_LOADING.has(viewName)) {
         main.innerHTML = `<div style="text-align:center;padding:var(--space-xl);color:var(--colorTextTertiary);">
           <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem;display:block;margin-bottom:var(--space-md);"></i>
           Loading data&hellip;
@@ -78,7 +85,7 @@ const Router = (() => {
   }
 
   function refresh() {
-    navigate(_current);
+    navigate(_current, { force: true });
   }
 
   function getCurrentView() {
