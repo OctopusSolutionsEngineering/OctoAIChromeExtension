@@ -147,7 +147,9 @@ const TenantView = (() => {
     async function onSpaceChange(spaceId) {
         const loadId = ++_spaceLoadId;
         tenantsState.spaceId = spaceId;
-        document.getElementById('tv-dashboard-content').classList.remove('hidden');
+        const dashboardContent = document.getElementById('tv-dashboard-content');
+        if (!dashboardContent) return;
+        dashboardContent.classList.remove('hidden');
         showLoading(true);
 
         try {
@@ -322,8 +324,9 @@ const TenantView = (() => {
                 })
                 .filter(Boolean);
 
-            // Discard if a newer space selection has already started loading
+            // Discard if a newer space load is in flight or the view has been unmounted
             if (loadId !== _spaceLoadId) return;
+            if (!document.getElementById('tv-dashboard-content')) return;
 
             tenantsState.environments = envs;
             tenantsState.projects = rawProjects.map(p => p.Name || p);
