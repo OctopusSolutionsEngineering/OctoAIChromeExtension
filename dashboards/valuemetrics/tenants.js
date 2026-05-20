@@ -1127,8 +1127,9 @@ const TenantView = (() => {
             Canceled:   { cls: 'warning', icon: 'fa-circle-xmark',    label: 'Canceled' },
             TimedOut:   { cls: 'warning', icon: 'fa-clock',           label: 'Timed Out' },
             Cancelling: { cls: 'warning', icon: 'fa-clock',           label: 'Cancelling' },
+            Unknown:    { cls: 'neutral', icon: 'fa-circle-question', label: 'Unknown' },
         };
-        const c = cfg[taskState] || cfg.Queued;
+        const c = cfg[taskState] || cfg.Unknown;
         return `<span class="badge ${c.cls}"><i class="fa-solid ${c.icon}"></i> ${c.label}</span>`;
     }
 
