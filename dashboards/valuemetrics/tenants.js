@@ -419,8 +419,32 @@ const TenantView = (() => {
         document.getElementById('tv-date-from').addEventListener('change', updateDateFilter);
         document.getElementById('tv-date-to').addEventListener('change', updateDateFilter);
 
-        document.getElementById('tv-projects-trigger').addEventListener('click', () => {
-            document.getElementById('tv-projects-menu').classList.toggle('hidden');
+        const projectsTrigger = document.getElementById('tv-projects-trigger');
+        const projectsMenu = document.getElementById('tv-projects-menu');
+
+        function setProjectsMenuOpen(isOpen) {
+            projectsMenu.classList.toggle('hidden', !isOpen);
+            projectsTrigger.setAttribute('aria-expanded', String(isOpen));
+            projectsMenu.setAttribute('aria-hidden', String(!isOpen));
+        }
+
+        projectsTrigger.setAttribute('aria-controls', 'tv-projects-menu');
+        projectsTrigger.setAttribute('aria-haspopup', 'listbox');
+        projectsTrigger.setAttribute('aria-expanded', String(!projectsMenu.classList.contains('hidden')));
+        projectsMenu.setAttribute('role', 'listbox');
+        projectsMenu.setAttribute('aria-multiselectable', 'true');
+        projectsMenu.setAttribute('aria-labelledby', 'tv-projects-trigger');
+        projectsMenu.setAttribute('aria-hidden', String(projectsMenu.classList.contains('hidden')));
+
+        projectsTrigger.addEventListener('click', () => {
+            setProjectsMenuOpen(projectsMenu.classList.contains('hidden'));
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && !projectsMenu.classList.contains('hidden')) {
+                setProjectsMenuOpen(false);
+                projectsTrigger.focus();
+            }
         });
 
         // Delegated handler for the projects multi-select options
