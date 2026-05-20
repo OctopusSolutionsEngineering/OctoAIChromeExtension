@@ -348,24 +348,33 @@ const TenantView = (() => {
     }
 
     function deriveTenantStatus(tasks) {
-        if (tasks.some(t => {
-            const taskState = (t.taskState || '').toLowerCase();
-            return taskState === 'failed'
-                || taskState === 'timedout'
-                || taskState === 'canceled'
-                || taskState === 'cancelled';
-        })) {
+        const taskStates = tasks.map(t => (t.taskState || '').toLowerCase());
+
+        if (taskStates.some(taskState =>
+            taskState === 'failed'
+            || taskState === 'timedout'
+            || taskState === 'canceled'
+            || taskState === 'cancelled'
+        )) {
             return 'Has failures';
         }
-        if (tasks.some(t => {
-            const taskState = (t.taskState || '').toLowerCase();
-            return taskState === 'executing'
-                || taskState === 'queued'
-                || taskState === 'cancelling';
-        })) {
+
+        if (taskStates.some(taskState =>
+            taskState === 'executing'
+            || taskState === 'queued'
+            || taskState === 'cancelling'
+        )) {
             return 'In progress';
         }
-        return 'All succeeded';
+
+        if (taskStates.length > 0 && taskStates.every(taskState =>
+            taskState === 'success'
+            || taskState === 'succeeded'
+        )) {
+            return 'All succeeded';
+        }
+
+        return 'Unknown';
     }
 
     /* ─── Controls wiring ────────────────────────────────────────────────── */
