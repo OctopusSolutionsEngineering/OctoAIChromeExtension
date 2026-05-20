@@ -84,30 +84,60 @@ const TenantView = (() => {
         wireUpControls();
     }
 
-    function showLoading(visible) {
+    function ensureLoadingStateElement() {
+        const loadingHost = document.getElementById('tv-dashboard-content');
+
+        if (!loadingHost) return null;
+
         let el = document.getElementById('tv-loading-state');
 
+        if (el && el.parentElement !== loadingHost) {
+            el.remove();
+            el = null;
+        }
+
         if (!el) {
-            const loadingHost = document.getElementById('tv-dashboard-content');
-
-            if (!loadingHost) return;
-
             el = document.createElement('div');
             el.id = 'tv-loading-state';
             el.className = 'tv-loading-state';
+            el.setAttribute('role', 'status');
+            el.setAttribute('aria-live', 'polite');
+            el.style.display = 'none';
 
             const spinner = document.createElement('div');
             spinner.className = 'tv-loading-state__spinner';
             spinner.setAttribute('aria-hidden', 'true');
+            spinner.style.width = '24px';
+            spinner.style.height = '24px';
+            spinner.style.margin = '0 auto 8px';
+            spinner.style.border = '3px solid rgba(0, 0, 0, 0.15)';
+            spinner.style.borderTopColor = 'currentColor';
+            spinner.style.borderRadius = '50%';
+            spinner.style.animation = 'tv-loading-spin 0.8s linear infinite';
 
             const message = document.createElement('div');
             message.className = 'tv-loading-state__message';
             message.textContent = 'Loading...';
 
+            if (!document.getElementById('tv-loading-state-style')) {
+                const style = document.createElement('style');
+                style.id = 'tv-loading-state-style';
+                style.textContent = '@keyframes tv-loading-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+                document.head.appendChild(style);
+            }
+
             el.appendChild(spinner);
             el.appendChild(message);
             loadingHost.prepend(el);
         }
+
+        return el;
+    }
+
+    function showLoading(visible) {
+        const el = ensureLoadingStateElement();
+
+        if (!el) return;
 
         el.style.display = visible ? 'block' : 'none';
     }
