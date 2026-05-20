@@ -8,6 +8,7 @@ const TenantView = (() => {
     /* ─── State ──────────────────────────────────────────────────────────── */
 
     let _docListenersAttached = false;
+    const _wireTimeouts = {};
 
     const tenantsState = {
         allTenants: [],
@@ -950,7 +951,11 @@ const TenantView = (() => {
             </div>
         `;
 
-        setTimeout(() => wireDetailHandlers(tenant.id), 0);
+        clearTimeout(_wireTimeouts[tenant.id]);
+        _wireTimeouts[tenant.id] = setTimeout(() => {
+            delete _wireTimeouts[tenant.id];
+            wireDetailHandlers(tenant.id);
+        }, 0);
         return detail;
     }
 
