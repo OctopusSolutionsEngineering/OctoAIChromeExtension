@@ -1374,14 +1374,26 @@ const DashboardData = (() => {
     const spaceNameMap = {};
     for (const s of _spaces) spaceNameMap[s.Id] = s.Name;
 
-    const hourlyConc = new Array(HOURS).fill(0);
+    const hourlyConcDiff = new Array(HOURS + 1).fill(0);
     for (const task of tasks) {
-      const start = task.StartTime    ? new Date(task.StartTime).getTime()    : null;
-      const end   = task.CompletedTime ? new Date(task.CompletedTime).getTime() : null;
+      const start = task.StartTime     ? new Date(task.StartTime).getTime()     : null;
+      const end   = task.CompletedTime ? new Date(task.CompletedTime).getTime() : now;
       if (!start) continue;
-      const s = Math.max(0,         Math.floor((start - windowStart) / 3600000));
-      const e = Math.min(HOURS - 1, Math.floor(((end || now) - windowStart) / 3600000));
-      for (let i = s; i <= e; i++) hourlyConc[i]++;
+      if (end < windowStart || start >= now) continue;
+
+      const s = Math.max(0, Math.floor((start - windowStart) / 3600000));
+      const e = Math.min(HOURS - 1, Math.floor((end - windowStart) / 3600000));
+      if (s > e) continue;
+
+      hourlyConcDiff[s]++;
+      hourlyConcDiff[e + 1]--;
+    }
+
+    const hourlyConc = new Array(HOURS).fill(0);
+    let runningConc = 0;
+    for (let i = 0; i < HOURS; i++) {
+      runningConc += hourlyConcDiff[i];
+      hourlyConc[i] = runningConc;
     }
 
     const nonZero  = hourlyConc.filter(v => v > 0);
