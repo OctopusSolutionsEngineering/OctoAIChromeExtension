@@ -2271,8 +2271,8 @@ const DashboardUI = (() => {
       const exec = tc.executing ?? 0;
       const queued = tc.queued ?? 0;
       execEl.textContent = tc.cap !== null && tc.cap !== undefined
-        ? `${exec + queued} / ${tc.cap}`
-        : (tc.executing !== null ? String(exec + queued) : '--');
+        ? `${exec} / ${tc.cap}`
+        : (tc.executing !== null ? String(exec) : '--');
     }
     if (labelEl && tc) {
       const parts = [];
