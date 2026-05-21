@@ -2583,7 +2583,21 @@ const Views = (() => {
         // If user picks a period beyond the currently loaded data, offer to load more
         if (days > loadedDays) {
           const neededMonths = Math.ceil(days / 30);
-          const label = neededMonths >= 12 ? `${neededMonths / 12} year${neededMonths / 12 !== 1 ? 's' : ''}` : `${neededMonths} months`;
+          const formatLookbackLabel = (months) => {
+            if (months < 12) {
+              return `${months} month${months !== 1 ? 's' : ''}`;
+            }
+
+            if (months % 12 === 0) {
+              const years = months / 12;
+              return `${years} year${years !== 1 ? 's' : ''}`;
+            }
+
+            const years = Math.floor(months / 12);
+            const remainingMonths = months % 12;
+            return `${years} year${years !== 1 ? 's' : ''} ${remainingMonths} month${remainingMonths !== 1 ? 's' : ''}`;
+          };
+          const label = formatLookbackLabel(neededMonths);
           const heavy = neededMonths > 12;
           const msg = `The selected period (${days} days) is longer than your currently loaded data (${loadedMonths} months).\n\n`
             + `Load ${label} of data?`
