@@ -2088,12 +2088,16 @@ const DashboardUI = (() => {
     const ptmEl = document.getElementById('license-ptm');
     if (!el || !info) return;
 
-    const v = window.EXTENSION_VERSION;
-    if (v) {
+    const serverVersion = _serverInfo?.Version;
+    if (serverVersion) {
       const versionEl = document.getElementById('server-version');
-      if (versionEl) versionEl.textContent = v;
+      if (versionEl) versionEl.textContent = serverVersion;
+    }
+
+    const extensionVersion = window.EXTENSION_VERSION;
+    if (extensionVersion) {
       const sidebarEl = document.getElementById('sidebar-ext-version');
-      if (sidebarEl) sidebarEl.textContent = v;
+      if (sidebarEl) sidebarEl.textContent = extensionVersion;
     }
 
     const compliant = info.isCompliant === true;
