@@ -1,6 +1,11 @@
-// Expose extension version for dashboard rendering code to read
-// without needing to call Chrome APIs outside of the bootstrap context.
-window.EXTENSION_VERSION = 'v' + chrome.runtime.getManifest().version;
+// Read extension version from the bootstrap/host context if it has been
+// injected already, without calling Chrome extension APIs from the dashboard.
+const injectedExtensionVersion = typeof window.EXTENSION_VERSION === 'string'
+    ? window.EXTENSION_VERSION.trim()
+    : '';
+window.EXTENSION_VERSION = injectedExtensionVersion
+    ? (injectedExtensionVersion.startsWith('v') ? injectedExtensionVersion : `v${injectedExtensionVersion}`)
+    : '';
 
 // ================================================================
 // Debug logger
