@@ -421,7 +421,7 @@ const Views = (() => {
         // Check if the requested range exceeds loaded data
         const rangeMonths = { '90d': 3, '12m': 12 }[range];
         if (rangeMonths) {
-          const loaded = DashboardData.getEnrichmentState().lookbackMonths || 3;
+          const loaded = DashboardData.getEnrichmentState().lookbackMonths ?? 3;
           if (rangeMonths > loaded) {
             const label = rangeMonths >= 12 ? `${rangeMonths / 12} year` : `${rangeMonths} months`;
             const heavy = rangeMonths >= 12;
