@@ -1396,20 +1396,20 @@ const DashboardData = (() => {
       hourlyConc[i] = runningConc;
     }
 
-    const nonZero  = hourlyConc.filter(v => v > 0);
-    const peak30d  = nonZero.length ? Math.max(...nonZero) : 0;
-    const peak24h  = Math.max(...hourlyConc.slice(-24), 0);
-    const avgConc  = nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0;
-    const avgUtil  = cap ? Math.round((avgConc / cap) * 100) : null;
-    const headroom = cap != null ? cap - peak30d : null;
+    const nonZero       = hourlyConc.filter(v => v > 0);
+    const peakInPeriod  = nonZero.length ? Math.max(...nonZero) : 0;
+    const peak24h       = Math.max(...hourlyConc.slice(-24), 0);
+    const avgConc       = nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0;
+    const avgUtil       = cap ? Math.round((avgConc / cap) * 100) : null;
+    const headroom      = cap != null ? cap - peakInPeriod : null;
 
     const timeAtCap   = cap ? hourlyConc.filter(v => v >= cap).length       : 0;
     const timeNearCap = cap ? hourlyConc.filter(v => v >= cap * 0.8).length : 0;
 
     let capRecommendation = null;
-    if (cap && peak30d >= cap * 0.8) {
+    if (cap && peakInPeriod >= cap * 0.8) {
       const suggested = cap + Math.ceil(cap * 0.25);
-      capRecommendation = `Peak usage (${peak30d}) is ${Math.round(peak30d / cap * 100)}% of your cap. Consider increasing to ${suggested}.`;
+      capRecommendation = `Peak usage in the selected period (${peakInPeriod}) is ${Math.round(peakInPeriod / cap * 100)}% of your cap. Consider increasing to ${suggested}.`;
     }
 
     const spaceMap = {};
