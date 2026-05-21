@@ -1,3 +1,7 @@
+// Expose extension version for dashboard rendering code to read
+// without needing to call Chrome APIs outside of the bootstrap context.
+window.EXTENSION_VERSION = 'v' + chrome.runtime.getManifest().version;
+
 // ================================================================
 // Debug logger
 // ================================================================

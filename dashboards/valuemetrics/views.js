@@ -421,7 +421,8 @@ const Views = (() => {
         // Check if the requested range exceeds loaded data
         const rangeMonths = { '90d': 3, '12m': 12 }[range];
         if (rangeMonths) {
-          const loaded = DashboardData.getEnrichmentState().lookbackMonths ?? 3;
+          const loadedRaw = DashboardData.getEnrichmentState().lookbackMonths ?? 3;
+          const loaded = loadedRaw === 0 ? Infinity : loadedRaw;
           if (rangeMonths > loaded) {
             const label = rangeMonths >= 12 ? `${rangeMonths / 12} year` : `${rangeMonths} months`;
             const heavy = rangeMonths >= 12;
@@ -2431,7 +2432,7 @@ const Views = (() => {
       <tbody>${rows.slice(0, 12).map(r => {
         const pct = Math.round((r[valueKey] / max) * 100);
         return `<tr>
-          <td style="padding:5px var(--space-sm);color:var(--colorTextPrimary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${r.name}">${r.name}</td>
+          <td style="padding:5px var(--space-sm);color:var(--colorTextPrimary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${DOMPurify.sanitize(String(r.name))}">${DOMPurify.sanitize(String(r.name))}</td>
           <td style="padding:5px var(--space-sm);text-align:right;font-family:var(--fontFamilyCode);color:var(--colorTextSecondary)">${r[valueKey].toLocaleString()}</td>
           <td style="padding:5px var(--space-sm)">
             <div style="background:var(--colorBorderSubtle,rgba(255,255,255,0.05));border-radius:2px;height:6px">
@@ -2524,7 +2525,7 @@ const Views = (() => {
         </div>
         <div class="kpi-card">
           <div class="flex items-center justify-between">
-            <span class="kpi-label">Peak (30d)</span>
+            <span class="kpi-label">Peak (${periodLabel})</span>
             <div class="kpi-icon purple"><i class="fa-solid fa-arrow-trend-up"></i></div>
           </div>
           <span class="kpi-value">${d.peak30d}</span>
@@ -2536,7 +2537,7 @@ const Views = (() => {
             <div class="kpi-icon ${d.avgUtil != null && d.avgUtil >= 80 ? 'amber' : 'blue'}"><i class="fa-solid fa-percent"></i></div>
           </div>
           <span class="kpi-value">${utilVal}</span>
-          <span class="kpi-trend neutral">avg ${d.avgConc} concurrent · 30d</span>
+          <span class="kpi-trend neutral">avg ${d.avgConc} concurrent · ${periodLabel}</span>
         </div>
         <div class="kpi-card">
           <div class="flex items-center justify-between">
@@ -2544,7 +2545,7 @@ const Views = (() => {
             <div class="kpi-icon ${d.timeAtCap > 0 ? 'amber' : 'green'}"><i class="fa-solid fa-clock"></i></div>
           </div>
           <span class="kpi-value">${d.timeAtCap}h</span>
-          <span class="kpi-trend neutral">${d.timeNearCap}h near cap (≥80%) · 30d</span>
+          <span class="kpi-trend neutral">${d.timeNearCap}h near cap (≥80%) · ${periodLabel}</span>
         </div>
       </div>
 
@@ -2560,11 +2561,12 @@ const Views = (() => {
                 <span style="display:inline-block;width:20px;height:0;border-bottom:2px dashed var(--colorWarningLight);vertical-align:middle;margin-right:2px"></span>Cap
               </div>
               <div class="flex gap-xs">
-                <button class="btn btn-secondary btn-sm tc-range-btn" data-range="24h">24h</button>
-                ${currentDays >= 7   ? `<button class="btn btn-secondary btn-sm tc-range-btn active-toggle" data-range="7d">7d</button>`  : ''}
-                ${currentDays >= 30  ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="30d">30d</button>` : ''}
-                ${currentDays >= 90  ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="90d">90d</button>` : ''}
-                ${currentDays >= 180 ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="180d">180d</button>` : ''}
+                ${[['24h',1],['7d',7],['30d',30],['90d',90],['180d',180]]
+                  .filter(([,d]) => currentDays >= d || d === 1)
+                  .map(([range, d]) => {
+                    const active = d === currentDays || (d === 1 && currentDays < 7) ? ' active-toggle' : '';
+                    return `<button class="btn btn-secondary btn-sm tc-range-btn${active}" data-range="${range}">${range}</button>`;
+                  }).join('')}
               </div>
             </div>
           </div>
@@ -2597,7 +2599,7 @@ const Views = (() => {
       periodSel.addEventListener('change', () => {
         const days = parseInt(periodSel.value, 10);
         const enrichState  = DashboardData.getEnrichmentState();
-        const loadedMonths = enrichState.lookbackMonths || 3;
+        const loadedMonths = enrichState.lookbackMonths ?? 3;
         const loadedDays   = loadedMonths === 0 ? Infinity : loadedMonths * 30;
 
         // If user picks a period beyond the currently loaded data, offer to load more

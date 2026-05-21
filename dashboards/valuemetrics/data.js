@@ -2088,13 +2088,13 @@ const DashboardUI = (() => {
     const ptmEl = document.getElementById('license-ptm');
     if (!el || !info) return;
 
-    try {
-      const v = 'v' + chrome.runtime.getManifest().version;
+    const v = window.EXTENSION_VERSION;
+    if (v) {
       const versionEl = document.getElementById('server-version');
       if (versionEl) versionEl.textContent = v;
       const sidebarEl = document.getElementById('sidebar-ext-version');
       if (sidebarEl) sidebarEl.textContent = v;
-    } catch (_) { /* not in extension context */ }
+    }
 
     const compliant = info.isCompliant === true;
     const nonCompliant = info.isCompliant === false;
