@@ -60,10 +60,10 @@ const DashboardData = (() => {
       OctopusApi.get('/api/spaces?take=100&partialName='),
       safeGet('/api/licenses/licenses-current-usage'),
       safeGet('/api/licenses/licenses-current-status'),
-      safeGet('/api/tasks?states=Executing&take=0').catch(() => null),
-      safeGet('/api/tasks?states=Queued&take=0').catch(() => null),
-      safeGet('/api/configuration/serverconfig').catch(() => null),
-      safeGet('/api/octopusservernodes').catch(() => null),
+      safeGet('/api/tasks?states=Executing&take=0'),
+      safeGet('/api/tasks?states=Queued&take=0'),
+      safeGet('/api/configuration/serverconfig'),
+      safeGet('/api/octopusservernodes'),
     ]);
 
     // Task cap: sum MaxConcurrentTasks across all server nodes (most reliable source).
