@@ -2528,7 +2528,7 @@ const Views = (() => {
             <span class="kpi-label">Peak (${periodLabel})</span>
             <div class="kpi-icon purple"><i class="fa-solid fa-arrow-trend-up"></i></div>
           </div>
-          <span class="kpi-value">${d.peak30d}</span>
+          <span class="kpi-value">${d.peakInPeriod}</span>
           <span class="kpi-trend neutral">peak 24h: ${d.peak24h} concurrent</span>
         </div>
         <div class="kpi-card">
