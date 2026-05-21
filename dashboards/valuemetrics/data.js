@@ -2189,11 +2189,14 @@ const DashboardUI = (() => {
   function _computeHourlyPoints(hours) {
     const now = Date.now();
     const buckets = [];
+    const tasks = (DashboardData && typeof DashboardData.getCrossSpaceTasks === 'function')
+      ? (DashboardData.getCrossSpaceTasks() || [])
+      : [];
     for (let i = hours - 1; i >= 0; i--) {
       const t = new Date(now - i * 3600000);
       buckets.push({ ts: t.getTime(), label: `${t.getUTCHours()}:00`, total: 0, success: 0, failed: 0 });
     }
-    for (const task of _crossSpaceTasks) {
+    for (const task of tasks) {
       const raw = task.CompletedTime || task.StartTime;
       if (!raw) continue;
       const t = new Date(raw).getTime();
