@@ -2462,14 +2462,34 @@ const Views = (() => {
     const currentVal = d.cap != null ? `${exec} / ${d.cap}` : String(exec);
     const utilVal    = d.avgUtil != null ? `${d.avgUtil}%` : '--';
 
-    // Concurrency chart — default to last 7d view
+    // Concurrency chart — default to the currently selected period
     const chart7d = (() => {
-      const pts = d.hourlyConc.slice(-168).reduce((acc, v, i) => {
-        const bucket = Math.floor(i / 6);
-        if (!acc[bucket]) { const ts = new Date(Date.now() - (167-i)*3600000); acc[bucket] = {v:0,label:`${ts.getUTCDate()}/${ts.getUTCMonth()+1}`}; }
-        acc[bucket].v = Math.max(acc[bucket].v, v);
-        return acc;
-      }, []).filter(Boolean);
+      if (currentDays === 1) {
+        const pts = d.hourlyConc.slice(-24).map((v, i) => {
+          const ts = new Date(Date.now() - (23 - i) * 3600000);
+          return { v, label: `${ts.getUTCHours()}:00` };
+        });
+        return _tcSvgLine(pts, d.cap);
+      }
+
+      if (currentDays === 7) {
+        const pts = d.hourlyConc.slice(-168).reduce((acc, v, i) => {
+          const bucket = Math.floor(i / 24);
+          if (!acc[bucket]) {
+            const ts = new Date(Date.now() - (167 - i) * 3600000);
+            acc[bucket] = { v: 0, label: `${ts.getUTCDate()}/${ts.getUTCMonth() + 1}` };
+          }
+          acc[bucket].v = Math.max(acc[bucket].v, v);
+          return acc;
+        }, []).filter(Boolean);
+        return _tcSvgLine(pts, d.cap);
+      }
+
+      const hours = Math.min(d.hourlyConc.length, currentDays * 24);
+      const pts = d.hourlyConc.slice(-hours).map((v, i) => {
+        const ts = new Date(Date.now() - (hours - 1 - i) * 3600000);
+        return { v, label: `${ts.getUTCDate()}/${ts.getUTCMonth() + 1}` };
+      });
       return _tcSvgLine(pts, d.cap);
     })();
 
