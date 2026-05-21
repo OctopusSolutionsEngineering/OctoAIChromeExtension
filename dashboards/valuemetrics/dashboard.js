@@ -304,6 +304,18 @@ document.getElementById('lookback-select').addEventListener('change', () => {
     Analytics.trackEvent('lookback_changed', { months });
 });
 
+// Task Cap page requests a longer lookback period
+document.addEventListener('tc-request-lookback', (e) => {
+    const { months, afterDays } = e.detail;
+    const sel = document.getElementById('lookback-select');
+    if (sel) sel.value = String(months);
+    lastConfirmedLookbackMonths = months;
+    DashboardData.clearHistoryCache();
+    DashboardData.setTaskCapDays(afterDays);
+    startEnrichment();
+    Analytics.trackEvent('lookback_changed', { months, source: 'task_cap_page' });
+});
+
 // ================================================================
 // Override DashboardUI.loadDashboard to also render value impact
 // and refresh the current view after data loads

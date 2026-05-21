@@ -17,6 +17,7 @@ const Router = (() => {
     environments: { title: 'Environments',        icon: 'fa-solid fa-server' },
     teams:        { title: 'Teams',               icon: 'fa-solid fa-users' },
     tenants:      { title: 'Tenants',             icon: 'fa-solid fa-building-user' },
+    taskcap:      { title: 'Task Cap',            icon: 'fa-solid fa-gauge-simple-high' },
   };
 
   let _current = 'overview';

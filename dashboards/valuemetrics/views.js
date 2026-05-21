@@ -206,6 +206,14 @@ const Views = (() => {
         <span class="kpi-value" id="kpi-releases">--</span>
         <span class="kpi-trend neutral"><i class="fa-solid fa-code-branch"></i> <span>across all projects</span></span>
       </div>
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">Current Tasks</span>
+          <div class="kpi-icon blue"><i class="fa-solid fa-list-check"></i></div>
+        </div>
+        <span class="kpi-value" id="kpi-tasks-executing">--</span>
+        <span class="kpi-trend neutral"><i class="fa-solid fa-hourglass-half"></i> <span id="kpi-tasks-label">executing now</span></span>
+      </div>
     </div>
 
     <!-- Charts Section Header -->
@@ -251,6 +259,42 @@ const Views = (() => {
           <div class="chart-container" id="chart-success-failure">
             <i class="fa-solid fa-chart-pie" style="font-size:2rem;margin-right:var(--space-sm);"></i>
             Loading...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task Activity Section -->
+    <div class="section-header">
+      <h2 class="section-title"><i class="fa-solid fa-list-check"></i> Task Activity</h2>
+    </div>
+    <div class="dashboard-grid mb-lg">
+      <div class="card col-span-12 card--chart-tooltips">
+        <div class="card-header">
+          <h3 class="card-title">Task Volume</h3>
+          <div class="flex items-center gap-md">
+            <span style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);display:flex;align-items:center;gap:4px">
+              <span style="display:inline-block;width:20px;height:0;border-bottom:2px dashed var(--colorWarningLight);vertical-align:middle;margin-right:2px;"></span>Task cap
+            </span>
+            <div class="flex gap-xs">
+              <button class="btn btn-secondary btn-sm task-range-btn" data-range="1h">1h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn" data-range="3h">3h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn" data-range="6h">6h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn" data-range="12h">12h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn" data-range="24h">24h</button>
+            </div>
+            <div class="flex gap-xs">
+              <button class="btn btn-secondary btn-sm task-range-btn" data-range="7d">7d</button>
+              <button class="btn btn-secondary btn-sm task-range-btn active-toggle" data-range="30d">30d</button>
+              <button class="btn btn-secondary btn-sm task-range-btn" data-range="90d">90d</button>
+              <button class="btn btn-secondary btn-sm task-range-btn" data-range="12m">12m</button>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="chart-task-activity" style="padding:var(--space-sm) 0;">
+            <i class="fa-solid fa-chart-line" style="font-size:2rem;margin-right:var(--space-sm);"></i>
+            Loading task activity...
           </div>
         </div>
       </div>
@@ -359,13 +403,41 @@ const Views = (() => {
       if (typeof openOnboarding === 'function') openOnboarding();
     });
 
-    // Trend range buttons
-    document.querySelectorAll('[data-range]').forEach(btn => {
+    // Deployment trend range buttons (exclude task chart buttons)
+    document.querySelectorAll('[data-range]:not(.task-range-btn)').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-range]').forEach(b => b.classList.remove('active-toggle'));
+        document.querySelectorAll('[data-range]:not(.task-range-btn)').forEach(b => b.classList.remove('active-toggle'));
         btn.classList.add('active-toggle');
         DashboardUI.setTrendRange(btn.dataset.range);
         Analytics.trackEvent('chart_range_changed', { view: 'overview', range: btn.dataset.range });
+      });
+    });
+
+    // Task activity chart range buttons
+    document.querySelectorAll('.task-range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const range = btn.dataset.range;
+
+        // Check if the requested range exceeds loaded data
+        const rangeMonths = { '90d': 3, '12m': 12 }[range];
+        if (rangeMonths) {
+          const loaded = DashboardData.getEnrichmentState().lookbackMonths || 3;
+          if (rangeMonths > loaded) {
+            const label = rangeMonths >= 12 ? `${rangeMonths / 12} year` : `${rangeMonths} months`;
+            const heavy = rangeMonths >= 12;
+            const msg = `This range requires ${label} of data, but only ${loaded} months are currently loaded.\n\nLoad ${label} now?`
+              + (heavy ? '\n\nNote: loading a year or more of data can be slow and heavy on larger Octopus instances.' : '');
+            if (!confirm(msg)) return;
+            document.dispatchEvent(new CustomEvent('tc-request-lookback', {
+              detail: { months: rangeMonths, afterDays: rangeMonths * 30 }
+            }));
+            return;
+          }
+        }
+
+        document.querySelectorAll('.task-range-btn').forEach(b => b.classList.remove('active-toggle'));
+        btn.classList.add('active-toggle');
+        DashboardUI.setTaskChartRange(range);
       });
     });
   }
@@ -2255,6 +2327,378 @@ const Views = (() => {
     TenantView.init().catch(showTenantInitError);
   }
 
+  // ==================================================================
+  // TASK CAP view
+  // ==================================================================
+
+  function _tcSvgLine(points, cap, H = 140) {
+    if (!points || points.length === 0) return '<p class="text-tertiary" style="text-align:center;padding:var(--space-lg);">No data for this period.</p>';
+
+    const VW = 1000, VH = 100; // normalised viewBox — SVG carries no text
+    const maxVal = Math.max(...points.map(p => p.v), cap || 0, 1);
+    const xN = i => (i / Math.max(points.length - 1, 1)) * VW;
+    const yN = v => VH - (v / maxVal) * VH;
+
+    // Smooth bezier line: cubic with midpoint control points
+    let linePath = `M${xN(0).toFixed(1)},${yN(points[0].v).toFixed(1)}`;
+    for (let i = 1; i < points.length; i++) {
+      const x0 = xN(i - 1), y0 = yN(points[i - 1].v);
+      const x1 = xN(i),     y1 = yN(points[i].v);
+      const mx = ((x0 + x1) / 2).toFixed(1);
+      linePath += ` C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+    }
+    const areaPath = `${linePath} L${xN(points.length - 1).toFixed(1)},${VH} L0,${VH} Z`;
+
+    // Grid lines (purely graphical — no text in SVG)
+    const gridLines = [1, 0.5, 0].map(frac =>
+      `<line x1="0" y1="${(VH - frac * VH).toFixed(1)}" x2="${VW}" y2="${(VH - frac * VH).toFixed(1)}"
+         stroke="rgba(255,255,255,0.06)" stroke-width="0.8"/>`
+    ).join('');
+
+    // Cap reference line (graphical only)
+    const capLine = cap != null
+      ? `<line x1="0" y1="${yN(cap).toFixed(1)}" x2="${VW}" y2="${yN(cap).toFixed(1)}"
+           stroke="rgba(247,155,60,0.7)" stroke-width="1.2" stroke-dasharray="6,4"/>` : '';
+
+    // Hover dots
+    const dots = points.map((p, i) =>
+      `<circle cx="${xN(i).toFixed(1)}" cy="${yN(p.v).toFixed(1)}" r="5"
+         fill="var(--colorPrimaryLighter)" stroke="var(--colorBackgroundPrimaryDefault)" stroke-width="2"
+         class="lc-dot">`+
+      `<title>${p.label}: ${p.v}</title></circle>`
+    ).join('');
+
+    // --- HTML labels (never distorted) ---
+    const yVals = [maxVal, Math.round(maxVal / 2), 0];
+    const yLabelHtml = yVals.map(v =>
+      `<span style="position:absolute;right:4px;top:${(100 - (v / maxVal) * 100).toFixed(1)}%;
+         transform:translateY(-50%);font-size:10px;font-family:var(--fontFamilyCode);
+         color:var(--colorTextTertiary);white-space:nowrap">${v}</span>`
+    ).join('');
+
+    const capLabelHtml = cap != null
+      ? `<span style="position:absolute;right:4px;top:${(100 - (cap / maxVal) * 100).toFixed(1)}%;
+           transform:translateY(-150%);font-size:9px;font-family:var(--fontFamilyCode);
+           color:var(--colorWarningLight);background:var(--colorBackgroundPrimaryDefault);
+           padding:0 3px;border-radius:2px">cap ${cap}</span>` : '';
+
+    const xStep = Math.max(1, Math.floor(points.length / 7));
+    const xLabelHtml = points
+      .map((p, i) => ({ p, i }))
+      .filter(({ i }) => i % xStep === 0 || i === points.length - 1)
+      .map(({ p, i }) =>
+        `<span style="position:absolute;left:${((i / Math.max(points.length - 1, 1)) * 100).toFixed(1)}%;
+           transform:translateX(-50%);font-size:10px;font-family:var(--fontFamilyCode);
+           color:var(--colorTextTertiary);white-space:nowrap">${p.label}</span>`
+      ).join('');
+
+    return `
+      <style>
+        .lc-dot{opacity:0;transition:opacity .15s;cursor:default}
+        .lc-wrap:hover .lc-dot{opacity:1}
+      </style>
+      <div class="lc-wrap" style="position:relative;padding-left:42px;padding-bottom:22px">
+        <div style="position:absolute;left:0;top:0;bottom:22px;width:40px;pointer-events:none">
+          ${yLabelHtml}
+        </div>
+        <div style="position:relative" class="lc-inner">
+          <svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none"
+               style="width:100%;height:${H}px;display:block">
+            ${gridLines}
+            <path d="${areaPath}" fill="rgba(26,119,202,0.12)"/>
+            ${capLine}
+            <path d="${linePath}" fill="none" stroke="var(--colorPrimaryLighter)"
+                  stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            ${dots}
+          </svg>
+          ${capLabelHtml}
+        </div>
+        <div style="position:absolute;bottom:0;left:42px;right:0;height:20px">
+          ${xLabelHtml}
+        </div>
+      </div>`;
+  }
+
+  function _tcBarTable(rows, valueKey = 'total', label = 'Tasks') {
+    if (!rows || rows.length === 0) return '<p class="text-tertiary" style="padding:var(--space-md)">No data.</p>';
+    const max = Math.max(...rows.map(r => r[valueKey]), 1);
+    return `<table style="width:100%;border-collapse:collapse;font:var(--textBodyRegularSmall)">
+      <thead><tr>
+        <th style="text-align:left;padding:6px var(--space-sm);color:var(--colorTextTertiary);font:var(--textBodyBoldXSmall);text-transform:uppercase;border-bottom:1px solid var(--colorBorderDefault)">Name</th>
+        <th style="text-align:right;padding:6px var(--space-sm);color:var(--colorTextTertiary);font:var(--textBodyBoldXSmall);text-transform:uppercase;border-bottom:1px solid var(--colorBorderDefault)">${label}</th>
+        <th style="width:35%;padding:6px var(--space-sm);border-bottom:1px solid var(--colorBorderDefault)"></th>
+      </tr></thead>
+      <tbody>${rows.slice(0, 12).map(r => {
+        const pct = Math.round((r[valueKey] / max) * 100);
+        return `<tr>
+          <td style="padding:5px var(--space-sm);color:var(--colorTextPrimary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${r.name}">${r.name}</td>
+          <td style="padding:5px var(--space-sm);text-align:right;font-family:var(--fontFamilyCode);color:var(--colorTextSecondary)">${r[valueKey].toLocaleString()}</td>
+          <td style="padding:5px var(--space-sm)">
+            <div style="background:var(--colorBorderSubtle,rgba(255,255,255,0.05));border-radius:2px;height:6px">
+              <div style="background:var(--colorPrimaryLighter);border-radius:2px;height:6px;width:${pct}%"></div>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  }
+
+  const TC_PERIODS = [
+    { days: 1,   label: '24 hours' },
+    { days: 7,   label: '7 days' },
+    { days: 30,  label: '30 days' },
+    { days: 90,  label: '90 days' },
+    { days: 180, label: '6 months' },
+    { days: 365, label: '1 year' },
+  ];
+
+  function renderTaskcap(summary) {
+    if (!summary) return `<div class="page-content"><p class="text-tertiary" style="padding:var(--space-xl)">Loading data…</p></div>`;
+    const currentDays = DashboardData.getTaskCapDays();
+    const d = DashboardData.computeTaskCapData();
+
+    const kpi = (label, icon, iconCls, valueId, trendId, defaultTrend) =>
+      `<div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <span class="kpi-label">${label}</span>
+          <div class="kpi-icon ${iconCls}"><i class="${icon}"></i></div>
+        </div>
+        <span class="kpi-value" id="${valueId}">--</span>
+        <span class="kpi-trend neutral"><span id="${trendId}">${defaultTrend}</span></span>
+      </div>`;
+
+    // Pre-compute displayed values
+    const exec       = d.executing ?? 0;
+    const queued     = d.queued    ?? 0;
+    const currentVal = d.cap != null ? `${exec} / ${d.cap}` : String(exec);
+    const utilVal    = d.avgUtil != null ? `${d.avgUtil}%` : '--';
+
+    // Concurrency chart — default to last 7d view
+    const chart7d = (() => {
+      const pts = d.hourlyConc.slice(-168).reduce((acc, v, i) => {
+        const bucket = Math.floor(i / 6);
+        if (!acc[bucket]) { const ts = new Date(Date.now() - (167-i)*3600000); acc[bucket] = {v:0,label:`${ts.getUTCDate()}/${ts.getUTCMonth()+1}`}; }
+        acc[bucket].v = Math.max(acc[bucket].v, v);
+        return acc;
+      }, []).filter(Boolean);
+      return _tcSvgLine(pts, d.cap);
+    })();
+
+
+
+    const periodLabel = TC_PERIODS.find(p => p.days === currentDays)?.label || `${currentDays} days`;
+
+    return `<div class="page-content">
+      <div class="flex items-center justify-between mb-lg" style="gap:var(--space-md);flex-wrap:wrap">
+        <div style="font:var(--textBodyRegularSmall);color:var(--colorTextTertiary);display:flex;align-items:center;gap:var(--space-xs)">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <span>Showing: <strong style="color:var(--colorTextPrimary)">${periodLabel}</strong></span>
+        </div>
+        <div class="flex items-center gap-xs">
+          <span style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary)">Period:</span>
+          <select id="tc-period-select" class="lookback-select" style="min-width:110px">
+            ${TC_PERIODS.map(p => `<option value="${p.days}"${p.days === currentDays ? ' selected' : ''}>${p.label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="section-header">
+        <h2 class="section-title"><i class="fa-solid fa-gauge-simple-high"></i> Task Cap Overview</h2>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="flex items-center justify-between">
+            <span class="kpi-label">Current Tasks</span>
+            <div class="kpi-icon blue"><i class="fa-solid fa-list-check"></i></div>
+          </div>
+          <span class="kpi-value">${currentVal}</span>
+          <span class="kpi-trend neutral">${exec} executing · ${queued} queued</span>
+        </div>
+        <div class="kpi-card">
+          <div class="flex items-center justify-between">
+            <span class="kpi-label">Peak (30d)</span>
+            <div class="kpi-icon purple"><i class="fa-solid fa-arrow-trend-up"></i></div>
+          </div>
+          <span class="kpi-value">${d.peak30d}</span>
+          <span class="kpi-trend neutral">peak 24h: ${d.peak24h} concurrent</span>
+        </div>
+        <div class="kpi-card">
+          <div class="flex items-center justify-between">
+            <span class="kpi-label">Avg Utilisation</span>
+            <div class="kpi-icon ${d.avgUtil != null && d.avgUtil >= 80 ? 'amber' : 'blue'}"><i class="fa-solid fa-percent"></i></div>
+          </div>
+          <span class="kpi-value">${utilVal}</span>
+          <span class="kpi-trend neutral">avg ${d.avgConc} concurrent · 30d</span>
+        </div>
+        <div class="kpi-card">
+          <div class="flex items-center justify-between">
+            <span class="kpi-label">Time At Cap</span>
+            <div class="kpi-icon ${d.timeAtCap > 0 ? 'amber' : 'green'}"><i class="fa-solid fa-clock"></i></div>
+          </div>
+          <span class="kpi-value">${d.timeAtCap}h</span>
+          <span class="kpi-trend neutral">${d.timeNearCap}h near cap (≥80%) · 30d</span>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h2 class="section-title"><i class="fa-solid fa-chart-line"></i> Concurrency Over Time</h2>
+      </div>
+      <div class="dashboard-grid mb-lg">
+        <div class="card col-span-12 card--chart-tooltips">
+          <div class="card-header">
+            <h3 class="card-title">Concurrent Tasks</h3>
+            <div class="flex items-center gap-md">
+              <div style="font:var(--textBodyRegularXSmall);color:var(--colorTextTertiary);display:flex;align-items:center;gap:4px">
+                <span style="display:inline-block;width:20px;height:0;border-bottom:2px dashed var(--colorWarningLight);vertical-align:middle;margin-right:2px"></span>Cap
+              </div>
+              <div class="flex gap-xs">
+                <button class="btn btn-secondary btn-sm tc-range-btn active-toggle" data-range="24h">24h</button>
+                ${currentDays >= 7   ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="7d">7d</button>`  : ''}
+                ${currentDays >= 30  ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="30d">30d</button>` : ''}
+                ${currentDays >= 90  ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="90d">90d</button>` : ''}
+                ${currentDays >= 180 ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="180d">180d</button>` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="tc-conc-chart" style="padding:var(--space-sm) 0">${chart7d}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard-grid mb-lg">
+        <div class="card col-span-6">
+          <div class="card-header"><h3 class="card-title">Volume by Space</h3></div>
+          <div class="card-body">${_tcBarTable(d.spaceBreakdown, 'total', 'Tasks')}</div>
+        </div>
+        <div class="card col-span-6">
+          <div class="card-header"><h3 class="card-title">Top Projects by Volume</h3></div>
+          <div class="card-body">${_tcBarTable(d.projectBreakdown, 'count', 'Deployments')}</div>
+        </div>
+      </div>
+
+    </div>`;
+  }
+
+  function wireTaskcapEvents(summary) {
+    if (!summary) return;
+
+    // Period selector
+    const periodSel = document.getElementById('tc-period-select');
+    if (periodSel) {
+      periodSel.addEventListener('change', () => {
+        const days = parseInt(periodSel.value, 10);
+        const enrichState  = DashboardData.getEnrichmentState();
+        const loadedMonths = enrichState.lookbackMonths || 3;
+        const loadedDays   = loadedMonths === 0 ? Infinity : loadedMonths * 30;
+
+        // If user picks a period beyond the currently loaded data, offer to load more
+        if (days > loadedDays) {
+          const neededMonths = Math.ceil(days / 30);
+          const label = neededMonths >= 12 ? `${neededMonths / 12} year${neededMonths / 12 !== 1 ? 's' : ''}` : `${neededMonths} months`;
+          const heavy = neededMonths > 12;
+          const msg = `The selected period (${days} days) is longer than your currently loaded data (${loadedMonths} months).\n\n`
+            + `Load ${label} of data?`
+            + (heavy ? `\n\nThis may take a while and could be heavy on larger Octopus instances.` : '');
+
+          if (!confirm(msg)) {
+            periodSel.value = String(DashboardData.getTaskCapDays());
+            return;
+          }
+
+          // Ask dashboard.js to update the global lookback and re-run enrichment,
+          // then re-render this page when it's done
+          document.dispatchEvent(new CustomEvent('tc-request-lookback', {
+            detail: { months: neededMonths, afterDays: days }
+          }));
+          return; // dashboard.js will re-render the page once data is ready
+        }
+
+        DashboardData.setTaskCapDays(days);
+        const main = document.getElementById('main-content');
+        if (main) {
+          main.innerHTML = Views.renderTaskcap(summary);
+          Views.wireTaskcapEvents(summary);
+        }
+      });
+    }
+
+    const d = DashboardData.computeTaskCapData();
+
+    document.querySelectorAll('.tc-range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tc-range-btn').forEach(b => b.classList.remove('active-toggle'));
+        btn.classList.add('active-toggle');
+        const range = btn.dataset.range;
+        const el = document.getElementById('tc-conc-chart');
+        if (!el) return;
+
+        let pts;
+        if (range === '24h') {
+          pts = d.hourlyConc.slice(-24).map((v, i) => {
+            const ts = new Date(Date.now() - (23-i)*3600000);
+            return { v, label: `${ts.getUTCHours()}:00` };
+          });
+        } else {
+          // For 7d/30d/90d/180d: group hourly buckets into sensible intervals
+          const rangeDays = parseInt(range);
+          const totalHours = d.hourlyConc.length;
+          const hoursToShow = Math.min(rangeDays * 24, totalHours);
+          // Group size: 6h for ≤7d, 24h for ≤90d, 48h otherwise
+          const groupSize = rangeDays <= 7 ? 6 : rangeDays <= 90 ? 24 : 48;
+          const slice = d.hourlyConc.slice(-hoursToShow);
+          pts = slice.reduce((acc, v, i) => {
+            const bucket = Math.floor(i / groupSize);
+            if (!acc[bucket]) {
+              const ts = new Date(Date.now() - (hoursToShow - 1 - i) * 3600000);
+              acc[bucket] = { v: 0, label: `${ts.getUTCDate()}/${ts.getUTCMonth() + 1}` };
+            }
+            acc[bucket].v = Math.max(acc[bucket].v, v);
+            return acc;
+          }, []).filter(Boolean);
+        }
+        el.innerHTML = _tcSvgLine(pts, d.cap);
+        _wireTcTooltip(el, pts);
+      });
+    });
+
+    // Wire tooltip for the initial chart render (7d default)
+    const initialPts = d.hourlyConc.slice(-168).reduce((acc, v, i) => {
+      const bucket = Math.floor(i / 6);
+      if (!acc[bucket]) { const ts = new Date(Date.now() - (167-i)*3600000); acc[bucket] = {v:0,label:`${ts.getUTCDate()}/${ts.getUTCMonth()+1}`}; }
+      acc[bucket].v = Math.max(acc[bucket].v, v);
+      return acc;
+    }, []).filter(Boolean);
+    _wireTcTooltip(document.getElementById('tc-conc-chart'), initialPts);
+  }
+
+  function _wireTcTooltip(chartEl, points) {
+    if (!chartEl || !points || points.length < 2) return;
+    const inner = chartEl.querySelector('.lc-inner');
+    if (!inner) return;
+    const svg = inner.querySelector('svg');
+    if (!svg) return;
+
+    const tip = document.createElement('div');
+    tip.style.cssText = 'position:absolute;pointer-events:none;display:none;background:var(--colorBackgroundSecondaryDefault);border:1px solid var(--colorBorderDefault);border-radius:var(--radiusMedium);box-shadow:0 4px 14px rgba(0,0,0,0.35);padding:6px 10px;font:var(--textBodyRegularSmall);color:var(--colorTextPrimary);white-space:nowrap;z-index:10000;transform:translateX(-50%)';
+    inner.appendChild(tip);
+
+    const VH = 100;
+    const maxVal = Math.max(...points.map(p => p.v), 1);
+    const yN = v => VH - (v / maxVal) * VH;
+
+    svg.addEventListener('mousemove', e => {
+      const rect = svg.getBoundingClientRect();
+      const idx  = Math.min(points.length - 1, Math.max(0,
+        Math.round(((e.clientX - rect.left) / rect.width) * (points.length - 1))
+      ));
+      const p = points[idx];
+      tip.innerHTML = `<strong>${p.label}</strong>: ${p.v} concurrent`;
+      tip.style.left    = `${((idx / Math.max(points.length - 1, 1)) * 100).toFixed(1)}%`;
+      tip.style.bottom  = `${(100 - (yN(p.v) / VH) * 100 + 2).toFixed(1)}%`;
+      tip.style.display = 'block';
+    });
+    svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  }
+
   // ---- Public API ----
 
   return {
@@ -2278,6 +2722,9 @@ const Views = (() => {
     // Tenant view
     renderTenants,
     wireTenantsEvents,
+    // Task Cap view
+    renderTaskcap,
+    wireTaskcapEvents,
   };
 
 })();
