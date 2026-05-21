@@ -1,3 +1,10 @@
+// Set extension version for dashboard rendering code to read.
+// Uses optional chaining so it degrades cleanly if run outside extension context.
+window.EXTENSION_VERSION = (() => {
+    const v = globalThis.chrome?.runtime?.getManifest?.()?.version;
+    return v ? `v${v}` : '';
+})();
+
 // ================================================================
 // Debug logger
 // ================================================================
@@ -269,7 +276,7 @@ function onEnrichmentProgress(state) {
 
     if (state.state === 'complete' || state.state === 'error') {
         const view = Router.getCurrentView();
-        if (view === 'overview' || view === 'trends' || view === 'velocity') {
+        if (view === 'overview' || view === 'trends' || view === 'velocity' || view === 'taskcap') {
             Router.refresh();
             if (view === 'overview' && _lastSummary) {
                 renderValueImpact(_lastSummary);
@@ -302,6 +309,25 @@ document.getElementById('lookback-select').addEventListener('change', () => {
     startEnrichment();
     lastConfirmedLookbackMonths = months;
     Analytics.trackEvent('lookback_changed', { months });
+});
+
+// Task Cap page requests a longer lookback period
+document.addEventListener('tc-request-lookback', (e) => {
+    const detail = e && e.detail ? e.detail : {};
+    const { months, afterDays } = detail;
+    const currentView = typeof Router.getCurrentView === 'function' ? Router.getCurrentView() : '';
+    const source = typeof detail.source === 'string' && detail.source.trim()
+        ? detail.source.trim()
+        : (currentView === 'overview' ? 'overview' : 'task_cap_page');
+    const sel = document.getElementById('lookback-select');
+    if (sel) sel.value = String(months);
+    lastConfirmedLookbackMonths = months;
+    DashboardData.clearHistoryCache();
+    if (source === 'task_cap_page') {
+        DashboardData.setTaskCapDays(afterDays);
+    }
+    startEnrichment();
+    Analytics.trackEvent('lookback_changed', { months, source });
 });
 
 // ================================================================

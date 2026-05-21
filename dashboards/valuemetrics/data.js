@@ -36,6 +36,8 @@ const DashboardData = (() => {
   let _serverInfo = null;
   let _licenseUsage = null;
   let _licenseStatus = null;
+  let _taskCapInfo = { executing: null, queued: null, cap: null };
+  let _tcDays = 30;
   let _crossSpaceTasks = [];
   let _activeSpaceIds = [];
   let _lastFetch = null;
@@ -53,12 +55,31 @@ const DashboardData = (() => {
 
     // Phase 1: Global data (no per-space iteration)
     report('Connecting to Octopus...');
-    const [serverInfo, spacesResponse, licenseUsage, licenseStatus] = await Promise.all([
+    const [serverInfo, spacesResponse, licenseUsage, licenseStatus, executingResp, queuedResp, serverConfig, serverNodes] = await Promise.all([
       OctopusApi.get('/api'),
       OctopusApi.get('/api/spaces?take=100&partialName='),
       safeGet('/api/licenses/licenses-current-usage'),
       safeGet('/api/licenses/licenses-current-status'),
+      safeGet('/api/tasks?states=Executing&take=0'),
+      safeGet('/api/tasks?states=Queued&take=0'),
+      safeGet('/api/configuration/serverconfig'),
+      safeGet('/api/octopusservernodes'),
     ]);
+
+    // Task cap: sum MaxConcurrentTasks across all server nodes (most reliable source).
+    // Fall back to serverconfig.TaskCap if the nodes endpoint isn't available.
+    let cap = null;
+    if (serverNodes?.Items?.length > 0) {
+      cap = serverNodes.Items.reduce((sum, n) => sum + (n.MaxConcurrentTasks || 0), 0) || null;
+    } else if (typeof serverConfig?.TaskCap === 'number') {
+      cap = serverConfig.TaskCap;
+    }
+
+    _taskCapInfo = {
+      executing: typeof executingResp?.TotalResults === 'number' ? executingResp.TotalResults : null,
+      queued:    typeof queuedResp?.TotalResults    === 'number' ? queuedResp.TotalResults    : null,
+      cap,
+    };
 
     _serverInfo = serverInfo;
     _spaces = spacesResponse.Items || [];
@@ -732,6 +753,7 @@ const DashboardData = (() => {
       cancelledCount: totalCancelled,
 
       teamsInsight,
+      taskCapInfo: _taskCapInfo,
     };
   }
 
@@ -1340,6 +1362,104 @@ const DashboardData = (() => {
     };
   }
 
+  // ---- Task Cap data ----
+
+  function computeTaskCapData(days = _tcDays) {
+    const tasks       = _crossSpaceTasks;
+    const cap         = _taskCapInfo.cap;
+    const HOURS       = Math.max(1, days) * 24;
+    const now         = Date.now();
+    const windowStart = now - HOURS * 3600000;
+
+    const spaceNameMap = {};
+    for (const s of _spaces) spaceNameMap[s.Id] = s.Name;
+
+    const hourlyConcDiff = new Array(HOURS + 1).fill(0);
+    for (const task of tasks) {
+      const start = task.StartTime     ? new Date(task.StartTime).getTime()     : null;
+      const end   = task.CompletedTime ? new Date(task.CompletedTime).getTime() : now;
+      if (!start) continue;
+      if (end < windowStart || start >= now) continue;
+
+      const s = Math.max(0, Math.floor((start - windowStart) / 3600000));
+      const e = Math.min(HOURS - 1, Math.floor((end - windowStart) / 3600000));
+      if (s > e) continue;
+
+      hourlyConcDiff[s]++;
+      hourlyConcDiff[e + 1]--;
+    }
+
+    const hourlyConc = new Array(HOURS).fill(0);
+    let runningConc = 0;
+    for (let i = 0; i < HOURS; i++) {
+      runningConc += hourlyConcDiff[i];
+      hourlyConc[i] = runningConc;
+    }
+
+    const nonZero       = hourlyConc.filter(v => v > 0);
+    const peakInPeriod  = nonZero.length ? Math.max(...nonZero) : 0;
+    const peak24h       = Math.max(...hourlyConc.slice(-24), 0);
+    const avgConc       = nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0;
+    const avgUtil       = cap ? Math.round((avgConc / cap) * 100) : null;
+    const headroom      = cap != null ? cap - peakInPeriod : null;
+
+    const timeAtCap   = cap ? hourlyConc.filter(v => v >= cap).length       : 0;
+    const timeNearCap = cap ? hourlyConc.filter(v => v >= cap * 0.8).length : 0;
+
+    let capRecommendation = null;
+    if (cap && peakInPeriod >= cap * 0.8) {
+      const suggested = cap + Math.ceil(cap * 0.25);
+      capRecommendation = `Peak usage in the selected period (${peakInPeriod}) is ${Math.round(peakInPeriod / cap * 100)}% of your cap. Consider increasing to ${suggested}.`;
+    }
+
+    const spaceMap = {};
+    for (const task of tasks) {
+      const sid = task.SpaceId;
+      if (!sid) continue;
+      if (!spaceMap[sid]) spaceMap[sid] = { name: spaceNameMap[sid] || sid, total: 0, success: 0, failed: 0 };
+      spaceMap[sid].total++;
+      const st = (task.State || '').toLowerCase();
+      if (st === 'success') spaceMap[sid].success++;
+      else if (st === 'failed') spaceMap[sid].failed++;
+    }
+    const spaceBreakdown = Object.values(spaceMap).sort((a, b) => b.total - a.total);
+
+    const projectMap = {};
+    for (const sd of Object.values(_spaceData)) {
+      for (const dep of (sd.deployments || [])) {
+        const name = (sd.projectNames || {})[dep.ProjectId] || dep.ProjectId || 'Unknown';
+        if (!projectMap[name]) projectMap[name] = 0;
+        projectMap[name]++;
+      }
+    }
+    const projectBreakdown = Object.entries(projectMap)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
+
+    const hodTotals = new Array(24).fill(0);
+    const hodCounts = new Array(24).fill(0);
+    for (let i = 0; i < HOURS; i++) {
+      const h = new Date(windowStart + i * 3600000).getUTCHours();
+      hodTotals[h] += hourlyConc[i];
+      hodCounts[h]++;
+    }
+    const heatmapByHour = hodTotals.map((total, h) => ({
+      hour: h,
+      avg: hodCounts[h] > 0 ? total / hodCounts[h] : 0,
+    }));
+
+    return {
+      cap,
+      executing: _taskCapInfo.executing,
+      queued:    _taskCapInfo.queued,
+      peak24h, peakInPeriod,
+      avgConc: Math.round(avgConc * 10) / 10,
+      avgUtil, headroom, timeAtCap, timeNearCap, capRecommendation,
+      hourlyConc, spaceBreakdown, projectBreakdown, heatmapByHour,
+    };
+  }
+
   // ---- Public API ----
 
   return {
@@ -1367,6 +1487,9 @@ const DashboardData = (() => {
     cancelEnrichment,
     clearHistoryCache,
     computeEnrichedKPIs,
+    computeTaskCapData,
+    setTaskCapDays: (days) => { _tcDays = days; },
+    getTaskCapDays: () => _tcDays,
   };
 
 })();
@@ -1748,6 +1871,8 @@ const DashboardUI = (() => {
   let _fullWeeklyTrend = [];
   let _fullDailyTrend = [];
   let _currentRange = '30d';
+  let _taskChartRange = '30d';
+  let _cachedTaskChartData = null; // { dailyTrend, weeklyTrend, taskCapInfo }
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   function formatDailyAxisLabel(d, prev) {
@@ -1963,6 +2088,18 @@ const DashboardUI = (() => {
     const ptmEl = document.getElementById('license-ptm');
     if (!el || !info) return;
 
+    const serverVersion = _serverInfo?.Version;
+    if (serverVersion) {
+      const versionEl = document.getElementById('server-version');
+      if (versionEl) versionEl.textContent = serverVersion;
+    }
+
+    const extensionVersion = window.EXTENSION_VERSION;
+    if (extensionVersion) {
+      const sidebarEl = document.getElementById('sidebar-ext-version');
+      if (sidebarEl) sidebarEl.textContent = extensionVersion;
+    }
+
     const compliant = info.isCompliant === true;
     const nonCompliant = info.isCompliant === false;
     const badgeClass = compliant ? 'success' : nonCompliant ? 'danger' : 'neutral';
@@ -2063,6 +2200,199 @@ const DashboardUI = (() => {
     return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
   }
 
+  // ---- Task Activity line chart ----
+
+  function _computeHourlyPoints(hours) {
+    const now = Date.now();
+    const buckets = [];
+    const tasks = (DashboardData && typeof DashboardData.getCrossSpaceTasks === 'function')
+      ? (DashboardData.getCrossSpaceTasks() || [])
+      : [];
+    for (let i = hours - 1; i >= 0; i--) {
+      const t = new Date(now - i * 3600000);
+      buckets.push({ ts: t.getTime(), label: `${t.getUTCHours()}:00`, total: 0, success: 0, failed: 0 });
+    }
+    for (const task of tasks) {
+      const raw = task.CompletedTime || task.StartTime;
+      if (!raw) continue;
+      const t = new Date(raw).getTime();
+      if (t < now - hours * 3600000) continue;
+      const idx = Math.floor((t - (now - hours * 3600000)) / 3600000);
+      if (idx >= 0 && idx < buckets.length) {
+        buckets[idx].total++;
+        if (task.State === 'Success') buckets[idx].success++;
+        else if (task.State === 'Failed') buckets[idx].failed++;
+      }
+    }
+    return buckets;
+  }
+
+  function _getTaskChartPoints(range) {
+    const cached = _cachedTaskChartData;
+    if (!cached) return [];
+
+    if (range.endsWith('h')) {
+      return _computeHourlyPoints(parseInt(range));
+    }
+    if (range === '7d') {
+      return (cached.dailyTrend || []).slice(-7).map(d => ({
+        label: `${d.day}/${d.month + 1}`, total: d.total, success: d.success, failed: d.failed,
+      }));
+    }
+    if (range === '30d') {
+      return (cached.dailyTrend || []).map(d => ({
+        label: `${d.day}/${d.month + 1}`, total: d.total, success: d.success, failed: d.failed,
+      }));
+    }
+    if (range === '90d') {
+      return (_fullWeeklyTrend || []).slice(-13).map(w => ({
+        label: `W${w.week}`, total: w.total, success: w.success, failed: w.failed,
+      }));
+    }
+    if (range === '12m') {
+      return _aggregateMonthly(_fullWeeklyTrend || []).map(m => ({
+        label: MONTH_NAMES[m.month], total: m.total, success: m.success, failed: m.failed,
+      }));
+    }
+    return [];
+  }
+
+  function renderTaskActivityChart(dailyTrend, taskCapInfo) {
+    if (dailyTrend) {
+      _cachedTaskChartData = { dailyTrend, taskCapInfo };
+    }
+    const cap = (taskCapInfo || _cachedTaskChartData?.taskCapInfo)?.cap;
+
+    // Update KPI
+    const tc = taskCapInfo || _cachedTaskChartData?.taskCapInfo;
+    const execEl = document.getElementById('kpi-tasks-executing');
+    const labelEl = document.getElementById('kpi-tasks-label');
+    if (execEl && tc) {
+      const exec = tc.executing ?? 0;
+      const queued = tc.queued ?? 0;
+      execEl.textContent = tc.cap !== null && tc.cap !== undefined
+        ? `${exec} / ${tc.cap}`
+        : (tc.executing !== null ? String(exec) : '--');
+    }
+    if (labelEl && tc) {
+      const parts = [];
+      if (tc.executing !== null) parts.push(`${tc.executing} executing`);
+      if (tc.queued !== null)    parts.push(`${tc.queued} queued`);
+      labelEl.textContent = parts.length ? parts.join(' · ') : 'active tasks';
+    }
+
+    const el = document.getElementById('chart-task-activity');
+    if (!el) return;
+
+    const points = _getTaskChartPoints(_taskChartRange);
+    if (points.length === 0) {
+      el.innerHTML = `<div class="text-tertiary" style="text-align:center;padding:var(--space-lg);">
+        <i class="fa-solid fa-chart-line" style="font-size:2rem;display:block;margin-bottom:var(--space-sm);"></i>
+        No task activity data for this period.
+      </div>`;
+      return;
+    }
+
+    const VW = 1000, VH = 100, H = 140;
+    const maxVal = Math.max(...points.map(p => p.total), cap || 0, 1);
+    const xN = i => (i / Math.max(points.length - 1, 1)) * VW;
+    const yN = v => VH - (v / maxVal) * VH;
+
+    // Smooth bezier line
+    let linePath = `M${xN(0).toFixed(1)},${yN(points[0].total).toFixed(1)}`;
+    for (let i = 1; i < points.length; i++) {
+      const x0 = xN(i - 1), y0 = yN(points[i - 1].total);
+      const x1 = xN(i),     y1 = yN(points[i].total);
+      const mx = ((x0 + x1) / 2).toFixed(1);
+      linePath += ` C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+    }
+    const areaPath = `${linePath} L${xN(points.length - 1).toFixed(1)},${VH} L0,${VH} Z`;
+
+    const gridLines = [1, 0.5, 0].map(frac =>
+      `<line x1="0" y1="${(VH - frac * VH).toFixed(1)}" x2="${VW}" y2="${(VH - frac * VH).toFixed(1)}"
+         stroke="rgba(255,255,255,0.06)" stroke-width="0.8"/>`
+    ).join('');
+
+    const capLine = cap
+      ? `<line x1="0" y1="${yN(cap).toFixed(1)}" x2="${VW}" y2="${yN(cap).toFixed(1)}"
+           stroke="rgba(247,155,60,0.7)" stroke-width="1.2" stroke-dasharray="6,4"/>` : '';
+
+    const dots = points.map((p, i) =>
+      `<circle cx="${xN(i).toFixed(1)}" cy="${yN(p.total).toFixed(1)}" r="5"
+         fill="var(--colorPrimaryLighter)" stroke="var(--colorBackgroundPrimaryDefault)" stroke-width="2"
+         class="tac-dot"/>`
+    ).join('');
+
+    // HTML labels — never distorted
+    const yVals = [maxVal, Math.round(maxVal / 2), 0];
+    const yLabelHtml = yVals.map(v =>
+      `<span style="position:absolute;right:4px;top:${(100 - (v / maxVal) * 100).toFixed(1)}%;
+         transform:translateY(-50%);font-size:10px;font-family:var(--fontFamilyCode);
+         color:var(--colorTextTertiary);white-space:nowrap">${v}</span>`
+    ).join('');
+
+    const capLabelHtml = cap
+      ? `<span style="position:absolute;right:4px;top:${(100 - (cap / maxVal) * 100).toFixed(1)}%;
+           transform:translateY(-150%);font-size:9px;font-family:var(--fontFamilyCode);
+           color:var(--colorWarningLight);background:var(--colorBackgroundPrimaryDefault);
+           padding:0 3px;border-radius:2px">cap ${cap}</span>` : '';
+
+    const xStep = Math.max(1, Math.floor(points.length / 7));
+    const xLabelHtml = points
+      .map((p, i) => ({ p, i }))
+      .filter(({ i }) => i % xStep === 0 || i === points.length - 1)
+      .map(({ p, i }) =>
+        `<span style="position:absolute;left:${((i / Math.max(points.length - 1, 1)) * 100).toFixed(1)}%;
+           transform:translateX(-50%);font-size:10px;font-family:var(--fontFamilyCode);
+           color:var(--colorTextTertiary);white-space:nowrap">${p.label}</span>`
+      ).join('');
+
+    el.innerHTML = `
+      <style>
+        .tac-dot{opacity:0;transition:opacity .15s;cursor:default}
+        #chart-task-activity:hover .tac-dot{opacity:1}
+      </style>
+      <div style="position:relative;padding-left:42px;padding-bottom:22px">
+        <div style="position:absolute;left:0;top:0;bottom:22px;width:40px;pointer-events:none">
+          ${yLabelHtml}
+        </div>
+        <div style="position:relative" id="tac-inner">
+          <svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none"
+               style="width:100%;height:${H}px;display:block">
+            ${gridLines}
+            <path d="${areaPath}" fill="rgba(26,119,202,0.12)"/>
+            ${capLine}
+            <path d="${linePath}" fill="none" stroke="var(--colorPrimaryLighter)"
+                  stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            ${dots}
+          </svg>
+          ${capLabelHtml}
+        </div>
+        <div style="position:absolute;bottom:0;left:42px;right:0;height:20px">
+          ${xLabelHtml}
+        </div>
+      </div>`;
+
+    // Tooltip
+    const inner = el.querySelector('#tac-inner');
+    const tip = document.createElement('div');
+    tip.style.cssText = 'position:absolute;pointer-events:none;display:none;background:var(--colorBackgroundSecondaryDefault);border:1px solid var(--colorBorderDefault);border-radius:var(--radiusMedium);box-shadow:0 4px 14px rgba(0,0,0,0.35);padding:6px 10px;font:var(--textBodyRegularSmall);color:var(--colorTextPrimary);white-space:nowrap;z-index:10000;transform:translateX(-50%)';
+    inner.appendChild(tip);
+    const svg = inner.querySelector('svg');
+    svg.addEventListener('mousemove', e => {
+      if (points.length < 2) return;
+      const rect = svg.getBoundingClientRect();
+      const idx = Math.min(points.length - 1, Math.max(0, Math.round(((e.clientX - rect.left) / rect.width) * (points.length - 1))));
+      const p = points[idx];
+      const other = (p.total || 0) - (p.success || 0) - (p.failed || 0);
+      tip.innerHTML = `<strong>${p.label}</strong><br>${p.total} task${p.total !== 1 ? 's' : ''} · <span style="color:var(--colorTextSuccess)">${p.success} success</span> · <span style="color:var(--colorTextDanger)">${p.failed} failed</span>${other > 0 ? ` · ${other} other` : ''}`;
+      tip.style.left = `${((idx / Math.max(points.length - 1, 1)) * 100).toFixed(1)}%`;
+      tip.style.bottom = `${(100 - (yN(p.total) / VH) * 100 + 2).toFixed(1)}%`;
+      tip.style.display = 'block';
+    });
+    svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  }
+
   // ---- Render overview from existing summary (no fetch) ----
 
   function renderOverview(summary) {
@@ -2088,6 +2418,15 @@ const DashboardUI = (() => {
     }
 
     renderLicenseInfo(summary.licenseInfo);
+
+    // Task Volume must use task history rather than deployment history.
+    // Fall back to the legacy daily trend only if taskDailyTrend has not
+    // yet been populated by the summary builder.
+    const taskTrend = Array.isArray(summary.taskDailyTrend) && summary.taskDailyTrend.length > 0
+      ? summary.taskDailyTrend
+      : summary.dailyTrend;
+
+    renderTaskActivityChart(taskTrend, summary.taskCapInfo);
   }
 
   // ---- Public ----
@@ -2096,6 +2435,10 @@ const DashboardUI = (() => {
     loadDashboard,
     renderOverview,
     setTrendRange,
+    setTaskChartRange: (range) => {
+      _taskChartRange = range;
+      renderTaskActivityChart(null, null);
+    },
     // Expose helpers for views
     timeAgo,
     formatIsoWeekDateRange,
