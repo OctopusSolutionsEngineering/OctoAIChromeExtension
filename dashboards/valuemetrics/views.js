@@ -2540,8 +2540,8 @@ const Views = (() => {
                 <span style="display:inline-block;width:20px;height:0;border-bottom:2px dashed var(--colorWarningLight);vertical-align:middle;margin-right:2px"></span>Cap
               </div>
               <div class="flex gap-xs">
-                <button class="btn btn-secondary btn-sm tc-range-btn active-toggle" data-range="24h">24h</button>
-                ${currentDays >= 7   ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="7d">7d</button>`  : ''}
+                <button class="btn btn-secondary btn-sm tc-range-btn" data-range="24h">24h</button>
+                ${currentDays >= 7   ? `<button class="btn btn-secondary btn-sm tc-range-btn active-toggle" data-range="7d">7d</button>`  : ''}
                 ${currentDays >= 30  ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="30d">30d</button>` : ''}
                 ${currentDays >= 90  ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="90d">90d</button>` : ''}
                 ${currentDays >= 180 ? `<button class="btn btn-secondary btn-sm tc-range-btn" data-range="180d">180d</button>` : ''}
