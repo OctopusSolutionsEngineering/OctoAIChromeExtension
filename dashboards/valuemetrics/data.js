@@ -1453,7 +1453,7 @@ const DashboardData = (() => {
       cap,
       executing: _taskCapInfo.executing,
       queued:    _taskCapInfo.queued,
-      peak24h, peak30d,
+      peak24h, peakInPeriod,
       avgConc: Math.round(avgConc * 10) / 10,
       avgUtil, headroom, timeAtCap, timeNearCap, capRecommendation,
       hourlyConc, spaceBreakdown, projectBreakdown, heatmapByHour,

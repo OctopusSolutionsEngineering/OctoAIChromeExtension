@@ -2687,12 +2687,24 @@ const Views = (() => {
     });
 
     // Wire tooltip for the initial chart render (7d default)
-    const initialPts = d.hourlyConc.slice(-168).reduce((acc, v, i) => {
-      const bucket = Math.floor(i / 6);
-      if (!acc[bucket]) { const ts = new Date(Date.now() - (167-i)*3600000); acc[bucket] = {v:0,label:`${ts.getUTCDate()}/${ts.getUTCMonth()+1}`}; }
-      acc[bucket].v = Math.max(acc[bucket].v, v);
-      return acc;
-    }, []).filter(Boolean);
+    // Compute initialPts using the same logic as the rendered chart so tooltips match
+    const _tcPtsForDays = (days, hourlyConc) => {
+      if (days <= 1) {
+        return hourlyConc.slice(-24).map((v, i) => {
+          const ts = new Date(Date.now() - (23 - i) * 3600000);
+          return { v, label: `${ts.getUTCHours()}:00` };
+        });
+      }
+      const hoursToShow = Math.min(days * 24, hourlyConc.length);
+      const groupSize   = days <= 7 ? 6 : days <= 90 ? 24 : 48;
+      return hourlyConc.slice(-hoursToShow).reduce((acc, v, i) => {
+        const bucket = Math.floor(i / groupSize);
+        if (!acc[bucket]) { const ts = new Date(Date.now() - (hoursToShow - 1 - i) * 3600000); acc[bucket] = { v: 0, label: `${ts.getUTCDate()}/${ts.getUTCMonth() + 1}` }; }
+        acc[bucket].v = Math.max(acc[bucket].v, v);
+        return acc;
+      }, []).filter(Boolean);
+    };
+    const initialPts = _tcPtsForDays(DashboardData.getTaskCapDays(), d.hourlyConc);
     _wireTcTooltip(document.getElementById('tc-conc-chart'), initialPts);
   }
 

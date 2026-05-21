@@ -1,11 +1,9 @@
-// Read extension version from the bootstrap/host context if it has been
-// injected already, without calling Chrome extension APIs from the dashboard.
-const injectedExtensionVersion = typeof window.EXTENSION_VERSION === 'string'
-    ? window.EXTENSION_VERSION.trim()
-    : '';
-window.EXTENSION_VERSION = injectedExtensionVersion
-    ? (injectedExtensionVersion.startsWith('v') ? injectedExtensionVersion : `v${injectedExtensionVersion}`)
-    : '';
+// Set extension version for dashboard rendering code to read.
+// Uses optional chaining so it degrades cleanly if run outside extension context.
+window.EXTENSION_VERSION = (() => {
+    const v = globalThis.chrome?.runtime?.getManifest?.()?.version;
+    return v ? `v${v}` : '';
+})();
 
 // ================================================================
 // Debug logger
@@ -278,7 +276,7 @@ function onEnrichmentProgress(state) {
 
     if (state.state === 'complete' || state.state === 'error') {
         const view = Router.getCurrentView();
-        if (view === 'overview' || view === 'trends' || view === 'velocity') {
+        if (view === 'overview' || view === 'trends' || view === 'velocity' || view === 'taskcap') {
             Router.refresh();
             if (view === 'overview' && _lastSummary) {
                 renderValueImpact(_lastSummary);
