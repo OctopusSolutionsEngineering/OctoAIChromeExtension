@@ -2432,7 +2432,7 @@ const Views = (() => {
       <tbody>${rows.slice(0, 12).map(r => {
         const pct = Math.round((r[valueKey] / max) * 100);
         return `<tr>
-          <td style="padding:5px var(--space-sm);color:var(--colorTextPrimary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${DOMPurify.sanitize(String(r.name))}">${DOMPurify.sanitize(String(r.name))}</td>
+          <td style="padding:5px var(--space-sm);color:var(--colorTextPrimary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${_escapeAttr(String(r.name))}">${DOMPurify.sanitize(String(r.name))}</td>
           <td style="padding:5px var(--space-sm);text-align:right;font-family:var(--fontFamilyCode);color:var(--colorTextSecondary)">${r[valueKey].toLocaleString()}</td>
           <td style="padding:5px var(--space-sm)">
             <div style="background:var(--colorBorderSubtle,rgba(255,255,255,0.05));border-radius:2px;height:6px">
