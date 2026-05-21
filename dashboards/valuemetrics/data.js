@@ -2418,7 +2418,15 @@ const DashboardUI = (() => {
     }
 
     renderLicenseInfo(summary.licenseInfo);
-    renderTaskActivityChart(summary.dailyTrend, summary.taskCapInfo);
+
+    // Task Volume must use task history rather than deployment history.
+    // Fall back to the legacy daily trend only if taskDailyTrend has not
+    // yet been populated by the summary builder.
+    const taskTrend = Array.isArray(summary.taskDailyTrend) && summary.taskDailyTrend.length > 0
+      ? summary.taskDailyTrend
+      : summary.dailyTrend;
+
+    renderTaskActivityChart(taskTrend, summary.taskCapInfo);
   }
 
   // ---- Public ----
