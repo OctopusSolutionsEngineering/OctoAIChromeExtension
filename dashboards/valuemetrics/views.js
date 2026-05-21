@@ -2456,16 +2456,6 @@ const Views = (() => {
     const currentDays = DashboardData.getTaskCapDays();
     const d = DashboardData.computeTaskCapData();
 
-    const kpi = (label, icon, iconCls, valueId, trendId, defaultTrend) =>
-      `<div class="kpi-card">
-        <div class="flex items-center justify-between">
-          <span class="kpi-label">${label}</span>
-          <div class="kpi-icon ${iconCls}"><i class="${icon}"></i></div>
-        </div>
-        <span class="kpi-value" id="${valueId}">--</span>
-        <span class="kpi-trend neutral"><span id="${trendId}">${defaultTrend}</span></span>
-      </div>`;
-
     // Pre-compute displayed values
     const exec       = d.executing ?? 0;
     const queued     = d.queued    ?? 0;
