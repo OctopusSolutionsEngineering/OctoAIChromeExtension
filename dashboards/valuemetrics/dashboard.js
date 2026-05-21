@@ -315,14 +315,21 @@ document.getElementById('lookback-select').addEventListener('change', () => {
 
 // Task Cap page requests a longer lookback period
 document.addEventListener('tc-request-lookback', (e) => {
-    const { months, afterDays } = e.detail;
+    const detail = e && e.detail ? e.detail : {};
+    const { months, afterDays } = detail;
+    const currentView = typeof Router.getCurrentView === 'function' ? Router.getCurrentView() : '';
+    const source = typeof detail.source === 'string' && detail.source.trim()
+        ? detail.source.trim()
+        : (currentView === 'overview' ? 'overview' : 'task_cap_page');
     const sel = document.getElementById('lookback-select');
     if (sel) sel.value = String(months);
     lastConfirmedLookbackMonths = months;
     DashboardData.clearHistoryCache();
-    DashboardData.setTaskCapDays(afterDays);
+    if (source === 'task_cap_page') {
+        DashboardData.setTaskCapDays(afterDays);
+    }
     startEnrichment();
-    Analytics.trackEvent('lookback_changed', { months, source: 'task_cap_page' });
+    Analytics.trackEvent('lookback_changed', { months, source });
 });
 
 // ================================================================
