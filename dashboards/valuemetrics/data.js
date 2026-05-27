@@ -62,8 +62,8 @@ const DashboardData = (() => {
       safeGet('/api/licenses/licenses-current-status'),
       safeGet('/api/tasks?states=Executing&take=0'),
       safeGet('/api/tasks?states=Queued&take=0'),
-      safeGet('/api/configuration/serverconfig'),
-      safeGet('/api/octopusservernodes'),
+      safeGetOptional('/api/configuration/serverconfig'),
+      safeGetOptional('/api/octopusservernodes'),
     ]);
 
     // Task cap: sum MaxConcurrentTasks across all server nodes (most reliable source).
@@ -273,6 +273,36 @@ const DashboardData = (() => {
       if (err.status === 401 || err.status === 403 || err.status === 404) return null;
       // Also swallow deprecation errors (the weekly report endpoint)
       if (err.message && err.message.includes('deprecated')) return null;
+      throw err;
+    }
+  }
+
+  // Like safeGet but also swallows 500 — for optional admin/infrastructure endpoints
+  // that not all Octopus versions or permission levels expose (e.g. serverconfig, nodes).
+  async function safeGetOptional(endpoint) {
+    const debugLogSwallowedOptionalError = (reason, error) => {
+      if (typeof window !== 'undefined' && window._debug && typeof console !== 'undefined' && console.warn) {
+        console.warn('[DashboardData] safeGetOptional swallowed optional endpoint error', {
+          endpoint,
+          reason,
+          status: error && error.status,
+          message: error && error.message,
+          error
+        });
+      }
+    };
+
+    try {
+      return await OctopusApi.get(endpoint);
+    } catch (err) {
+      if (err.status === 400 || err.status === 401 || err.status === 403 || err.status === 404 || err.status === 500) {
+        debugLogSwallowedOptionalError(`http-${err.status}`, err);
+        return null;
+      }
+      if (err.message && err.message.includes('deprecated')) {
+        debugLogSwallowedOptionalError('deprecated', err);
+        return null;
+      }
       throw err;
     }
   }
@@ -2088,7 +2118,7 @@ const DashboardUI = (() => {
     const ptmEl = document.getElementById('license-ptm');
     if (!el || !info) return;
 
-    const serverVersion = _serverInfo?.Version;
+    const serverVersion = DashboardData.getServerInfo()?.Version;
     if (serverVersion) {
       const versionEl = document.getElementById('server-version');
       if (versionEl) versionEl.textContent = serverVersion;
@@ -2435,6 +2465,7 @@ const DashboardUI = (() => {
     loadDashboard,
     renderOverview,
     setTrendRange,
+    getTaskChartRange: () => _taskChartRange,
     setTaskChartRange: (range) => {
       _taskChartRange = range;
       renderTaskActivityChart(null, null);

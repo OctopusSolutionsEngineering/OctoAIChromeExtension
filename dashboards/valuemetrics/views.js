@@ -277,17 +277,17 @@ const Views = (() => {
               <span style="display:inline-block;width:20px;height:0;border-bottom:2px dashed var(--colorWarningLight);vertical-align:middle;margin-right:2px;"></span>Task cap
             </span>
             <div class="flex gap-xs">
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '1h' ? ' active-toggle' : ''}" data-range="1h">1h</button>
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '3h' ? ' active-toggle' : ''}" data-range="3h">3h</button>
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '6h' ? ' active-toggle' : ''}" data-range="6h">6h</button>
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '12h' ? ' active-toggle' : ''}" data-range="12h">12h</button>
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '24h' ? ' active-toggle' : ''}" data-range="24h">24h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '1h' ? ' active-toggle' : ''}" data-range="1h">1h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '3h' ? ' active-toggle' : ''}" data-range="3h">3h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '6h' ? ' active-toggle' : ''}" data-range="6h">6h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '12h' ? ' active-toggle' : ''}" data-range="12h">12h</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '24h' ? ' active-toggle' : ''}" data-range="24h">24h</button>
             </div>
             <div class="flex gap-xs">
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '7d' ? ' active-toggle' : ''}" data-range="7d">7d</button>
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '30d' ? ' active-toggle' : ''}" data-range="30d">30d</button>
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '90d' ? ' active-toggle' : ''}" data-range="90d">90d</button>
-              <button class="btn btn-secondary btn-sm task-range-btn${(_taskChartRange || '30d') === '12m' ? ' active-toggle' : ''}" data-range="12m">12m</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '7d' ? ' active-toggle' : ''}" data-range="7d">7d</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '30d' ? ' active-toggle' : ''}" data-range="30d">30d</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '90d' ? ' active-toggle' : ''}" data-range="90d">90d</button>
+              <button class="btn btn-secondary btn-sm task-range-btn${(DashboardUI.getTaskChartRange() || '30d') === '12m' ? ' active-toggle' : ''}" data-range="12m">12m</button>
             </div>
           </div>
         </div>
