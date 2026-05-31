@@ -50,3 +50,6 @@ The Value Metrics dashboard collects anonymous usage analytics (page views, butt
 6. Select the `Package` tab
 7. Click `Upload new package`
 8. Upload the new zip file
+9. Click the `Submit for review` button
+10. Click the `Submit for review` button in the dialog
+11. Click the `OK` button in the dialog
