@@ -39,3 +39,14 @@ See the [community dashboards documentation](dashboards/instructions.md).
 # Analytics
 
 The Value Metrics dashboard collects anonymous usage analytics (page views, button clicks, feature usage) to help improve the dashboard experience. No personally identifiable information, server URLs, or Octopus instance data is collected.
+
+# How to update
+
+1. Increment the `version` and `version_name` in the `manifest.json` file
+2. Run the `createzip.sh` script to create a new zip file
+3. Go to the [Developer Dashboard](https://chrome.google.com/webstore/devconsole/27323cfd-d379-4db4-8cfe-7ee8a5216900)
+4. Log in with the `chrome-extensions@octopus.com` email address (credentials are in the secrets manager)
+5. Open the `Octopus AI Assistant` extension
+6. Select the `Package` tab
+7. Click `Upload new package`
+8. Upload the new zip file
