@@ -116,7 +116,7 @@
       "Help me understand what an Octopus project is.",
       "What is the difference between a project and a runbook?",
       "Find unused variables to help improve the maintainability of the project.",
-      "Generate a one paragraph summary of the project and its steps.",
+      "Generate a one paragraph summary of the project, including its steps, channels, lifecycles, variables, and tenants.",
       "Show me the packages used by the steps."
     ]
   },
