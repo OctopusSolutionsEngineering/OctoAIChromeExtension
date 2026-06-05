@@ -878,9 +878,49 @@ function displaySettings(theme) {
     label.style.cursor = 'pointer';
     label.style.fontSize = '14px';
 
-    checkboxContainer.appendChild(checkbox);
     checkboxContainer.appendChild(label);
+    checkboxContainer.appendChild(checkbox);
     settingsContainer.appendChild(checkboxContainer);
+
+    // Create region selector
+    const regionContainer = document.createElement('div');
+    regionContainer.style.marginBottom = '24px';
+    regionContainer.style.display = 'flex';
+    regionContainer.style.alignItems = 'center';
+    regionContainer.style.gap = '8px';
+
+    const regionLabel = document.createElement('label');
+    regionLabel.htmlFor = 'octoai-region-select';
+    regionLabel.textContent = 'Region';
+    regionLabel.style.color = theme.text;
+    regionLabel.style.fontSize = '14px';
+
+    const regionSelect = document.createElement('select');
+    regionSelect.id = 'octoai-region-select';
+    regionSelect.style.backgroundColor = theme.backgroundSecondary;
+    regionSelect.style.color = theme.text;
+    regionSelect.style.border = `1px solid ${theme.border}`;
+    regionSelect.style.borderRadius = '4px';
+    regionSelect.style.padding = '4px 8px';
+    regionSelect.style.cursor = 'pointer';
+
+    [
+        { label: 'Global', value: '' },
+        { label: 'US', value: 'US' },
+        { label: 'Europe', value: 'Europe' }
+    ].forEach(region => {
+        const option = document.createElement('option');
+        option.value = region.value;
+        option.textContent = region.label;
+        regionSelect.appendChild(option);
+    });
+
+    const savedRegion = localStorage.getItem('octoai-region');
+    regionSelect.value = ['', 'US', 'Europe'].includes(savedRegion) ? savedRegion : '';
+
+    regionContainer.appendChild(regionLabel);
+    regionContainer.appendChild(regionSelect);
+    settingsContainer.appendChild(regionContainer);
 
     // Create OK button
     const okButton = createButton('OK', theme, 'octoai-settings-ok');
@@ -890,6 +930,7 @@ function displaySettings(theme) {
     okButton.addEventListener('click', () => {
         // Save checkbox value to local storage
         localStorage.setItem('octoai-auto-apply', checkbox.checked);
+        localStorage.setItem('octoai-region', regionSelect.value);
 
         // Update the auto-apply message visibility
         updateAutoApplyMessage();

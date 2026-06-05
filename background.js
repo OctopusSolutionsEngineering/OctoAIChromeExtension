@@ -288,6 +288,10 @@ function buildHeaders(request) {
                     headers['X_REDIRECTION_API_KEY'] = data.apiKey;
                 }
 
+                if (request.region) {
+                    headers['X-Region'] = request.region
+                }
+
                 return headers;
             }
         )

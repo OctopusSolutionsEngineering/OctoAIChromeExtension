@@ -86,6 +86,9 @@ async function callOctoAi(systemPrompt, systemPromptOnly, prompt) {
         // Get the server URL from the current location
         const serverUrl = window.location.origin;
 
+        // Get the region from local storage (if set)
+        const region = localStorage.getItem('octoai-region')
+
         const creds = await createOctopusApiKey();
 
         // Compound document prompts are separated by a line with "---" in the middle.
@@ -133,7 +136,7 @@ async function callOctoAi(systemPrompt, systemPromptOnly, prompt) {
         // Auto-approval enabled -> Multiple prompts -> process first prompt -> process next prompt
         // Any errors or aborted confirmations end the flow and show the results up to that point.
         function sendPrompt(prompts, index, thinkingAnimation) {
-            sendPrompts([prompts[index]], creds, serverUrl)
+            sendPrompts([prompts[index]], creds, serverUrl, region)
                 .then(responses => {
                     processResponse(prompt, systemPrompt, responses)
                         .then(result => {
@@ -267,7 +270,7 @@ async function processResponse(prompt, systemPrompt, responses) {
         response: convertFromSseResponse(responses[0].response)};
 }
 
-async function sendPrompts(prompts, creds, serverUrl) {
+async function sendPrompts(prompts, creds, serverUrl, region) {
     const results = []
 
     window.showThinking.total = prompts.length;
@@ -279,7 +282,8 @@ async function sendPrompts(prompts, creds, serverUrl) {
             prompt: prompts[i],
             accessToken: creds.accessToken,
             apiKey: creds.apiKey,
-            serverUrl: serverUrl
+            serverUrl: serverUrl,
+            region: region
         }));
     }
     return Promise.all(results);
