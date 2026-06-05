@@ -77,3 +77,12 @@ It is expected that dashboards will be built using Gen AI. The [Copilot Instruct
 ## Octopus API LLM Documentation
 
 See https://deploy.octopus.app/api/experimental/llms.txt for the REST API documentation designed for use by LLMs.
+
+## Submitting new dashboards
+
+*  Create a PR in this repo
+*  Copilot will automatically review the PR
+*  Address the issues raised by the Copilot review
+*  Merge your changes
+
+We do not require someone to approve your changes. The Copilot review captures our requirements for Community Dashboards.
