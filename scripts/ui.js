@@ -544,6 +544,16 @@ function displayPromptUIV2(theme) {
     autoApplyMessage.style.display = 'none'; // Hidden by default
     container.appendChild(autoApplyMessage);
 
+    const regionMessage = document.createElement('div');
+    regionMessage.id = 'octoai-region-message';
+    regionMessage.style.fontSize = '12px';
+    regionMessage.style.color = theme.textSecondary;
+    regionMessage.style.textAlign = 'right';
+    regionMessage.style.marginTop = '-12px';
+    regionMessage.style.marginBottom = '8px';
+    regionMessage.style.paddingRight = '4px';
+    container.appendChild(regionMessage);
+
 
     // Create a container for the UI
     const examplesContainer = document.createElement('div');
@@ -590,6 +600,7 @@ function displayPromptUIV2(theme) {
 
     // Update auto-apply message visibility after container is in DOM
     updateAutoApplyMessage();
+    updateRegionMessage();
 }
 
 function showThinking() {
@@ -631,6 +642,22 @@ function updateAutoApplyMessage() {
 
 function hideAutoApplyMessage() {
     const message = document.getElementById('octoai-auto-apply-message');
+    if (message) {
+        message.style.display = 'none';
+    }
+}
+
+function updateRegionMessage() {
+    const message = document.getElementById('octoai-region-message');
+    if (message) {
+        const selectedRegion = localStorage.getItem('octoai-region') || '';
+        const displayRegion = selectedRegion || 'Global';
+        message.textContent = `Region: ${displayRegion}`;
+    }
+}
+
+function hideRegionMessage() {
+    const message = document.getElementById('octoai-region-message');
     if (message) {
         message.style.display = 'none';
     }
@@ -821,6 +848,7 @@ function displaySettings(theme) {
 
     // Hide the auto-apply message
     hideAutoApplyMessage();
+    hideRegionMessage();
 
     // Get or create the settings container
     let settingsContainer = document.getElementById('octoai-settings');
@@ -934,11 +962,17 @@ function displaySettings(theme) {
 
         // Update the auto-apply message visibility
         updateAutoApplyMessage();
+        updateRegionMessage();
 
         // Hide settings and show examples again
         settingsContainer.style.display = 'none';
         showExamples();
         showForm();
+
+        const regionMessage = document.getElementById('octoai-region-message');
+        if (regionMessage) {
+            regionMessage.style.display = 'block';
+        }
     });
 
     settingsContainer.appendChild(okButton);
