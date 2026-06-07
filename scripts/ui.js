@@ -155,6 +155,9 @@ function createButton(text, theme, id, icon) {
     const textContainer = document.createElement('span');
     button.appendChild(textContainer);
     textContainer.textContent = text;
+    textContainer.style.overflow = 'hidden';
+    textContainer.style.textOverflow = 'ellipsis';
+    textContainer.style.whiteSpace = 'nowrap';
 
     if (id) {
         button.id = id;
