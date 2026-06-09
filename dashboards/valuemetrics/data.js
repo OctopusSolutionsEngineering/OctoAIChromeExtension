@@ -917,7 +917,7 @@ const DashboardData = (() => {
   // Controls how the Day-of-Week and Time-of-Day pattern cards bucket
   // deployment timestamps. Defaults to the viewer's local timezone and is
   // persisted so the choice sticks across sessions.
-  const _TZ_MODE_KEY = 'vm_tz_mode';
+  const _TZ_MODE_KEY = 'valuemetrics.tz_mode';
   let _tzMode = (() => {
     try { return localStorage.getItem(_TZ_MODE_KEY) === 'utc' ? 'utc' : 'local'; }
     catch { return 'local'; }
