@@ -739,11 +739,10 @@ const Views = (() => {
         if (mode === DashboardData.getTimezoneMode()) return;
         DashboardData.setTimezoneMode(mode);
         document.querySelectorAll('[data-tz-mode]').forEach(b => {
-          const active = b.dataset.tzMode === mode;
-          b.classList.toggle('active-toggle', active);
           b.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
-        if (el) el.innerHTML = _renderPatternsCards();
+        const patternsEl = document.getElementById('deploy-patterns');
+        if (patternsEl) patternsEl.innerHTML = _renderPatternsCards();
         Analytics.trackEvent('timezone_mode_changed', { mode });
       });
     });
