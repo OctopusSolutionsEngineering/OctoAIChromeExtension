@@ -739,7 +739,9 @@ const Views = (() => {
         if (mode === DashboardData.getTimezoneMode()) return;
         DashboardData.setTimezoneMode(mode);
         document.querySelectorAll('[data-tz-mode]').forEach(b => {
+          const active = b.dataset.tzMode === mode;
           b.setAttribute('aria-pressed', active ? 'true' : 'false');
+          b.classList.toggle('active-toggle', active);
         });
         const patternsEl = document.getElementById('deploy-patterns');
         if (patternsEl) patternsEl.innerHTML = _renderPatternsCards();
