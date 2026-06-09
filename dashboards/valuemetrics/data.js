@@ -913,14 +913,33 @@ const DashboardData = (() => {
     return 'dev';
   }
 
+  // ---- Timezone display preference (local vs UTC) ----
+  // Controls how the Day-of-Week and Time-of-Day pattern cards bucket
+  // deployment timestamps. Defaults to the viewer's local timezone and is
+  // persisted so the choice sticks across sessions.
+  const _TZ_MODE_KEY = 'valuemetrics.tz_mode';
+  let _tzMode = (() => {
+    try { return localStorage.getItem(_TZ_MODE_KEY) === 'utc' ? 'utc' : 'local'; }
+    catch { return 'local'; }
+  })();
+
+  function getTimezoneMode() { return _tzMode; }
+
+  function setTimezoneMode(mode) {
+    _tzMode = mode === 'utc' ? 'utc' : 'local';
+    try { localStorage.setItem(_TZ_MODE_KEY, _tzMode); } catch {}
+    return _tzMode;
+  }
+
   function computeDayOfWeekDistribution() {
     const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const utc = _tzMode === 'utc';
     const counts = new Array(7).fill(0);
     for (const sd of Object.values(_spaceData)) {
       for (const dep of (sd.deployments || [])) {
         const d = new Date(dep.Created || dep.QueueTime);
         if (isNaN(d.getTime())) continue;
-        const jsDay = d.getUTCDay();
+        const jsDay = utc ? d.getUTCDay() : d.getDay();
         counts[jsDay === 0 ? 6 : jsDay - 1]++;
       }
     }
@@ -928,12 +947,13 @@ const DashboardData = (() => {
   }
 
   function computeHourOfDayDistribution() {
+    const utc = _tzMode === 'utc';
     const counts = new Array(24).fill(0);
     for (const sd of Object.values(_spaceData)) {
       for (const dep of (sd.deployments || [])) {
         const d = new Date(dep.Created || dep.QueueTime);
         if (isNaN(d.getTime())) continue;
-        counts[d.getUTCHours()]++;
+        counts[utc ? d.getUTCHours() : d.getHours()]++;
       }
     }
     return counts.map((count, hour) => ({ hour, count }));
@@ -1505,6 +1525,8 @@ const DashboardData = (() => {
     getLicenseStatus: () => _licenseStatus,
     computeDayOfWeekDistribution,
     computeHourOfDayDistribution,
+    getTimezoneMode,
+    setTimezoneMode,
     computePerEnvTypeDeployments,
     computeTrendChange,
     computeProjectVelocity,

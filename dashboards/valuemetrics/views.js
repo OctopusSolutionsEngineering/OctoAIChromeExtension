@@ -455,9 +455,8 @@ const Views = (() => {
     const frequency = enriched ? enriched.deployFrequency : summary.kpi.deployFrequency;
     const periodLabel = enriched ? enriched.periodLabel : null;
     const trendChange = DashboardData.computeTrendChange(summary.weeklyTrend);
-    const dayOfWeek = DashboardData.computeDayOfWeekDistribution();
-    const hourOfDay = DashboardData.computeHourOfDayDistribution();
     const envBreakdown = DashboardData.computePerEnvTypeDeployments();
+    const tzMode = DashboardData.getTimezoneMode();
 
     const wt = summary.weeklyTrend || [];
     const thisWeek = wt.length > 0 ? wt[wt.length - 1] : null;
@@ -477,10 +476,6 @@ const Views = (() => {
       : trendChange.direction === 'down' ? { icon: 'fa-arrow-trend-down', cls: 'danger', label: `↓ ${trendChange.pct}% vs prior period` }
       : { icon: 'fa-minus', cls: 'amber', label: 'stable' };
 
-    const maxDow = Math.max(...dayOfWeek.map(d => d.count), 1);
-    const busiestDay = dayOfWeek.reduce((a, b) => a.count >= b.count ? a : b);
-    const maxHour = Math.max(...hourOfDay.map(h => h.count), 1);
-    const busiestHour = hourOfDay.reduce((a, b) => a.count >= b.count ? a : b);
     const envTotal = envBreakdown.types.production + envBreakdown.types.staging + envBreakdown.types.dev;
     const envPct = (n) => envTotal > 0 ? Math.round(n / envTotal * 100) : 0;
 
@@ -564,46 +559,12 @@ const Views = (() => {
     <!-- Deployment Patterns -->
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-calendar-alt"></i> Deployment Patterns</h2>
-    </div>
-    <div class="dashboard-grid mb-lg">
-      <div class="card col-span-6">
-        <div class="card-header">
-          <h3 class="card-title">Day of Week</h3>
-          <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">Busiest: <strong style="color:var(--colorTextSecondary);">${busiestDay.name}</strong></span>
-        </div>
-        <div class="card-body">
-          <div class="dow-chart">
-            ${dayOfWeek.map(d => {
-              const pct = maxDow > 0 ? Math.round(d.count / maxDow * 100) : 0;
-              const isBusiest = d === busiestDay && d.count > 0;
-              return `<div class="dow-row${d.isWeekend ? ' dow-row--weekend' : ''}${isBusiest ? ' dow-row--peak' : ''}">
-                <span class="dow-label">${d.name}</span>
-                <div class="progress-bar dow-bar"><div class="progress-fill ${isBusiest ? 'info' : 'success'}" style="width:${pct}%;"></div></div>
-                <span class="dow-count monospace">${d.count}</span>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>
-      </div>
-      <div class="card col-span-6">
-        <div class="card-header">
-          <h3 class="card-title">Time of Day (UTC)</h3>
-          <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">Peak: <strong style="color:var(--colorTextSecondary);">${String(busiestHour.hour).padStart(2, '0')}:00</strong></span>
-        </div>
-        <div class="card-body">
-          <div class="hour-chart">
-            ${hourOfDay.map(h => {
-              const pct = maxHour > 0 ? Math.round(h.count / maxHour * 100) : 0;
-              const isPeak = h === busiestHour && h.count > 0;
-              return `<div class="hour-col${isPeak ? ' hour-col--peak' : ''}" tabindex="0" role="img" aria-label="${String(h.hour).padStart(2, '0')}:00 UTC — ${h.count} deployments" title="${String(h.hour).padStart(2, '0')}:00 UTC — ${h.count} deployments" data-tooltip="${String(h.hour).padStart(2, '0')}:00 UTC — ${h.count} deployments">
-                <div class="hour-bar-wrap"><div class="hour-bar" style="height:${pct}%;"></div></div>
-                <span class="hour-label">${h.hour % 6 === 0 ? String(h.hour).padStart(2, '0') : ''}</span>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>
+      <div class="flex gap-xs" role="group" aria-label="Timezone for deployment patterns">
+        <button class="btn btn-secondary btn-sm${tzMode === 'local' ? ' active-toggle' : ''}" data-tz-mode="local" aria-pressed="${tzMode === 'local' ? 'true' : 'false'}" title="Use your local timezone">Local</button>
+        <button class="btn btn-secondary btn-sm${tzMode === 'utc' ? ' active-toggle' : ''}" data-tz-mode="utc" aria-pressed="${tzMode === 'utc' ? 'true' : 'false'}" title="Use UTC">UTC</button>
       </div>
     </div>
+    <div id="deploy-patterns">${_renderPatternsCards()}</div>
 
     <!-- Environment Distribution -->
     <div class="section-header">
@@ -705,6 +666,60 @@ const Views = (() => {
     </div>`;
   }
 
+  // Day-of-Week + Time-of-Day cards. Rendered separately so the timezone
+  // toggle can re-render just this block (no data refetch — the timezone mode
+  // only changes how already-loaded timestamps are bucketed).
+  function _renderPatternsCards() {
+    const dayOfWeek = DashboardData.computeDayOfWeekDistribution();
+    const hourOfDay = DashboardData.computeHourOfDayDistribution();
+    const tzLabel = DashboardData.getTimezoneMode() === 'utc' ? 'UTC' : 'Local';
+    const maxDow = Math.max(...dayOfWeek.map(d => d.count), 1);
+    const busiestDay = dayOfWeek.reduce((a, b) => a.count >= b.count ? a : b);
+    const maxHour = Math.max(...hourOfDay.map(h => h.count), 1);
+    const busiestHour = hourOfDay.reduce((a, b) => a.count >= b.count ? a : b);
+    return `
+    <div class="dashboard-grid mb-lg">
+      <div class="card col-span-6">
+        <div class="card-header">
+          <h3 class="card-title">Day of Week (${tzLabel})</h3>
+          <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">Busiest: <strong style="color:var(--colorTextSecondary);">${busiestDay.name}</strong></span>
+        </div>
+        <div class="card-body">
+          <div class="dow-chart">
+            ${dayOfWeek.map(d => {
+              const pct = maxDow > 0 ? Math.round(d.count / maxDow * 100) : 0;
+              const isBusiest = d === busiestDay && d.count > 0;
+              return `<div class="dow-row${d.isWeekend ? ' dow-row--weekend' : ''}${isBusiest ? ' dow-row--peak' : ''}">
+                <span class="dow-label">${d.name}</span>
+                <div class="progress-bar dow-bar"><div class="progress-fill ${isBusiest ? 'info' : 'success'}" style="width:${pct}%;"></div></div>
+                <span class="dow-count monospace">${d.count}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="card col-span-6">
+        <div class="card-header">
+          <h3 class="card-title">Time of Day (${tzLabel})</h3>
+          <span class="text-tertiary" style="font:var(--textBodyRegularXSmall);">Peak: <strong style="color:var(--colorTextSecondary);">${String(busiestHour.hour).padStart(2, '0')}:00</strong></span>
+        </div>
+        <div class="card-body">
+          <div class="hour-chart">
+            ${hourOfDay.map(h => {
+              const pct = maxHour > 0 ? Math.round(h.count / maxHour * 100) : 0;
+              const isPeak = h === busiestHour && h.count > 0;
+              const tip = `${String(h.hour).padStart(2, '0')}:00 ${tzLabel} — ${h.count} deployments`;
+              return `<div class="hour-col${isPeak ? ' hour-col--peak' : ''}" tabindex="0" role="img" aria-label="${tip}" title="${tip}" data-tooltip="${tip}">
+                <div class="hour-bar-wrap"><div class="hour-bar" style="height:${pct}%;"></div></div>
+                <span class="hour-label">${h.hour % 6 === 0 ? String(h.hour).padStart(2, '0') : ''}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
   function wireTrendsEvents(summary) {
     document.querySelectorAll('[data-trends-range]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -713,6 +728,24 @@ const Views = (() => {
         const el = document.getElementById('trends-chart');
         if (el) el.innerHTML = _renderTrendChart(summary, btn.dataset.trendsRange);
         Analytics.trackEvent('chart_range_changed', { view: 'trends', range: btn.dataset.trendsRange });
+      });
+    });
+
+    // Timezone toggle for the deployment-pattern cards. No refetch — just
+    // re-bucket the loaded timestamps and re-render the patterns block.
+    document.querySelectorAll('[data-tz-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.tzMode;
+        if (mode === DashboardData.getTimezoneMode()) return;
+        DashboardData.setTimezoneMode(mode);
+        document.querySelectorAll('[data-tz-mode]').forEach(b => {
+          const active = b.dataset.tzMode === mode;
+          b.setAttribute('aria-pressed', active ? 'true' : 'false');
+          b.classList.toggle('active-toggle', active);
+        });
+        const patternsEl = document.getElementById('deploy-patterns');
+        if (patternsEl) patternsEl.innerHTML = _renderPatternsCards();
+        Analytics.trackEvent('timezone_mode_changed', { mode });
       });
     });
   }
