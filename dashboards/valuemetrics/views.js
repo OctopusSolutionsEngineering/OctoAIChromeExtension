@@ -738,9 +738,11 @@ const Views = (() => {
         const mode = btn.dataset.tzMode;
         if (mode === DashboardData.getTimezoneMode()) return;
         DashboardData.setTimezoneMode(mode);
-        document.querySelectorAll('[data-tz-mode]').forEach(b =>
-          b.classList.toggle('active-toggle', b.dataset.tzMode === mode));
-        const el = document.getElementById('deploy-patterns');
+        document.querySelectorAll('[data-tz-mode]').forEach(b => {
+          const active = b.dataset.tzMode === mode;
+          b.classList.toggle('active-toggle', active);
+          b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
         if (el) el.innerHTML = _renderPatternsCards();
         Analytics.trackEvent('timezone_mode_changed', { mode });
       });
