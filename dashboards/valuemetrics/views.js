@@ -560,8 +560,8 @@ const Views = (() => {
     <div class="section-header">
       <h2 class="section-title"><i class="fa-solid fa-calendar-alt"></i> Deployment Patterns</h2>
       <div class="flex gap-xs" role="group" aria-label="Timezone for deployment patterns">
-        <button class="btn btn-secondary btn-sm${tzMode === 'local' ? ' active-toggle' : ''}" data-tz-mode="local" title="Use your local timezone">Local</button>
-        <button class="btn btn-secondary btn-sm${tzMode === 'utc' ? ' active-toggle' : ''}" data-tz-mode="utc" title="Use UTC">UTC</button>
+        <button class="btn btn-secondary btn-sm${tzMode === 'local' ? ' active-toggle' : ''}" data-tz-mode="local" aria-pressed="${tzMode === 'local' ? 'true' : 'false'}" title="Use your local timezone">Local</button>
+        <button class="btn btn-secondary btn-sm${tzMode === 'utc' ? ' active-toggle' : ''}" data-tz-mode="utc" aria-pressed="${tzMode === 'utc' ? 'true' : 'false'}" title="Use UTC">UTC</button>
       </div>
     </div>
     <div id="deploy-patterns">${_renderPatternsCards()}</div>
