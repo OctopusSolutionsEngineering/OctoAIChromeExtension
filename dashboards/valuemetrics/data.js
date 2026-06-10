@@ -527,7 +527,7 @@ const DashboardData = (() => {
       // Per-space values (below) are always computed so the space breakdown
       // stays cross-space. Global KPI/env/recent aggregates only include this
       // space when it's in the current scope.
-      const inScope = !_scopeSpaceId || spaceId === _scopeSpaceId;
+      const inScope = !_scopeSpaceId || !_spaceData[_scopeSpaceId] || spaceId === _scopeSpaceId;
 
       if (inScope) {
         totalProjects += projects.length;
