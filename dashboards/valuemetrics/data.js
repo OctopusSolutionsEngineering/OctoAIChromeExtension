@@ -42,6 +42,26 @@ const DashboardData = (() => {
   let _activeSpaceIds = [];
   let _lastFetch = null;
 
+  // Global Space scope: null = all spaces, otherwise aggregations are limited
+  // to this space id. Changing it only re-buckets already-loaded data — no refetch.
+  let _scopeSpaceId = null;
+
+  // [spaceId, data] entries honouring the current scope — the single scoped
+  // space, or all spaces when unscoped (or the scope is invalid). Used by every
+  // aggregation (getSummary and the standalone compute functions) so all widgets,
+  // including the space breakdown, reflect the active scope consistently.
+  function scopedSpaceEntries() {
+    if (!_scopeSpaceId) return Object.entries(_spaceData);
+    const d = _spaceData[_scopeSpaceId];
+    // If the scoped space isn't loaded (e.g. filtered out as inactive), treat as unscoped.
+    return d ? [[_scopeSpaceId, d]] : Object.entries(_spaceData);
+  }
+  function scopedSpaceValues() { return scopedSpaceEntries().map(([, d]) => d); }
+  function scopedTasks() {
+    const hasScopedSpaceData = !!(_scopeSpaceId && _spaceData[_scopeSpaceId]);
+    return hasScopedSpaceData ? _crossSpaceTasks.filter(t => t.SpaceId === _scopeSpaceId) : _crossSpaceTasks;
+  }
+
   const log = (...args) => (window._debug || console.log)(...args);
 
   // ---- Fetch all data ----
@@ -85,6 +105,9 @@ const DashboardData = (() => {
     _spaces = spacesResponse.Items || [];
     _licenseUsage = licenseUsage;
     _licenseStatus = licenseStatus;
+
+    // Drop the Space scope if the selected space is no longer present.
+    if (_scopeSpaceId && !_spaces.some(s => s.Id === _scopeSpaceId)) _scopeSpaceId = null;
 
     log('Server info', { Version: _serverInfo?.Version, ApiVersion: _serverInfo?.ApiVersion });
     log(`Found ${_spaces.length} spaces`);
@@ -500,8 +523,11 @@ const DashboardData = (() => {
     const envHealthMap = {};     // envName → { success, failed, total, machines, healthy }
     const projectDeployMap = {}; // global project → deployment data
 
-    for (const [spaceId, data] of Object.entries(_spaceData)) {
-      const { space, projects, projectNames, environments, envNames, dashboard, deployments, 
+    // The loop honours the active Space scope — scopedSpaceEntries() returns the
+    // single scoped space, or all spaces when unscoped (or the scope is invalid).
+    // Every aggregate, including the space breakdown, reflects the selected space.
+    for (const [spaceId, data] of scopedSpaceEntries()) {
+      const { space, projects, projectNames, environments, envNames, dashboard, deployments,
               totalDeployments, machines, targetCount, machineHealth, releaseCount, runbookCount } = data;
 
       totalProjects += projects.length;
@@ -623,7 +649,7 @@ const DashboardData = (() => {
 
     // Enrich recent deployments with state from dashboard data + cross-space tasks
     const dashboardStateMap = {};
-    for (const [spaceId, data] of Object.entries(_spaceData)) {
+    for (const [spaceId, data] of scopedSpaceEntries()) {
       if (data.dashboard?.Items) {
         for (const item of data.dashboard.Items) {
           dashboardStateMap[item.DeploymentId] = item;
@@ -663,8 +689,8 @@ const DashboardData = (() => {
     const recentAll = enrichedDeployments.filter(d => new Date(d.Created || d.QueueTime) >= thirtyDaysAgo);
     const deployFrequency = recentAll.length > 0 ? (recentAll.length / 30) : 0;
 
-    // Average deployment duration from cross-space tasks
-    const avgDuration = computeAvgDuration(_crossSpaceTasks);
+    // Average deployment duration from cross-space tasks (scoped to the selected space)
+    const avgDuration = computeAvgDuration(scopedTasks());
 
     // Target health percentage
     const healthyPct = totalTargets > 0 ? Math.round(healthyTargets / totalTargets * 100) : 0;
@@ -695,7 +721,7 @@ const DashboardData = (() => {
     let teamsAnyDenied = false;
     let teamsAnyOkFetch = false;
     let teamsAnyError = false;
-    for (const [spaceId, data] of Object.entries(_spaceData)) {
+    for (const [spaceId, data] of scopedSpaceEntries()) {
       const acc = data.teamsAccess || 'ok';
       if (acc === 'denied') teamsAnyDenied = true;
       else if (acc === 'error') teamsAnyError = true;
@@ -748,7 +774,7 @@ const DashboardData = (() => {
         totalDeployments: totalDeploymentsCount,
         successRate: Math.round(overallSuccessRate),
         activeProjects: totalProjects,
-        activeSpaces: Object.keys(_spaceData).length,
+        activeSpaces: (_scopeSpaceId && _spaceData[_scopeSpaceId]) ? 1 : Object.keys(_spaceData).length,
         totalSpaces: _spaces.length,
         deployFrequency: deployFrequency.toFixed(1),
         avgDuration,
@@ -935,7 +961,7 @@ const DashboardData = (() => {
     const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const utc = _tzMode === 'utc';
     const counts = new Array(7).fill(0);
-    for (const sd of Object.values(_spaceData)) {
+    for (const sd of scopedSpaceValues()) {
       for (const dep of (sd.deployments || [])) {
         const d = new Date(dep.Created || dep.QueueTime);
         if (isNaN(d.getTime())) continue;
@@ -949,7 +975,7 @@ const DashboardData = (() => {
   function computeHourOfDayDistribution() {
     const utc = _tzMode === 'utc';
     const counts = new Array(24).fill(0);
-    for (const sd of Object.values(_spaceData)) {
+    for (const sd of scopedSpaceValues()) {
       for (const dep of (sd.deployments || [])) {
         const d = new Date(dep.Created || dep.QueueTime);
         if (isNaN(d.getTime())) continue;
@@ -962,7 +988,7 @@ const DashboardData = (() => {
   function computePerEnvTypeDeployments() {
     const types = { production: 0, staging: 0, dev: 0 };
     const perEnv = {};
-    for (const sd of Object.values(_spaceData)) {
+    for (const sd of scopedSpaceValues()) {
       const envNames = sd.envNames || {};
       for (const dep of (sd.deployments || [])) {
         const envName = envNames[dep.EnvironmentId] || dep.EnvironmentId || 'Unknown';
@@ -999,7 +1025,7 @@ const DashboardData = (() => {
     const projects = [];
     const now = new Date();
     const thirtyDaysAgo = new Date(now - 30 * 86400000);
-    for (const [spaceId, sd] of Object.entries(_spaceData)) {
+    for (const [spaceId, sd] of scopedSpaceEntries()) {
       const spaceName = sd.space?.Name || spaceId;
       for (const proj of (sd.projects || [])) {
         const projDeps = (sd.deployments || []).filter(d => d.ProjectId === proj.Id);
@@ -1029,7 +1055,7 @@ const DashboardData = (() => {
 
   function computeDurationPercentiles() {
     const durations = [];
-    for (const t of (_crossSpaceTasks || [])) {
+    for (const t of (scopedTasks() || [])) {
       if (!t.StartTime || !t.CompletedTime) continue;
       const ms = new Date(t.CompletedTime) - new Date(t.StartTime);
       if (ms > 0 && ms < 3600000) durations.push(ms / 1000);
@@ -1076,7 +1102,7 @@ const DashboardData = (() => {
       const raw = localStorage.getItem(_histKey());
       if (!raw) return null;
       const c = JSON.parse(raw);
-      if (c.version !== 1 || c.serverUrl !== OctopusApi.getInstanceUrl()) return null;
+      if (c.version !== 2 || c.serverUrl !== OctopusApi.getInstanceUrl()) return null;
       if (Date.now() - new Date(c.updatedAt).getTime() > CACHE_MAX_AGE) return null;
       return c;
     } catch { return null; }
@@ -1085,7 +1111,7 @@ const DashboardData = (() => {
   function _saveHistCache(agg) {
     try {
       localStorage.setItem(_histKey(), JSON.stringify({
-        version: 1,
+        version: 2,
         serverUrl: OctopusApi.getInstanceUrl(),
         updatedAt: new Date().toISOString(),
         lookbackMonths: agg.lookbackMonths,
@@ -1096,37 +1122,49 @@ const DashboardData = (() => {
         dowCounts: agg.dowCounts,
         hodCounts: agg.hodCounts,
         spaceTotals: agg.spaceTotals,
+        bySpace: agg.bySpace,
         totalTasksFetched: agg.totalTasksFetched,
         oldestTaskDate: agg.oldestTaskDate,
       }));
     } catch (e) { log('History cache save failed', e.message); }
   }
 
-  function _emptyAgg(lookbackMonths) {
+  // Same shape as the top-level agg, minus the cross-space bookkeeping. One of
+  // these is kept per space under agg.bySpace so the Space scope can read
+  // per-space history (weekly trend, duration percentiles, enriched KPIs).
+  function _emptyBucketSet() {
     return {
-      lookbackMonths,
       durationBucketWidth: 30,
-      durationBuckets: new Array(120).fill(0), // 0–3600s in 30s bins
+      durationBuckets: new Array(120).fill(0),
       durationStats: { count: 0, sum: 0, min: Infinity, max: 0 },
       weeklyBuckets: {},
       dowCounts: new Array(7).fill(0),
       hodCounts: new Array(24).fill(0),
+    };
+  }
+
+  function _emptyAgg(lookbackMonths) {
+    return {
+      lookbackMonths,
+      ..._emptyBucketSet(),
       spaceTotals: {},
+      bySpace: {},
       totalTasksFetched: 0,
       oldestTaskDate: null,
     };
   }
 
-  function _accTask(agg, task) {
+  // Increment the duration/weekly/dow/hod buckets of a single bucket-set.
+  function _accInto(b, task) {
     if (task.StartTime && task.CompletedTime) {
       const secs = (new Date(task.CompletedTime) - new Date(task.StartTime)) / 1000;
       if (secs > 0 && secs < 3600) {
-        const bi = Math.min(Math.floor(secs / agg.durationBucketWidth), agg.durationBuckets.length - 1);
-        agg.durationBuckets[bi]++;
-        agg.durationStats.count++;
-        agg.durationStats.sum += secs;
-        agg.durationStats.min = Math.min(agg.durationStats.min, secs);
-        agg.durationStats.max = Math.max(agg.durationStats.max, secs);
+        const bi = Math.min(Math.floor(secs / b.durationBucketWidth), b.durationBuckets.length - 1);
+        b.durationBuckets[bi]++;
+        b.durationStats.count++;
+        b.durationStats.sum += secs;
+        b.durationStats.min = Math.min(b.durationStats.min, secs);
+        b.durationStats.max = Math.max(b.durationStats.max, secs);
       }
     }
     const ts = task.CompletedTime || task.QueueTime;
@@ -1135,16 +1173,24 @@ const DashboardData = (() => {
       if (!isNaN(d.getTime())) {
         const { year, week } = getISOWeek(d);
         const wk = `${year}-W${String(week).padStart(2, '0')}`;
-        if (!agg.weeklyBuckets[wk]) agg.weeklyBuckets[wk] = { year, week, success: 0, failed: 0, total: 0 };
-        agg.weeklyBuckets[wk].total++;
+        if (!b.weeklyBuckets[wk]) b.weeklyBuckets[wk] = { year, week, success: 0, failed: 0, total: 0 };
+        b.weeklyBuckets[wk].total++;
         const st = (task.State || '').toLowerCase();
-        if (st === 'success') agg.weeklyBuckets[wk].success++;
-        else if (st === 'failed') agg.weeklyBuckets[wk].failed++;
-        agg.dowCounts[d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1]++;
-        agg.hodCounts[d.getUTCHours()]++;
+        if (st === 'success') b.weeklyBuckets[wk].success++;
+        else if (st === 'failed') b.weeklyBuckets[wk].failed++;
+        b.dowCounts[d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1]++;
+        b.hodCounts[d.getUTCHours()]++;
       }
     }
+  }
+
+  function _accTask(agg, task) {
+    _accInto(agg, task);
     if (task.SpaceId) {
+      // Per-space bucket set (powers the Space scope on historical widgets)
+      if (!agg.bySpace[task.SpaceId]) agg.bySpace[task.SpaceId] = _emptyBucketSet();
+      _accInto(agg.bySpace[task.SpaceId], task);
+
       if (!agg.spaceTotals[task.SpaceId]) agg.spaceTotals[task.SpaceId] = { success: 0, failed: 0, total: 0 };
       agg.spaceTotals[task.SpaceId].total++;
       const st = (task.State || '').toLowerCase();
@@ -1156,6 +1202,13 @@ const DashboardData = (() => {
     if (td && (!agg.oldestTaskDate || new Date(td) < new Date(agg.oldestTaskDate))) {
       agg.oldestTaskDate = td;
     }
+  }
+
+  // The bucket-set the historical readers should use, honouring the Space scope.
+  function _scopedHist() {
+    if (!_histAgg) return null;
+    if (_scopeSpaceId) return _histAgg.bySpace?.[_scopeSpaceId] || _emptyBucketSet();
+    return _histAgg;
   }
 
   function _percFromHist(agg) {
@@ -1325,13 +1378,15 @@ const DashboardData = (() => {
   function getEnrichmentState() { return { ..._enrichment }; }
 
   function getHistoricalDurationPercentiles() {
-    if (_histAgg) return _percFromHist(_histAgg);
+    const h = _scopedHist();
+    if (h) return _percFromHist(h);
     return computeDurationPercentiles();
   }
 
   function getHistoricalWeeklyTrend() {
-    if (!_histAgg?.weeklyBuckets) return null;
-    const entries = Object.values(_histAgg.weeklyBuckets);
+    const h = _scopedHist();
+    if (!h?.weeklyBuckets) return null;
+    const entries = Object.values(h.weeklyBuckets);
     if (entries.length === 0) return null;
     const sorted = entries.sort((a, b) => a.year !== b.year ? a.year - b.year : a.week - b.week).slice(-52);
     for (let i = 0; i < sorted.length; i++) {
@@ -1364,19 +1419,14 @@ const DashboardData = (() => {
    */
   function computeEnrichedKPIs() {
     if (!_histAgg) return null;
-    const agg = _histAgg;
-    // If the enrichment aggregate has no buckets or no tasks were fetched,
-    // treat this as "no enriched data" so callers fall back to base KPIs.
-    if (!agg.weeklyBuckets || Object.keys(agg.weeklyBuckets).length === 0 || agg.totalTasksFetched === 0) {
-      return null;
-    }
-    // If the enrichment aggregate has no buckets or no tasks were fetched,
-    // treat this as "no enriched data" so callers fall back to base KPIs.
-    if (!agg.weeklyBuckets || Object.keys(agg.weeklyBuckets).length === 0 || agg.totalTasksFetched === 0) {
+    // Weekly/duration buckets honour the Space scope; period metadata
+    // (lookback, oldest task, total fetched) always comes from the top agg.
+    const h = _scopedHist();
+    if (!h?.weeklyBuckets || Object.keys(h.weeklyBuckets).length === 0 || _histAgg.totalTasksFetched === 0) {
       return null;
     }
     let total = 0, success = 0, failed = 0;
-    for (const w of Object.values(agg.weeklyBuckets)) {
+    for (const w of Object.values(h.weeklyBuckets)) {
       total += w.total;
       success += w.success;
       failed += w.failed;
@@ -1386,16 +1436,16 @@ const DashboardData = (() => {
 
     // For all-time (0), compute actual days from oldest task to now
     let days;
-    if (agg.lookbackMonths === 0 && agg.oldestTaskDate) {
-      days = Math.max(1, Math.ceil((Date.now() - new Date(agg.oldestTaskDate).getTime()) / 86400000));
+    if (_histAgg.lookbackMonths === 0 && _histAgg.oldestTaskDate) {
+      days = Math.max(1, Math.ceil((Date.now() - new Date(_histAgg.oldestTaskDate).getTime()) / 86400000));
     } else {
-      days = Math.max(1, agg.lookbackMonths * 30);
+      days = Math.max(1, _histAgg.lookbackMonths * 30);
     }
     const deployFrequency = total > 0 ? (total / days).toFixed(1) : '0';
 
     let avgDuration = '--';
-    if (agg.durationStats.count > 0) {
-      const s = Math.round(agg.durationStats.sum / agg.durationStats.count);
+    if (h.durationStats.count > 0) {
+      const s = Math.round(h.durationStats.sum / h.durationStats.count);
       if (s < 60) avgDuration = `${s}s`;
       else { const m = Math.floor(s / 60); const r = s % 60; avgDuration = r > 0 ? `${m}m ${r}s` : `${m}m`; }
     }
@@ -1404,11 +1454,11 @@ const DashboardData = (() => {
       successRate,
       deployFrequency,
       avgDuration,
-      lookbackMonths: agg.lookbackMonths,
-      periodLabel: _lookbackLabel(agg.lookbackMonths),
+      lookbackMonths: _histAgg.lookbackMonths,
+      periodLabel: _lookbackLabel(_histAgg.lookbackMonths),
       totalSuccess: success,
       totalFailed: failed,
-      durationCount: agg.durationStats.count,
+      durationCount: h.durationStats.count,
     };
   }
 
@@ -1518,6 +1568,15 @@ const DashboardData = (() => {
     getSpaces: () => _spaces,
     getSpaceData: (id) => _spaceData[id],
     getAllSpaceData: () => _spaceData,
+    // Scope-aware variants for scoped views (Projects, Environments, Reliability).
+    getScopedSpaceData: () => Object.fromEntries(scopedSpaceEntries()),
+    getScopedTasks: () => scopedTasks(),
+    setSpaceScope: (id) => {
+      const sid = id || null;
+      _scopeSpaceId = (sid && _spaceData[sid]) ? sid : null;
+      return _scopeSpaceId;
+    },
+    getSpaceScope: () => _scopeSpaceId,
     getCrossSpaceTasks: () => _crossSpaceTasks,
     getServerInfo: () => _serverInfo,
     getLastFetch: () => _lastFetch,

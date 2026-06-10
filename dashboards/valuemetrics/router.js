@@ -24,6 +24,11 @@ const Router = (() => {
   // Static views render their own content and don't need the dashboard summary.
   const STATIC_VIEWS = new Set(['changelog']);
 
+  // Views that honour the global Space scope. Other views are inherently
+  // cross-space/server-wide (spaces, tenants, taskcap) or static (changelog),
+  // so the Space dropdown is hidden on them.
+  const SCOPED_VIEWS = new Set(['overview', 'trends', 'velocity', 'reliability', 'projects', 'environments', 'teams']);
+
   let _current = 'overview';
 
   function navigate(viewName, { force = false } = {}) {
@@ -49,6 +54,17 @@ const Router = (() => {
     if (headerIcon) headerIcon.className = view.icon + ' text-tertiary';
     if (headerText) headerText.textContent = view.title;
 
+    // Show the global Space scope control only on space-based views.
+    const isScopedView = SCOPED_VIEWS.has(viewName);
+    const spaceWrap = document.getElementById('space-wrapper');
+    if (spaceWrap) spaceWrap.style.display = isScopedView ? '' : 'none';
+
+    // Prevent cross-space views from being affected by an invisible active scope.
+    if (!isScopedView && DashboardData.getSpaceScope?.()) {
+      DashboardData.setSpaceScope(null);
+      const sel = document.getElementById('space-select');
+      if (sel) sel.value = '';
+    }
     // Render view into main-content
     const main = document.getElementById('main-content');
     const summary = DashboardData.getSummary();

@@ -311,6 +311,44 @@ document.getElementById('lookback-select').addEventListener('change', () => {
     Analytics.trackEvent('lookback_changed', { months });
 });
 
+// ---- Space scope dropdown ----
+// Populates the header Space selector from loaded spaces. Re-runnable; preserves
+// the current selection.
+function populateSpaceSelect() {
+    const sel = document.getElementById('space-select');
+    if (!sel) return;
+    const current = DashboardData.getSpaceScope() || '';
+    const spaces = Object.values(DashboardData.getAllSpaceData() || {})
+        .map(sd => sd.space)
+        .filter(Boolean)
+        .sort((a, b) => (a.Name || '').localeCompare(b.Name || ''));
+    sel.replaceChildren();
+    const all = document.createElement('option');
+    all.value = '';
+    all.textContent = 'All Spaces';
+    sel.appendChild(all);
+    for (const s of spaces) {
+        const opt = document.createElement('option');
+        opt.value = s.Id;
+        opt.textContent = s.Name;
+        sel.appendChild(opt);
+    }
+    sel.value = current;
+    // If the previous scope is no longer available (e.g. space no longer loaded), clear it.
+    if (current && sel.value !== current) {
+        DashboardData.setSpaceScope(null);
+        sel.value = '';
+    }
+}
+
+// Changing the scope only re-buckets already-loaded data — no refetch.
+document.getElementById('space-select').addEventListener('change', (e) => {
+    const id = e.target.value || null;
+    DashboardData.setSpaceScope(id);
+    Router.refresh();
+    Analytics.trackEvent('space_scope_changed', { scoped: !!id });
+});
+
 // Task Cap page requests a longer lookback period
 document.addEventListener('tc-request-lookback', (e) => {
     const detail = e && e.detail ? e.detail : {};
@@ -339,6 +377,7 @@ DashboardUI.loadDashboard = async function() {
     await _originalLoadDashboard.call(DashboardUI);
     const summary = DashboardData.getSummary();
     _lastSummary = summary;
+    populateSpaceSelect();
 
     // After data loads, refresh the current view
     if (Router.getCurrentView() === 'overview') {
@@ -442,9 +481,12 @@ document.querySelectorAll('.export-option').forEach(btn => {
 
 /**
  * Assemble all dashboard data into a single export object.
+ * Reads the summary fresh (not the cached _lastSummary) so the export always
+ * reflects the current Space scope — including after the router clears the scope
+ * on navigating to an unscoped view.
  */
 function assembleExportData() {
-    const summary = _lastSummary;
+    const summary = DashboardData.getSummary();
     if (!summary) return null;
 
     const answers = Onboarding.getAnswers();
