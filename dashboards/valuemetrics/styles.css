@@ -336,6 +336,49 @@ a:hover {
   margin: 0;
 }
 
+/* --------------------------------------------------------------------------
+   Change Log
+   -------------------------------------------------------------------------- */
+.changelog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.changelog-entry {
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--colorBorderDefault);
+}
+
+.changelog-entry:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.changelog-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.changelog-date {
+  font: var(--textBodyRegularSmall);
+}
+
+.changelog-list {
+  margin: 0;
+  padding-left: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.changelog-list li {
+  font: var(--textBodyRegularMedium);
+  color: var(--colorTextSecondary);
+}
+
 
 /* --------------------------------------------------------------------------
    7. Cards

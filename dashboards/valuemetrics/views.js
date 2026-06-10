@@ -2770,6 +2770,85 @@ const Views = (() => {
     svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
   }
 
+  // ---- Change Log ----
+  // Newest entries first. Add a new object to the top of this array whenever
+  // the dashboard version is bumped — no other wiring is required.
+  const CHANGELOG = [
+    {
+      version: '1.0.52',
+      date: 'Jun 2026',
+      changes: [
+        'Deployment Patterns can now be shown in your local timezone or UTC — use the Local / UTC toggle on the Day of Week and Time of Day cards. Your choice is remembered.',
+        'Added this Change Log page so you can see what is new in the dashboard.',
+      ],
+    },
+    {
+      version: '1.0.47',
+      date: 'May 2026',
+      changes: [
+        'Added the Task Cap page — track task queue and task-cap usage over time.',
+        'Fixed the Task Cap chart time-range buttons not always updating the chart.',
+      ],
+    },
+    {
+      version: '1.0.46',
+      date: 'May 2026',
+      changes: [
+        'Added the Tenants dashboard for multi-tenanted deployment insights.',
+      ],
+    },
+    {
+      version: '1.0.41',
+      date: 'Apr 2026',
+      changes: [
+        'Added anonymous usage analytics to help improve the dashboard.',
+      ],
+    },
+    {
+      version: '1.0.27',
+      date: 'Mar 2026',
+      changes: [
+        'Added Deployment Trends — timeline, weekly trend, and Day of Week / Time of Day patterns.',
+        'Added a historical lookback selector (3 months up to all-time) for trends and KPIs.',
+        'Added the Environments health view and expanded Spaces and Teams breakdowns.',
+        'Expanded licence details with per-machine (PTM) usage and limits.',
+        'Added "open in Octopus" links and a loading screen for larger instances.',
+      ],
+    },
+    {
+      version: '1.0.4',
+      date: 'Feb 2026',
+      changes: [
+        'Initial release of the Value Metrics dashboard.',
+      ],
+    },
+  ];
+
+  function renderChangelog() {
+    return `
+    <div class="page-header">
+      <h1 class="page-title">Change Log</h1>
+      <p class="page-subtitle">What's new in the Value Dashboard.</p>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <div class="changelog">
+          ${CHANGELOG.map(entry => `
+            <div class="changelog-entry">
+              <div class="changelog-meta">
+                ${entry.version ? `<span class="badge feature">v${entry.version}</span>` : ''}
+                <span class="changelog-date text-tertiary">${entry.date}</span>
+              </div>
+              <ul class="changelog-list">
+                ${entry.changes.map(c => `<li>${c}</li>`).join('')}
+              </ul>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>`;
+  }
+
   // ---- Public API ----
 
   return {
@@ -2796,6 +2875,8 @@ const Views = (() => {
     // Task Cap view
     renderTaskcap,
     wireTaskcapEvents,
+    // Settings
+    renderChangelog,
   };
 
 })();
