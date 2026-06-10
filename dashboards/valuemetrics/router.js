@@ -55,9 +55,16 @@ const Router = (() => {
     if (headerText) headerText.textContent = view.title;
 
     // Show the global Space scope control only on space-based views.
+    const isScopedView = SCOPED_VIEWS.has(viewName);
     const spaceWrap = document.getElementById('space-wrapper');
-    if (spaceWrap) spaceWrap.style.display = SCOPED_VIEWS.has(viewName) ? '' : 'none';
+    if (spaceWrap) spaceWrap.style.display = isScopedView ? '' : 'none';
 
+    // Prevent cross-space views from being affected by an invisible active scope.
+    if (!isScopedView && DashboardData.getSpaceScope?.()) {
+      DashboardData.setSpaceScope(null);
+      const sel = document.getElementById('space-select');
+      if (sel) sel.value = '';
+    }
     // Render view into main-content
     const main = document.getElementById('main-content');
     const summary = DashboardData.getSummary();
