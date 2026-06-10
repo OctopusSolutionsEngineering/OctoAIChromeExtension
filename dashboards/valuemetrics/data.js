@@ -1571,7 +1571,11 @@ const DashboardData = (() => {
     // Scope-aware variants for scoped views (Projects, Environments, Reliability).
     getScopedSpaceData: () => Object.fromEntries(scopedSpaceEntries()),
     getScopedTasks: () => scopedTasks(),
-    setSpaceScope: (id) => { _scopeSpaceId = id || null; return _scopeSpaceId; },
+    setSpaceScope: (id) => {
+      const sid = id || null;
+      _scopeSpaceId = (sid && _spaceData[sid]) ? sid : null;
+      return _scopeSpaceId;
+    },
     getSpaceScope: () => _scopeSpaceId,
     getCrossSpaceTasks: () => _crossSpaceTasks,
     getServerInfo: () => _serverInfo,
