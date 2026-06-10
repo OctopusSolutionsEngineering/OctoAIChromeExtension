@@ -318,7 +318,9 @@ function populateSpaceSelect() {
     const sel = document.getElementById('space-select');
     if (!sel) return;
     const current = DashboardData.getSpaceScope() || '';
-    const spaces = (DashboardData.getSpaces() || []).slice()
+    const spaces = Object.values(DashboardData.getAllSpaceData() || {})
+        .map(sd => sd.space)
+        .filter(Boolean)
         .sort((a, b) => (a.Name || '').localeCompare(b.Name || ''));
     sel.replaceChildren();
     const all = document.createElement('option');
