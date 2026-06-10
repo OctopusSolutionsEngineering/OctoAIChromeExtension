@@ -345,7 +345,6 @@ function populateSpaceSelect() {
 document.getElementById('space-select').addEventListener('change', (e) => {
     const id = e.target.value || null;
     DashboardData.setSpaceScope(id);
-    _lastSummary = DashboardData.getSummary();
     Router.refresh();
     Analytics.trackEvent('space_scope_changed', { scoped: !!id });
 });
