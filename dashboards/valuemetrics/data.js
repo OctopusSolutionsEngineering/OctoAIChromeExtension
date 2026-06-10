@@ -52,7 +52,8 @@ const DashboardData = (() => {
   function scopedSpaceEntries() {
     if (!_scopeSpaceId) return Object.entries(_spaceData);
     const d = _spaceData[_scopeSpaceId];
-    return d ? [[_scopeSpaceId, d]] : [];
+    // If the scoped space isn't loaded (e.g. filtered out as inactive), treat as unscoped.
+    return d ? [[_scopeSpaceId, d]] : Object.entries(_spaceData);
   }
   function scopedSpaceValues() { return scopedSpaceEntries().map(([, d]) => d); }
   function scopedTasks() {
