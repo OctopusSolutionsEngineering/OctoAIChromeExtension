@@ -1261,7 +1261,7 @@ const Views = (() => {
   function renderReliability(summary) {
     const deploys = summary.recentDeployments || [];
     const failedDeploys = deploys.filter(d => (d.State || '').toLowerCase() === 'failed');
-    const tasks = DashboardData.getCrossSpaceTasks() || [];
+    const tasks = DashboardData.getScopedTasks() || [];
 
     // MTTR calculation from tasks that are failed
     let mttrMinutes = null;
@@ -1531,6 +1531,7 @@ const Views = (() => {
                   <span aria-hidden="true" style="opacity:.9;">&rarr;</span>
                 </a>
               ` : ''}
+              <button class="btn btn-secondary btn-sm" id="scope-to-space"><i class="fa-solid fa-cubes"></i> View this space across the dashboard</button>
               <button class="btn btn-secondary btn-sm" id="close-space-detail"><i class="fa-solid fa-times"></i></button>
             </div>
             <div class="card-body">
@@ -1571,6 +1572,15 @@ const Views = (() => {
           document.querySelectorAll('.space-card').forEach(c => c.classList.remove('active'));
         });
 
+        // Scope the whole dashboard to this space and jump to the Overview.
+        document.getElementById('scope-to-space')?.addEventListener('click', () => {
+          DashboardData.setSpaceScope(spaceId);
+          const sel = document.getElementById('space-select');
+          if (sel) sel.value = spaceId;
+          Analytics.trackEvent('space_scope_changed', { scoped: true, source: 'spaces_page' });
+          Router.navigate('overview');
+        });
+
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
@@ -1582,9 +1592,9 @@ const Views = (() => {
   // ==================================================================
 
   function renderProjects(summary) {
-    // Collect all projects across all spaces
+    // Collect projects across the spaces in scope (all spaces when unscoped)
     const allProjects = [];
-    const allSpaceData = DashboardData.getAllSpaceData();
+    const allSpaceData = DashboardData.getScopedSpaceData();
     const root = (typeof OctopusApi?.getInstanceUrl === 'function') ? OctopusApi.getInstanceUrl() : '';
 
     for (const spaceId of Object.keys(allSpaceData)) {
@@ -1716,7 +1726,7 @@ const Views = (() => {
 
   function renderEnvironments(summary) {
     const envHealth = summary.envHealth || [];
-    const allSpaceData = DashboardData.getAllSpaceData();
+    const allSpaceData = DashboardData.getScopedSpaceData();
 
     // Build richer environment data with categorisation
     const envGroups = { production: [], staging: [], dev: [] };

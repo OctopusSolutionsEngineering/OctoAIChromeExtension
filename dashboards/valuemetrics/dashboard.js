@@ -311,6 +311,38 @@ document.getElementById('lookback-select').addEventListener('change', () => {
     Analytics.trackEvent('lookback_changed', { months });
 });
 
+// ---- Space scope dropdown ----
+// Populates the header Space selector from loaded spaces. Re-runnable; preserves
+// the current selection.
+function populateSpaceSelect() {
+    const sel = document.getElementById('space-select');
+    if (!sel) return;
+    const current = DashboardData.getSpaceScope() || '';
+    const spaces = (DashboardData.getSpaces() || []).slice()
+        .sort((a, b) => (a.Name || '').localeCompare(b.Name || ''));
+    sel.replaceChildren();
+    const all = document.createElement('option');
+    all.value = '';
+    all.textContent = 'All Spaces';
+    sel.appendChild(all);
+    for (const s of spaces) {
+        const opt = document.createElement('option');
+        opt.value = s.Id;
+        opt.textContent = s.Name;
+        sel.appendChild(opt);
+    }
+    sel.value = current;
+}
+
+// Changing the scope only re-buckets already-loaded data — no refetch.
+document.getElementById('space-select').addEventListener('change', (e) => {
+    const id = e.target.value || null;
+    DashboardData.setSpaceScope(id);
+    _lastSummary = DashboardData.getSummary();
+    Router.refresh();
+    Analytics.trackEvent('space_scope_changed', { scoped: !!id });
+});
+
 // Task Cap page requests a longer lookback period
 document.addEventListener('tc-request-lookback', (e) => {
     const detail = e && e.detail ? e.detail : {};
@@ -339,6 +371,7 @@ DashboardUI.loadDashboard = async function() {
     await _originalLoadDashboard.call(DashboardUI);
     const summary = DashboardData.getSummary();
     _lastSummary = summary;
+    populateSpaceSelect();
 
     // After data loads, refresh the current view
     if (Router.getCurrentView() === 'overview') {
