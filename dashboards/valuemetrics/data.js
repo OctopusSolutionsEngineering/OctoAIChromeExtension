@@ -46,9 +46,10 @@ const DashboardData = (() => {
   // to this space id. Changing it only re-buckets already-loaded data — no refetch.
   let _scopeSpaceId = null;
 
-  // [spaceId, data] entries honouring the current scope. Used by the standalone
-  // aggregation functions; getSummary gates inline because it also builds the
-  // (always all-spaces) space breakdown in the same pass.
+  // [spaceId, data] entries honouring the current scope — the single scoped
+  // space, or all spaces when unscoped (or the scope is invalid). Used by every
+  // aggregation (getSummary and the standalone compute functions) so all widgets,
+  // including the space breakdown, reflect the active scope consistently.
   function scopedSpaceEntries() {
     if (!_scopeSpaceId) return Object.entries(_spaceData);
     const d = _spaceData[_scopeSpaceId];
@@ -522,34 +523,30 @@ const DashboardData = (() => {
     const envHealthMap = {};     // envName → { success, failed, total, machines, healthy }
     const projectDeployMap = {}; // global project → deployment data
 
-    for (const [spaceId, data] of Object.entries(_spaceData)) {
+    // The loop honours the active Space scope — scopedSpaceEntries() returns the
+    // single scoped space, or all spaces when unscoped (or the scope is invalid).
+    // Every aggregate, including the space breakdown, reflects the selected space.
+    for (const [spaceId, data] of scopedSpaceEntries()) {
       const { space, projects, projectNames, environments, envNames, dashboard, deployments,
               totalDeployments, machines, targetCount, machineHealth, releaseCount, runbookCount } = data;
 
-      // Per-space values (below) are always computed so the space breakdown
-      // stays cross-space. Global KPI/env/recent aggregates only include this
-      // space when it's in the current scope.
-      const inScope = !_scopeSpaceId || !_spaceData[_scopeSpaceId] || spaceId === _scopeSpaceId;
+      totalProjects += projects.length;
+      totalReleases += releaseCount;
+      totalRunbooks += runbookCount;
+      totalTargets += targetCount;
+      healthyTargets += (machineHealth.Healthy || 0);
 
-      if (inScope) {
-        totalProjects += projects.length;
-        totalReleases += releaseCount;
-        totalRunbooks += runbookCount;
-        totalTargets += targetCount;
-        healthyTargets += (machineHealth.Healthy || 0);
-
-        // Seed envHealthMap from the full environment list so environments with no
-        // dashboard items (e.g. disabled/deleted, or never-deployed) still show up
-        // with "No data" instead of disappearing entirely.
-        for (const env of (environments || [])) {
-          const envId = env?.Id;
-          if (!envId) continue;
-          const envName = (envNames && envNames[envId]) || env?.Name || envId;
-          if (!envHealthMap[envName]) {
-            envHealthMap[envName] = { success: 0, failed: 0, total: 0, spaces: new Set() };
-          }
-          envHealthMap[envName].spaces.add(space.Name);
+      // Seed envHealthMap from the full environment list so environments with no
+      // dashboard items (e.g. disabled/deleted, or never-deployed) still show up
+      // with "No data" instead of disappearing entirely.
+      for (const env of (environments || [])) {
+        const envId = env?.Id;
+        if (!envId) continue;
+        const envName = (envNames && envNames[envId]) || env?.Name || envId;
+        if (!envHealthMap[envName]) {
+          envHealthMap[envName] = { success: 0, failed: 0, total: 0, spaces: new Set() };
         }
+        envHealthMap[envName].spaces.add(space.Name);
       }
 
       // Count deployment states
@@ -557,32 +554,30 @@ const DashboardData = (() => {
       let spaceFailed = 0;
       let spaceCancelled = 0;
 
-      if (inScope) {
-        for (const dep of deployments) {
-          // Deployments list doesn't have State directly — we look it up from tasks later
-          // But the dashboard items DO have State
-          allDeployments.push({
-            ...dep,
-            _spaceName: space.Name,
-            _spaceId: space.Id,
-            _projectName: projectNames[dep.ProjectId] || dep.ProjectId,
-            _envName: envNames[dep.EnvironmentId] || dep.EnvironmentId,
-          });
-        }
+      for (const dep of deployments) {
+        // Deployments list doesn't have State directly — we look it up from tasks later
+        // But the dashboard items DO have State
+        allDeployments.push({
+          ...dep,
+          _spaceName: space.Name,
+          _spaceId: space.Id,
+          _projectName: projectNames[dep.ProjectId] || dep.ProjectId,
+          _envName: envNames[dep.EnvironmentId] || dep.EnvironmentId,
+        });
+      }
 
-        // Use dashboard items for state (these represent the LATEST state per project/env)
-        // But for historical success rate, use deployment list + cross-space tasks
-        if (dashboard && dashboard.Items) {
-          for (const item of dashboard.Items) {
-            const state = (item.State || '').toLowerCase();
-            // Track env health from dashboard items (latest per project/env)
-            const envName = envNames[item.EnvironmentId] || item.EnvironmentId;
-            if (!envHealthMap[envName]) envHealthMap[envName] = { success: 0, failed: 0, total: 0, spaces: new Set() };
-            envHealthMap[envName].total++;
-            envHealthMap[envName].spaces.add(space.Name);
-            if (state === 'success') envHealthMap[envName].success++;
-            else if (state === 'failed') envHealthMap[envName].failed++;
-          }
+      // Use dashboard items for state (these represent the LATEST state per project/env)
+      // But for historical success rate, use deployment list + cross-space tasks
+      if (dashboard && dashboard.Items) {
+        for (const item of dashboard.Items) {
+          const state = (item.State || '').toLowerCase();
+          // Track env health from dashboard items (latest per project/env)
+          const envName = envNames[item.EnvironmentId] || item.EnvironmentId;
+          if (!envHealthMap[envName]) envHealthMap[envName] = { success: 0, failed: 0, total: 0, spaces: new Set() };
+          envHealthMap[envName].total++;
+          envHealthMap[envName].spaces.add(space.Name);
+          if (state === 'success') envHealthMap[envName].success++;
+          else if (state === 'failed') envHealthMap[envName].failed++;
         }
       }
 
@@ -604,12 +599,10 @@ const DashboardData = (() => {
         }
       }
 
-      if (inScope) {
-        totalSuccessful += spaceSuccessful;
-        totalFailed += spaceFailed;
-        totalCancelled += spaceCancelled;
-        totalDeploymentsCount += totalDeployments;
-      }
+      totalSuccessful += spaceSuccessful;
+      totalFailed += spaceFailed;
+      totalCancelled += spaceCancelled;
+      totalDeploymentsCount += totalDeployments;
 
       const spaceTotal = spaceSuccessful + spaceFailed + spaceCancelled;
       const successRate = spaceTotal > 0 ? (spaceSuccessful / spaceTotal * 100) : 0;
@@ -656,7 +649,7 @@ const DashboardData = (() => {
 
     // Enrich recent deployments with state from dashboard data + cross-space tasks
     const dashboardStateMap = {};
-    for (const [spaceId, data] of Object.entries(_spaceData)) {
+    for (const [spaceId, data] of scopedSpaceEntries()) {
       if (data.dashboard?.Items) {
         for (const item of data.dashboard.Items) {
           dashboardStateMap[item.DeploymentId] = item;
@@ -728,8 +721,7 @@ const DashboardData = (() => {
     let teamsAnyDenied = false;
     let teamsAnyOkFetch = false;
     let teamsAnyError = false;
-    for (const [spaceId, data] of Object.entries(_spaceData)) {
-      if (_scopeSpaceId && spaceId !== _scopeSpaceId) continue;
+    for (const [spaceId, data] of scopedSpaceEntries()) {
       const acc = data.teamsAccess || 'ok';
       if (acc === 'denied') teamsAnyDenied = true;
       else if (acc === 'error') teamsAnyError = true;
