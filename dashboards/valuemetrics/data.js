@@ -57,7 +57,8 @@ const DashboardData = (() => {
   }
   function scopedSpaceValues() { return scopedSpaceEntries().map(([, d]) => d); }
   function scopedTasks() {
-    return _scopeSpaceId ? _crossSpaceTasks.filter(t => t.SpaceId === _scopeSpaceId) : _crossSpaceTasks;
+    const hasScopedSpaceData = !!(_scopeSpaceId && _spaceData[_scopeSpaceId]);
+    return hasScopedSpaceData ? _crossSpaceTasks.filter(t => t.SpaceId === _scopeSpaceId) : _crossSpaceTasks;
   }
 
   const log = (...args) => (window._debug || console.log)(...args);
