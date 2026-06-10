@@ -2788,6 +2788,7 @@ const Views = (() => {
       version: '1.0.52',
       date: 'Jun 2026',
       changes: [
+        'Scope the dashboard to a single space — use the Space selector in the header to focus every view on one space, or pick "All Spaces" to see everything.',
         'Deployment Patterns can now be shown in your local timezone or UTC — use the Local / UTC toggle on the Day of Week and Time of Day cards. Your choice is remembered.',
         'Added this Change Log page so you can see what is new in the dashboard.',
       ],
