@@ -334,6 +334,11 @@ function populateSpaceSelect() {
         sel.appendChild(opt);
     }
     sel.value = current;
+    // If the previous scope is no longer available (e.g. space no longer loaded), clear it.
+    if (current && sel.value !== current) {
+        DashboardData.setSpaceScope(null);
+        sel.value = '';
+    }
 }
 
 // Changing the scope only re-buckets already-loaded data — no refetch.
