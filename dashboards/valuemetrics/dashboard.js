@@ -482,9 +482,12 @@ document.querySelectorAll('.export-option').forEach(btn => {
 
 /**
  * Assemble all dashboard data into a single export object.
+ * Reads the summary fresh (not the cached _lastSummary) so the export always
+ * reflects the current Space scope — including after the router clears the scope
+ * on navigating to an unscoped view.
  */
 function assembleExportData() {
-    const summary = _lastSummary;
+    const summary = DashboardData.getSummary();
     if (!summary) return null;
 
     const answers = Onboarding.getAnswers();
