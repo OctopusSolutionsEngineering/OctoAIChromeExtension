@@ -1531,8 +1531,8 @@ const Views = (() => {
                   <span aria-hidden="true" style="opacity:.9;">&rarr;</span>
                 </a>
               ` : ''}
-              <button class="btn btn-secondary btn-sm" id="scope-to-space"><i class="fa-solid fa-cubes"></i> View this space across the dashboard</button>
-              <button class="btn btn-secondary btn-sm" id="close-space-detail"><i class="fa-solid fa-times"></i></button>
+              <button class="btn btn-secondary btn-sm" id="scope-to-space"><i class="fa-solid fa-cubes" aria-hidden="true"></i> View this space across the dashboard</button>
+              <button class="btn btn-secondary btn-sm" id="close-space-detail"><i class="fa-solid fa-times" aria-hidden="true"></i></button>
             </div>
             <div class="card-body">
               <div class="dashboard-grid">
