@@ -18,7 +18,11 @@ const Router = (() => {
     teams:        { title: 'Teams',               icon: 'fa-solid fa-users' },
     tenants:      { title: 'Tenants',             icon: 'fa-solid fa-building-user' },
     taskcap:      { title: 'Task Cap',            icon: 'fa-solid fa-gauge-simple-high' },
+    changelog:    { title: 'Change Log',          icon: 'fa-solid fa-clock-rotate-left' },
   };
+
+  // Static views render their own content and don't need the dashboard summary.
+  const STATIC_VIEWS = new Set(['changelog']);
 
   let _current = 'overview';
 
@@ -62,7 +66,7 @@ const Router = (() => {
       // Don't re-init a self-loading view that's already showing unless forced.
       // User navigation away and back triggers re-init; background refresh() uses force=true.
       if (SELF_LOADING.has(viewName) && viewName === prevView && !force) return;
-      if (!summary && !SELF_LOADING.has(viewName)) {
+      if (!summary && !SELF_LOADING.has(viewName) && !STATIC_VIEWS.has(viewName)) {
         main.innerHTML = `<div style="text-align:center;padding:var(--space-xl);color:var(--colorTextTertiary);">
           <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem;display:block;margin-bottom:var(--space-md);"></i>
           Loading data&hellip;
