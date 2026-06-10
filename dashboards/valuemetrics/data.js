@@ -780,7 +780,7 @@ const DashboardData = (() => {
         totalDeployments: totalDeploymentsCount,
         successRate: Math.round(overallSuccessRate),
         activeProjects: totalProjects,
-        activeSpaces: _scopeSpaceId ? 1 : Object.keys(_spaceData).length,
+        activeSpaces: (_scopeSpaceId && _spaceData[_scopeSpaceId]) ? 1 : Object.keys(_spaceData).length,
         totalSpaces: _spaces.length,
         deployFrequency: deployFrequency.toFixed(1),
         avgDuration,
