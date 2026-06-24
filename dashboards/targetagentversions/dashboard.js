@@ -55,6 +55,25 @@ const ENVMETA = {
   other:      { bg: 'rgba(255,255,255,.06)', fg: '#A7B7C6' }
 };
 
+/* Version-band colouring for the distribution bar (Tentacle tab).
+ * Coloured by Tentacle MAJOR version, not upgrade status:
+ *   0.0.0 / unknown -> grey, major <=4 -> red, major 5-6 -> yellow, major >=7 -> green. */
+const BAND = {
+  unknown: { color: '#6b7d8f', label: 'Unknown (0.0.0)' },
+  red:     { color: '#D63D3D', label: 'Version 4 and below' },
+  yellow:  { color: '#E5B203', label: 'Version 5–6' },
+  green:   { color: '#00874D', label: 'Version 7 and above' }
+};
+const BAND_ORDER = ['unknown', 'red', 'yellow', 'green'];
+function versionBand(v) {
+  if (!v || v === '—' || v === '0.0.0') return 'unknown';
+  const major = parseInt(String(v).split('.')[0], 10);
+  if (isNaN(major)) return 'unknown';
+  if (major <= 4) return 'red';
+  if (major <= 6) return 'yellow';
+  return 'green';
+}
+
 function decorate(r, latest) {
   r._latest = latest || '';
   const S = STATUS[r.statusKey] || STATUS.uptodate;
@@ -100,7 +119,9 @@ function makeMockTentacles() {
     { v: '8.5.1', n: 18, st: 'uptodate' }, { v: '8.4.2', n: 9, st: 'suggested' },
     { v: '8.4.0', n: 5, st: 'suggested' }, { v: '8.3.1', n: 4, st: 'suggested' },
     { v: '8.2.4', n: 4, st: 'suggested' }, { v: '8.1.0', n: 2, st: 'suggested' },
-    { v: '7.4.3', n: 2, st: 'suggested' }
+    { v: '7.4.3', n: 2, st: 'suggested' },
+    { v: '6.3.417', n: 3, st: 'suggested' }, { v: '4.0.0', n: 2, st: 'suggested' },
+    { v: '0.0.0', n: 1, st: 'suggested' }
   ];
   const pfx = ['web', 'api', 'worker', 'sql', 'cache', 'queue', 'app', 'build', 'search', 'gateway', 'ingest', 'report'];
   const comm = ['Listening Tentacle', 'Polling Tentacle'];
@@ -348,13 +369,21 @@ function computeMetrics() {
   const vmap = {};
   t.forEach(r => { if (!vmap[r.version]) vmap[r.version] = { v: r.version, count: 0, statusKey: r.statusKey }; vmap[r.version].count++; });
   let segs = Object.values(vmap).sort((a, b) => vkey(b.v).localeCompare(vkey(a.v))); // newest first
-  const statusesPresent = {};
+  // Tentacle bar is coloured by version band; K8s bar keeps status colouring
+  // (its v2.x versions don't map onto the 4/6/7 Tentacle thresholds).
+  const legendMode = state.tab === 'k8s' ? 'status' : 'band';
+  const present = {};
   segs = segs.map(s => {
-    statusesPresent[s.statusKey] = true;
-    return { v: s.v, count: s.count, statusKey: s.statusKey, color: (STATUS[s.statusKey] || STATUS.uptodate).seg };
+    if (legendMode === 'band') {
+      const band = versionBand(s.v);
+      present[band] = true;
+      return { v: s.v, count: s.count, color: BAND[band].color };
+    }
+    present[s.statusKey] = true;
+    return { v: s.v, count: s.count, color: (STATUS[s.statusKey] || STATUS.uptodate).seg };
   });
   const spaceCount = new Set(t.map(r => r.space)).size;
-  return { total, up, sug, att, pct, latest, segs, statusesPresent, spaceCount };
+  return { total, up, sug, att, pct, latest, segs, legendMode, present, spaceCount };
 }
 
 /* ─── Filter + group ─────────────────────────────────────────── */
@@ -485,10 +514,17 @@ function distHtml(m) {
     const title = escHtml(s.v + ' — ' + s.count + ' targets');
     return '<div class="fv-dist-seg" title="' + title + '" style="flex:' + s.count + ' 1 0;background:' + s.color + ';"><span>' + label + '</span></div>';
   }).join('');
-  const legendDefs = [['uptodate', 'Up to date'], ['suggested', 'Upgrade suggested'], ['required', 'Upgrade required']];
-  const legend = legendDefs.filter(d => m.statusesPresent[d[0]]).map(d =>
-    '<div class="fv-legend-item"><span class="fv-legend-dot" style="background:' + STATUS[d[0]].seg + '"></span>' + d[1] + '</div>'
-  ).join('');
+  let legend;
+  if (m.legendMode === 'band') {
+    legend = BAND_ORDER.filter(b => m.present[b]).map(b =>
+      '<div class="fv-legend-item"><span class="fv-legend-dot" style="background:' + BAND[b].color + '"></span>' + BAND[b].label + '</div>'
+    ).join('');
+  } else {
+    const legendDefs = [['uptodate', 'Up to date'], ['suggested', 'Upgrade suggested'], ['required', 'Upgrade required']];
+    legend = legendDefs.filter(d => m.present[d[0]]).map(d =>
+      '<div class="fv-legend-item"><span class="fv-legend-dot" style="background:' + STATUS[d[0]].seg + '"></span>' + d[1] + '</div>'
+    ).join('');
+  }
   return '<div class="fv-dist-card"><div class="fv-dist-heading">' + heading + '</div>' +
     '<div class="fv-dist-bar">' + segs + '</div><div class="fv-legend">' + legend + '</div></div>';
 }
