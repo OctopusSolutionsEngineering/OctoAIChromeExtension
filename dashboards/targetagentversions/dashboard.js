@@ -23,7 +23,9 @@
  *    setting (Auto vs Manual) is inferred; verify field names on a live API.
  *  - "Last seen" has no confirmed per-target field; not shown in the table
  *    (CSV only), left as "—" for real data.
- *  - Kubernetes agent CommunicationStyle assumed to be "KubernetesTentacle".
+ *  - Kubernetes agent CommunicationStyle assumed to be "KubernetesTentacle",
+ *    and its Helm-chart version field is inferred (see extractVersion) since
+ *    it isn't under TentacleVersionDetails like a Tentacle's version is.
  *  - Instance-wide load fans out 4 calls per space; fine for typical instances,
  *    but flag for very large space counts (consider paging machines).
  */
@@ -250,6 +252,30 @@ function statusFromEndpoint(tvd) {
   if (tvd.UpgradeSuggested) return 'suggested';
   return 'uptodate';
 }
+
+function looksLikeVersion(s) { return typeof s === 'string' && /^\d+\.\d+/.test(s); }
+
+// Pull the version from a machine endpoint. Tentacles report it under
+// TentacleVersionDetails.Version; the Kubernetes agent reports its Helm-chart
+// version elsewhere, and the exact field isn't documented — so we try known-
+// shaped candidates and then scan any "*version*" key for a version-like value.
+// FLAG: confirm the real K8s agent version field against a live instance.
+function extractVersion(ep) {
+  if (!ep) return '—';
+  if (ep.TentacleVersionDetails && ep.TentacleVersionDetails.Version) return ep.TentacleVersionDetails.Version;
+  const kad = ep.KubernetesAgentDetails || {};
+  const candidates = [
+    kad.AgentVersion, kad.Version, kad.HelmChartVersion, kad.AgentTentacleVersion,
+    ep.AgentVersion, ep.HelmChartVersion, ep.Version
+  ].filter(looksLikeVersion);
+  if (candidates.length) return candidates[0];
+  for (const k in ep) { if (/version/i.test(k) && looksLikeVersion(ep[k])) return ep[k]; }
+  for (const k in ep) {
+    const o = ep[k];
+    if (o && typeof o === 'object') { for (const j in o) { if (/version/i.test(j) && looksLikeVersion(o[j])) return o[j]; } }
+  }
+  return '—';
+}
 function deriveLatest(rows) {
   const up = rows.filter(r => r.statusKey === 'uptodate' && r.version && r.version !== '—').map(r => r.version);
   const pool = up.length ? up : rows.map(r => r.version).filter(v => v && v !== '—');
@@ -272,7 +298,7 @@ function machineToPlain(m, ctx) {
   return {
     id: m.Id, name: m.Name || m.Id,
     space: ctx.spaceName, spaceId: ctx.spaceId,
-    version: (tvd && tvd.Version) || '—',
+    version: extractVersion(ep),
     statusKey: statusFromEndpoint(tvd),
     env: envName, envCat: envCat(envName),
     policy: (pol && pol.Name) || '—', mode: policyMode(pol, ctx.tab),
