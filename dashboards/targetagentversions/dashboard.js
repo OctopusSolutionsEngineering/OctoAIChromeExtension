@@ -23,7 +23,9 @@
  *    setting (Auto vs Manual) is inferred; verify field names on a live API.
  *  - "Last seen" has no confirmed per-target field; not shown in the table
  *    (CSV only), left as "—" for real data.
- *  - Kubernetes agent CommunicationStyle assumed to be "KubernetesTentacle".
+ *  - Kubernetes agent CommunicationStyle assumed to be "KubernetesTentacle",
+ *    and its Helm-chart version field is inferred (see extractVersion) since
+ *    it isn't under TentacleVersionDetails like a Tentacle's version is.
  *  - Instance-wide load fans out 4 calls per space; fine for typical instances,
  *    but flag for very large space counts (consider paging machines).
  */
@@ -54,6 +56,25 @@ const ENVMETA = {
   dev:        { bg: 'rgba(26,119,202,.18)', fg: '#87BFEC' },
   other:      { bg: 'rgba(255,255,255,.06)', fg: '#A7B7C6' }
 };
+
+/* Version-band colouring for the distribution bar (Tentacle tab).
+ * Coloured by Tentacle MAJOR version, not upgrade status:
+ *   0.0.0 / unknown -> grey, major <=4 -> red, major 5-6 -> yellow, major >=7 -> green. */
+const BAND = {
+  unknown: { color: '#6b7d8f', label: 'Unknown (0.0.0)' },
+  red:     { color: '#D63D3D', label: 'Version 4 and below' },
+  yellow:  { color: '#E5B203', label: 'Version 5–6' },
+  green:   { color: '#00874D', label: 'Version 7 and above' }
+};
+const BAND_ORDER = ['unknown', 'red', 'yellow', 'green'];
+function versionBand(v) {
+  if (!v || v === '—' || v === '0.0.0') return 'unknown';
+  const major = parseInt(String(v).split('.')[0], 10);
+  if (isNaN(major)) return 'unknown';
+  if (major <= 4) return 'red';
+  if (major <= 6) return 'yellow';
+  return 'green';
+}
 
 function decorate(r, latest) {
   r._latest = latest || '';
@@ -97,10 +118,12 @@ function makeMockTentacles() {
     { name: 'Manual Updates', mode: 'Manual' }, { name: 'Hospital Nodes', mode: 'Manual' }
   ];
   const plan = [
-    { v: '8.5.1', n: 18, st: 'uptodate' }, { v: '8.4.2', n: 9, st: 'suggested' },
-    { v: '8.4.0', n: 5, st: 'suggested' }, { v: '8.3.1', n: 4, st: 'suggested' },
-    { v: '8.2.4', n: 4, st: 'suggested' }, { v: '8.1.0', n: 2, st: 'suggested' },
-    { v: '7.4.3', n: 2, st: 'suggested' }
+    { v: '8.5.1', n: 64, st: 'uptodate' }, { v: '8.4.2', n: 22, st: 'suggested' },
+    { v: '8.4.0', n: 14, st: 'suggested' }, { v: '8.3.1', n: 9, st: 'suggested' },
+    { v: '8.2.4', n: 9, st: 'suggested' }, { v: '8.1.0', n: 5, st: 'suggested' },
+    { v: '7.4.3', n: 5, st: 'suggested' },
+    { v: '6.3.417', n: 8, st: 'suggested' }, { v: '4.0.0', n: 4, st: 'suggested' },
+    { v: '0.0.0', n: 2, st: 'suggested' }
   ];
   const pfx = ['web', 'api', 'worker', 'sql', 'cache', 'queue', 'app', 'build', 'search', 'gateway', 'ingest', 'report'];
   const comm = ['Listening Tentacle', 'Polling Tentacle'];
@@ -178,12 +201,13 @@ const state = {
   latestT: LATEST_T_MOCK, latestK: LATEST_K_MOCK,
   search: '', fSpace: 'all', fEnv: 'all', fPolicy: 'all', fVersion: 'all', fStatus: 'all', fHealth: 'all', fType: 'all',
   groupBy: 'health',
+  page: 1,
   _filtered: []
 };
 
 function activeTargets() { return state.tab === 'k8s' ? state.k8s : state.tentacles; }
 function activeLatest() { return state.tab === 'k8s' ? state.latestK : state.latestT; }
-function resetFilters() { Object.assign(state, { search: '', fSpace: 'all', fEnv: 'all', fPolicy: 'all', fVersion: 'all', fStatus: 'all', fHealth: 'all', fType: 'all' }); }
+function resetFilters() { Object.assign(state, { search: '', fSpace: 'all', fEnv: 'all', fPolicy: 'all', fVersion: 'all', fStatus: 'all', fHealth: 'all', fType: 'all', page: 1 }); }
 
 /* ─── Real Octopus API (instance-wide) ───────────────────────── */
 function apiUrl(path) { return new URL(path, state.serverUrl).toString(); }
@@ -229,6 +253,30 @@ function statusFromEndpoint(tvd) {
   if (tvd.UpgradeSuggested) return 'suggested';
   return 'uptodate';
 }
+
+function looksLikeVersion(s) { return typeof s === 'string' && /^\d+\.\d+/.test(s); }
+
+// Pull the version from a machine endpoint. Tentacles report it under
+// TentacleVersionDetails.Version; the Kubernetes agent reports its Helm-chart
+// version elsewhere, and the exact field isn't documented — so we try known-
+// shaped candidates and then scan any "*version*" key for a version-like value.
+// FLAG: confirm the real K8s agent version field against a live instance.
+function extractVersion(ep) {
+  if (!ep) return '—';
+  if (ep.TentacleVersionDetails && ep.TentacleVersionDetails.Version) return ep.TentacleVersionDetails.Version;
+  const kad = ep.KubernetesAgentDetails || {};
+  const candidates = [
+    kad.AgentVersion, kad.Version, kad.HelmChartVersion, kad.AgentTentacleVersion,
+    ep.AgentVersion, ep.HelmChartVersion, ep.Version
+  ].filter(looksLikeVersion);
+  if (candidates.length) return candidates[0];
+  for (const k in ep) { if (/version/i.test(k) && looksLikeVersion(ep[k])) return ep[k]; }
+  for (const k in ep) {
+    const o = ep[k];
+    if (o && typeof o === 'object') { for (const j in o) { if (/version/i.test(j) && looksLikeVersion(o[j])) return o[j]; } }
+  }
+  return '—';
+}
 function deriveLatest(rows) {
   const up = rows.filter(r => r.statusKey === 'uptodate' && r.version && r.version !== '—').map(r => r.version);
   const pool = up.length ? up : rows.map(r => r.version).filter(v => v && v !== '—');
@@ -251,7 +299,7 @@ function machineToPlain(m, ctx) {
   return {
     id: m.Id, name: m.Name || m.Id,
     space: ctx.spaceName, spaceId: ctx.spaceId,
-    version: (tvd && tvd.Version) || '—',
+    version: extractVersion(ep),
     statusKey: statusFromEndpoint(tvd),
     env: envName, envCat: envCat(envName),
     policy: (pol && pol.Name) || '—', mode: policyMode(pol, ctx.tab),
@@ -348,13 +396,21 @@ function computeMetrics() {
   const vmap = {};
   t.forEach(r => { if (!vmap[r.version]) vmap[r.version] = { v: r.version, count: 0, statusKey: r.statusKey }; vmap[r.version].count++; });
   let segs = Object.values(vmap).sort((a, b) => vkey(b.v).localeCompare(vkey(a.v))); // newest first
-  const statusesPresent = {};
+  // Tentacle bar is coloured by version band; K8s bar keeps status colouring
+  // (its v2.x versions don't map onto the 4/6/7 Tentacle thresholds).
+  const legendMode = state.tab === 'k8s' ? 'status' : 'band';
+  const present = {};
   segs = segs.map(s => {
-    statusesPresent[s.statusKey] = true;
-    return { v: s.v, count: s.count, statusKey: s.statusKey, color: (STATUS[s.statusKey] || STATUS.uptodate).seg };
+    if (legendMode === 'band') {
+      const band = versionBand(s.v);
+      present[band] = true;
+      return { v: s.v, count: s.count, color: BAND[band].color };
+    }
+    present[s.statusKey] = true;
+    return { v: s.v, count: s.count, color: (STATUS[s.statusKey] || STATUS.uptodate).seg };
   });
   const spaceCount = new Set(t.map(r => r.space)).size;
-  return { total, up, sug, att, pct, latest, segs, statusesPresent, spaceCount };
+  return { total, up, sug, att, pct, latest, segs, legendMode, present, spaceCount };
 }
 
 /* ─── Filter + group ─────────────────────────────────────────── */
@@ -485,10 +541,17 @@ function distHtml(m) {
     const title = escHtml(s.v + ' — ' + s.count + ' targets');
     return '<div class="fv-dist-seg" title="' + title + '" style="flex:' + s.count + ' 1 0;background:' + s.color + ';"><span>' + label + '</span></div>';
   }).join('');
-  const legendDefs = [['uptodate', 'Up to date'], ['suggested', 'Upgrade suggested'], ['required', 'Upgrade required']];
-  const legend = legendDefs.filter(d => m.statusesPresent[d[0]]).map(d =>
-    '<div class="fv-legend-item"><span class="fv-legend-dot" style="background:' + STATUS[d[0]].seg + '"></span>' + d[1] + '</div>'
-  ).join('');
+  let legend;
+  if (m.legendMode === 'band') {
+    legend = BAND_ORDER.filter(b => m.present[b]).map(b =>
+      '<div class="fv-legend-item"><span class="fv-legend-dot" style="background:' + BAND[b].color + '"></span>' + BAND[b].label + '</div>'
+    ).join('');
+  } else {
+    const legendDefs = [['uptodate', 'Up to date'], ['suggested', 'Upgrade suggested'], ['required', 'Upgrade required']];
+    legend = legendDefs.filter(d => m.present[d[0]]).map(d =>
+      '<div class="fv-legend-item"><span class="fv-legend-dot" style="background:' + STATUS[d[0]].seg + '"></span>' + d[1] + '</div>'
+    ).join('');
+  }
   return '<div class="fv-dist-card"><div class="fv-dist-heading">' + heading + '</div>' +
     '<div class="fv-dist-bar">' + segs + '</div><div class="fv-legend">' + legend + '</div></div>';
 }
@@ -554,10 +617,23 @@ function rowHtml(r) {
   '</div>';
 }
 
-function groupsHtml() {
-  const rows = filterRows();
-  const groups = groupRows(rows);
-  if (!rows.length) return '<div class="fv-empty-rows">No targets match the current filters.</div>';
+const PAGE_SIZE = 100;
+
+/* Page the full filtered+sorted list; group only the current page's rows so
+ * group headers still render. CSV export uses the full set, not the page. */
+function paginate() {
+  const filtered = filterRows();            // sets state._filtered (full filtered set)
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (state.page > pages) state.page = pages;
+  if (state.page < 1) state.page = 1;
+  const start = (state.page - 1) * PAGE_SIZE;
+  const slice = filtered.slice(start, start + PAGE_SIZE);
+  return { total, pages, start, slice, groups: groupRows(slice) };
+}
+
+function groupsBodyHtml(groups, total) {
+  if (!total) return '<div class="fv-empty-rows">No targets match the current filters.</div>';
   return groups.map(g =>
     '<div><div class="fv-group-head"><span class="fv-group-dot" style="background:' + g.dot + '"></span>' +
     '<span class="fv-group-label">' + escHtml(g.label) + '</span><span class="fv-group-count">' + g.count + '</span></div>' +
@@ -565,27 +641,56 @@ function groupsHtml() {
   ).join('');
 }
 
-function tableCardHtml(m) {
+function rangeNote(p) {
+  if (!p.total) return '0 of ' + activeTargets().length + ' shown';
+  return 'Showing ' + (p.start + 1) + '–' + (p.start + p.slice.length) + ' of ' + p.total + ' · sorted by version, oldest first';
+}
+
+function pageWindow(cur, pages) {
+  const s = new Set([1, pages, cur, cur - 1, cur + 1, cur - 2, cur + 2]);
+  const list = [...s].filter(n => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const res = []; let prev = 0;
+  list.forEach(n => { if (prev && n - prev > 1) res.push('…'); res.push(n); prev = n; });
+  return res;
+}
+
+function pagerHtml(p) {
+  if (p.total <= PAGE_SIZE) return '';
+  const cur = state.page;
+  const nums = pageWindow(cur, p.pages).map(n =>
+    n === '…' ? '<span class="fv-page-ellipsis">…</span>'
+      : '<button class="fv-page-btn' + (n === cur ? ' fv-page-btn--active' : '') + '" data-page="' + n + '">' + n + '</button>'
+  ).join('');
+  return '<div class="fv-pager">' +
+    '<button class="fv-page-btn" data-page="' + (cur - 1) + '"' + (cur <= 1 ? ' disabled' : '') + '>‹ Prev</button>' +
+    nums +
+    '<button class="fv-page-btn" data-page="' + (cur + 1) + '"' + (cur >= p.pages ? ' disabled' : '') + '>Next ›</button>' +
+  '</div>';
+}
+
+function tableCardHtml() {
   const isK = state.tab === 'k8s';
   const versionLabel = isK ? 'Agent version' : 'Tentacle version';
   const heading = isK ? 'Kubernetes agents' : 'Deployment targets';
-  const resultCount = state._filtered.length;
+  const p = paginate();
   const colhead = '<div class="fv-grid fv-colhead"><div>Deployment target</div><div>' + versionLabel + '</div><div>Space</div><div>Machine policy</div><div>Environment</div><div>Target tag</div><div>Tenant</div><div>Tenant tag set</div></div>';
   return '<div class="fv-card">' + toolbarHtml() +
     '<div class="fv-table-head"><div class="fv-table-head-left"><span class="fv-table-title">' + heading + '</span>' +
-      '<span class="fv-result-pill" id="fv-count">' + resultCount + '</span></div>' +
-      '<div style="display:flex;align-items:center;gap:14px;"><span class="fv-result-note" id="fv-note">' + resultCount + ' of ' + m.total + ' shown · sorted by version, oldest first</span>' +
+      '<span class="fv-result-pill" id="fv-count">' + p.total + '</span></div>' +
+      '<div style="display:flex;align-items:center;gap:14px;"><span class="fv-result-note" id="fv-note">' + rangeNote(p) + '</span>' +
       '<button class="fv-export" id="fv-export">Export CSV</button></div></div>' +
     '<div class="fv-table-scroll"><div class="fv-table-inner">' + colhead +
-      '<div id="fv-groups">' + groupsHtml() + '</div>' +
-    '</div></div></div>';
+      '<div id="fv-groups">' + groupsBodyHtml(p.groups, p.total) + '</div>' +
+    '</div></div>' +
+    '<div id="fv-pager">' + pagerHtml(p) + '</div>' +
+  '</div>';
 }
 
 function renderApp() {
   let body = '';
   if (state.view === 'ready') {
     const m = computeMetrics();
-    body = kpisHtml(m) + distHtml(m) + tableCardHtml(m);
+    body = kpisHtml(m) + distHtml(m) + tableCardHtml();
   } else {
     body = panelHtml();
   }
@@ -593,15 +698,23 @@ function renderApp() {
   wireEvents();
 }
 
-/* Re-render only the table body region on filter/group/search changes. */
-function renderTableOnly() {
-  const g = document.getElementById('fv-groups');
-  if (!g) return;
-  g.innerHTML = groupsHtml();
-  const count = state._filtered.length;
-  const total = activeTargets().length;
-  const cEl = document.getElementById('fv-count'); if (cEl) cEl.textContent = count;
-  const nEl = document.getElementById('fv-note'); if (nEl) nEl.textContent = count + ' of ' + total + ' shown · sorted by version, oldest first';
+/* Re-render only the table body + pager on filter/group/search/page changes. */
+function renderTableRegion() {
+  const p = paginate();
+  const g = document.getElementById('fv-groups'); if (g) g.innerHTML = groupsBodyHtml(p.groups, p.total);
+  const pg = document.getElementById('fv-pager'); if (pg) pg.innerHTML = pagerHtml(p);
+  const cEl = document.getElementById('fv-count'); if (cEl) cEl.textContent = p.total;
+  const nEl = document.getElementById('fv-note'); if (nEl) nEl.textContent = rangeNote(p);
+  wirePager();
+}
+
+function setPage(n) { state.page = n; renderTableRegion(); }
+
+function wirePager() {
+  document.querySelectorAll('#fv-pager [data-page]').forEach(b => {
+    if (b.disabled) return;
+    b.addEventListener('click', () => { const n = parseInt(b.getAttribute('data-page'), 10); if (!isNaN(n)) setPage(n); });
+  });
 }
 
 /* ─── Events ─────────────────────────────────────────────────── */
@@ -619,16 +732,18 @@ function wireEvents() {
   if (state.view !== 'ready') return;
 
   const search = document.getElementById('fv-search');
-  if (search) search.addEventListener('input', e => { state.search = e.target.value; renderTableOnly(); });
+  if (search) search.addEventListener('input', e => { state.search = e.target.value; state.page = 1; renderTableRegion(); });
 
-  const bind = (id, key) => { const el = document.getElementById(id); if (el) el.addEventListener('change', e => { state[key] = e.target.value; renderTableOnly(); }); };
+  const bind = (id, key) => { const el = document.getElementById(id); if (el) el.addEventListener('change', e => { state[key] = e.target.value; state.page = 1; renderTableRegion(); }); };
   bind('fv-space', 'fSpace'); bind('fv-env', 'fEnv'); bind('fv-policy', 'fPolicy'); bind('fv-version', 'fVersion');
   bind('fv-status', 'fStatus'); bind('fv-health', 'fHealth'); bind('fv-type', 'fType');
   const grp = document.getElementById('fv-group');
-  if (grp) grp.addEventListener('change', e => { state.groupBy = e.target.value; renderTableOnly(); });
+  if (grp) grp.addEventListener('change', e => { state.groupBy = e.target.value; state.page = 1; renderTableRegion(); });
 
   const exp = document.getElementById('fv-export');
   if (exp) exp.addEventListener('click', exportCsv);
+
+  wirePager();
 
   // Mock-mode upgrade animation (real mode uses an <a> link-out, no JS).
   document.querySelectorAll('[data-action="upgrade"]').forEach(btn => btn.addEventListener('click', () => {

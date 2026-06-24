@@ -169,3 +169,11 @@ select option { background:#172430; color:#e7eef5; }
 .fv-more { font-size:11.5px; color:#7d90a1; white-space:nowrap; }
 .fv-tenant, .fv-tts { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .fv-empty-rows { padding:32px 20px; text-align:center; color:#7d90a1; font-size:13.5px; }
+
+/* pagination */
+.fv-pager { display:flex; align-items:center; justify-content:center; gap:6px; flex-wrap:wrap; padding:14px 20px; border-top:1px solid #2E475D; }
+.fv-page-btn { background:#172430; border:1px solid #2E475D; color:#cdd8e2; border-radius:4px; padding:6px 11px; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; min-width:34px; }
+.fv-page-btn:hover:not(:disabled):not(.fv-page-btn--active) { border-color:#557999; }
+.fv-page-btn--active { background:rgba(26,119,202,.18); border-color:#1A77CA; color:#87BFEC; }
+.fv-page-btn:disabled { opacity:.4; cursor:default; }
+.fv-page-ellipsis { color:#7d90a1; padding:0 4px; }
