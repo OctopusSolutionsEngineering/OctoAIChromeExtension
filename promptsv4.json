@@ -28,6 +28,10 @@
           {
             "dashboardName": "OSFI Compliance Audit Report",
             "dashboardFile": "osfi/index.html"
+          },
+          {
+            "dashboardName": "Target agent versions",
+            "dashboardFile": "targetagentversions/index.html"
           }
         ]
       },
@@ -71,6 +75,10 @@
           {
             "dashboardName": "OSFI Compliance Audit Report",
             "dashboardFile": "osfi/index.html"
+          },
+          {
+            "dashboardName": "Target agent versions",
+            "dashboardFile": "targetagentversions/index.html"
           }
         ]
       },
