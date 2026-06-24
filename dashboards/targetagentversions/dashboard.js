@@ -118,12 +118,12 @@ function makeMockTentacles() {
     { name: 'Manual Updates', mode: 'Manual' }, { name: 'Hospital Nodes', mode: 'Manual' }
   ];
   const plan = [
-    { v: '8.5.1', n: 18, st: 'uptodate' }, { v: '8.4.2', n: 9, st: 'suggested' },
-    { v: '8.4.0', n: 5, st: 'suggested' }, { v: '8.3.1', n: 4, st: 'suggested' },
-    { v: '8.2.4', n: 4, st: 'suggested' }, { v: '8.1.0', n: 2, st: 'suggested' },
-    { v: '7.4.3', n: 2, st: 'suggested' },
-    { v: '6.3.417', n: 3, st: 'suggested' }, { v: '4.0.0', n: 2, st: 'suggested' },
-    { v: '0.0.0', n: 1, st: 'suggested' }
+    { v: '8.5.1', n: 64, st: 'uptodate' }, { v: '8.4.2', n: 22, st: 'suggested' },
+    { v: '8.4.0', n: 14, st: 'suggested' }, { v: '8.3.1', n: 9, st: 'suggested' },
+    { v: '8.2.4', n: 9, st: 'suggested' }, { v: '8.1.0', n: 5, st: 'suggested' },
+    { v: '7.4.3', n: 5, st: 'suggested' },
+    { v: '6.3.417', n: 8, st: 'suggested' }, { v: '4.0.0', n: 4, st: 'suggested' },
+    { v: '0.0.0', n: 2, st: 'suggested' }
   ];
   const pfx = ['web', 'api', 'worker', 'sql', 'cache', 'queue', 'app', 'build', 'search', 'gateway', 'ingest', 'report'];
   const comm = ['Listening Tentacle', 'Polling Tentacle'];
@@ -201,12 +201,13 @@ const state = {
   latestT: LATEST_T_MOCK, latestK: LATEST_K_MOCK,
   search: '', fSpace: 'all', fEnv: 'all', fPolicy: 'all', fVersion: 'all', fStatus: 'all', fHealth: 'all', fType: 'all',
   groupBy: 'health',
+  page: 1,
   _filtered: []
 };
 
 function activeTargets() { return state.tab === 'k8s' ? state.k8s : state.tentacles; }
 function activeLatest() { return state.tab === 'k8s' ? state.latestK : state.latestT; }
-function resetFilters() { Object.assign(state, { search: '', fSpace: 'all', fEnv: 'all', fPolicy: 'all', fVersion: 'all', fStatus: 'all', fHealth: 'all', fType: 'all' }); }
+function resetFilters() { Object.assign(state, { search: '', fSpace: 'all', fEnv: 'all', fPolicy: 'all', fVersion: 'all', fStatus: 'all', fHealth: 'all', fType: 'all', page: 1 }); }
 
 /* ─── Real Octopus API (instance-wide) ───────────────────────── */
 function apiUrl(path) { return new URL(path, state.serverUrl).toString(); }
@@ -616,10 +617,23 @@ function rowHtml(r) {
   '</div>';
 }
 
-function groupsHtml() {
-  const rows = filterRows();
-  const groups = groupRows(rows);
-  if (!rows.length) return '<div class="fv-empty-rows">No targets match the current filters.</div>';
+const PAGE_SIZE = 100;
+
+/* Page the full filtered+sorted list; group only the current page's rows so
+ * group headers still render. CSV export uses the full set, not the page. */
+function paginate() {
+  const filtered = filterRows();            // sets state._filtered (full filtered set)
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (state.page > pages) state.page = pages;
+  if (state.page < 1) state.page = 1;
+  const start = (state.page - 1) * PAGE_SIZE;
+  const slice = filtered.slice(start, start + PAGE_SIZE);
+  return { total, pages, start, slice, groups: groupRows(slice) };
+}
+
+function groupsBodyHtml(groups, total) {
+  if (!total) return '<div class="fv-empty-rows">No targets match the current filters.</div>';
   return groups.map(g =>
     '<div><div class="fv-group-head"><span class="fv-group-dot" style="background:' + g.dot + '"></span>' +
     '<span class="fv-group-label">' + escHtml(g.label) + '</span><span class="fv-group-count">' + g.count + '</span></div>' +
@@ -627,27 +641,56 @@ function groupsHtml() {
   ).join('');
 }
 
-function tableCardHtml(m) {
+function rangeNote(p) {
+  if (!p.total) return '0 of ' + activeTargets().length + ' shown';
+  return 'Showing ' + (p.start + 1) + '–' + (p.start + p.slice.length) + ' of ' + p.total + ' · sorted by version, oldest first';
+}
+
+function pageWindow(cur, pages) {
+  const s = new Set([1, pages, cur, cur - 1, cur + 1, cur - 2, cur + 2]);
+  const list = [...s].filter(n => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const res = []; let prev = 0;
+  list.forEach(n => { if (prev && n - prev > 1) res.push('…'); res.push(n); prev = n; });
+  return res;
+}
+
+function pagerHtml(p) {
+  if (p.total <= PAGE_SIZE) return '';
+  const cur = state.page;
+  const nums = pageWindow(cur, p.pages).map(n =>
+    n === '…' ? '<span class="fv-page-ellipsis">…</span>'
+      : '<button class="fv-page-btn' + (n === cur ? ' fv-page-btn--active' : '') + '" data-page="' + n + '">' + n + '</button>'
+  ).join('');
+  return '<div class="fv-pager">' +
+    '<button class="fv-page-btn" data-page="' + (cur - 1) + '"' + (cur <= 1 ? ' disabled' : '') + '>‹ Prev</button>' +
+    nums +
+    '<button class="fv-page-btn" data-page="' + (cur + 1) + '"' + (cur >= p.pages ? ' disabled' : '') + '>Next ›</button>' +
+  '</div>';
+}
+
+function tableCardHtml() {
   const isK = state.tab === 'k8s';
   const versionLabel = isK ? 'Agent version' : 'Tentacle version';
   const heading = isK ? 'Kubernetes agents' : 'Deployment targets';
-  const resultCount = state._filtered.length;
+  const p = paginate();
   const colhead = '<div class="fv-grid fv-colhead"><div>Deployment target</div><div>' + versionLabel + '</div><div>Space</div><div>Machine policy</div><div>Environment</div><div>Target tag</div><div>Tenant</div><div>Tenant tag set</div></div>';
   return '<div class="fv-card">' + toolbarHtml() +
     '<div class="fv-table-head"><div class="fv-table-head-left"><span class="fv-table-title">' + heading + '</span>' +
-      '<span class="fv-result-pill" id="fv-count">' + resultCount + '</span></div>' +
-      '<div style="display:flex;align-items:center;gap:14px;"><span class="fv-result-note" id="fv-note">' + resultCount + ' of ' + m.total + ' shown · sorted by version, oldest first</span>' +
+      '<span class="fv-result-pill" id="fv-count">' + p.total + '</span></div>' +
+      '<div style="display:flex;align-items:center;gap:14px;"><span class="fv-result-note" id="fv-note">' + rangeNote(p) + '</span>' +
       '<button class="fv-export" id="fv-export">Export CSV</button></div></div>' +
     '<div class="fv-table-scroll"><div class="fv-table-inner">' + colhead +
-      '<div id="fv-groups">' + groupsHtml() + '</div>' +
-    '</div></div></div>';
+      '<div id="fv-groups">' + groupsBodyHtml(p.groups, p.total) + '</div>' +
+    '</div></div>' +
+    '<div id="fv-pager">' + pagerHtml(p) + '</div>' +
+  '</div>';
 }
 
 function renderApp() {
   let body = '';
   if (state.view === 'ready') {
     const m = computeMetrics();
-    body = kpisHtml(m) + distHtml(m) + tableCardHtml(m);
+    body = kpisHtml(m) + distHtml(m) + tableCardHtml();
   } else {
     body = panelHtml();
   }
@@ -655,15 +698,23 @@ function renderApp() {
   wireEvents();
 }
 
-/* Re-render only the table body region on filter/group/search changes. */
-function renderTableOnly() {
-  const g = document.getElementById('fv-groups');
-  if (!g) return;
-  g.innerHTML = groupsHtml();
-  const count = state._filtered.length;
-  const total = activeTargets().length;
-  const cEl = document.getElementById('fv-count'); if (cEl) cEl.textContent = count;
-  const nEl = document.getElementById('fv-note'); if (nEl) nEl.textContent = count + ' of ' + total + ' shown · sorted by version, oldest first';
+/* Re-render only the table body + pager on filter/group/search/page changes. */
+function renderTableRegion() {
+  const p = paginate();
+  const g = document.getElementById('fv-groups'); if (g) g.innerHTML = groupsBodyHtml(p.groups, p.total);
+  const pg = document.getElementById('fv-pager'); if (pg) pg.innerHTML = pagerHtml(p);
+  const cEl = document.getElementById('fv-count'); if (cEl) cEl.textContent = p.total;
+  const nEl = document.getElementById('fv-note'); if (nEl) nEl.textContent = rangeNote(p);
+  wirePager();
+}
+
+function setPage(n) { state.page = n; renderTableRegion(); }
+
+function wirePager() {
+  document.querySelectorAll('#fv-pager [data-page]').forEach(b => {
+    if (b.disabled) return;
+    b.addEventListener('click', () => { const n = parseInt(b.getAttribute('data-page'), 10); if (!isNaN(n)) setPage(n); });
+  });
 }
 
 /* ─── Events ─────────────────────────────────────────────────── */
@@ -681,16 +732,18 @@ function wireEvents() {
   if (state.view !== 'ready') return;
 
   const search = document.getElementById('fv-search');
-  if (search) search.addEventListener('input', e => { state.search = e.target.value; renderTableOnly(); });
+  if (search) search.addEventListener('input', e => { state.search = e.target.value; state.page = 1; renderTableRegion(); });
 
-  const bind = (id, key) => { const el = document.getElementById(id); if (el) el.addEventListener('change', e => { state[key] = e.target.value; renderTableOnly(); }); };
+  const bind = (id, key) => { const el = document.getElementById(id); if (el) el.addEventListener('change', e => { state[key] = e.target.value; state.page = 1; renderTableRegion(); }); };
   bind('fv-space', 'fSpace'); bind('fv-env', 'fEnv'); bind('fv-policy', 'fPolicy'); bind('fv-version', 'fVersion');
   bind('fv-status', 'fStatus'); bind('fv-health', 'fHealth'); bind('fv-type', 'fType');
   const grp = document.getElementById('fv-group');
-  if (grp) grp.addEventListener('change', e => { state.groupBy = e.target.value; renderTableOnly(); });
+  if (grp) grp.addEventListener('change', e => { state.groupBy = e.target.value; state.page = 1; renderTableRegion(); });
 
   const exp = document.getElementById('fv-export');
   if (exp) exp.addEventListener('click', exportCsv);
+
+  wirePager();
 
   // Mock-mode upgrade animation (real mode uses an <a> link-out, no JS).
   document.querySelectorAll('[data-action="upgrade"]').forEach(btn => btn.addEventListener('click', () => {
