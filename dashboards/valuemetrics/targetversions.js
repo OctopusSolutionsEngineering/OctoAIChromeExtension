@@ -706,8 +706,9 @@ const TargetVersionsView = (() => {
   // route (no /settings leaf) 404s in the portal.
   function machineUrl(r) {
     const base = String(state.serverUrl || '').replace(/\/$/, '');
-    if (!r.id) return base + '/app#/' + (r.spaceId || '') + '/infrastructure/machines';
-    return base + '/app#/' + (r.spaceId || '') + '/infrastructure/machines/' + encodeURIComponent(r.id) + '/settings';
+    const sid = encodeURIComponent(r.spaceId || '');
+    if (!r.id) return base + '/app#/' + sid + '/infrastructure/machines';
+    return base + '/app#/' + sid + '/infrastructure/machines/' + encodeURIComponent(r.id) + '/settings';
   }
 
   // Has a working deep link? (real server data with a known target id)
