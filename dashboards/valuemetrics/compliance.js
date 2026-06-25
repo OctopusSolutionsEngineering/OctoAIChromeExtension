@@ -1139,7 +1139,7 @@ const ComplianceView = (() => {
       return `<span class="badge ${key === 'blocked' || key === 'compliance' ? 'danger' : 'warning'}">${count}</span>`;
     };
     const chip = (key, label, count, state, active, icon) =>
-      `<button class="blocker-chip${active ? ' active' : ''}" data-filter="${key}" type="button">${
+      `<button class="blocker-chip${active ? ' active' : ''}" data-filter="${key}" type="button" aria-pressed="${active ? 'true' : 'false'}">${
         icon ? `<i class="fa-solid ${icon}" style="opacity:.6;margin-right:.35em;"></i>` : ''
       }${label} ${countBadge(key, count, state)}</button>`;
     const strip = `<div class="blocker-filters" id="blocker-filters">
