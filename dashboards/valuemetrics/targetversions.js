@@ -506,21 +506,27 @@ const TargetVersionsView = (() => {
     const tAll = [], kAll = [], oAll = [];
     let anyAuth = false;
 
-    const results = await Promise.all(spaces.map(async sp => {
-      try {
-        // Only `machines` is essential — if it fails the space has no data and is
-        // correctly dropped (outer catch). The env/policy/tenant lookups are just
-        // Id→Name maps, so guard them: a failed lookup degrades to Id-fallback
-        // names rather than discarding the whole space's targets.
-        const [envs, policies, tenants, machines] = await Promise.all([
-          fetchJson('/api/' + sp.Id + '/environments/all').catch(() => []),
-          fetchJson('/api/' + sp.Id + '/machinepolicies/all').catch(() => []),
-          fetchJson('/api/' + sp.Id + '/tenants/all').catch(() => []),
-          fetchJson('/api/' + sp.Id + '/machines/all')
-        ]);
-        return { sp, envs, policies, tenants, machines };
-      } catch (e) { if (e && e.auth) anyAuth = true; return null; }
-    }));
+    const results = [];
+    const SPACE_BATCH = 6;
+    for (let i = 0; i < spaces.length; i += SPACE_BATCH) {
+      const batch = spaces.slice(i, i + SPACE_BATCH);
+      const part = await Promise.all(batch.map(async sp => {
+        try {
+          // Only `machines` is essential — if it fails the space has no data and is
+          // correctly dropped (outer catch). The env/policy/tenant lookups are just
+          // Id→Name maps, so guard them: a failed lookup degrades to Id-fallback
+          // names rather than discarding the whole space's targets.
+          const [envs, policies, tenants, machines] = await Promise.all([
+            fetchJson('/api/' + sp.Id + '/environments/all').catch(() => []),
+            fetchJson('/api/' + sp.Id + '/machinepolicies/all').catch(() => []),
+            fetchJson('/api/' + sp.Id + '/tenants/all').catch(() => []),
+            fetchJson('/api/' + sp.Id + '/machines/all')
+          ]);
+          return { sp, envs, policies, tenants, machines };
+        } catch (e) { if (e && e.auth) anyAuth = true; return null; }
+      }));
+      results.push(...part);
+    }
 
     const ok = results.filter(Boolean);
     if (!ok.length) {
