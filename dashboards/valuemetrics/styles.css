@@ -604,6 +604,11 @@ a:hover {
   color: var(--colorTextPrimary);
 }
 
+.blocker-chip:focus-visible {
+  box-shadow: var(--shadowFocused);
+  outline: none;
+}
+
 .blocker-chip.active {
   background: var(--colorBackgroundTertiary);
   border-color: var(--colorBorderActive);
