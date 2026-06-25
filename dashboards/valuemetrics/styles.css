@@ -3520,6 +3520,7 @@ a.tv-ma-tenant-name:hover {
   background:none; border:none; border-bottom:2px solid transparent;
   font-size:14px; font-weight:600; cursor:pointer; color:#9DB0C0; font-family:inherit;
 }
+.fv-tab:focus-visible { box-shadow: var(--shadowFocused); outline: none; }
 .fv-tab--active { color:#fff; border-bottom-color:#1A77CA; }
 .fv-tab-count {
   font-size:11px; font-weight:700; color:#9DB0C0;
