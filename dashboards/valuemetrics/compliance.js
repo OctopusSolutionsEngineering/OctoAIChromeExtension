@@ -1220,7 +1220,11 @@ const ComplianceView = (() => {
       const btn = e.target.closest('.blocker-chip');
       if (!btn) return;
       const filter = btn.getAttribute('data-filter');
-      strip.querySelectorAll('.blocker-chip').forEach(c => c.classList.toggle('active', c === btn));
+      strip.querySelectorAll('.blocker-chip').forEach(c => {
+        const active = c === btn;
+        c.classList.toggle('active', active);
+        c.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
       if (!table) return;
       table.querySelectorAll('tbody tr').forEach(tr => {
         tr.style.display = (filter === 'all' || tr.getAttribute('data-cat') === filter) ? '' : 'none';
