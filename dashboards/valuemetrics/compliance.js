@@ -441,27 +441,43 @@ const ComplianceData = (() => {
 
       // Per-space: interruptions (incl. resolved), the resume events that mark
       // when each interruption was answered, and teams (for responsible names).
+      // safeGet rethrows 401/403 (by design, so a total lack of access surfaces a
+      // permission error). But this runs per-space inside Promise.all, so a single
+      // space the user can't read would reject the whole batch and break the entire
+      // tab even when other spaces are accessible. softAuth catches 401/403 PER CALL
+      // (so e.g. a TeamView denial can't also hide readable interruptions) and marks
+      // the space denied; the render then shows a "couldn't read N spaces" banner
+      // rather than a misleading all-clear. We only fail hard when interruptions are
+      // unreadable in EVERY space (handled after the loop).
+      const softAuth = (p) => p.then(v => ({ v, denied: false }), e => {
+        const s = e && (e.status || e.statusCode || (e.response && e.response.status));
+        if (s === 401 || s === 403) return { v: null, denied: true };
+        throw e;
+      });
       const perSpace = {};
       await Promise.all(activeSpaceIds.map(async (sid) => {
-        const [interruptions, eventsResult, teams] = await Promise.all([
-          safeGet(`/api/${sid}/interruptions?take=500&pendingOnly=false`),
+        const [intrR, eventsResult, teamsR] = await Promise.all([
+          softAuth(safeGet(`/api/${sid}/interruptions?take=500&pendingOnly=false`)),
           softGetEvents(`/api/${sid}/events?eventCategories=DeploymentResumed,RunbookRunResumed&from=${fromISO}&take=500`),
-          safeGet(`/api/${sid}/teams/all`),
+          softAuth(safeGet(`/api/${sid}/teams/all`)),
         ]);
         perSpace[sid] = {
-          interruptions: interruptions?.Items || [],
-          interruptionsOk: interruptions != null, // false => the call errored (non-auth) and was swallowed
+          interruptions: intrR.v?.Items || [],
+          interruptionsOk: intrR.v != null,       // false => denied (401/403) or swallowed non-auth error
+          interruptionsDenied: intrR.denied,      // true => specifically a permission denial
           resumeEvents: eventsResult.items,
           eventsDenied: eventsResult.denied,
-          teams: teams || [],
+          teams: teamsR.v || [],
         };
       }));
 
-      const users = await safeGet('/api/users?take=500');
+      // Only used to resolve responsible-user display names — a permission denial
+      // here shouldn't break the tab, so tolerate auth errors and fall back to ids.
+      const users = (await softAuth(safeGet('/api/users?take=500'))).v;
 
       // Diagnostics — surface exactly what the interruptions endpoint returned
       // per space, so an empty tab can be told apart from a fetch problem.
-      let diagTotal = 0, diagPending = 0, diagDenied = false, diagErrored = 0;
+      let diagTotal = 0, diagPending = 0, diagDenied = false, diagErrored = 0, diagIntDenied = 0;
       for (const sid of activeSpaceIds) {
         const ps = perSpace[sid];
         const n = ps.interruptions.length;
@@ -469,14 +485,23 @@ const ComplianceData = (() => {
         diagTotal += n;
         diagPending += p;
         if (ps.eventsDenied) diagDenied = true;
+        if (ps.interruptionsDenied) diagIntDenied++;
         if (!ps.interruptionsOk) diagErrored++;
-        log(`Interventions: ${(allSpaceData[sid].space?.Name || sid)} → ${ps.interruptionsOk ? n + ' interruptions (' + p + ' pending)' : 'FETCH ERROR'}, ${ps.resumeEvents.length} resume events${ps.eventsDenied ? ' [events DENIED]' : ''}`);
+        log(`Interventions: ${(allSpaceData[sid].space?.Name || sid)} → ${ps.interruptionsOk ? n + ' interruptions (' + p + ' pending)' : (ps.interruptionsDenied ? 'PERMISSION DENIED' : 'FETCH ERROR')}, ${ps.resumeEvents.length} resume events${ps.eventsDenied ? ' [events DENIED]' : ''}`);
       }
       log(`Interventions: scanned ${activeSpaceIds.length} spaces — ${diagTotal} interruptions total (${diagPending} pending)${diagErrored ? `, ${diagErrored} space(s) errored on interruptions fetch` : ''}`);
 
       log('Interventions: computing analytics...');
       const result = computeInterventions(allSpaceData, perSpace, users?.Items || [], fromDate);
-      result.diag = { spacesScanned: activeSpaceIds.length, totalInterruptions: diagTotal, totalPending: diagPending, eventsDenied: diagDenied, erroredSpaces: diagErrored };
+      result.diag = {
+        spacesScanned: activeSpaceIds.length,
+        totalInterruptions: diagTotal, totalPending: diagPending,
+        eventsDenied: diagDenied,
+        erroredSpaces: diagErrored,
+        // true when EVERY scanned space denied interruptions — render an explicit
+        // permission message rather than a misleading "all clear".
+        allInterruptionsDenied: diagIntDenied > 0 && diagIntDenied === activeSpaceIds.length,
+      };
 
       // Other "deployment is held / gated" surfaces, fetched in parallel. Each
       // soft-fails independently so one missing permission or feature never
@@ -1133,10 +1158,14 @@ const ComplianceView = (() => {
     // this banner it would silently masquerade as "all clear" and hide a real
     // pending intervention. Surfaced in both the empty and populated branches.
     const errN = data.diag?.erroredSpaces || 0;
+    const allDenied = data.diag?.allInterruptionsDenied;
+    const errMsg = allDenied
+      ? `Interruptions couldn't be read in <strong>any</strong> space &mdash; this needs the <strong>InterruptionView</strong> permission. Approvals &amp; manual interventions are <strong>not shown</strong>.`
+      : `Couldn't read interruptions in <strong>${errN}</strong> space${errN === 1 ? '' : 's'} &mdash; any pending interventions there are <strong>not shown</strong> below.`;
     const errNote = errN
       ? `<div class="card" style="margin-bottom:var(--space-sm);"><div class="card-body" style="padding:var(--space-md);">
           <i class="fa-solid fa-triangle-exclamation text-warning"></i>
-          <span class="text-secondary" style="margin-left:var(--space-xs);">Couldn't read interruptions in <strong>${errN}</strong> space${errN === 1 ? '' : 's'} &mdash; any pending interventions there are <strong>not shown</strong> below.</span>
+          <span class="text-secondary" style="margin-left:var(--space-xs);">${errMsg}</span>
         </div></div>`
       : '';
 
