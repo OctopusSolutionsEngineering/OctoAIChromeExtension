@@ -449,6 +449,11 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
     updateRefreshTime();
     DashboardData.cancelEnrichment();
     DashboardData.clearHistoryCache();
+    // Drop cached interventions data so the live "awaiting action" list and
+    // governance stats recompute from the freshly-fetched space data.
+    if (typeof ComplianceData !== 'undefined') ComplianceData.reset();
+    // Drop the cached target-agent-version estate so it refetches on next visit.
+    if (typeof TargetVersionsView !== 'undefined') TargetVersionsView.reset();
     DashboardUI.loadDashboard();
     Analytics.trackEvent('dashboard_refreshed');
 });

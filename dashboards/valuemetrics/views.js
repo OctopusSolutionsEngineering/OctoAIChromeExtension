@@ -2785,6 +2785,16 @@ const Views = (() => {
   // the dashboard version is bumped — no other wiring is required.
   const CHANGELOG = [
     {
+      version: '1.0.53',
+      date: 'Jun 2026',
+      changes: [
+        'Added the Target Versions page — see Tentacle, Kubernetes and other deployment-target agent versions across your spaces, which are up to date or need upgrading, with grouping, filtering and search.',
+        'Interventions is now a single "Blockers" view — approvals, change requests, blocked releases, compliance blocks and freezes appear in one filterable table with a count for each category, instead of separate sections.',
+        'Deployments waiting on a ServiceNow or Jira Service Desk change request are now detected and shown with their change number (linked to the ITSM record) and what they are waiting on.',
+        'Reworked the Interventions metrics around all blockers — "Blocked now" reflects every category, and freeze windows now display in your local timezone.',
+      ],
+    },
+    {
       version: '1.0.52',
       date: 'Jun 2026',
       changes: [
@@ -2872,6 +2882,12 @@ const Views = (() => {
     renderVelocity,
     wireVelocityEvents,
     renderReliability,
+    // Interventions view (delegates to ComplianceView in compliance.js)
+    renderInterventions: (summary) => ComplianceView.render(summary),
+    wireInterventionsEvents: (summary) => ComplianceView.wire(summary),
+    // Target agent versions view (delegates to TargetVersionsView in targetversions.js)
+    renderTargetversions: (summary) => TargetVersionsView.render(summary),
+    wireTargetversionsEvents: (summary) => TargetVersionsView.wire(summary),
     // Insight views
     renderSpaces,
     wireSpacesEvents,
