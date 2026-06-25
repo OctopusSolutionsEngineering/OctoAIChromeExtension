@@ -858,7 +858,9 @@ const ComplianceView = (() => {
 
   function ageString(iso) {
     if (!iso) return '--';
-    const mins = (Date.now() - new Date(iso).getTime()) / 60000;
+    const t = new Date(iso).getTime();
+    if (isNaN(t)) return '--';
+    const mins = (Date.now() - t) / 60000;
     if (mins < 1) return 'just now';
     if (mins < 60) return Math.round(mins) + 'm';
     const hrs = mins / 60;
