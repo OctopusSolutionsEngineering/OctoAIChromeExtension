@@ -11,6 +11,54 @@ async function findLibraryVariableSet(spaceId) {
     return collection.filter(lvs => lvs.Name === lvsName).pop();
 }
 
+async function getAdditionalSystemPrompt() {
+
+    try {
+        const match = getSpaceMatch();
+        if (match) {
+            const octoAiLvs = await findLibraryVariableSet(match);
+
+            if (!octoAiLvs) {
+                return "";
+            }
+
+            const octoAiLvsVariableSetId = await fetch("/api/Spaces/" + match + "/LibraryVariableSets/" + octoAiLvs.Id, {credentials: 'include'})
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to find Library variable set.");
+                    }
+                    return response.json();
+                })
+                .then(json => json.VariableSetId);
+
+            const octoAiLvsVariables = await fetch("/api/Spaces/" + match + "/Variables/" + octoAiLvsVariableSetId, {credentials: 'include'})
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("Failed to find Library variable set variables.");
+                    }
+                    return response.json();
+                })
+                .then(json => json.Variables);
+
+
+            const prompt = octoAiLvsVariables
+                .filter(v => v.Name.trim() === "OctoAI.Prompt.AdditionalSystemPrompt")
+                .map(v => v.Value)
+                .pop() || "";
+
+            if (prompt) {
+                return prompt
+            }
+
+            return "";
+        }
+    } catch (error) {
+        Logger.error(error.message);
+    }
+
+    return "";
+}
+
 async function getLocalPrompts() {
     
     const maxPrompts = 5

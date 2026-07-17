@@ -91,10 +91,20 @@ async function callOctoAi(systemPrompt, systemPromptOnly, prompt) {
 
         const creds = await createOctopusApiKey();
 
+        // This is the additional information added to every prompt
+        const additionalSystemPrompt = await getAdditionalSystemPrompt();
+
         // Compound document prompts are separated by a line with "---" in the middle.
         const splitPrompts = combinedPrompt
             .split("\n\n---\n\n")
-            .filter(p => p.trim());
+            .filter(p => p.trim())
+            .map(p => p.trim())
+            .map(p => {
+                if (additionalSystemPrompt) {
+                    return additionalSystemPrompt + "\n" + p;
+                }
+                return p;
+            })
 
         const enrichedPrompts = await Promise.all(
             splitPrompts.map(p => enrichPrompt(p)))
