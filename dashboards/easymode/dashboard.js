@@ -126,7 +126,7 @@ const terraformOptionInstructions = {
 
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
-    const ADDITIONAL_SYSTEM_PROMPT_LIBRARY_SET = 'OctoAI.Prompt.AdditionalSystemPrompt';
+    const ADDITIONAL_SYSTEM_PROMPT_LIBRARY_SET = 'OctoAI Prompts';
     const ADDITIONAL_SYSTEM_PROMPT_VARIABLE = 'OctoAI.Prompt.AdditionalSystemPrompt';
     const platformCards = document.querySelectorAll('.platform-card');
     const tenantCards = document.querySelectorAll('.tenant-card');
