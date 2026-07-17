@@ -126,6 +126,8 @@ const terraformOptionInstructions = {
 
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
+    const ADDITIONAL_SYSTEM_PROMPT_LIBRARY_SET = 'OctoAI.Prompt.AdditionalSystemPrompt';
+    const ADDITIONAL_SYSTEM_PROMPT_VARIABLE = 'OctoAI.Prompt.AdditionalSystemPrompt';
     const platformCards = document.querySelectorAll('.platform-card');
     const tenantCards = document.querySelectorAll('.tenant-card');
     const stepCards = document.querySelectorAll('.step-card');
@@ -154,6 +156,114 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedProjectGroups = [];
     let selectedIntentionalErrors = [];
     let selectedTerraformOptions = [];
+    const additionalPromptCache = {};
+
+    function getAdditionalPromptCacheKey(serverUrl, spaceName) {
+        return `${serverUrl}::${spaceName || ''}`;
+    }
+
+    async function fetchJsonWithAuthHandling(url) {
+        const response = await fetch(url, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            throw new Error(
+                `Authentication with Octopus Deploy failed (HTTP ${response.status}). ` +
+                'Please sign in again to Octopus Deploy in the main browser tab, then reload this dashboard.'
+            );
+        }
+
+        if (!response.ok) {
+            throw new Error(`Octopus API call failed: ${response.status} ${response.statusText}`);
+        }
+
+        return response.json();
+    }
+
+    async function resolveSpaceId(serverUrl, spaceName) {
+        if (!spaceName) {
+            return null;
+        }
+
+        if (/^Spaces-\d+$/i.test(spaceName)) {
+            return spaceName;
+        }
+
+        const spacesUrl = new URL('/api/spaces', serverUrl);
+        spacesUrl.searchParams.set('partialName', spaceName);
+        spacesUrl.searchParams.set('take', '100');
+
+        const spacesResponse = await fetchJsonWithAuthHandling(spacesUrl);
+        if (!Array.isArray(spacesResponse.Items)) {
+            return null;
+        }
+
+        const exactSpace = spacesResponse.Items.find(space =>
+            space && typeof space.Name === 'string' && space.Name.toLowerCase() === spaceName.toLowerCase()
+        );
+
+        return exactSpace?.Id || null;
+    }
+
+    async function loadAdditionalSystemPrompt(serverUrl, spaceName) {
+        const cacheKey = getAdditionalPromptCacheKey(serverUrl, spaceName);
+        if (Object.prototype.hasOwnProperty.call(additionalPromptCache, cacheKey)) {
+            return additionalPromptCache[cacheKey];
+        }
+
+        const spaceId = await resolveSpaceId(serverUrl, spaceName);
+        if (!spaceId) {
+            additionalPromptCache[cacheKey] = '';
+            return '';
+        }
+
+        const librarySetsUrl = new URL(`/api/${spaceId}/libraryvariablesets`, serverUrl);
+        librarySetsUrl.searchParams.set('partialName', ADDITIONAL_SYSTEM_PROMPT_LIBRARY_SET);
+        librarySetsUrl.searchParams.set('take', '100');
+
+        const librarySetsResponse = await fetchJsonWithAuthHandling(librarySetsUrl);
+        const matchingLibrarySet = Array.isArray(librarySetsResponse.Items)
+            ? librarySetsResponse.Items.find(variableSet =>
+                variableSet
+                && typeof variableSet.Name === 'string'
+                && variableSet.Name === ADDITIONAL_SYSTEM_PROMPT_LIBRARY_SET
+                && typeof variableSet.VariableSetId === 'string'
+            )
+            : null;
+
+        if (!matchingLibrarySet) {
+            additionalPromptCache[cacheKey] = '';
+            return '';
+        }
+
+        const variablesUrl = new URL(`/api/${spaceId}/variables/${matchingLibrarySet.VariableSetId}`, serverUrl);
+        const variablesResponse = await fetchJsonWithAuthHandling(variablesUrl);
+        const matchingVariable = Array.isArray(variablesResponse.Variables)
+            ? variablesResponse.Variables.find(variable =>
+                variable
+                && variable.Name === ADDITIONAL_SYSTEM_PROMPT_VARIABLE
+                && typeof variable.Value === 'string'
+            )
+            : null;
+
+        const additionalPrompt = matchingVariable?.Value?.trim() || '';
+        additionalPromptCache[cacheKey] = additionalPrompt;
+        return additionalPrompt;
+    }
+
+    async function buildEnhancedPrompt(basePrompt, config) {
+        const spaceName = config.context.space || 'Unknown';
+        const additionalPrompt = await loadAdditionalSystemPrompt(config.lastServerUrl, spaceName);
+        const promptWithAdditionalSystemPrompt = additionalPrompt
+            ? `${additionalPrompt}\n\n${basePrompt}`
+            : basePrompt;
+        return `${promptWithAdditionalSystemPrompt}\n\nThe current space is ${spaceName}`;
+    }
 
     // Helper function to clear all selections below the tenant row (state, UI, and localStorage)
     function clearSubSelections() {
@@ -1003,15 +1113,19 @@ document.addEventListener('DOMContentLoaded', function() {
         clearPageAndShowLoading(isComplexPrompt);
 
         // Step 2: Call dashboardGetConfig from api.js
-        dashboardGetConfig(function(config) {
+        dashboardGetConfig(async function(config) {
             if (!config || !config.lastServerUrl) {
                 showError('No server configuration found. Please launch the dashboard from an Octopus Deploy instance.');
                 return;
             }
 
-            // Append space name to the prompt
-            const spaceName = config.context.space || 'Unknown';
-            const enhancedPrompt = promptText + '\n\nThe current space is ' + spaceName;
+            let enhancedPrompt;
+            try {
+                enhancedPrompt = await buildEnhancedPrompt(promptText, config);
+            } catch (error) {
+                showError('An error occurred while loading additional system prompt: ' + error.message);
+                return;
+            }
 
             // Step 3: Call dashboardSendPrompt with the enhanced prompt and lastServerUrl
             dashboardSendPrompt(enhancedPrompt, config.lastServerUrl)
@@ -1066,15 +1180,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Call dashboardGetConfig from api.js
-        dashboardGetConfig(function(config) {
+        dashboardGetConfig(async function(config) {
             if (!config || !config.lastServerUrl) {
                 showError('No server configuration found. Please launch the dashboard from an Octopus Deploy instance.');
                 return;
             }
 
-            // Append space name to the prompt
-            const spaceName = config.context.space || 'Unknown';
-            const enhancedPrompt = sectionText + '\n\nThe current space is ' + spaceName;
+            let enhancedPrompt;
+            try {
+                enhancedPrompt = await buildEnhancedPrompt(sectionText, config);
+            } catch (error) {
+                showError('An error occurred while loading additional system prompt: ' + error.message);
+                return;
+            }
 
             // Call dashboardSendPrompt with the enhanced prompt and lastServerUrl
             dashboardSendPrompt(enhancedPrompt, config.lastServerUrl)
@@ -1756,4 +1874,3 @@ function bindApprovalResponseButtons() {
         });
     }
 }
-
