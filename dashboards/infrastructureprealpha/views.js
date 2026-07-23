@@ -102,6 +102,31 @@ const Views = (function () {
       +     '<a class="ip-btn" href="' + escHtml(String(IP.serverUrl||'').replace(/\/$/,'') + '/app#/infrastructure/machines/new') + '" target="_blank" rel="noopener">Add deployment target</a></div>'
       +   body + '</div></div>';
   }
+  function _row(k,v){ return '<div class="ip-kv"><span>' + escHtml(k) + '</span><b>' + escHtml(v) + '</b></div>'; }
+  function renderTargetDetail(IP) {
+    const t = (IP.estate.targets||[]).find(x => x.id === IP.detailId);
+    if (!t) return '<div class="ip-state"><h3>Target not found</h3><a class="ip-link" href="#targets">← Back to targets</a></div>';
+    const machineUrl = String(IP.serverUrl||'').replace(/\/$/,'') + '/app#/infrastructure/machines/' + encodeURIComponent(t.id);
+    const placeholder = title => '<section class="ip-card"><h4>' + title + '</h4>'
+      + '<p class="ip-sub">Not available in PreAlpha — view on the <a class="ip-link" href="'
+      + escHtml(machineUrl) + '" target="_blank" rel="noopener">target page in Octopus</a>.</p></section>';
+    return ''
+      + '<a class="ip-link" href="#targets">← Deployment targets</a>'
+      + '<header class="ip-head"><h2>' + escHtml(t.name) + '</h2>'
+      +   '<p class="ip-sub">' + escHtml(t.kind) + ' · ' + escHtml(t.health) + '</p></header>'
+      + '<div class="ip-grid">'
+      +   '<section class="ip-card"><h4>Connectivity</h4>' + _row('Communication', t.comm) + _row('Health', t.health) + '</section>'
+      +   '<section class="ip-card"><h4>Tentacle version</h4>' + _row('Installed', t.version)
+      +     '<p class="ip-sub">Upgrades are governed by the ' + escHtml(t.policy) + ' machine policy.</p></section>'
+      +   '<section class="ip-card"><h4>Settings</h4>' + _row('Environment', t.env) + _row('Target tag', t.tag)
+      +     _row('Tenant', t.tenant) + _row('Machine policy', t.policy) + '</section>'
+      +   placeholder('Projects &amp; last release')
+      +   placeholder('Recent deployments')
+      +   '<section class="ip-card"><h4>Runbook runs</h4><p class="ip-sub">No runbook runs yet — this target hasn\'t been part of a runbook run.</p></section>'
+      +   placeholder('Events')
+      + '</div>';
+  }
+  function bindTargetDetail(IP) { /* back link is a plain hash anchor; nothing to wire yet */ }
   function bindTargets(IP) {
     const root = document.getElementById('main-content');
     const rerender = () => { root.innerHTML = renderTargets(IP); bindTargets(IP); };
@@ -128,6 +153,6 @@ const Views = (function () {
       window.location.hash = '#targets/' + encodeURIComponent(r.getAttribute('data-id'));
     }));
   }
-  return { escHtml, stateView, renderOverview, renderTargets, bindTargets };
+  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

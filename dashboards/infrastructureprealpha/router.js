@@ -10,7 +10,8 @@ const Router = (function () {
     const hash = (window.location.hash || '#overview').slice(1);
     // target detail route: #targets/<id>
     if (hash.indexOf('targets/') === 0) {
-      IP.detailId = decodeURIComponent(hash.slice('targets/'.length));
+      let raw = hash.slice('targets/'.length);
+      try { IP.detailId = decodeURIComponent(raw); } catch (e) { IP.detailId = raw; }
       setActive('targets');
       el.innerHTML = Views.renderTargetDetail(IP);
       Views.bindTargetDetail && Views.bindTargetDetail(IP);
