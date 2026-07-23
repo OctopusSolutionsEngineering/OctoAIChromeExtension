@@ -229,3 +229,7 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-kv{display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--border);font-size:13px}
 .ip-kv:first-of-type{border-top:0}
 .ip-kv span{color:var(--fg2)}
+
+.ip-setup-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+.ip-setup-card h4{margin:0 0 6px}
+.ip-setup-card .ip-btn{margin-top:12px;display:inline-block}
