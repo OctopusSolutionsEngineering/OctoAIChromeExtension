@@ -199,6 +199,9 @@ function applyFilters(targets, filters, search) {
   });
 }
 
+if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
+  buildEstate, overviewModel, buildFacets, applyFilters, machineToTarget }; }
+
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, commLabel, kindLabel, envCat, extractVersion, osLabel,
