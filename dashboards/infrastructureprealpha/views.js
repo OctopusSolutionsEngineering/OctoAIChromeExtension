@@ -49,6 +49,85 @@ const Views = (function () {
       +     '<p class="ip-sub">Wired in a later phase. Shows connections, gateway health, and managed apps when the instance exposes Argo CD.</p></section>'
       + '</div>';
   }
-  return { escHtml, stateView, renderOverview };
+  const IP_PAGE_SIZE = 100;
+  function chip(key, value, label) {
+    return '<button class="ip-chip" data-key="' + escHtml(key) + '" data-value="' + escHtml(value) + '">'
+      + escHtml(label) + ' ✕</button>';
+  }
+  function renderTargets(IP) {
+    const all = IP.estate.targets;
+    const facets = Data.buildFacets(all);
+    const rows = Data.applyFilters(all, IP.filters, IP.search);
+    const pages = Math.max(1, Math.ceil(rows.length / IP_PAGE_SIZE));
+    const page = Math.min(IP.page || 1, pages);
+    const slice = rows.slice((page-1)*IP_PAGE_SIZE, page*IP_PAGE_SIZE);
+
+    const chips = [];
+    Object.keys(IP.filters||{}).forEach(k => (IP.filters[k]||[]).forEach(v => {
+      const f = facets.find(x=>x.key===k); const o = f && f.options.find(x=>x.value===v);
+      chips.push(chip(k, v, (f?f.label:k) + ': ' + (o?o.label:v)));
+    }));
+
+    const facetHtml = facets.map(f => f.options.length ? '<div class="ip-facet"><div class="ip-facet-h">'
+      + escHtml(f.label) + '</div>' + f.options.slice(0,12).map(o => {
+        const on = (IP.filters[f.key]||[]).includes(o.value);
+        return '<label class="ip-opt"><input type="checkbox" data-key="' + escHtml(f.key) + '" data-value="'
+          + escHtml(o.value) + '"' + (on?' checked':'') + '> <span>' + escHtml(o.label)
+          + '</span><b>' + o.count + '</b></label>';
+      }).join('') + '</div>' : '').join('');
+
+    const rowHtml = slice.map(t =>
+      '<tr class="ip-row" data-id="' + escHtml(t.id) + '">'
+      + '<td><b>' + escHtml(t.name) + '</b><div class="ip-row-sub">' + escHtml(t.kind) + '</div></td>'
+      + '<td>' + escHtml(t.health) + '</td><td>' + escHtml(t.env) + '</td>'
+      + '<td>' + escHtml(t.tag) + '</td><td>' + escHtml(t.tenant) + '</td>'
+      + '<td>' + escHtml(t.policy) + '</td><td>' + escHtml(t.version) + '</td></tr>').join('');
+
+    const body = rows.length
+      ? '<table class="ip-table ip-targets"><thead><tr><th>Deployment target</th><th>Health</th><th>Environment</th><th>Target tag</th><th>Tenant</th><th>Machine policy</th><th>Agent version</th></tr></thead><tbody>' + rowHtml + '</tbody></table>'
+        + (pages>1 ? '<div class="ip-pager" data-pages="'+pages+'" data-page="'+page+'">Page ' + page + ' of ' + pages
+          + ' <button class="ip-page-prev"' + (page<=1?' disabled':'') + '>Prev</button>'
+          + '<button class="ip-page-next"' + (page>=pages?' disabled':'') + '>Next</button></div>' : '')
+      : '<div class="ip-empty"><h3>No targets match these filters</h3><p>Try removing a filter or clearing your search.</p></div>';
+
+    return '<div class="ip-targets-wrap">'
+      + '<div class="ip-facets"><div class="ip-facet-title">Filters</div>'
+      +   (chips.length ? '<div class="ip-chips">' + chips.join('') + '<button class="ip-clear">Clear all</button></div>' : '')
+      +   facetHtml + '</div>'
+      + '<div class="ip-targets-main">'
+      +   '<header class="ip-head"><h2>Deployment targets</h2>'
+      +     '<p class="ip-sub">Assess health across the estate and drill in with fast, faceted filters.</p></header>'
+      +   '<div class="ip-toolbar"><input class="ip-search" type="search" placeholder="Search targets…" value="'
+      +     escHtml(IP.search||'') + '"><span class="ip-count">' + rows.length + ' of ' + all.length + '</span>'
+      +     '<a class="ip-btn" href="' + escHtml(String(IP.serverUrl||'').replace(/\/$/,'') + '/app#/infrastructure/machines/new') + '" target="_blank" rel="noopener">Add deployment target</a></div>'
+      +   body + '</div></div>';
+  }
+  function bindTargets(IP) {
+    const root = document.getElementById('main-content');
+    const rerender = () => { root.innerHTML = renderTargets(IP); bindTargets(IP); };
+    const search = root.querySelector('.ip-search');
+    if (search) search.addEventListener('input', e => { IP.search = e.target.value; IP.page = 1;
+      const val = e.target.value; rerender(); const s = document.querySelector('.ip-search');
+      if (s) { s.focus(); s.value = val; s.setSelectionRange(val.length, val.length); } });
+    root.querySelectorAll('.ip-opt input').forEach(cb => cb.addEventListener('change', e => {
+      const k = e.target.getAttribute('data-key'), v = e.target.getAttribute('data-value');
+      IP.filters[k] = IP.filters[k] || [];
+      if (e.target.checked) IP.filters[k].push(v); else IP.filters[k] = IP.filters[k].filter(x=>x!==v);
+      IP.page = 1; rerender();
+    }));
+    root.querySelectorAll('.ip-chip').forEach(c => c.addEventListener('click', e => {
+      const k = c.getAttribute('data-key'), v = c.getAttribute('data-value');
+      IP.filters[k] = (IP.filters[k]||[]).filter(x=>x!==v); IP.page = 1; rerender();
+    }));
+    const clr = root.querySelector('.ip-clear');
+    if (clr) clr.addEventListener('click', () => { IP.filters = {}; IP.search=''; IP.page=1; rerender(); });
+    const prev = root.querySelector('.ip-page-prev'), next = root.querySelector('.ip-page-next');
+    if (prev) prev.addEventListener('click', () => { IP.page = Math.max(1,(IP.page||1)-1); rerender(); });
+    if (next) next.addEventListener('click', () => { IP.page = (IP.page||1)+1; rerender(); });
+    root.querySelectorAll('.ip-row').forEach(r => r.addEventListener('click', () => {
+      window.location.hash = '#targets/' + encodeURIComponent(r.getAttribute('data-id'));
+    }));
+  }
+  return { escHtml, stateView, renderOverview, renderTargets, bindTargets };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }
