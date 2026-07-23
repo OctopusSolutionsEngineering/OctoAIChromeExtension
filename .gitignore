@@ -4,3 +4,4 @@ copilotDiffState.xml
 node_modules
 .playwright-mcp
 .vagrant
+.superpowers/
