@@ -120,13 +120,40 @@ const Views = (function () {
     return '<button class="ip-chip" data-key="' + escHtml(key) + '" data-value="' + escHtml(value) + '">'
       + escHtml(label) + ' ✕</button>';
   }
+  const IP_TARGETS_COLS = 10;
+  const IP_HEALTH_GROUP_ORDER = ['unhealthy', 'healthy', 'disabled'];
+  function _targetRow(t) {
+    return '<tr class="ip-row" data-id="' + escHtml(t.id) + '">'
+      + '<td><a class="ip-target-link" href="#targets/' + escHtml(encodeURIComponent(t.id)) + '">' + escHtml(t.name) + '</a></td>'
+      + '<td>' + escHtml(t.type) + '</td>'
+      + '<td>' + escHtml(t.os) + '</td>'
+      + '<td>' + escHtml(t.osVersion) + '</td>'
+      + '<td>' + pill(t.healthKey, t.health) + '</td>'
+      + '<td>' + chip(t.env, 'env') + '</td>'
+      + '<td>' + chip(t.tag, 'tag') + '</td>'
+      + '<td>' + escHtml(t.tenant) + '</td>'
+      + '<td>' + escHtml(t.policy) + '</td>'
+      + '<td>' + escHtml(t.version) + '</td></tr>';
+  }
   function renderTargets(IP) {
     const all = IP.estate.targets;
     const facets = Data.buildFacets(all);
     const rows = Data.applyFilters(all, IP.filters, IP.search);
-    const pages = Math.max(1, Math.ceil(rows.length / IP_PAGE_SIZE));
+
+    // Group by health (Unhealthy → Healthy → Disabled), then paginate the
+    // flattened, grouped sequence by DATA rows only — group header rows are
+    // inserted per-page around whichever slice of a group lands there, and
+    // don't count toward the 100/page budget. A group whose rows straddle a
+    // page boundary contributes to both pages (its header repeats on the
+    // continuation page) rather than ever dropping a target.
+    const groups = IP_HEALTH_GROUP_ORDER
+      .map(key => ({ key, items: rows.filter(t => t.healthKey === key) }))
+      .filter(g => g.items.length);
+    const groupedRows = groups.reduce((acc, g) => acc.concat(g.items), []);
+
+    const pages = Math.max(1, Math.ceil(groupedRows.length / IP_PAGE_SIZE));
     const page = Math.min(IP.page || 1, pages);
-    const slice = rows.slice((page-1)*IP_PAGE_SIZE, page*IP_PAGE_SIZE);
+    const pageStart = (page - 1) * IP_PAGE_SIZE, pageEnd = page * IP_PAGE_SIZE;
 
     const chips = [];
     Object.keys(IP.filters||{}).forEach(k => (IP.filters[k]||[]).forEach(v => {
@@ -142,15 +169,23 @@ const Views = (function () {
           + '</span><b>' + o.count + '</b></label>';
       }).join('') + '</div>' : '').join('');
 
-    const rowHtml = slice.map(t =>
-      '<tr class="ip-row" data-id="' + escHtml(t.id) + '">'
-      + '<td><b>' + escHtml(t.name) + '</b><div class="ip-row-sub">' + escHtml(t.kind) + '</div></td>'
-      + '<td>' + escHtml(t.health) + '</td><td>' + escHtml(t.env) + '</td>'
-      + '<td>' + escHtml(t.tag) + '</td><td>' + escHtml(t.tenant) + '</td>'
-      + '<td>' + escHtml(t.policy) + '</td><td>' + escHtml(t.version) + '</td></tr>').join('');
+    let _offset = 0;
+    const rowHtml = groups.map(g => {
+      const groupStart = _offset, groupEnd = _offset + g.items.length;
+      _offset = groupEnd;
+      const visStart = Math.max(0, pageStart - groupStart);
+      const visEnd = Math.min(g.items.length, pageEnd - groupStart);
+      if (visEnd <= visStart) return '';
+      const header = '<tr class="ip-group"><td colspan="' + IP_TARGETS_COLS + '">'
+        + escHtml(g.key.toUpperCase()) + ' ' + g.items.length + '</td></tr>';
+      return header + g.items.slice(visStart, visEnd).map(_targetRow).join('');
+    }).join('');
 
     const body = rows.length
-      ? '<table class="ip-table ip-targets"><thead><tr><th>Deployment target</th><th>Health</th><th>Environment</th><th>Target tag</th><th>Tenant</th><th>Machine policy</th><th>Agent version</th></tr></thead><tbody>' + rowHtml + '</tbody></table>'
+      ? '<div class="ip-targets-scroll"><table class="ip-table ip-targets"><thead><tr>'
+        + '<th>Deployment target</th><th>Type</th><th>Operating system</th><th>OS version</th>'
+        + '<th>Health</th><th>Environment</th><th>Target tag</th><th>Tenant</th><th>Machine policy</th><th>Agent version</th>'
+        + '</tr></thead><tbody>' + rowHtml + '</tbody></table></div>'
         + (pages>1 ? '<div class="ip-pager" data-pages="'+pages+'" data-page="'+page+'">Page ' + page + ' of ' + pages
           + ' <button class="ip-page-prev"' + (page<=1?' disabled':'') + '>Prev</button>'
           + '<button class="ip-page-next"' + (page>=pages?' disabled':'') + '>Next</button></div>' : '')

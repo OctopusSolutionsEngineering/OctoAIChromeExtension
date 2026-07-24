@@ -283,3 +283,16 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-heatmap th,.ip-heatmap td{text-align:center}
 .ip-heatmap th:first-child,.ip-heatmap td:first-child{text-align:left}
 .ip-grid-below{margin-top:16px}
+
+/* Task B3 — targets list: name link, tag chip tone, health-grouped rows, column widths */
+.ip-target-link{color:var(--ring);font-weight:600;text-decoration:none}
+.ip-target-link:hover{text-decoration:underline}
+.ip-chipx-tag{background:var(--color-purple-100);border-color:var(--color-purple-200);color:var(--color-purple-700)}
+.ip-targets-scroll{overflow-x:auto}
+.ip-targets{table-layout:auto;width:100%}
+.ip-targets th:nth-child(1),.ip-targets td:nth-child(1){min-width:160px}
+.ip-targets th:nth-child(3),.ip-targets td:nth-child(3),
+.ip-targets th:nth-child(4),.ip-targets td:nth-child(4){white-space:nowrap}
+.ip-targets td{white-space:nowrap}
+.ip-group td{background:var(--secondary);color:var(--fg2);font-weight:600;font-size:11px;
+  letter-spacing:0.04em;padding:8px}
