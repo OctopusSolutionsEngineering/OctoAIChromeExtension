@@ -91,6 +91,34 @@ describe('overview + facets + filters', () => {
   });
 });
 
+describe('environmentsModel', () => {
+  const d = require('./data');
+  const targets = [
+    { name:'web-01', type:'Tentacle', healthKey:'healthy', health:'Healthy', env:'Production', tag:'web', tenant:'No tenants' },
+    { name:'api-01', type:'Kubernetes', healthKey:'unhealthy', health:'Unhealthy', env:'Production', tag:'api', tenant:'No tenants' },
+    { name:'web-02', type:'Tentacle', healthKey:'disabled', health:'Disabled', env:'Dev', tag:'web', tenant:'No tenants' }
+  ];
+  const environments = [
+    { id:'Environments-1', name:'Production', spaceId:'Spaces-1' },
+    { id:'Environments-2', name:'Dev', spaceId:'Spaces-1' },
+    { id:'Environments-3', name:'Staging', spaceId:'Spaces-1' }
+  ];
+  test('groups targets by environment with health counts, sorted by total descending', () => {
+    const rows = d.environmentsModel(targets, environments);
+    expect(rows.map(r => r.name)).toEqual(['Production', 'Dev', 'Staging']);
+    const prod = rows.find(r => r.name === 'Production');
+    expect(prod).toMatchObject({ total: 2, healthy: 1, unhealthy: 1, disabled: 0 });
+    expect(prod.targets).toEqual([
+      { name:'web-01', type:'Tentacle', healthKey:'healthy', health:'Healthy', tag:'web', tenant:'No tenants' },
+      { name:'api-01', type:'Kubernetes', healthKey:'unhealthy', health:'Unhealthy', tag:'api', tenant:'No tenants' }
+    ]);
+    const dev = rows.find(r => r.name === 'Dev');
+    expect(dev).toMatchObject({ total: 1, healthy: 0, unhealthy: 0, disabled: 1 });
+    const staging = rows.find(r => r.name === 'Staging');
+    expect(staging).toMatchObject({ total: 0, healthy: 0, unhealthy: 0, disabled: 0, targets: [] });
+  });
+});
+
 describe('typeGroup', () => {
   const d = require('./data');
   test('collapses and cleans communication styles', () => {

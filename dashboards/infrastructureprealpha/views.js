@@ -228,6 +228,61 @@ const Views = (function () {
       + '</div>';
   }
   function bindTargetDetail(IP) { /* back link is a plain hash anchor; nothing to wire yet */ }
+  function _envAddUrl() {
+    let base = '';
+    try { base = (typeof IP !== 'undefined' && IP && IP.serverUrl) || ''; } catch (e) { base = ''; }
+    return String(base).replace(/\/$/, '') + '/app#/infrastructure/environments/create';
+  }
+  function _envTargetRow(t) {
+    return '<tr class="ip-row-static">'
+      + '<td>' + escHtml(t.name) + '</td>'
+      + '<td>' + escHtml(t.type) + '</td>'
+      + '<td>' + pill(t.healthKey, t.health) + '</td>'
+      + '<td>' + chip(t.tag, 'tag') + '</td>'
+      + '<td>' + escHtml(t.tenant) + '</td></tr>';
+  }
+  function _envRow(r, maxHealthy, maxUnhealthy, expanded) {
+    const sub = expanded
+      ? '<tr class="ip-env-sub"><td colspan="5"><table class="ip-table ip-env-targets"><thead><tr>'
+        + '<th>Deployment target</th><th>Type</th><th>Health</th><th>Target tag</th><th>Tenant</th></tr></thead><tbody>'
+        + (r.targets.length ? r.targets.map(_envTargetRow).join('') : '<tr><td colspan="5" class="ip-sub">No targets in this environment</td></tr>')
+        + '</tbody></table></td></tr>'
+      : '';
+    return '<tr class="ip-row ip-env-row' + (expanded ? ' ip-env-row-open' : '') + '" data-env="' + escHtml(r.name) + '">'
+      + '<td><span class="ip-env-toggle">' + (expanded ? '▾' : '▸') + '</span>' + escHtml(r.name) + '</td>'
+      + '<td>' + r.total + '</td>'
+      + heatCell(r.healthy, maxHealthy, 'good')
+      + heatCell(r.unhealthy, maxUnhealthy, 'bad')
+      + '<td>' + r.disabled + '</td></tr>' + sub;
+  }
+  function renderEnvironments(IP) {
+    const rows = Data.environmentsModel(IP.estate.targets, IP.estate.environments);
+    const maxHealthy = rows.reduce((m, r) => Math.max(m, r.healthy), 0);
+    const maxUnhealthy = rows.reduce((m, r) => Math.max(m, r.unhealthy), 0);
+    IP.envExpanded = IP.envExpanded || {};
+    const body = rows.map(r => _envRow(r, maxHealthy, maxUnhealthy, !!IP.envExpanded[r.name])).join('');
+    return ''
+      + '<header class="ip-head"><h2>Environments</h2>'
+      +   '<p class="ip-sub">Infrastructure through the lens of your deployment pipeline. Expand an environment to see its targets.</p></header>'
+      + '<section class="ip-card">'
+      +   '<div class="ip-card-head"><h4>Environments <span class="ip-count-inline">' + rows.length + '</span></h4>'
+      +     '<div class="ip-card-actions"><a class="ip-link" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">Add environment</a></div>'
+      +   '</div>'
+      +   '<table class="ip-table ip-heatmap ip-env-heatmap"><thead><tr>'
+      +     '<th>Environment</th><th>Total</th><th>Healthy</th><th>Unhealthy</th><th>Disabled</th></tr></thead>'
+      +   '<tbody>' + (body || '<tr><td colspan="5">No environments</td></tr>') + '</tbody></table>'
+      + '</section>';
+  }
+  function bindEnvironments(IP) {
+    const root = document.getElementById('main-content');
+    root.querySelectorAll('.ip-env-row').forEach(r => r.addEventListener('click', () => {
+      const name = r.getAttribute('data-env');
+      IP.envExpanded = IP.envExpanded || {};
+      IP.envExpanded[name] = !IP.envExpanded[name];
+      root.innerHTML = renderEnvironments(IP);
+      bindEnvironments(IP);
+    }));
+  }
   function bindTargets(IP) {
     const root = document.getElementById('main-content');
     const rerender = () => { root.innerHTML = renderTargets(IP); bindTargets(IP); };
@@ -255,6 +310,7 @@ const Views = (function () {
     }));
   }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
+    renderEnvironments, bindEnvironments,
     pill, chip, healthBar, donut, heatCell };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

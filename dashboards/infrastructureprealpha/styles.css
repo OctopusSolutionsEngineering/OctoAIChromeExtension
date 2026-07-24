@@ -296,3 +296,14 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-targets td{white-space:nowrap}
 .ip-group td{background:var(--secondary);color:var(--fg2);font-weight:600;font-size:11px;
   letter-spacing:0.04em;padding:8px}
+
+/* Task C1 — environments heatmap: expandable rows with a nested targets sub-table */
+.ip-env-heatmap{width:100%}
+.ip-env-row{cursor:pointer}
+.ip-env-row:hover{background:var(--secondary)}
+.ip-env-row-open{background:var(--secondary);font-weight:600}
+.ip-env-toggle{display:inline-block;width:14px;color:var(--fg2)}
+.ip-env-sub td{padding:0;border-bottom:1px solid var(--border)}
+.ip-env-sub .ip-env-targets{margin:4px 0 10px 26px;width:calc(100% - 26px);font-size:12px;background:var(--card)}
+.ip-env-sub .ip-env-targets th,.ip-env-sub .ip-env-targets td{padding:5px 8px}
+.ip-env-sub .ip-env-targets .ip-sub{padding:12px 8px;text-align:center}

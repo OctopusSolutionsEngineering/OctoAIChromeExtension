@@ -205,6 +205,23 @@ function overviewModel(targets, workers) {
   };
 }
 
+function environmentsModel(targets, environments) {
+  const map = {};
+  (targets || []).forEach(t => {
+    const name = t.env;
+    const e = (map[name] = map[name] || { name, total: 0, healthy: 0, unhealthy: 0, disabled: 0, targets: [] });
+    e.total++;
+    if (t.healthKey === 'healthy') e.healthy++;
+    else if (t.healthKey === 'disabled') e.disabled++;
+    else e.unhealthy++;
+    e.targets.push({ name: t.name, type: t.type, healthKey: t.healthKey, health: t.health, tag: t.tag, tenant: t.tenant });
+  });
+  (environments || []).forEach(env => {
+    if (!map[env.name]) map[env.name] = { name: env.name, total: 0, healthy: 0, unhealthy: 0, disabled: 0, targets: [] };
+  });
+  return Object.values(map).sort((a, b) => b.total - a.total);
+}
+
 function _facet(key, label, values) {
   const counts = {};
   values.forEach(v => { counts[v.value] = (counts[v.value]||0)+1; if (!counts['_lbl_'+v.value]) counts['_lbl_'+v.value]=v.label; });
@@ -244,10 +261,10 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, overviewModel, buildFacets, applyFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel }; }
+  buildEstate, overviewModel, environmentsModel, buildFacets, applyFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, overviewModel, buildFacets, applyFilters };
+    machineToTarget, buildEstate, overviewModel, environmentsModel, buildFacets, applyFilters };
 }
