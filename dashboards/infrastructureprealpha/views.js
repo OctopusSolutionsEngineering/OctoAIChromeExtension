@@ -124,7 +124,7 @@ const Views = (function () {
       +     '<ul class="ip-legend"><li>' + ov.workers.healthy + ' Healthy</li><li>' + ov.workers.unhealthy + ' Unhealthy</li></ul>'
       +     '<ul class="ip-pools">' + pools + '</ul><a class="ip-link" href="#workers">Open →</a></section>'
       +   '<section class="ip-card"><h4>Argo CD <span class="ip-tag">Early access</span></h4>'
-      +     '<p class="ip-sub">Wired in a later phase. Shows connections, gateway health, and managed apps when the instance exposes Argo CD.</p></section>'
+      +     '<p class="ip-sub">Not available via the Octopus API yet. Shows connections, gateway health, and managed apps when the instance exposes Argo CD.</p></section>'
       + '</div>';
   }
   const IP_PAGE_SIZE = 100;
@@ -547,6 +547,19 @@ const Views = (function () {
       bindAgents(IP);
     }));
   }
+  function renderArgo(IP) {
+    const base = String((IP && IP.serverUrl) || '').replace(/\/$/, '');
+    const infraUrl = base + '/app#/infrastructure';
+    return ''
+      + '<header class="ip-head"><h2>Argo CD Instances <span class="ip-tag">Early access</span></h2>'
+      +   '<p class="ip-sub">GitOps delivery alongside your Octopus-managed infrastructure.</p></header>'
+      + '<section class="ip-card ip-state">'
+      +   '<h3>Not available through the Octopus API yet</h3>'
+      +   '<p>Argo CD connections aren\'t available through the Octopus API yet, so this view can\'t show live data. '
+      +   'When Octopus exposes Argo CD over the API, this will list connections, gateway health, and managed applications.</p>'
+      +   '<a class="ip-link" href="' + escHtml(infraUrl) + '" target="_blank" rel="noopener">Open Infrastructure in Octopus →</a>'
+      + '</section>';
+  }
   function renderSpaceSwitch(IP) {
     const opts = ['<option value=""' + (!IP.spaceId ? ' selected' : '') + '>All spaces</option>']
       .concat((IP.spaces || []).map(s => '<option value="' + escHtml(s.Id) + '"'
@@ -568,7 +581,7 @@ const Views = (function () {
   }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
-    renderAgents, bindAgents,
+    renderAgents, bindAgents, renderArgo,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }
