@@ -206,15 +206,15 @@ describe('health categorisation', () => {
 
 describe('os + dead-facet suppression', () => {
   const d = require('./data');
-  test('osLabel reads common candidate fields, else —', () => {
+  test('osLabel reads common candidate fields, else blank', () => {
     expect(d.osLabel({ TentacleVersionDetails:{ OperatingSystem:'Windows Server 2022' } })).toBe('Windows Server 2022');
     expect(d.osLabel({}, { OperatingSystem:'Ubuntu 22.04 LTS' })).toBe('Ubuntu 22.04 LTS');
-    expect(d.osLabel({}, {})).toBe('—');
+    expect(d.osLabel({}, {})).toBe('');
   });
-  test('osVersionLabel reads common candidate fields, else —', () => {
+  test('osVersionLabel reads common candidate fields, else blank', () => {
     expect(d.osVersionLabel({ TentacleVersionDetails:{ OperatingSystemVersion:'10.0.20348' } })).toBe('10.0.20348');
     expect(d.osVersionLabel({}, { OperatingSystemVersion:'22.04' })).toBe('22.04');
-    expect(d.osVersionLabel({}, {})).toBe('—');
+    expect(d.osVersionLabel({}, {})).toBe('');
   });
   test('buildFacets omits a facet whose only option is —', () => {
     const targets = [{ type:'Tentacle', healthKey:'healthy', health:'Healthy', env:'P', tag:'a',
@@ -223,6 +223,21 @@ describe('os + dead-facet suppression', () => {
     expect(keys).not.toContain('os');
     expect(keys).not.toContain('osVersion');
     expect(keys).toContain('type'); // real facets still present (Type facet keyed 'type' since A2)
+  });
+});
+
+describe('OS blank behaviour', () => {
+  const d = require('./data');
+  test('osLabel/osVersionLabel return empty string when unknown', () => {
+    expect(d.osLabel({}, {})).toBe('');
+    expect(d.osVersionLabel({}, {})).toBe('');
+  });
+  test('a facet whose only option is empty string is suppressed', () => {
+    const targets = [{ type:'Tentacle', healthKey:'healthy', health:'Healthy', env:'P', tag:'a',
+      tenant:'No tenants', policy:'D', version:'8.3.0', os:'', osVersion:'' }];
+    const keys = d.buildFacets(targets).map(f=>f.key);
+    expect(keys).not.toContain('os');
+    expect(keys).not.toContain('osVersion');
   });
 });
 

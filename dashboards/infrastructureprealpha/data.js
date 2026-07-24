@@ -122,23 +122,25 @@ function extractVersion(ep) {
 }
 function osLabel(ep, m) {
   // FLAG: exact Octopus OS field is unconfirmed; verify on a live instance.
-  // Defensive candidate scan across likely locations, falling back to '—'.
+  // Defensive candidate scan across likely locations, falling back to '' (blank cell —
+  // not '—', to avoid "unknown, unknown, unknown" repetition across the Targets table).
   ep = ep || {}; m = m || {};
   const cands = [
     ep.TentacleVersionDetails && ep.TentacleVersionDetails.OperatingSystem,
     m.OperatingSystem, ep.OperatingSystem,
     m.HealthStatus && m.OperatingSystem
   ].filter(s => typeof s === 'string' && s.trim());
-  return cands[0] || '—';
+  return cands[0] || '';
 }
 function osVersionLabel(ep, m) {
   // FLAG: exact Octopus OS version field is unconfirmed; verify on a live instance.
+  // Falls back to '' (blank cell), not '—' — see osLabel.
   ep = ep || {}; m = m || {};
   const cands = [
     ep.TentacleVersionDetails && ep.TentacleVersionDetails.OperatingSystemVersion,
     m.OperatingSystemVersion, ep.OperatingSystemVersion
   ].filter(s => typeof s === 'string' && s.trim());
-  return cands[0] || '—';
+  return cands[0] || '';
 }
 function machineToTarget(m, ctx) {
   const ep = m.Endpoint || {};
@@ -262,7 +264,7 @@ function _facet(key, label, values) {
     .sort((a,b)=>b.count-a.count);
   return { key, label, options };
 }
-function _isDeadFacet(f) { return f.options.length <= 1 && (!f.options[0] || f.options[0].value === '—'); }
+function _isDeadFacet(f) { return f.options.length <= 1 && (!f.options[0] || f.options[0].value === '—' || f.options[0].value === ''); }
 function buildFacets(targets) {
   return [
     _facet('type','Type', targets.map(t=>({value:t.type,label:t.type}))),
