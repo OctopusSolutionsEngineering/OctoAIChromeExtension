@@ -7,6 +7,10 @@ const Router = (function () {
   }
   function render() {
     const el = document.getElementById('main-content');
+    if (typeof Data !== 'undefined' && Data.isEmptyEstate && Data.isEmptyEstate(IP.estate)) {
+      Onboarding.renderFirstRun(IP);
+      return;
+    }
     const hash = (window.location.hash || '#overview').slice(1);
     // target detail route: #targets/<id>
     if (hash.indexOf('targets/') === 0) {

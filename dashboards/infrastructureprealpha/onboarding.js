@@ -17,7 +17,8 @@ const Onboarding = (function () {
       + '</div>'
       + '<section class="ip-card" style="margin-top:16px"><h4>One machine policy is ready to go</h4>'
       +   '<p class="ip-sub">Your Default Machine Policy runs a health check every day. New targets use it automatically — no setup needed.</p>'
-      +   '<a class="ip-link" href="' + Views.escHtml(base + '/machinepolicies') + '" target="_blank" rel="noopener">View policy →</a></section>';
+      +   '<a class="ip-link" href="' + Views.escHtml(base + '/machinepolicies') + '" target="_blank" rel="noopener">View policy →</a></section>'
+      + '<a class="ip-link" href="' + Views.escHtml(base + '/machines') + '" target="_blank" rel="noopener">New to deployment targets? Learn how targets work →</a>';
     document.querySelectorAll('.ip-nav-item').forEach(a => a.classList.remove('active'));
   }
   return { renderFirstRun };
