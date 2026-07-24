@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infrastructure (PreAlpha) — Octopus AI Assistant</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="../api.js"></script>
+</head>
+<body>
+  <div class="ip-shell">
+    <!-- icon rail (52px) -->
+    <div class="ip-rail" aria-hidden="true"></div>
+    <!-- sidebar (216px) -->
+    <aside class="ip-sidebar">
+      <div id="ip-space-switch" class="ip-space-switch"></div>
+      <div class="ip-sidebar-title">Infrastructure</div>
+      <nav class="ip-nav">
+        <a href="#overview"       class="ip-nav-item" data-view="overview">Overview</a>
+        <a href="#targets"        class="ip-nav-item" data-view="targets">Deployment Targets</a>
+        <a href="#environments"   class="ip-nav-item" data-view="environments">Environments</a>
+        <a href="#machinepolicies" class="ip-nav-item" data-view="machinepolicies">Machine Policies</a>
+        <a href="#workers"        class="ip-nav-item" data-view="workers">Workers &amp; Worker Pools</a>
+        <a href="#agents"         class="ip-nav-item" data-view="agents">Deployment Agents</a>
+        <a href="#argocd"         class="ip-nav-item" data-view="argocd">Argo CD Instances</a>
+      </nav>
+      <div id="ip-theme-toggle" class="ip-theme-toggle"></div>
+    </aside>
+    <!-- content -->
+    <main class="ip-main"><div id="main-content"></div></main>
+  </div>
+  <script src="data.js"></script>
+  <script src="views.js"></script>
+  <script src="onboarding.js"></script>
+  <script src="router.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
