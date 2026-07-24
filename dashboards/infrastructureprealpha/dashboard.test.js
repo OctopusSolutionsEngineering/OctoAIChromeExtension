@@ -107,6 +107,34 @@ describe('typeGroup', () => {
   });
 });
 
+describe('health categorisation', () => {
+  const d = require('./data');
+  test('healthKey folds unavailable/unknown into unhealthy; disabled wins', () => {
+    expect(d.healthKey('Healthy', false)).toBe('healthy');
+    expect(d.healthKey('HealthyWithWarnings', false)).toBe('healthy');
+    expect(d.healthKey('Unhealthy', false)).toBe('unhealthy');
+    expect(d.healthKey('Unavailable', false)).toBe('unhealthy');
+    expect(d.healthKey(null, false)).toBe('unhealthy');
+    expect(d.healthKey('Unavailable', true)).toBe('disabled');
+  });
+  test('healthKeyLabel is canonical per key', () => {
+    expect(d.healthKeyLabel('healthy')).toBe('Healthy');
+    expect(d.healthKeyLabel('unhealthy')).toBe('Unhealthy');
+    expect(d.healthKeyLabel('disabled')).toBe('Disabled');
+  });
+  test('health facet has clean 3-way options with canonical labels', () => {
+    const targets = [
+      { type:'Tentacle', healthKey:'healthy', health:'Healthy', env:'P', tag:'a', tenant:'No tenants', policy:'D', version:'8.3.0', os:'—', osVersion:'—' },
+      { type:'Tentacle', healthKey:'disabled', health:'Unavailable', env:'P', tag:'a', tenant:'No tenants', policy:'D', version:'8.3.0', os:'—', osVersion:'—' }
+    ];
+    const health = d.buildFacets(targets).find(f => f.key==='health');
+    expect(health.options).toEqual(expect.arrayContaining([
+      { value:'healthy', label:'Healthy', count:1 },
+      { value:'disabled', label:'Disabled', count:1 }
+    ]));
+  });
+});
+
 describe('readConfig robustness', () => {
   const d = require('./data');
   afterEach(() => { delete global.dashboardGetConfig; });

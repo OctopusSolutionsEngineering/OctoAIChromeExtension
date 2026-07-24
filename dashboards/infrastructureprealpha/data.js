@@ -68,8 +68,12 @@ function healthLabel(api) {
 function healthKey(api, isDisabled) {
   if (isDisabled) return 'disabled';
   if (api === 'Healthy' || api === 'HealthyWithWarnings') return 'healthy';
-  if (api === 'Unhealthy') return 'unhealthy';
-  return 'unavailable';
+  return 'unhealthy'; // Unhealthy, Unavailable, Unknown, null all fold in
+}
+function healthKeyLabel(key) {
+  if (key === 'healthy') return 'Healthy';
+  if (key === 'disabled') return 'Disabled';
+  return 'Unhealthy';
 }
 function commLabel(style) {
   if (style === 'TentacleActive') return 'Polling Tentacle';
@@ -164,12 +168,12 @@ function buildEstate(perSpace) {
 function _count(arr, pred) { return arr.reduce((n,x)=>n+(pred(x)?1:0),0); }
 function overviewModel(targets, workers) {
   const healthy = _count(targets, t=>t.healthKey==='healthy');
-  const unhealthy = _count(targets, t=>t.healthKey==='unhealthy'||t.healthKey==='unavailable');
+  const unhealthy = _count(targets, t=>t.healthKey==='unhealthy');
   const disabled = _count(targets, t=>t.healthKey==='disabled');
   const total = targets.length;
   const byTypeMap = {};
-  targets.forEach(t => { const k=t.kind; (byTypeMap[k]=byTypeMap[k]||{name:k,healthy:0,unhealthy:0});
-    if (t.healthKey==='healthy') byTypeMap[k].healthy++; else if (t.healthKey!=='disabled') byTypeMap[k].unhealthy++; });
+  targets.forEach(t => { const k=t.type || t.kind; (byTypeMap[k]=byTypeMap[k]||{name:k,healthy:0,unhealthy:0});
+    if (t.healthKey==='healthy') byTypeMap[k].healthy++; else if (t.healthKey==='unhealthy') byTypeMap[k].unhealthy++; });
   const byEnvMap = {};
   targets.forEach(t => { const k=t.env; const e=(byEnvMap[k]=byEnvMap[k]||{name:k,total:0,healthy:0,unhealthy:0,disabled:0});
     e.total++; if (t.healthKey==='healthy') e.healthy++; else if (t.healthKey==='disabled') e.disabled++; else e.unhealthy++; });
@@ -195,10 +199,10 @@ function _facet(key, label, values) {
 }
 function buildFacets(targets) {
   return [
-    _facet('kind','Type', targets.map(t=>({value:t.kind,label:t.kind}))),
+    _facet('type','Type', targets.map(t=>({value:t.type,label:t.type}))),
     _facet('os','Operating system', targets.map(t=>({value:t.os,label:t.os}))),
     _facet('osVersion','OS version', targets.map(t=>({value:t.osVersion,label:t.osVersion}))),
-    _facet('health','Health', targets.map(t=>({value:t.healthKey,label:t.health}))),
+    _facet('health','Health', targets.map(t=>({value:t.healthKey,label:healthKeyLabel(t.healthKey)}))),
     _facet('env','Environment', targets.map(t=>({value:t.env,label:t.env}))),
     _facet('tag','Target tag', targets.map(t=>({value:t.tag,label:t.tag}))),
     _facet('tenant','Tenant', targets.map(t=>({value:t.tenant,label:t.tenant}))),
@@ -223,10 +227,10 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, overviewModel, buildFacets, applyFilters, machineToTarget, typeGroup }; }
+  buildEstate, overviewModel, buildFacets, applyFilters, machineToTarget, typeGroup, healthKeyLabel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-    healthLabel, healthKey, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel,
+    healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel,
     machineToTarget, buildEstate, overviewModel, buildFacets, applyFilters };
 }
