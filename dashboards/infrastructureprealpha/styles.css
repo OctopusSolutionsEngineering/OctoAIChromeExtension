@@ -245,3 +245,41 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-heat{text-align:center;font-variant-numeric:tabular-nums}
 .ip-hbar{display:flex;height:8px;border-radius:4px;overflow:hidden;flex:1}
 .ip-hbar span{display:block}
+
+/* Task B2 — unified Overview panel: donut + legend, health-by-type bars, environment heatmap */
+.ip-ov-panel{margin-bottom:16px}
+.ip-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+.ip-card-head h4{margin:0;display:flex;align-items:baseline;gap:8px}
+.ip-count-inline{color:var(--fg2);font-weight:500;font-size:14px}
+.ip-card-actions{display:flex;align-items:center;gap:16px}
+.ip-card-actions .ip-link{margin-top:0}
+.ip-panel-cols{display:grid;grid-template-columns:minmax(240px,1fr) minmax(320px,1.4fr);gap:32px;
+  padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid var(--border)}
+.ip-panel-left{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.ip-donut-wrap{flex:0 0 auto}
+.ip-legend-big{display:flex;gap:24px;flex-wrap:wrap}
+.ip-legend-stat{display:flex;flex-direction:column;gap:6px}
+.ip-legend-label{display:flex;align-items:center;gap:6px;color:var(--fg2);font-size:13px}
+.ip-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.ip-dot-healthy{background:var(--color-green-400)}
+.ip-dot-unhealthy{background:var(--color-red-400)}
+.ip-dot-disabled{background:var(--color-slate-300)}
+.ip-legend-num{font-size:28px;font-weight:600}
+.ip-num-healthy{color:var(--color-green-600)}
+.ip-num-unhealthy{color:var(--color-red-500)}
+.ip-num-disabled{color:var(--fg2)}
+.ip-subhead{margin:0 0 12px;font-size:13px;font-weight:600;color:var(--fg2);
+  text-transform:uppercase;letter-spacing:0.02em}
+.ip-type-rows{display:flex;flex-direction:column;gap:10px}
+.ip-type-row{display:flex;align-items:center;gap:12px}
+.ip-type-name{flex:0 0 110px;font-size:13px}
+.ip-type-bar{flex:1;min-width:0}
+.ip-type-bar .ip-bar{margin-bottom:0}
+.ip-type-counts{flex:0 0 auto;display:flex;gap:10px;min-width:44px;justify-content:flex-end;
+  font-size:13px;font-variant-numeric:tabular-nums}
+.ip-heatmap-head{display:flex;align-items:baseline;justify-content:space-between}
+.ip-heatmap-head .ip-subhead{margin:0}
+.ip-caption{font-size:12px;color:var(--fg2)}
+.ip-heatmap th,.ip-heatmap td{text-align:center}
+.ip-heatmap th:first-child,.ip-heatmap td:first-child{text-align:left}
+.ip-grid-below{margin-top:16px}

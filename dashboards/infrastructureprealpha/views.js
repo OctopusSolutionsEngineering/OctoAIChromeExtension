@@ -45,32 +45,69 @@ const Views = (function () {
     const base = tone === 'bad' ? '214,61,61' : '0,171,98'; // red / green rgb
     return '<td class="ip-heat" style="background:rgba(' + base + ',' + (0.12 + a * 0.7).toFixed(2) + ')">' + value + '</td>';
   }
+  // The infrastructure machines page lives on the Octopus instance itself, whose base URL isn't
+  // part of the overviewModel shape (ov, estate) this view is contracted to accept. dashboard.js
+  // sets a global `IP.serverUrl` once config is read, well before any view renders, so this reads
+  // it defensively rather than widening renderOverview's signature.
+  function _octopusMachinesUrl() {
+    let base = '';
+    try { base = (typeof IP !== 'undefined' && IP && IP.serverUrl) || ''; } catch (e) { base = ''; }
+    return String(base).replace(/\/$/, '') + '/app#/infrastructure/machines';
+  }
   function renderOverview(ov, estate) {
     const typeRows = ov.byType.map(r =>
-      '<tr><td>' + escHtml(r.name) + '</td><td>' + r.healthy + '</td><td>' + r.unhealthy + '</td></tr>').join('');
-    const envRows = ov.byEnv.slice(0,5).map(r =>
-      '<tr><td>' + escHtml(r.name) + '</td><td>' + r.total + '</td><td>' + r.healthy + '</td><td>'
-      + r.unhealthy + '</td><td>' + r.disabled + '</td></tr>').join('');
+      '<div class="ip-type-row">'
+      + '<div class="ip-type-name">' + escHtml(r.name) + '</div>'
+      + '<div class="ip-type-bar">' + healthBar(r.healthy, r.unhealthy, 0) + '</div>'
+      + '<div class="ip-type-counts"><span class="ip-num-healthy">' + r.healthy + '</span>'
+      +   '<span class="ip-num-unhealthy">' + r.unhealthy + '</span></div></div>').join('');
+    const envTop = ov.byEnv.slice(0,5);
+    const maxHealthy = envTop.reduce((m,r)=>Math.max(m, r.healthy), 0);
+    const maxUnhealthy = envTop.reduce((m,r)=>Math.max(m, r.unhealthy), 0);
+    const envRows = envTop.map(r =>
+      '<tr><td>' + escHtml(r.name) + '</td><td>' + r.total + '</td>'
+      + heatCell(r.healthy, maxHealthy, 'good')
+      + heatCell(r.unhealthy, maxUnhealthy, 'bad')
+      + '<td>' + r.disabled + '</td></tr>').join('');
     const pools = ov.workers.pools.map(p =>
       '<li><span>' + escHtml(p.name) + '</span><b>' + p.count + '</b></li>').join('');
     return ''
       + '<header class="ip-head"><h2>Infrastructure overview</h2>'
       + '<p class="ip-sub">A diagnostic snapshot of your deployment estate.</p></header>'
-      + '<div class="ip-grid">'
-      +   '<section class="ip-card"><h4>Deployment targets</h4>'
-      +     '<div class="ip-big">' + ov.total + '</div>'
-      +     '<div class="ip-pct">' + ov.healthyPct + '% healthy</div>'
-      +     bar(ov.healthy, ov.unhealthy, ov.disabled)
-      +     '<ul class="ip-legend"><li>Healthy ' + ov.healthy + '</li>'
-      +       '<li>Unhealthy ' + ov.unhealthy + '</li><li>Disabled ' + ov.disabled + '</li></ul>'
-      +     '<a class="ip-link" href="#targets">Open list →</a></section>'
-      +   '<section class="ip-card"><h4>Health by target type</h4>'
-      +     '<table class="ip-table"><thead><tr><th>Type</th><th>Healthy</th><th>Unhealthy</th></tr></thead>'
-      +     '<tbody>' + (typeRows || '<tr><td colspan="3">No targets</td></tr>') + '</tbody></table></section>'
-      +   '<section class="ip-card ip-card-wide"><h4>Health by environment</h4>'
-      +     '<table class="ip-table"><thead><tr><th>Environment</th><th>Total</th><th>Healthy</th><th>Unhealthy</th><th>Disabled</th></tr></thead>'
+      + '<section class="ip-card ip-ov-panel">'
+      +   '<div class="ip-card-head">'
+      +     '<h4>Deployment targets <span class="ip-count-inline">' + ov.total + '</span></h4>'
+      +     '<div class="ip-card-actions">'
+      +       '<a class="ip-link" href="' + escHtml(_octopusMachinesUrl()) + '" target="_blank" rel="noopener">Re-run health checks</a>'
+      +       '<a class="ip-link" href="#targets">Open list →</a>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div class="ip-panel-cols">'
+      +     '<div class="ip-panel-left">'
+      +       '<div class="ip-donut-wrap">' + donut(ov.healthyPct) + '</div>'
+      +       '<div class="ip-legend-big">'
+      +         '<div class="ip-legend-stat"><div class="ip-legend-label"><span class="ip-dot ip-dot-healthy"></span>Healthy</div>'
+      +           '<div class="ip-legend-num ip-num-healthy">' + ov.healthy + '</div></div>'
+      +         '<div class="ip-legend-stat"><div class="ip-legend-label"><span class="ip-dot ip-dot-unhealthy"></span>Unhealthy</div>'
+      +           '<div class="ip-legend-num ip-num-unhealthy">' + ov.unhealthy + '</div></div>'
+      +         '<div class="ip-legend-stat"><div class="ip-legend-label"><span class="ip-dot ip-dot-disabled"></span>Disabled</div>'
+      +           '<div class="ip-legend-num ip-num-disabled">' + ov.disabled + '</div></div>'
+      +       '</div>'
+      +     '</div>'
+      +     '<div class="ip-panel-right">'
+      +       '<h5 class="ip-subhead">Health by target type</h5>'
+      +       '<div class="ip-type-rows">' + (typeRows || '<p class="ip-sub">No targets</p>') + '</div>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div class="ip-heatmap-block">'
+      +     '<div class="ip-heatmap-head"><h5 class="ip-subhead">Health by environment</h5>'
+      +       '<span class="ip-caption">Cell intensity = share of estate</span></div>'
+      +     '<table class="ip-table ip-heatmap"><thead><tr><th>Environment</th><th>Total</th><th>Healthy</th><th>Unhealthy</th><th>Disabled</th></tr></thead>'
       +     '<tbody>' + (envRows || '<tr><td colspan="5">No environments</td></tr>') + '</tbody></table>'
-      +     '<a class="ip-link" href="#environments">View all environments →</a></section>'
+      +     '<a class="ip-link" href="#environments">View all environments →</a>'
+      +   '</div>'
+      + '</section>'
+      + '<div class="ip-grid ip-grid-below">'
       +   '<section class="ip-card"><h4>Workers</h4><div class="ip-big">' + ov.workers.total + '</div>'
       +     '<ul class="ip-legend"><li>' + ov.workers.healthy + ' Healthy</li><li>' + ov.workers.unhealthy + ' Unhealthy</li></ul>'
       +     '<ul class="ip-pools">' + pools + '</ul><a class="ip-link" href="#workers">Open →</a></section>'
