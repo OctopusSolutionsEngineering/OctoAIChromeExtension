@@ -167,6 +167,11 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-rail{background:var(--chrome-bg);border-right:1px solid var(--border)}
 .ip-sidebar{background:var(--chrome-bg);border-right:1px solid var(--border);
   padding:12px 8px;overflow-y:auto}
+.ip-space-switch{padding:0 2px 12px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.ip-space-lbl{display:block;font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.02em;color:var(--fg2);padding:0 8px 4px}
+.ip-space-select{width:100%;font-size:13px;padding:6px 8px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--background);color:var(--fg1)}
 .ip-sidebar-title{font-weight:600;font-size:13px;color:var(--fg2);
   padding:6px 10px 10px}
 .ip-nav{display:flex;flex-direction:column;gap:2px}

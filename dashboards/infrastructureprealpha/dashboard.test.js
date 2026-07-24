@@ -288,6 +288,20 @@ describe('workersModel + workerFacets + applyWorkerFilters', () => {
   });
 });
 
+describe('buildEstate scoping (space switcher)', () => {
+  const d = require('./data');
+  test('buildEstate scopes to the given perSpace slice', () => {
+    const perSpace = [
+      { sp:{Id:'Spaces-1',Name:'A'}, envs:[], policies:[], tenants:[], workerpools:[], workers:[],
+        machines:[{Id:'m1',Name:'a1',Endpoint:{CommunicationStyle:'TentaclePassive'},EnvironmentIds:[],Roles:[],TenantIds:[]}] },
+      { sp:{Id:'Spaces-2',Name:'B'}, envs:[], policies:[], tenants:[], workerpools:[], workers:[],
+        machines:[{Id:'m2',Name:'b1',Endpoint:{CommunicationStyle:'TentaclePassive'},EnvironmentIds:[],Roles:[],TenantIds:[]}] }
+    ];
+    expect(d.buildEstate(perSpace).targets.map(t=>t.name).sort()).toEqual(['a1','b1']);
+    expect(d.buildEstate(perSpace.filter(s=>s.sp.Id==='Spaces-1')).targets.map(t=>t.name)).toEqual(['a1']);
+  });
+});
+
 describe('readConfig robustness', () => {
   const d = require('./data');
   afterEach(() => { delete global.dashboardGetConfig; });

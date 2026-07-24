@@ -13,7 +13,17 @@ async function ipBoot() {
     if (res.status === 'auth')  { el.innerHTML = Views.stateView('auth'); return; }
     if (res.status === 'error') { el.innerHTML = Views.stateView('error', 'Failed to reach the Octopus API'); return; }
     if (res.status === 'empty') { IP.estate = Data.buildEstate([]); Onboarding.renderFirstRun(IP); return; }
-    IP.estate = Data.buildEstate(res.perSpace);
+    IP.perSpace = res.perSpace;
+    IP.spaces = (res.spaces || []).map(s => ({ Id: s.Id, Name: s.Name }));
+    const ctx = IP.context || {};
+    const m = (IP.spaces || []).find(s => s.Name === ctx.space);
+    IP.spaceId = m ? m.Id : null;
+    IP.rescope = () => {
+      IP.estate = Data.buildEstate(IP.spaceId ? IP.perSpace.filter(s => s.sp.Id === IP.spaceId) : IP.perSpace);
+    };
+    IP.rescope();
+    const switchEl = document.getElementById('ip-space-switch');
+    if (switchEl) { switchEl.innerHTML = Views.renderSpaceSwitch(IP); Views.bindSpaceSwitch(IP); }
     Router.init();
   } catch (e) {
     // Never leave the loading spinner up: surface any unexpected failure.

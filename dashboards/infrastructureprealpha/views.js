@@ -434,8 +434,27 @@ const Views = (function () {
       window.location.hash = '#targets/' + encodeURIComponent(r.getAttribute('data-id'));
     }));
   }
+  function renderSpaceSwitch(IP) {
+    const opts = ['<option value=""' + (!IP.spaceId ? ' selected' : '') + '>All spaces</option>']
+      .concat((IP.spaces || []).map(s => '<option value="' + escHtml(s.Id) + '"'
+        + (IP.spaceId === s.Id ? ' selected' : '') + '>' + escHtml(s.Name) + '</option>'));
+    return '<label class="ip-space-lbl">Space</label>'
+      + '<select id="ip-space-select" class="ip-space-select">' + opts.join('') + '</select>';
+  }
+  function bindSpaceSwitch(IP) {
+    const el = document.getElementById('ip-space-select');
+    if (!el) return;
+    el.addEventListener('change', e => {
+      IP.spaceId = e.target.value || null;
+      if (typeof IP.rescope === 'function') IP.rescope();
+      IP.filters = {}; IP.search = ''; IP.page = 1;
+      IP.wFilters = {}; IP.wSearch = ''; IP.wPage = 1;
+      IP.envExpanded = {};
+      Router.render();
+    });
+  }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
     renderEnvironments, bindEnvironments, renderMachinePolicies, renderWorkers, bindWorkers,
-    pill, chip, healthBar, donut, heatCell };
+    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }
