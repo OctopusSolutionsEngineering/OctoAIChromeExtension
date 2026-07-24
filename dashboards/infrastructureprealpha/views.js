@@ -248,26 +248,49 @@ const Views = (function () {
       + '<td>' + chip(t.tag, 'tag') + '</td>'
       + '<td>' + escHtml(t.tenant) + '</td></tr>';
   }
-  function _envRow(r, maxHealthy, maxUnhealthy, expanded) {
-    const sub = expanded
+  // Pure filter used by the expanded sub-list: 'all' passes everything through,
+  // any other key is a healthKey to match exactly. Missing targets → [].
+  function filterEnvTargets(targets, key) {
+    const list = targets || [];
+    return key === 'all' ? list : list.filter(t => t.healthKey === key);
+  }
+  // Env heat cells carry data-env/data-health so a click can identify which environment and
+  // which filter was clicked. This is a local twin of heatCell(), not a change to it — heatCell
+  // is shared with Overview's read-only heatmap, which must stay non-interactive and unchanged.
+  function _envHeatCell(value, max, tone, name, key) {
+    const attrs = ' class="ip-heat ip-env-cell" data-env="' + escHtml(name) + '" data-health="' + escHtml(key) + '"';
+    if (value === 0) return '<td' + attrs + '>0</td>';
+    const a = max > 0 ? (value / max) : 0;
+    const base = tone === 'bad' ? '214,61,61' : '0,171,98'; // red / green rgb
+    return '<td' + attrs + ' style="background:rgba(' + base + ',' + (0.12 + a * 0.7).toFixed(2) + ')">' + value + '</td>';
+  }
+  function _envRow(r, maxHealthy, maxUnhealthy, expandedKey) {
+    const open = !!expandedKey;
+    const shown = open ? filterEnvTargets(r.targets, expandedKey) : [];
+    const emptyMsg = expandedKey === 'healthy' ? 'No healthy targets in this environment'
+      : expandedKey === 'unhealthy' ? 'No unhealthy targets in this environment'
+      : expandedKey === 'disabled' ? 'No disabled targets in this environment'
+      : 'No targets in this environment';
+    const sub = open
       ? '<tr class="ip-env-sub"><td colspan="5"><table class="ip-table ip-env-targets"><thead><tr>'
         + '<th>Deployment target</th><th>Type</th><th>Health</th><th>Target tag</th><th>Tenant</th></tr></thead><tbody>'
-        + (r.targets.length ? r.targets.map(_envTargetRow).join('') : '<tr><td colspan="5" class="ip-sub">No targets in this environment</td></tr>')
+        + (shown.length ? shown.map(_envTargetRow).join('') : '<tr><td colspan="5" class="ip-sub">' + escHtml(emptyMsg) + '</td></tr>')
         + '</tbody></table></td></tr>'
       : '';
-    return '<tr class="ip-row ip-env-row' + (expanded ? ' ip-env-row-open' : '') + '" data-env="' + escHtml(r.name) + '">'
-      + '<td><span class="ip-env-toggle">' + (expanded ? '▾' : '▸') + '</span>' + escHtml(r.name) + '</td>'
-      + '<td>' + r.total + '</td>'
-      + heatCell(r.healthy, maxHealthy, 'good')
-      + heatCell(r.unhealthy, maxUnhealthy, 'bad')
-      + '<td>' + r.disabled + '</td></tr>' + sub;
+    const envAttr = ' data-env="' + escHtml(r.name) + '"';
+    return '<tr class="ip-row ip-env-row' + (open ? ' ip-env-row-open' : '') + '"' + envAttr + '>'
+      + '<td class="ip-env-cell"' + envAttr + ' data-health="all"><span class="ip-env-toggle">' + (open ? '▾' : '▸') + '</span>' + escHtml(r.name) + '</td>'
+      + '<td class="ip-env-cell"' + envAttr + ' data-health="all">' + r.total + '</td>'
+      + _envHeatCell(r.healthy, maxHealthy, 'good', r.name, 'healthy')
+      + _envHeatCell(r.unhealthy, maxUnhealthy, 'bad', r.name, 'unhealthy')
+      + '<td class="ip-env-cell"' + envAttr + ' data-health="disabled">' + r.disabled + '</td></tr>' + sub;
   }
   function renderEnvironments(IP) {
     const rows = Data.environmentsModel(IP.estate.targets, IP.estate.environments);
     const maxHealthy = rows.reduce((m, r) => Math.max(m, r.healthy), 0);
     const maxUnhealthy = rows.reduce((m, r) => Math.max(m, r.unhealthy), 0);
     IP.envExpanded = IP.envExpanded || {};
-    const body = rows.map(r => _envRow(r, maxHealthy, maxUnhealthy, !!IP.envExpanded[r.name])).join('');
+    const body = rows.map(r => _envRow(r, maxHealthy, maxUnhealthy, IP.envExpanded[r.name])).join('');
     return ''
       + '<header class="ip-head"><h2>Environments</h2>'
       +   '<p class="ip-sub">Infrastructure through the lens of your deployment pipeline. Expand an environment to see its targets.</p></header>'
@@ -281,10 +304,15 @@ const Views = (function () {
   }
   function bindEnvironments(IP) {
     const root = document.getElementById('main-content');
-    root.querySelectorAll('.ip-env-row').forEach(r => r.addEventListener('click', () => {
-      const name = r.getAttribute('data-env');
+    // Each clickable cell (name, Total, Healthy, Unhealthy, Disabled) carries its own
+    // data-env/data-health pair, so binding per-cell (not per-row) means a single click
+    // fires exactly one handler — no row-level listener to double-fire alongside it.
+    root.querySelectorAll('.ip-env-row [data-health]').forEach(cell => cell.addEventListener('click', () => {
+      const name = cell.getAttribute('data-env');
+      const key = cell.getAttribute('data-health');
       IP.envExpanded = IP.envExpanded || {};
-      IP.envExpanded[name] = !IP.envExpanded[name];
+      if (IP.envExpanded[name] === key) delete IP.envExpanded[name];
+      else IP.envExpanded[name] = key;
       root.innerHTML = renderEnvironments(IP);
       bindEnvironments(IP);
     }));
@@ -460,7 +488,7 @@ const Views = (function () {
     });
   }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
-    renderEnvironments, bindEnvironments, renderMachinePolicies, renderWorkers, bindWorkers,
+    renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

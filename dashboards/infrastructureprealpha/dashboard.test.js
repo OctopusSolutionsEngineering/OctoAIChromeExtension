@@ -302,6 +302,27 @@ describe('buildEstate scoping (space switcher)', () => {
   });
 });
 
+describe('filterEnvTargets', () => {
+  const v = require('./views');
+  const targets = [
+    { name:'a', type:'Tentacle', healthKey:'healthy', health:'Healthy', tag:'web', tenant:'No tenants' },
+    { name:'b', type:'Kubernetes', healthKey:'unhealthy', health:'Unhealthy', tag:'api', tenant:'No tenants' },
+    { name:'c', type:'Tentacle', healthKey:'disabled', health:'Disabled', tag:'web', tenant:'No tenants' }
+  ];
+  test('key "all" returns every target unchanged', () => {
+    expect(v.filterEnvTargets(targets, 'all')).toEqual(targets);
+  });
+  test('filters targets by healthKey when key is not "all"', () => {
+    expect(v.filterEnvTargets(targets, 'healthy').map(t => t.name)).toEqual(['a']);
+    expect(v.filterEnvTargets(targets, 'unhealthy').map(t => t.name)).toEqual(['b']);
+    expect(v.filterEnvTargets(targets, 'disabled').map(t => t.name)).toEqual(['c']);
+  });
+  test('treats a missing targets array as empty, for any key', () => {
+    expect(v.filterEnvTargets(undefined, 'all')).toEqual([]);
+    expect(v.filterEnvTargets(undefined, 'healthy')).toEqual([]);
+  });
+});
+
 describe('readConfig robustness', () => {
   const d = require('./data');
   afterEach(() => { delete global.dashboardGetConfig; });
