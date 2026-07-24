@@ -24,6 +24,7 @@ const Router = (function () {
     else if (view === 'environments') { el.innerHTML = Views.renderEnvironments(IP); Views.bindEnvironments && Views.bindEnvironments(IP); }
     else if (view === 'machinepolicies') { el.innerHTML = Views.renderMachinePolicies(IP); }
     else if (view === 'workers') { el.innerHTML = Views.renderWorkers(IP); Views.bindWorkers && Views.bindWorkers(IP); }
+    else if (view === 'agents') { el.innerHTML = Views.renderAgents(IP); Views.bindAgents && Views.bindAgents(IP); }
     else { el.innerHTML = '<div class="ip-state"><h3>' + view + '</h3><p>Coming in a later phase.</p></div>'; }
   }
   function init() { window.addEventListener('hashchange', render); render(); }

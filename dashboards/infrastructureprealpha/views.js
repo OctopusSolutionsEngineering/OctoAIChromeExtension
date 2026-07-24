@@ -468,6 +468,80 @@ const Views = (function () {
       window.location.hash = '#targets/' + encodeURIComponent(r.getAttribute('data-id'));
     }));
   }
+  // ─── Deployment agents (Task P3-2) ──────────────────────────────────────
+  function _agentTabBar(tab) {
+    return '<div class="ip-tabs">'
+      + '<button type="button" class="ip-tab' + (tab === 'tentacle' ? ' ip-tab-active' : '') + '" data-tab="tentacle">Tentacle</button>'
+      + '<button type="button" class="ip-tab' + (tab === 'kubernetes' ? ' ip-tab-active' : '') + '" data-tab="kubernetes">Kubernetes</button>'
+      + '</div>';
+  }
+  function _bandColor(band) {
+    if (band === 'green') return 'var(--color-green-400)';
+    if (band === 'yellow') return 'var(--color-yellow-300)';
+    if (band === 'red') return 'var(--color-red-400)';
+    return 'var(--color-slate-300)';
+  }
+  function _distRow(d, max) {
+    const pct = max > 0 ? Math.max(2, Math.round(d.count / max * 100)) : 0;
+    return '<div class="ip-dist-row">'
+      + '<div class="ip-dist-label">' + escHtml(d.version) + '</div>'
+      + '<div class="ip-dist-bar"><span style="width:' + pct + '%;background:' + _bandColor(d.band) + '"></span></div>'
+      + '<div class="ip-dist-count">' + d.count + '</div></div>';
+  }
+  // Row model (from Data.agentsModel) has no machine id, only name/env/version/band/behind/policy,
+  // so "Upgrade" links out to the general Octopus machines list rather than a specific machine —
+  // consistent with the read-only, no-mutation contract for this dashboard.
+  function _agentRow(r) {
+    const status = r.band === 'unknown'
+      ? pill('disabled', 'Unknown')
+      : pill(r.behind ? 'unhealthy' : 'healthy', r.behind ? 'Behind' : 'Up to date');
+    return '<tr class="ip-row-static">'
+      + '<td>' + escHtml(r.name) + '</td>'
+      + '<td>' + chip(r.env, 'env') + '</td>'
+      + '<td>' + escHtml(r.version) + '</td>'
+      + '<td>' + status + '</td>'
+      + '<td>' + escHtml(r.policy) + '</td>'
+      + '<td><a class="ip-link" href="' + escHtml(_octopusMachinesUrl()) + '" target="_blank" rel="noopener">Upgrade →</a></td></tr>';
+  }
+  function renderAgents(IP) {
+    IP.agentTab = IP.agentTab === 'kubernetes' ? 'kubernetes' : 'tentacle';
+    const agents = Data.agentsModel(IP.estate.targets);
+    const G = agents[IP.agentTab];
+    const maxDist = G.distribution.reduce((m, d) => Math.max(m, d.count), 0);
+    const distHtml = G.distribution.map(d => _distRow(d, maxDist)).join('');
+    const rowsHtml = G.rows.map(_agentRow).join('');
+    const body = G.rows.length
+      ? '<div class="ip-targets-scroll"><table class="ip-table ip-targets"><thead><tr>'
+        + '<th>Agent name</th><th>Environment</th><th>Version</th><th>Status</th><th>Machine policy</th><th></th>'
+        + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
+      : '<div class="ip-empty"><h3>No ' + escHtml(IP.agentTab) + ' agents</h3>'
+        + '<p>No matching deployment targets in this estate.</p></div>';
+    return ''
+      + '<header class="ip-head"><h2>Deployment agents</h2>'
+      +   '<p class="ip-sub">Review agent versions across the estate and upgrade what\'s fallen behind. '
+      +   'Latest available ' + escHtml(G.latest) + '.</p></header>'
+      + _agentTabBar(IP.agentTab)
+      + '<div class="ip-grid ip-kpi-grid">'
+      +   '<section class="ip-card"><h4>Total</h4><div class="ip-big">' + G.total + '</div></section>'
+      +   '<section class="ip-card"><h4>Up to date</h4><div class="ip-big ip-num-healthy">' + G.upToDate + '</div></section>'
+      +   '<section class="ip-card"><h4>Behind</h4><div class="ip-big ip-num-unhealthy">' + G.behind + '</div></section>'
+      +   '<section class="ip-card"><h4>Unknown</h4><div class="ip-big">' + G.unknown + '</div></section>'
+      + '</div>'
+      + '<section class="ip-card ip-dist-card"><h4>Version distribution</h4>'
+      +   '<div class="ip-dist-rows">' + (distHtml || '<p class="ip-sub">No versions reported</p>') + '</div></section>'
+      + '<section class="ip-card">'
+      +   '<div class="ip-card-head"><h4>Agents <span class="ip-count-inline">' + G.total + '</span></h4></div>'
+      +   body
+      + '</section>';
+  }
+  function bindAgents(IP) {
+    const root = document.getElementById('main-content');
+    root.querySelectorAll('.ip-tab').forEach(btn => btn.addEventListener('click', () => {
+      IP.agentTab = btn.getAttribute('data-tab') === 'kubernetes' ? 'kubernetes' : 'tentacle';
+      root.innerHTML = renderAgents(IP);
+      bindAgents(IP);
+    }));
+  }
   function renderSpaceSwitch(IP) {
     const opts = ['<option value=""' + (!IP.spaceId ? ' selected' : '') + '>All spaces</option>']
       .concat((IP.spaces || []).map(s => '<option value="' + escHtml(s.Id) + '"'
@@ -489,6 +563,7 @@ const Views = (function () {
   }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
+    renderAgents, bindAgents,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

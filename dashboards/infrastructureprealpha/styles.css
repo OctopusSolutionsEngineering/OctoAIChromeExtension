@@ -336,3 +336,20 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-pool-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-bottom:16px}
 .ip-pool-card .ip-card-head{margin-bottom:8px}
 .ip-chipx-pool{background:var(--color-purple-100);border-color:var(--color-purple-200);color:var(--color-purple-700)}
+
+/* Task P3-2 — Deployment agents: Tentacle/Kubernetes tabs, KPI row, version distribution bars */
+.ip-tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border)}
+.ip-tab{background:none;border:0;padding:8px 14px;font-size:13px;font-weight:500;
+  color:var(--fg2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.ip-tab:hover{color:var(--fg1)}
+.ip-tab-active{color:var(--fg1);border-bottom-color:var(--ring);font-weight:600}
+.ip-kpi-grid{grid-template-columns:repeat(4,1fr);margin-bottom:16px}
+.ip-dist-card{margin-bottom:16px}
+.ip-dist-rows{display:flex;flex-direction:column;gap:8px}
+.ip-dist-row{display:flex;align-items:center;gap:12px}
+.ip-dist-label{flex:0 0 100px;font-size:13px;font-variant-numeric:tabular-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ip-dist-bar{flex:1;height:10px;border-radius:5px;background:var(--muted);overflow:hidden}
+.ip-dist-bar span{display:block;height:100%;border-radius:5px}
+.ip-dist-count{flex:0 0 auto;min-width:32px;text-align:right;font-size:13px;
+  color:var(--fg2);font-variant-numeric:tabular-nums}
