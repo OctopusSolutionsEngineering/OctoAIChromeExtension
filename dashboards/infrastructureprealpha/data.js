@@ -84,6 +84,21 @@ function kindLabel(style) {
   if (style === 'None') return 'SSH / Cloud';
   return style || 'Unknown';
 }
+function typeGroup(style) {
+  switch (style) {
+    case 'TentacleActive':
+    case 'TentaclePassive': return 'Tentacle';
+    case 'Ssh': return 'SSH';
+    case 'Kubernetes':
+    case 'KubernetesTentacle': return 'Kubernetes';
+    case 'AzureWebApp': return 'Azure Web App';
+    case 'AzureCloudService':
+    case 'AzureServiceFabricCluster': return 'Cloud Region';
+    case 'OfflineDrop': return 'Offline Drop';
+    case 'None': return 'Cloud Region';
+    default: return style || 'Unknown';
+  }
+}
 function envCat(name) {
   const n = (name || '').toLowerCase();
   if (/prod/.test(n)) return 'production';
@@ -115,6 +130,7 @@ function machineToTarget(m, ctx) {
   return {
     id: m.Id, name: m.Name || m.Id, spaceId: ctx.spaceId,
     kind: kindLabel(ep.CommunicationStyle),
+    type: typeGroup(ep.CommunicationStyle),
     comm: commLabel(ep.CommunicationStyle),
     os: osLabel(ep), osVersion: '—',
     health: healthLabel(m.HealthStatus), healthKey: healthKey(m.HealthStatus, m.IsDisabled),
@@ -207,10 +223,10 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, overviewModel, buildFacets, applyFilters, machineToTarget }; }
+  buildEstate, overviewModel, buildFacets, applyFilters, machineToTarget, typeGroup }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-    healthLabel, healthKey, commLabel, kindLabel, envCat, extractVersion, osLabel,
+    healthLabel, healthKey, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel,
     machineToTarget, buildEstate, overviewModel, buildFacets, applyFilters };
 }

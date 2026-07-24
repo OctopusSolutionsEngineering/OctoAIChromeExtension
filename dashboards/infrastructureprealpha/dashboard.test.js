@@ -91,6 +91,22 @@ describe('overview + facets + filters', () => {
   });
 });
 
+describe('typeGroup', () => {
+  const d = require('./data');
+  test('collapses and cleans communication styles', () => {
+    expect(d.typeGroup('TentacleActive')).toBe('Tentacle');
+    expect(d.typeGroup('TentaclePassive')).toBe('Tentacle');
+    expect(d.typeGroup('Ssh')).toBe('SSH');
+    expect(d.typeGroup('KubernetesTentacle')).toBe('Kubernetes');
+    expect(d.typeGroup('Kubernetes')).toBe('Kubernetes');
+    expect(d.typeGroup('AzureWebApp')).toBe('Azure Web App');
+    expect(d.typeGroup('OfflineDrop')).toBe('Offline Drop');
+    expect(d.typeGroup('None')).toBe('Cloud Region');
+    expect(d.typeGroup('AzureCloudService')).toBe('Cloud Region');
+    expect(d.typeGroup('SomethingNew')).toBe('SomethingNew');
+  });
+});
+
 describe('readConfig robustness', () => {
   const d = require('./data');
   afterEach(() => { delete global.dashboardGetConfig; });
