@@ -120,9 +120,25 @@ function extractVersion(ep) {
   for (const k in ep) { if (/version/i.test(k) && looksLikeVersion(ep[k])) return ep[k]; }
   return '—';
 }
-function osLabel(ep) {
-  // FLAG: verify OS fields on a live instance; fall back to '—'.
-  return (ep && (ep.OperatingSystem || (ep.TentacleVersionDetails && ep.TentacleVersionDetails.OperatingSystem))) || '—';
+function osLabel(ep, m) {
+  // FLAG: exact Octopus OS field is unconfirmed; verify on a live instance.
+  // Defensive candidate scan across likely locations, falling back to '—'.
+  ep = ep || {}; m = m || {};
+  const cands = [
+    ep.TentacleVersionDetails && ep.TentacleVersionDetails.OperatingSystem,
+    m.OperatingSystem, ep.OperatingSystem,
+    m.HealthStatus && m.OperatingSystem
+  ].filter(s => typeof s === 'string' && s.trim());
+  return cands[0] || '—';
+}
+function osVersionLabel(ep, m) {
+  // FLAG: exact Octopus OS version field is unconfirmed; verify on a live instance.
+  ep = ep || {}; m = m || {};
+  const cands = [
+    ep.TentacleVersionDetails && ep.TentacleVersionDetails.OperatingSystemVersion,
+    m.OperatingSystemVersion, ep.OperatingSystemVersion
+  ].filter(s => typeof s === 'string' && s.trim());
+  return cands[0] || '—';
 }
 function machineToTarget(m, ctx) {
   const ep = m.Endpoint || {};
@@ -136,7 +152,7 @@ function machineToTarget(m, ctx) {
     kind: kindLabel(ep.CommunicationStyle),
     type: typeGroup(ep.CommunicationStyle),
     comm: commLabel(ep.CommunicationStyle),
-    os: osLabel(ep), osVersion: '—',
+    os: osLabel(ep, m), osVersion: osVersionLabel(ep, m),
     health: healthLabel(m.HealthStatus), healthKey: healthKey(m.HealthStatus, m.IsDisabled),
     env, envCat: envCat(env),
     tag: roles[0] || '—', moreTags: Math.max(0, roles.length - 1),
@@ -197,6 +213,7 @@ function _facet(key, label, values) {
     .sort((a,b)=>b.count-a.count);
   return { key, label, options };
 }
+function _isDeadFacet(f) { return f.options.length <= 1 && (!f.options[0] || f.options[0].value === '—'); }
 function buildFacets(targets) {
   return [
     _facet('type','Type', targets.map(t=>({value:t.type,label:t.type}))),
@@ -208,7 +225,7 @@ function buildFacets(targets) {
     _facet('tenant','Tenant', targets.map(t=>({value:t.tenant,label:t.tenant}))),
     _facet('policy','Machine policy', targets.map(t=>({value:t.policy,label:t.policy}))),
     _facet('version','Agent version', targets.map(t=>({value:t.version,label:t.version})))
-  ];
+  ].filter(f => !_isDeadFacet(f));
 }
 function applyFilters(targets, filters, search) {
   const q = (search||'').trim().toLowerCase();
@@ -227,10 +244,10 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, overviewModel, buildFacets, applyFilters, machineToTarget, typeGroup, healthKeyLabel }; }
+  buildEstate, overviewModel, buildFacets, applyFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-    healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel,
+    healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
     machineToTarget, buildEstate, overviewModel, buildFacets, applyFilters };
 }
