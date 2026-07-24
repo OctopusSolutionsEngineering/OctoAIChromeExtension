@@ -21,6 +21,30 @@ const Views = (function () {
       + '<span style="width:' + pc(unhealthy) + ';background:var(--color-red-400)"></span>'
       + '<span style="width:' + pc(disabled) + ';background:var(--color-slate-300)"></span></div>';
   }
+  // Shared render helpers (Task B1) — consumed by B2/B3/C1-C3.
+  function healthBar(healthy, unhealthy, disabled) { return bar(healthy, unhealthy, disabled); }
+  function pill(kind, text) {
+    return '<span class="ip-pill ip-pill-' + escHtml(kind) + '">' + escHtml(text) + '</span>';
+  }
+  function chip(text, tone) {
+    return '<span class="ip-chipx ip-chipx-' + escHtml(tone || 'neutral') + '">' + escHtml(text) + '</span>';
+  }
+  function donut(pct) {
+    const p = Math.max(0, Math.min(100, Math.round(pct || 0)));
+    const R = 52, C = 2 * Math.PI * R, off = C * (1 - p / 100);
+    return '<svg class="ip-donut" viewBox="0 0 128 128" width="128" height="128">'
+      + '<circle cx="64" cy="64" r="' + R + '" fill="none" stroke="var(--muted)" stroke-width="14"/>'
+      + '<circle cx="64" cy="64" r="' + R + '" fill="none" stroke="var(--color-green-400)" stroke-width="14"'
+      + ' stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '"'
+      + ' transform="rotate(-90 64 64)"/>'
+      + '<text x="64" y="60" text-anchor="middle" class="ip-donut-pct">' + p + '%</text>'
+      + '<text x="64" y="80" text-anchor="middle" class="ip-donut-sub">healthy</text></svg>';
+  }
+  function heatCell(value, max, tone) {
+    const a = max > 0 ? (value / max) : 0;
+    const base = tone === 'bad' ? '214,61,61' : '0,171,98'; // red / green rgb
+    return '<td class="ip-heat" style="background:rgba(' + base + ',' + (0.12 + a * 0.7).toFixed(2) + ')">' + value + '</td>';
+  }
   function renderOverview(ov, estate) {
     const typeRows = ov.byType.map(r =>
       '<tr><td>' + escHtml(r.name) + '</td><td>' + r.healthy + '</td><td>' + r.unhealthy + '</td></tr>').join('');
@@ -55,7 +79,7 @@ const Views = (function () {
       + '</div>';
   }
   const IP_PAGE_SIZE = 100;
-  function chip(key, value, label) {
+  function filterChip(key, value, label) {
     return '<button class="ip-chip" data-key="' + escHtml(key) + '" data-value="' + escHtml(value) + '">'
       + escHtml(label) + ' ✕</button>';
   }
@@ -70,7 +94,7 @@ const Views = (function () {
     const chips = [];
     Object.keys(IP.filters||{}).forEach(k => (IP.filters[k]||[]).forEach(v => {
       const f = facets.find(x=>x.key===k); const o = f && f.options.find(x=>x.value===v);
-      chips.push(chip(k, v, (f?f.label:k) + ': ' + (o?o.label:v)));
+      chips.push(filterChip(k, v, (f?f.label:k) + ': ' + (o?o.label:v)));
     }));
 
     const facetHtml = facets.map(f => f.options.length ? '<div class="ip-facet"><div class="ip-facet-h">'
@@ -158,6 +182,7 @@ const Views = (function () {
       window.location.hash = '#targets/' + encodeURIComponent(r.getAttribute('data-id'));
     }));
   }
-  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail };
+  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
+    pill, chip, healthBar, donut, heatCell };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

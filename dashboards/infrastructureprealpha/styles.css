@@ -233,3 +233,15 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-setup-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
 .ip-setup-card h4{margin:0 0 6px}
 .ip-setup-card .ip-btn{margin-top:12px;display:inline-block}
+
+.ip-pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:500}
+.ip-pill-healthy{background:var(--color-green-200);color:var(--color-green-700)}
+.ip-pill-unhealthy{background:var(--color-red-200);color:var(--color-red-700)}
+.ip-pill-disabled{background:var(--muted);color:var(--fg2)}
+.ip-chipx{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:12px;font-size:12px;color:var(--fg1);background:var(--card)}
+.ip-chipx-env{background:var(--color-blue-100);border-color:var(--color-blue-200);color:var(--color-blue-700)}
+.ip-donut-pct{font-size:22px;font-weight:600;fill:var(--fg1)}
+.ip-donut-sub{font-size:11px;fill:var(--fg2)}
+.ip-heat{text-align:center;font-variant-numeric:tabular-nums}
+.ip-hbar{display:flex;height:8px;border-radius:4px;overflow:hidden;flex:1}
+.ip-hbar span{display:block}
