@@ -339,6 +339,49 @@ describe('readConfig robustness', () => {
   });
 });
 
+describe('agentsModel', () => {
+  const d = require('./data');
+  const targets = [
+    { name:'t1', type:'Tentacle', env:'P', version:'8.5.1', policy:'D', healthKey:'healthy' },
+    { name:'t2', type:'Tentacle', env:'P', version:'8.4.0', policy:'D', healthKey:'healthy' }, // same major as latest → NOT behind
+    { name:'t3', type:'Tentacle', env:'S', version:'7.4.3', policy:'D', healthKey:'healthy' }, // one major behind → behind
+    { name:'t4', type:'Tentacle', env:'D', version:'—',     policy:'D', healthKey:'unhealthy' }, // unknown
+    { name:'k1', type:'Kubernetes', env:'P', version:'2.6.0', policy:'D', healthKey:'healthy' }
+  ];
+  test('derives latest; behind = one or more MAJOR versions behind', () => {
+    const m = d.agentsModel(targets);
+    expect(m.tentacle.latest).toBe('8.5.1');
+    expect(m.tentacle.total).toBe(4);
+    expect(m.tentacle.behind).toBe(1);     // only 7.4.3 (major 7 < 8); 8.4.0 is same major, not behind
+    expect(m.tentacle.upToDate).toBe(2);   // 8.5.1 and 8.4.0 (known, same major as latest)
+    expect(m.tentacle.unknown).toBe(1);    // '—'
+    expect(m.tentacle.rows.find(r=>r.name==='t2').behind).toBe(false);
+    expect(m.tentacle.rows.find(r=>r.name==='t3').behind).toBe(true);
+    expect(m.kubernetes.latest).toBe('2.6.0');
+  });
+  test('majorVersion + versionBand', () => {
+    expect(d.majorVersion('8.4.0')).toBe(8);
+    expect(d.majorVersion('—')).toBeNaN();
+    expect(d.versionBand('4.0.0')).toBe('red');
+    expect(d.versionBand('6.3.417')).toBe('yellow');
+    expect(d.versionBand('8.5.1')).toBe('green');
+    expect(d.versionBand('—')).toBe('unknown');
+  });
+});
+describe('overview agents-behind', () => {
+  const d = require('./data');
+  test('overviewModel exposes agents.latest and agents.behind (major-version rule)', () => {
+    const targets = [
+      { name:'a', type:'Tentacle', env:'P', version:'8.5.1', policy:'D', healthKey:'healthy' },
+      { name:'b', type:'Tentacle', env:'P', version:'7.4.0', policy:'D', healthKey:'healthy' }, // major behind
+      { name:'c', type:'Tentacle', env:'P', version:'8.2.0', policy:'D', healthKey:'healthy' }  // same major, not behind
+    ];
+    const ov = d.overviewModel(targets, []);
+    expect(ov.agents.latest).toBe('8.5.1');
+    expect(ov.agents.behind).toBe(1);
+  });
+});
+
 describe('facets drop blank-value options', () => {
   const d = require('./data');
   test('os facet omits the empty-string option on a mixed estate', () => {

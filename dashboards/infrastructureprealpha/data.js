@@ -183,6 +183,54 @@ function buildEstate(perSpace) {
   return { targets, workers, environments, policies, overview: overviewModel(targets, workers) };
 }
 
+/* ─── Agent version model (latest, behind, bands) ────────────────────────
+ * Ported from dashboards/targetagentversions/dashboard.js (vkey, versionBand,
+ * deriveLatest). "Behind" is a MAJOR-version rule, not a full vkey compare:
+ * an agent is behind only if its major version is one or more below the
+ * latest major version for its type — minor/patch lag does not count. */
+function vkey(v) { return String(v || '').split('.').map(n => String(n).padStart(4, '0')).join('.'); }
+function majorVersion(v) {
+  if (!v || v === '—') return NaN;
+  return parseInt(String(v).split('.')[0], 10);
+}
+function versionBand(v) {
+  if (!v || v === '—' || v === '0.0.0') return 'unknown';
+  const major = majorVersion(v);
+  if (isNaN(major)) return 'unknown';
+  if (major <= 4) return 'red';
+  if (major <= 6) return 'yellow';
+  return 'green';
+}
+function deriveLatest(versions) {
+  const pool = (versions || []).filter(v => v && v !== '—');
+  let best = '';
+  pool.forEach(v => { if (!best || vkey(v).localeCompare(vkey(best)) > 0) best = v; });
+  return best || '—';
+}
+function _agentGroup(rows) {
+  const latest = deriveLatest(rows.map(t => t.version));
+  const latestMajor = majorVersion(latest);
+  let upToDate = 0, behind = 0, unknown = 0;
+  const outRows = rows.map(t => {
+    const isUnknown = !t.version || t.version === '—';
+    const isBehind = !isUnknown && majorVersion(t.version) < latestMajor;
+    if (isUnknown) unknown++; else if (isBehind) behind++; else upToDate++;
+    return { name: t.name, env: t.env, version: t.version, band: versionBand(t.version),
+      behind: isBehind, policy: t.policy };
+  });
+  const distMap = {};
+  outRows.forEach(r => { const d = (distMap[r.version] = distMap[r.version] || { version: r.version, count: 0, band: r.band }); d.count++; });
+  const distribution = Object.values(distMap).sort((a, b) => vkey(b.version).localeCompare(vkey(a.version)));
+  return { latest, total: rows.length, upToDate, behind, unknown, rows: outRows, distribution };
+}
+function agentsModel(targets) {
+  const list = targets || [];
+  return {
+    tentacle: _agentGroup(list.filter(t => t.type === 'Tentacle')),
+    kubernetes: _agentGroup(list.filter(t => t.type === 'Kubernetes'))
+  };
+}
+
 function _count(arr, pred) { return arr.reduce((n,x)=>n+(pred(x)?1:0),0); }
 function overviewModel(targets, workers) {
   const healthy = _count(targets, t=>t.healthKey==='healthy');
@@ -197,13 +245,16 @@ function overviewModel(targets, workers) {
     e.total++; if (t.healthKey==='healthy') e.healthy++; else if (t.healthKey==='disabled') e.disabled++; else e.unhealthy++; });
   const wHealthy = _count(workers, w=>w.healthKey==='healthy');
   const poolMap = {}; workers.forEach(w=>{ poolMap[w.pool]=(poolMap[w.pool]||0)+1; });
+  const agents = agentsModel(targets);
   return {
     total, healthy, unhealthy, disabled,
     healthyPct: total ? Math.round(healthy/total*100) : 0,
     byType: Object.values(byTypeMap),
     byEnv: Object.values(byEnvMap).sort((a,b)=>b.total-a.total),
     workers: { total: workers.length, healthy: wHealthy, unhealthy: workers.length-wHealthy,
-      pools: Object.entries(poolMap).map(([name,count])=>({name,count})) }
+      pools: Object.entries(poolMap).map(([name,count])=>({name,count})) },
+    agents: { latest: agents.tentacle.total ? agents.tentacle.latest : agents.kubernetes.latest,
+      behind: agents.tentacle.behind + agents.kubernetes.behind }
   };
 }
 
@@ -330,11 +381,13 @@ function applyFilters(targets, filters, search) {
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
   buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
-  workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel }; }
+  workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
+  vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
     machineToTarget, buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
-    workersModel, workerFacets, applyWorkerFilters };
+    workersModel, workerFacets, applyWorkerFilters,
+    vkey, majorVersion, versionBand, deriveLatest, agentsModel };
 }
