@@ -260,6 +260,7 @@ function _facet(key, label, values) {
   const counts = {};
   values.forEach(v => { counts[v.value] = (counts[v.value]||0)+1; if (!counts['_lbl_'+v.value]) counts['_lbl_'+v.value]=v.label; });
   const options = Object.keys(counts).filter(k=>!k.startsWith('_lbl_'))
+    .filter(value => value !== '') // an empty facet value (e.g. unknown OS) isn't a useful filter option
     .map(value => ({ value, label: counts['_lbl_'+value], count: counts[value] }))
     .sort((a,b)=>b.count-a.count);
   return { key, label, options };

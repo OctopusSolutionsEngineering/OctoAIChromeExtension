@@ -338,3 +338,17 @@ describe('readConfig robustness', () => {
     await expect(d.readConfig()).resolves.toEqual({ serverUrl: 'https://x.octopus.app/', context: { space: 'S' } });
   });
 });
+
+describe('facets drop blank-value options', () => {
+  const d = require('./data');
+  test('os facet omits the empty-string option on a mixed estate', () => {
+    const targets = [
+      { type:'Tentacle', healthKey:'healthy', health:'Healthy', env:'P', tag:'a', tenant:'No tenants', policy:'D', version:'8.3.0', os:'Windows Server 2022', osVersion:'10.0' },
+      { type:'Kubernetes', healthKey:'healthy', health:'Healthy', env:'P', tag:'a', tenant:'No tenants', policy:'D', version:'2.6.0', os:'', osVersion:'' }
+    ];
+    const os = d.buildFacets(targets).find(f => f.key === 'os');
+    expect(os).toBeDefined();
+    expect(os.options.map(o => o.value)).toEqual(['Windows Server 2022']);
+    expect(os.options.some(o => o.value === '')).toBe(false);
+  });
+});
