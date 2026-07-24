@@ -41,9 +41,16 @@ const Views = (function () {
       + '<text x="64" y="80" text-anchor="middle" class="ip-donut-sub">healthy</text></svg>';
   }
   function heatCell(value, max, tone) {
+    if (value === 0) return '<td class="ip-heat">0</td>';
     const a = max > 0 ? (value / max) : 0;
     const base = tone === 'bad' ? '214,61,61' : '0,171,98'; // red / green rgb
     return '<td class="ip-heat" style="background:rgba(' + base + ',' + (0.12 + a * 0.7).toFixed(2) + ')">' + value + '</td>';
+  }
+  // Shared Environment/Total/Healthy/Unhealthy/Disabled header — single source of truth so the
+  // Overview "Health by environment" heatmap and the Environments view heatmap always carry the
+  // same <th> set, in the same order, and stay column-aligned (see .ip-heatmap CSS).
+  function _envHeatHead() {
+    return '<thead><tr><th>Environment</th><th>Total</th><th>Healthy</th><th>Unhealthy</th><th>Disabled</th></tr></thead>';
   }
   // The infrastructure machines page lives on the Octopus instance itself, whose base URL isn't
   // part of the overviewModel shape (ov, estate) this view is contracted to accept. dashboard.js
@@ -65,7 +72,7 @@ const Views = (function () {
     const maxHealthy = envTop.reduce((m,r)=>Math.max(m, r.healthy), 0);
     const maxUnhealthy = envTop.reduce((m,r)=>Math.max(m, r.unhealthy), 0);
     const envRows = envTop.map(r =>
-      '<tr><td>' + escHtml(r.name) + '</td><td>' + r.total + '</td>'
+      '<tr><td><a href="#environments">' + escHtml(r.name) + '</a></td><td>' + r.total + '</td>'
       + heatCell(r.healthy, maxHealthy, 'good')
       + heatCell(r.unhealthy, maxUnhealthy, 'bad')
       + '<td>' + r.disabled + '</td></tr>').join('');
@@ -102,7 +109,7 @@ const Views = (function () {
       +   '<div class="ip-heatmap-block">'
       +     '<div class="ip-heatmap-head"><h5 class="ip-subhead">Health by environment</h5>'
       +       '<span class="ip-caption">Cell intensity = share of estate</span></div>'
-      +     '<table class="ip-table ip-heatmap"><thead><tr><th>Environment</th><th>Total</th><th>Healthy</th><th>Unhealthy</th><th>Disabled</th></tr></thead>'
+      +     '<table class="ip-table ip-heatmap">' + _envHeatHead()
       +     '<tbody>' + (envRows || '<tr><td colspan="5">No environments</td></tr>') + '</tbody></table>'
       +     '<a class="ip-link" href="#environments">View all environments →</a>'
       +   '</div>'
@@ -268,8 +275,7 @@ const Views = (function () {
       +   '<div class="ip-card-head"><h4>Environments <span class="ip-count-inline">' + rows.length + '</span></h4>'
       +     '<div class="ip-card-actions"><a class="ip-link" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">Add environment</a></div>'
       +   '</div>'
-      +   '<table class="ip-table ip-heatmap ip-env-heatmap"><thead><tr>'
-      +     '<th>Environment</th><th>Total</th><th>Healthy</th><th>Unhealthy</th><th>Disabled</th></tr></thead>'
+      +   '<table class="ip-table ip-heatmap ip-env-heatmap">' + _envHeatHead()
       +   '<tbody>' + (body || '<tr><td colspan="5">No environments</td></tr>') + '</tbody></table>'
       + '</section>';
   }
