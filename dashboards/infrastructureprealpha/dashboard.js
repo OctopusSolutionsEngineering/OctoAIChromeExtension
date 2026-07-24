@@ -3,6 +3,15 @@ var IP = { estate:null, serverUrl:null, context:{}, filters:{}, search:'', page:
   wFilters:{}, wSearch:'', wPage:1 };
 
 async function ipBoot() {
+  // Theme init — applied before anything else renders so there's no light/dark flash.
+  try {
+    const stored = localStorage.getItem('iprealpha:theme');
+    const dark = stored ? stored === 'dark'
+      : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', !!dark);
+    IP.theme = dark ? 'dark' : 'light';
+  } catch (e) { IP.theme = 'light'; }
+
   const el = document.getElementById('main-content');
   el.innerHTML = Views.stateView('loading');
   try {
@@ -29,6 +38,8 @@ async function ipBoot() {
     IP.rescope();
     const switchEl = document.getElementById('ip-space-switch');
     if (switchEl) { switchEl.innerHTML = Views.renderSpaceSwitch(IP); Views.bindSpaceSwitch(IP); }
+    const themeEl = document.getElementById('ip-theme-toggle');
+    if (themeEl) { themeEl.innerHTML = Views.renderThemeToggle(IP); Views.bindThemeToggle(IP); }
     Router.init();
   } catch (e) {
     // Never leave the loading spinner up: surface any unexpected failure.

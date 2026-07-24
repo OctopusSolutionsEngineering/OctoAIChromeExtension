@@ -560,6 +560,34 @@ const Views = (function () {
       +   '<a class="ip-link" href="' + escHtml(infraUrl) + '" target="_blank" rel="noopener">Open Infrastructure in Octopus →</a>'
       + '</section>';
   }
+  // Inline sun/moon glyphs — no icon fonts/external resources. The button always shows the icon
+  // for the mode you'd switch TO (sun while dark, moon while light), matching common toggle UX.
+  const _sunSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" '
+    + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<circle cx="12" cy="12" r="4"></circle>'
+    + '<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2'
+    + 'M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>';
+  const _moonSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" '
+    + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+  function renderThemeToggle(IP) {
+    const dark = IP.theme === 'dark';
+    const icon = dark ? _sunSvg : _moonSvg;
+    const label = dark ? 'Switch to light mode' : 'Switch to dark mode';
+    return '<button type="button" id="ip-theme-btn" class="ip-theme-btn" aria-label="' + escHtml(label) + '">'
+      + icon + '<span class="ip-theme-btn-label">' + escHtml(dark ? 'Light mode' : 'Dark mode') + '</span></button>';
+  }
+  function bindThemeToggle(IP) {
+    const el = document.getElementById('ip-theme-btn');
+    if (!el) return;
+    el.addEventListener('click', () => {
+      IP.theme = IP.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.classList.toggle('dark', IP.theme === 'dark');
+      try { localStorage.setItem('iprealpha:theme', IP.theme); } catch (e) { /* ignore persistence failures */ }
+      const container = document.getElementById('ip-theme-toggle');
+      if (container) { container.innerHTML = renderThemeToggle(IP); bindThemeToggle(IP); }
+    });
+  }
   function renderSpaceSwitch(IP) {
     const opts = ['<option value=""' + (!IP.spaceId ? ' selected' : '') + '>All spaces</option>']
       .concat((IP.spaces || []).map(s => '<option value="' + escHtml(s.Id) + '"'
@@ -582,6 +610,7 @@ const Views = (function () {
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo,
-    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch };
+    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,
+    renderThemeToggle, bindThemeToggle };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

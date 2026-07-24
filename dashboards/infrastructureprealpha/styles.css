@@ -152,8 +152,8 @@ code, .code, kbd, pre {
 pre { padding: var(--space-4); overflow-x: auto; line-height: var(--lh-snug); }
 
 a, .link { color: var(--ring); text-decoration: none; transition: color 120ms ease; }
-a:hover, .link:hover { color: #155EA0; text-decoration: underline; }
-.dark a:hover, .dark .link:hover { color: #87BFEC; }
+a:hover, .link:hover { color: var(--color-blue-600); text-decoration: underline; }
+.dark a:hover, .dark .link:hover { color: var(--color-blue-300); }
 
 .font-brand { font-family: var(--font-brand); }
 .font-sans  { font-family: var(--font-sans); }
@@ -166,7 +166,7 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   font-size:14px;overflow:hidden}
 .ip-rail{background:var(--chrome-bg);border-right:1px solid var(--border)}
 .ip-sidebar{background:var(--chrome-bg);border-right:1px solid var(--border);
-  padding:12px 8px;overflow-y:auto}
+  padding:12px 8px;overflow-y:auto;display:flex;flex-direction:column;min-height:0}
 .ip-space-switch{padding:0 2px 12px;border-bottom:1px solid var(--border);margin-bottom:8px}
 .ip-space-lbl{display:block;font-size:11px;font-weight:600;text-transform:uppercase;
   letter-spacing:.02em;color:var(--fg2);padding:0 8px 4px}
@@ -358,3 +358,12 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-dist-bar span{display:block;height:100%;border-radius:5px}
 .ip-dist-count{flex:0 0 auto;min-width:32px;text-align:right;font-size:13px;
   color:var(--fg2);font-variant-numeric:tabular-nums}
+
+/* Task S1 — dark/light theme toggle: compact control pinned to the sidebar bottom */
+.ip-theme-toggle{margin-top:auto;padding-top:12px;border-top:1px solid var(--border)}
+.ip-theme-btn{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--background);
+  color:var(--fg1);font-size:13px;font-family:inherit;cursor:pointer}
+.ip-theme-btn:hover{background:var(--secondary);border-color:var(--ring)}
+.ip-theme-btn svg{flex:0 0 auto;color:var(--fg2)}
+.ip-theme-btn-label{flex:1;text-align:left}
