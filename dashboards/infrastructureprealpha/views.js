@@ -6,6 +6,11 @@ const Views = (function () {
     if (kind === 'loading') return '<div class="ip-state"><div class="ip-spinner"></div><p>Loading your infrastructure…</p></div>';
     if (kind === 'auth') return '<div class="ip-state"><h3>Sign in to Octopus</h3>'
       + '<p>Your session isn\'t authenticated. Open your Octopus instance, sign in, then reopen this dashboard.</p></div>';
+    if (kind === 'noconfig') return '<div class="ip-state"><h3>Open from the Octopus AI Assistant</h3>'
+      + '<p>This dashboard reads its configuration from the extension, so it can\'t run when opened directly as a local file. '
+      + 'Load the unpacked extension, then open it from the AI Assistant — or run '
+      + '<code>showDashboard(&#123; dashboardFile: "infrastructureprealpha/index.html", serverUrl: "https://your-instance.octopus.app/", context: &#123;&#125; &#125;)</code> '
+      + 'from the extension service worker console.</p></div>';
     return '<div class="ip-state"><h3>Couldn\'t load infrastructure</h3><p>' + escHtml(detail || 'Unknown error') + '</p></div>';
   }
   function bar(healthy, unhealthy, disabled) {

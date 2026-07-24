@@ -16,10 +16,17 @@ async function fetchJson(path) {
 function readConfig() {
   return new Promise(resolve => {
     if (typeof dashboardGetConfig !== 'function') { resolve({ serverUrl: _serverUrl, context: {} }); return; }
-    dashboardGetConfig(cfg => resolve({
-      serverUrl: (cfg && cfg.lastServerUrl) || _serverUrl,
-      context: (cfg && cfg.context) || {}
-    }));
+    try {
+      dashboardGetConfig(cfg => resolve({
+        serverUrl: (cfg && cfg.lastServerUrl) || _serverUrl,
+        context: (cfg && cfg.context) || {}
+      }));
+    } catch (e) {
+      // dashboardGetConfig reaches chrome.storage, which is absent when the page
+      // is opened outside the extension (e.g. directly as a file:// URL). Degrade
+      // instead of leaving the caller's promise unresolved.
+      resolve({ serverUrl: _serverUrl, context: {} });
+    }
   });
 }
 

@@ -90,3 +90,19 @@ describe('overview + facets + filters', () => {
     expect(d.applyFilters(targets, { env:['Dev'] }, '').map(t=>t.name)).toEqual(['c']);
   });
 });
+
+describe('readConfig robustness', () => {
+  const d = require('./data');
+  afterEach(() => { delete global.dashboardGetConfig; });
+
+  test('resolves (never rejects) when dashboardGetConfig throws — e.g. no chrome.storage on file://', async () => {
+    global.dashboardGetConfig = () => { throw new TypeError("Cannot read properties of undefined (reading 'local')"); };
+    d.setServerUrl(null);
+    await expect(d.readConfig()).resolves.toEqual({ serverUrl: null, context: {} });
+  });
+
+  test('uses lastServerUrl and context from a valid config', async () => {
+    global.dashboardGetConfig = (cb) => cb({ lastServerUrl: 'https://x.octopus.app/', context: { space: 'S' } });
+    await expect(d.readConfig()).resolves.toEqual({ serverUrl: 'https://x.octopus.app/', context: { space: 'S' } });
+  });
+});
