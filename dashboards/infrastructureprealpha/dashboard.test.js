@@ -396,6 +396,16 @@ describe('facets drop blank-value options', () => {
   });
 });
 
+describe('isEmptyEstate', () => {
+  const d = require('./data');
+  test('true when no targets and no workers; false otherwise', () => {
+    expect(d.isEmptyEstate(null)).toBe(true);
+    expect(d.isEmptyEstate({ targets:[], workers:[] })).toBe(true);
+    expect(d.isEmptyEstate({ targets:[{name:'a'}], workers:[] })).toBe(false);
+    expect(d.isEmptyEstate({ targets:[], workers:[{name:'w'}] })).toBe(false);
+  });
+});
+
 describe('OS "Unknown" literal treated as blank', () => {
   const d = require('./data');
   test('osLabel/osVersionLabel return blank for a literal Unknown value', () => {

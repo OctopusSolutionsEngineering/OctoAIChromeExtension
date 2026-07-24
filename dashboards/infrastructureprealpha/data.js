@@ -169,6 +169,10 @@ function machineToTarget(m, ctx) {
   };
 }
 
+function isEmptyEstate(estate) {
+  return !estate || ((estate.targets||[]).length === 0 && (estate.workers||[]).length === 0);
+}
+
 function buildEstate(perSpace) {
   const targets = [], workers = [], environments = [], policies = [];
   perSpace.forEach(s => {
@@ -386,14 +390,14 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+  buildEstate, isEmptyEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+    machineToTarget, buildEstate, isEmptyEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel };
 }

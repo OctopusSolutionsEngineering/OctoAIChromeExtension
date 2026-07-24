@@ -12,7 +12,12 @@ async function ipBoot() {
     const res = await Data.loadEstate(serverUrl);
     if (res.status === 'auth')  { el.innerHTML = Views.stateView('auth'); return; }
     if (res.status === 'error') { el.innerHTML = Views.stateView('error', 'Failed to reach the Octopus API'); return; }
-    if (res.status === 'empty') { IP.estate = Data.buildEstate([]); Onboarding.renderFirstRun(IP); return; }
+    if (!res.perSpace || !res.perSpace.length) {
+      // No spaces at all (or nothing loadable) — nothing to switch between.
+      IP.estate = Data.buildEstate([]);
+      Onboarding.renderFirstRun(IP);
+      return;
+    }
     IP.perSpace = res.perSpace;
     IP.spaces = (res.spaces || []).map(s => ({ Id: s.Id, Name: s.Name }));
     const ctx = IP.context || {};
