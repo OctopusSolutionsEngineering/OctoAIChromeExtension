@@ -315,3 +315,8 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-policy-usage{color:var(--fg2);font-size:13px;margin:0 0 10px}
 .ip-policy-kv{display:flex;flex-direction:column}
 .ip-policy-kv .ip-kv{font-size:12px}
+
+/* Task C3 — workers: worker-pool summary cards above a faceted worker list, mirroring targets */
+.ip-pool-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-bottom:16px}
+.ip-pool-card .ip-card-head{margin-bottom:8px}
+.ip-chipx-pool{background:var(--color-purple-100);border-color:var(--color-purple-200);color:var(--color-purple-700)}

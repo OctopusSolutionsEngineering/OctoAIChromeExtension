@@ -226,6 +226,53 @@ describe('os + dead-facet suppression', () => {
   });
 });
 
+describe('workersModel + workerFacets + applyWorkerFilters', () => {
+  const d = require('./data');
+  const workers = [
+    { id:'Workers-1', name:'worker-a', health:'Healthy', healthKey:'healthy', pool:'Default Worker Pool', version:'8.3.0', kind:'Tentacle (Listening)' },
+    { id:'Workers-2', name:'worker-b', health:'Unhealthy', healthKey:'unhealthy', pool:'Default Worker Pool', version:'8.1.0', kind:'Tentacle (Polling)' },
+    { id:'Workers-3', name:'worker-c', health:'Healthy', healthKey:'healthy', pool:'Docker Pool', version:'8.3.0', kind:'Kubernetes Agent' }
+  ];
+  test('workersModel aggregates pools by total descending with healthy/unhealthy counts, and passes through rows', () => {
+    const m = d.workersModel(workers);
+    expect(m.pools).toEqual([
+      { name:'Default Worker Pool', total:2, healthy:1, unhealthy:1 },
+      { name:'Docker Pool', total:1, healthy:1, unhealthy:0 }
+    ]);
+    expect(m.rows).toEqual(workers);
+  });
+  test('workerFacets produces counted options for Health, Pool and Agent version', () => {
+    const facets = d.workerFacets(workers);
+    const health = facets.find(f => f.key==='health');
+    expect(health.options).toEqual(expect.arrayContaining([
+      { value:'healthy', label:'Healthy', count:2 },
+      { value:'unhealthy', label:'Unhealthy', count:1 }
+    ]));
+    const pool = facets.find(f => f.key==='pool');
+    expect(pool.options).toEqual(expect.arrayContaining([
+      { value:'Default Worker Pool', label:'Default Worker Pool', count:2 },
+      { value:'Docker Pool', label:'Docker Pool', count:1 }
+    ]));
+    const version = facets.find(f => f.key==='version');
+    expect(version.options).toEqual(expect.arrayContaining([
+      { value:'8.3.0', label:'8.3.0', count:2 },
+      { value:'8.1.0', label:'8.1.0', count:1 }
+    ]));
+  });
+  test('workerFacets omits a facet whose only option is —', () => {
+    const single = [{ id:'Workers-1', name:'w', health:'Healthy', healthKey:'healthy', pool:'—', version:'—', kind:'Tentacle (Listening)' }];
+    const keys = d.workerFacets(single).map(f => f.key);
+    expect(keys).not.toContain('pool');
+    expect(keys).not.toContain('version');
+    expect(keys).toContain('health');
+  });
+  test('applyWorkerFilters filters by health/pool facet and by name search', () => {
+    expect(d.applyWorkerFilters(workers, { health:['healthy'] }, '').map(w=>w.name)).toEqual(['worker-a','worker-c']);
+    expect(d.applyWorkerFilters(workers, {}, 'worker-b').map(w=>w.name)).toEqual(['worker-b']);
+    expect(d.applyWorkerFilters(workers, { pool:['Docker Pool'] }, '').map(w=>w.name)).toEqual(['worker-c']);
+  });
+});
+
 describe('readConfig robustness', () => {
   const d = require('./data');
   afterEach(() => { delete global.dashboardGetConfig; });

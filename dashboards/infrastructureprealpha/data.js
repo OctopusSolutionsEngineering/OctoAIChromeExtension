@@ -276,6 +276,39 @@ function buildFacets(targets) {
     _facet('version','Agent version', targets.map(t=>({value:t.version,label:t.version})))
   ].filter(f => !_isDeadFacet(f));
 }
+function workersModel(workers) {
+  const list = workers || [];
+  const poolMap = {};
+  list.forEach(w => {
+    const p = (poolMap[w.pool] = poolMap[w.pool] || { name: w.pool, total: 0, healthy: 0, unhealthy: 0 });
+    p.total++;
+    if (w.healthKey === 'healthy') p.healthy++;
+    else if (w.healthKey === 'unhealthy') p.unhealthy++;
+  });
+  const pools = Object.values(poolMap).sort((a, b) => b.total - a.total);
+  return { pools, rows: list };
+}
+function workerFacets(workers) {
+  const list = workers || [];
+  return [
+    _facet('health', 'Health', list.map(w => ({ value: w.healthKey, label: healthKeyLabel(w.healthKey) }))),
+    _facet('pool', 'Pool', list.map(w => ({ value: w.pool, label: w.pool }))),
+    _facet('version', 'Agent version', list.map(w => ({ value: w.version, label: w.version })))
+  ].filter(f => !_isDeadFacet(f));
+}
+function applyWorkerFilters(workers, filters, search) {
+  const q = (search || '').trim().toLowerCase();
+  const fieldMap = { health: 'healthKey' };
+  return (workers || []).filter(w => {
+    for (const key in (filters || {})) {
+      const sel = filters[key]; if (!sel || !sel.length) continue;
+      const field = fieldMap[key] || key;
+      if (!sel.includes(w[field])) return false;
+    }
+    if (q && !String(w.name).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
 function applyFilters(targets, filters, search) {
   const q = (search||'').trim().toLowerCase();
   // 'health' facet options carry healthKey values (see buildFacets), so the
@@ -293,10 +326,12 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel }; }
+  buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+  workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters };
+    machineToTarget, buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+    workersModel, workerFacets, applyWorkerFilters };
 }

@@ -1,5 +1,6 @@
 'use strict';
-var IP = { estate:null, serverUrl:null, context:{}, filters:{}, search:'', page:1, detailId:null };
+var IP = { estate:null, serverUrl:null, context:{}, filters:{}, search:'', page:1, detailId:null,
+  wFilters:{}, wSearch:'', wPage:1 };
 
 async function ipBoot() {
   const el = document.getElementById('main-content');

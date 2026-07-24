@@ -316,6 +316,98 @@ const Views = (function () {
       +     '" target="_blank" rel="noopener">Create machine policy</a></div></div>'
       + '<div class="ip-grid ip-policy-grid">' + (cards || '<p class="ip-sub">No machine policies</p>') + '</div>';
   }
+  function _workerPoolCard(p) {
+    return '<section class="ip-card ip-pool-card">'
+      + '<div class="ip-card-head"><h4>' + escHtml(p.name) + '</h4>'
+      +   '<span class="ip-count-inline">' + p.total + ' worker' + (p.total === 1 ? '' : 's') + '</span></div>'
+      + '<ul class="ip-legend"><li class="ip-num-healthy">' + p.healthy + ' Healthy</li>'
+      +   '<li class="ip-num-unhealthy">' + p.unhealthy + ' Unhealthy</li></ul></section>';
+  }
+  function _workerRow(w) {
+    return '<tr class="ip-row-static">'
+      + '<td>' + escHtml(w.name) + '</td>'
+      + '<td>' + pill(w.healthKey, w.health) + '</td>'
+      + '<td>' + chip(w.pool, 'pool') + '</td>'
+      + '<td>' + escHtml(w.version) + '</td></tr>';
+  }
+  function _workerAddUrl() {
+    let base = '';
+    try { base = (typeof IP !== 'undefined' && IP && IP.serverUrl) || ''; } catch (e) { base = ''; }
+    return String(base).replace(/\/$/, '') + '/app#/infrastructure/workers/new';
+  }
+  function renderWorkers(IP) {
+    IP.wFilters = IP.wFilters || {}; IP.wSearch = IP.wSearch || ''; IP.wPage = IP.wPage || 1;
+    const all = IP.estate.workers || [];
+    const model = Data.workersModel(all);
+    const facets = Data.workerFacets(all);
+    const rows = Data.applyWorkerFilters(all, IP.wFilters, IP.wSearch);
+
+    const pages = Math.max(1, Math.ceil(rows.length / IP_PAGE_SIZE));
+    const page = Math.min(IP.wPage || 1, pages);
+    const pageStart = (page - 1) * IP_PAGE_SIZE, pageEnd = page * IP_PAGE_SIZE;
+    const pageRows = rows.slice(pageStart, pageEnd);
+
+    const chips = [];
+    Object.keys(IP.wFilters || {}).forEach(k => (IP.wFilters[k] || []).forEach(v => {
+      const f = facets.find(x => x.key === k); const o = f && f.options.find(x => x.value === v);
+      chips.push(filterChip(k, v, (f ? f.label : k) + ': ' + (o ? o.label : v)));
+    }));
+
+    const facetHtml = facets.map(f => f.options.length ? '<div class="ip-facet"><div class="ip-facet-h">'
+      + escHtml(f.label) + '</div>' + f.options.slice(0, 12).map(o => {
+        const on = (IP.wFilters[f.key] || []).includes(o.value);
+        return '<label class="ip-opt"><input type="checkbox" data-key="' + escHtml(f.key) + '" data-value="'
+          + escHtml(o.value) + '"' + (on ? ' checked' : '') + '> <span>' + escHtml(o.label)
+          + '</span><b>' + o.count + '</b></label>';
+      }).join('') + '</div>' : '').join('');
+
+    const poolCards = model.pools.map(_workerPoolCard).join('');
+
+    const body = rows.length
+      ? '<div class="ip-targets-scroll"><table class="ip-table ip-targets"><thead><tr>'
+        + '<th>Worker</th><th>Health</th><th>Pool</th><th>Agent version</th>'
+        + '</tr></thead><tbody>' + pageRows.map(_workerRow).join('') + '</tbody></table></div>'
+        + (pages > 1 ? '<div class="ip-pager" data-pages="' + pages + '" data-page="' + page + '">Page ' + page + ' of ' + pages
+          + ' <button class="ip-page-prev"' + (page <= 1 ? ' disabled' : '') + '>Prev</button>'
+          + '<button class="ip-page-next"' + (page >= pages ? ' disabled' : '') + '>Next</button></div>' : '')
+      : '<div class="ip-empty"><h3>No workers match these filters</h3><p>Try removing a filter or clearing your search.</p></div>';
+
+    return '<header class="ip-head"><h2>Workers</h2>'
+      +   '<p class="ip-sub">A separate class of infrastructure — organised into shared pools, not tenant-scoped.</p></header>'
+      + '<div class="ip-grid ip-pool-grid">' + (poolCards || '<p class="ip-sub">No worker pools</p>') + '</div>'
+      + '<div class="ip-targets-wrap">'
+      +   '<div class="ip-facets"><div class="ip-facet-title">Filters</div>'
+      +     (chips.length ? '<div class="ip-chips">' + chips.join('') + '<button class="ip-clear">Clear all</button></div>' : '')
+      +     facetHtml + '</div>'
+      +   '<div class="ip-targets-main">'
+      +     '<div class="ip-toolbar"><input class="ip-search" type="search" placeholder="Search workers…" value="'
+      +       escHtml(IP.wSearch || '') + '"><span class="ip-count">' + rows.length + ' of ' + all.length + '</span>'
+      +       '<a class="ip-btn" href="' + escHtml(_workerAddUrl()) + '" target="_blank" rel="noopener">Add worker</a></div>'
+      +     body + '</div></div>';
+  }
+  function bindWorkers(IP) {
+    const root = document.getElementById('main-content');
+    const rerender = () => { root.innerHTML = renderWorkers(IP); bindWorkers(IP); };
+    const search = root.querySelector('.ip-search');
+    if (search) search.addEventListener('input', e => { IP.wSearch = e.target.value; IP.wPage = 1;
+      const val = e.target.value; rerender(); const s = document.querySelector('.ip-search');
+      if (s) { s.focus(); s.value = val; s.setSelectionRange(val.length, val.length); } });
+    root.querySelectorAll('.ip-opt input').forEach(cb => cb.addEventListener('change', e => {
+      const k = e.target.getAttribute('data-key'), v = e.target.getAttribute('data-value');
+      IP.wFilters[k] = IP.wFilters[k] || [];
+      if (e.target.checked) IP.wFilters[k].push(v); else IP.wFilters[k] = IP.wFilters[k].filter(x => x !== v);
+      IP.wPage = 1; rerender();
+    }));
+    root.querySelectorAll('.ip-chip').forEach(c => c.addEventListener('click', e => {
+      const k = c.getAttribute('data-key'), v = c.getAttribute('data-value');
+      IP.wFilters[k] = (IP.wFilters[k] || []).filter(x => x !== v); IP.wPage = 1; rerender();
+    }));
+    const clr = root.querySelector('.ip-clear');
+    if (clr) clr.addEventListener('click', () => { IP.wFilters = {}; IP.wSearch = ''; IP.wPage = 1; rerender(); });
+    const prev = root.querySelector('.ip-page-prev'), next = root.querySelector('.ip-page-next');
+    if (prev) prev.addEventListener('click', () => { IP.wPage = Math.max(1, (IP.wPage || 1) - 1); rerender(); });
+    if (next) next.addEventListener('click', () => { IP.wPage = (IP.wPage || 1) + 1; rerender(); });
+  }
   function bindTargets(IP) {
     const root = document.getElementById('main-content');
     const rerender = () => { root.innerHTML = renderTargets(IP); bindTargets(IP); };
@@ -343,7 +435,7 @@ const Views = (function () {
     }));
   }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
-    renderEnvironments, bindEnvironments, renderMachinePolicies,
+    renderEnvironments, bindEnvironments, renderMachinePolicies, renderWorkers, bindWorkers,
     pill, chip, healthBar, donut, heatCell };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }
