@@ -395,3 +395,14 @@ describe('facets drop blank-value options', () => {
     expect(os.options.some(o => o.value === '')).toBe(false);
   });
 });
+
+describe('OS "Unknown" literal treated as blank', () => {
+  const d = require('./data');
+  test('osLabel/osVersionLabel return blank for a literal Unknown value', () => {
+    expect(d.osLabel({ OperatingSystem: 'Unknown' }, {})).toBe('');
+    expect(d.osLabel({ OperatingSystem: 'unknown' }, {})).toBe('');
+    expect(d.osVersionLabel({ OperatingSystemVersion: 'Unknown' }, {})).toBe('');
+    // a real OS value is still returned
+    expect(d.osLabel({ OperatingSystem: 'Windows Server 2022' }, {})).toBe('Windows Server 2022');
+  });
+});

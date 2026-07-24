@@ -120,6 +120,12 @@ function extractVersion(ep) {
   for (const k in ep) { if (/version/i.test(k) && looksLikeVersion(ep[k])) return ep[k]; }
   return '—';
 }
+// An OS / OS-version candidate is only usable if it's a non-empty string that isn't a
+// placeholder. The Octopus API sometimes reports a literal "Unknown" for un-health-checked
+// machines; treat that (and blanks) as no value so the cell renders blank, not "Unknown".
+function _knownOsStr(s) {
+  return typeof s === 'string' && s.trim() && !/^(unknown|n\/?a|none|-|—)$/i.test(s.trim());
+}
 function osLabel(ep, m) {
   // FLAG: exact Octopus OS field is unconfirmed; verify on a live instance.
   // Defensive candidate scan across likely locations, falling back to '' (blank cell —
@@ -129,7 +135,7 @@ function osLabel(ep, m) {
     ep.TentacleVersionDetails && ep.TentacleVersionDetails.OperatingSystem,
     m.OperatingSystem, ep.OperatingSystem,
     m.HealthStatus && m.OperatingSystem
-  ].filter(s => typeof s === 'string' && s.trim());
+  ].filter(_knownOsStr);
   return cands[0] || '';
 }
 function osVersionLabel(ep, m) {
@@ -139,7 +145,7 @@ function osVersionLabel(ep, m) {
   const cands = [
     ep.TentacleVersionDetails && ep.TentacleVersionDetails.OperatingSystemVersion,
     m.OperatingSystemVersion, ep.OperatingSystemVersion
-  ].filter(s => typeof s === 'string' && s.trim());
+  ].filter(_knownOsStr);
   return cands[0] || '';
 }
 function machineToTarget(m, ctx) {
