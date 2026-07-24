@@ -307,3 +307,11 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-env-sub .ip-env-targets{margin:4px 0 10px 26px;width:calc(100% - 26px);font-size:12px;background:var(--card)}
 .ip-env-sub .ip-env-targets th,.ip-env-sub .ip-env-targets td{padding:5px 8px}
 .ip-env-sub .ip-env-targets .ip-sub{padding:12px 8px;text-align:center}
+
+/* Task C2 — machine policies: one card per policy, Default badge, governed settings as key/value rows */
+.ip-policy-grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.ip-policy-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.ip-policy-head h4{margin:0}
+.ip-policy-usage{color:var(--fg2);font-size:13px;margin:0 0 10px}
+.ip-policy-kv{display:flex;flex-direction:column}
+.ip-policy-kv .ip-kv{font-size:12px}

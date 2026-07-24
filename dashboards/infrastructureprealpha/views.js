@@ -283,6 +283,39 @@ const Views = (function () {
       bindEnvironments(IP);
     }));
   }
+  function _policyCreateUrl() {
+    let base = '';
+    try { base = (typeof IP !== 'undefined' && IP && IP.serverUrl) || ''; } catch (e) { base = ''; }
+    return String(base).replace(/\/$/, '') + '/app#/infrastructure/machinepolicies/create';
+  }
+  function _policyCard(p) {
+    return '<section class="ip-card ip-policy-card">'
+      + '<div class="ip-policy-head"><h4>' + escHtml(p.name) + '</h4>'
+      +   (p.isDefault ? '<span class="ip-tag">Default</span>' : '') + '</div>'
+      + (p.description ? '<p class="ip-sub">' + escHtml(p.description) + '</p>' : '')
+      + '<p class="ip-policy-usage">' + p.usage + ' target' + (p.usage === 1 ? '' : 's') + '</p>'
+      + '<div class="ip-policy-kv">'
+      +   _row('Health check interval', p.interval)
+      +   _row('Health check type', p.healthCheckType)
+      +   _row('Tentacle updates', p.tentacle)
+      +   _row('Calamari updates', p.calamari)
+      +   _row('Kubernetes agent', p.k8s)
+      +   _row('Connectivity', p.connectivity)
+      +   _row('Clean up machines', p.cleanup)
+      + '</div></section>';
+  }
+  function renderMachinePolicies(IP) {
+    const rows = Data.policiesModel(IP.estate.policies, IP.estate.targets);
+    const cards = rows.map(_policyCard).join('');
+    return ''
+      + '<header class="ip-head"><h2>Machine policies</h2>'
+      +   '<p class="ip-sub">Govern targets collectively — health-check schedules and the tentacle upgrade '
+      +   'behaviour that drives version state across the estate.</p></header>'
+      + '<div class="ip-card-head"><h4>Machine policies <span class="ip-count-inline">' + rows.length + '</span></h4>'
+      +   '<div class="ip-card-actions"><a class="ip-link" href="' + escHtml(_policyCreateUrl())
+      +     '" target="_blank" rel="noopener">Create machine policy</a></div></div>'
+      + '<div class="ip-grid ip-policy-grid">' + (cards || '<p class="ip-sub">No machine policies</p>') + '</div>';
+  }
   function bindTargets(IP) {
     const root = document.getElementById('main-content');
     const rerender = () => { root.innerHTML = renderTargets(IP); bindTargets(IP); };
@@ -310,7 +343,7 @@ const Views = (function () {
     }));
   }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
-    renderEnvironments, bindEnvironments,
+    renderEnvironments, bindEnvironments, renderMachinePolicies,
     pill, chip, healthBar, donut, heatCell };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

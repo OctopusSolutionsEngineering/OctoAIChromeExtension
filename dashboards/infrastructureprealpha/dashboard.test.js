@@ -119,6 +119,47 @@ describe('environmentsModel', () => {
   });
 });
 
+describe('policiesModel', () => {
+  const d = require('./data');
+  const policies = [
+    { Id:'MachinePolicies-1', Name:'Default Machine Policy', IsDefault:true, Description:'The default policy.',
+      MachineHealthCheckPolicy: { HealthCheckInterval:'00:10:00', HealthCheckType:'RunScript' },
+      MachineUpdatePolicy: { TentacleUpgradePolicy:'Manual', CalamariUpdatePolicy:'Automatic', KubernetesAgentUpgradePolicy:'Automatic' },
+      MachineConnectivityPolicy: { MachineConnectivityBehavior:'ExpectedToBeOnline' },
+      MachineCleanupPolicy: { DeleteMachinesBehavior:'DoNotDelete' } },
+    { Id:'MachinePolicies-2', Name:'Kubernetes agents', IsDefault:false, Description:'' }
+  ];
+  const targets = [
+    { name:'a', policy:'Default Machine Policy' },
+    { name:'b', policy:'Default Machine Policy' },
+    { name:'c', policy:'Kubernetes agents' }
+  ];
+  test('maps name, isDefault, description and counts usage from targets', () => {
+    const rows = d.policiesModel(policies, targets);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ name:'Default Machine Policy', isDefault:true, description:'The default policy.', usage:2 });
+    expect(rows[1]).toMatchObject({ name:'Kubernetes agents', isDefault:false, description:'', usage:1 });
+  });
+  test('falls back to Name-based default detection when IsDefault is absent', () => {
+    const rows = d.policiesModel([{ Name:'Default Machine Policy' }], []);
+    expect(rows[0].isDefault).toBe(true);
+  });
+  test('extracts governance fields from the policy resource', () => {
+    const rows = d.policiesModel(policies, targets);
+    expect(rows[0]).toMatchObject({
+      interval:'00:10:00', healthCheckType:'RunScript',
+      tentacle:'Manual', calamari:'Automatic', k8s:'Automatic',
+      connectivity:'ExpectedToBeOnline', cleanup:'DoNotDelete'
+    });
+  });
+  test('falls back to — for missing/unrecognised governance fields', () => {
+    const rows = d.policiesModel([{ Name:'Empty policy' }], []);
+    expect(rows[0]).toMatchObject({
+      interval:'—', healthCheckType:'—', tentacle:'—', calamari:'—', k8s:'—', connectivity:'—', cleanup:'—'
+    });
+  });
+});
+
 describe('typeGroup', () => {
   const d = require('./data');
   test('collapses and cleans communication styles', () => {

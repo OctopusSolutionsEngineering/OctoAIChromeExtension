@@ -205,6 +205,38 @@ function overviewModel(targets, workers) {
   };
 }
 
+// FLAG: exact Octopus machine-policy field names are unconfirmed; verify on a live instance.
+// Defensive scan of the candidate locations the Octopus API is believed to use, falling
+// back to '—' when a field is absent, renamed, or shaped differently than expected.
+function _policyFallback(v) {
+  if (typeof v === 'string' && v.trim()) return v;
+  if (typeof v === 'number') return v;
+  return '—';
+}
+function policiesModel(policies, targets) {
+  const list = targets || [];
+  return (policies || []).map(p => {
+    const name = p.Name;
+    const isDefault = p.IsDefault === true || p.Name === 'Default Machine Policy';
+    const description = p.Description || '';
+    const usage = _count(list, t => t.policy === name);
+    const mhcp = p.MachineHealthCheckPolicy || {};
+    const mup = p.MachineUpdatePolicy || {};
+    const mcp = p.MachineConnectivityPolicy || {};
+    const mclp = p.MachineCleanupPolicy || {};
+    return {
+      name, isDefault, description, usage,
+      interval: _policyFallback(mhcp.HealthCheckInterval),
+      healthCheckType: _policyFallback(mhcp.HealthCheckType),
+      tentacle: _policyFallback(mup.TentacleUpgradePolicy),
+      calamari: _policyFallback(mup.CalamariUpdatePolicy),
+      k8s: _policyFallback(mup.KubernetesAgentUpgradePolicy),
+      connectivity: _policyFallback(mcp.MachineConnectivityBehavior),
+      cleanup: _policyFallback(mclp.DeleteMachinesBehavior)
+    };
+  });
+}
+
 function environmentsModel(targets, environments) {
   const map = {};
   (targets || []).forEach(t => {
@@ -261,10 +293,10 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, overviewModel, environmentsModel, buildFacets, applyFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel }; }
+  buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, overviewModel, environmentsModel, buildFacets, applyFilters };
+    machineToTarget, buildEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters };
 }
