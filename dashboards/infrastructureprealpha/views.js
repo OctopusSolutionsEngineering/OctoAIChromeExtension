@@ -81,7 +81,7 @@ const Views = (function () {
     const pools = ov.workers.pools.map(p =>
       '<li><span>' + escHtml(p.name) + '</span><b>' + p.count + '</b></li>').join('');
     return ''
-      + '<header class="ip-head">'
+      + '<header class="ip-head ip-head-actions">'
       +   '<div class="ip-head-text"><h2>Infrastructure overview</h2>'
       +     '<p class="ip-sub">A diagnostic snapshot of your deployment estate.</p></div>'
       +   '<a class="ip-head-pill" href="#agents">Deployment agent versions (Tentacles &amp; K8s) · ' + agentsPillText + ' →</a>'

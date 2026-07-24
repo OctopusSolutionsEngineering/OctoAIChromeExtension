@@ -187,9 +187,10 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   border-radius:50%;animation:ip-spin 0.8s linear infinite;margin:0 auto 12px}
 @keyframes ip-spin{to{transform:rotate(360deg)}}
 
-.ip-head{margin-bottom:20px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.ip-head{margin-bottom:20px}
 .ip-head h2{margin:0 0 4px}
 .ip-sub{color:var(--fg2);margin:0}
+.ip-head-actions{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .ip-head-pill{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;padding:6px 12px;
   border:1px solid var(--border);border-radius:999px;background:var(--secondary);
   color:var(--fg1);font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap}
