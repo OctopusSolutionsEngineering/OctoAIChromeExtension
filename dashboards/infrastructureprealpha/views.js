@@ -62,6 +62,8 @@ const Views = (function () {
     return String(base).replace(/\/$/, '') + '/app#/infrastructure/machines';
   }
   function renderOverview(ov, estate) {
+    const ab = (ov.agents && ov.agents.behind) || 0;
+    const agentsPillText = ab === 0 ? 'all up to date' : ab + ' behind';
     const typeRows = ov.byType.map(r =>
       '<div class="ip-type-row">'
       + '<div class="ip-type-name">' + escHtml(r.name) + '</div>'
@@ -79,8 +81,11 @@ const Views = (function () {
     const pools = ov.workers.pools.map(p =>
       '<li><span>' + escHtml(p.name) + '</span><b>' + p.count + '</b></li>').join('');
     return ''
-      + '<header class="ip-head"><h2>Infrastructure overview</h2>'
-      + '<p class="ip-sub">A diagnostic snapshot of your deployment estate.</p></header>'
+      + '<header class="ip-head">'
+      +   '<div class="ip-head-text"><h2>Infrastructure overview</h2>'
+      +     '<p class="ip-sub">A diagnostic snapshot of your deployment estate.</p></div>'
+      +   '<a class="ip-head-pill" href="#agents">Deployment agent versions (Tentacles &amp; K8s) · ' + agentsPillText + ' →</a>'
+      + '</header>'
       + '<section class="ip-card ip-ov-panel">'
       +   '<div class="ip-card-head">'
       +     '<h4>Deployment targets <span class="ip-count-inline">' + ov.total + '</span></h4>'
