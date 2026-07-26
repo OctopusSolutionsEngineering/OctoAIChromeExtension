@@ -30,6 +30,17 @@ function readConfig() {
   });
 }
 
+// Run `fn` over `items` with at most `limit` in flight at once; preserves input order.
+async function _mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) { const i = next++; results[i] = await fn(items[i], i); }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 async function loadEstate(serverUrl) {
   setServerUrl(serverUrl);
   let spaces;
@@ -38,7 +49,9 @@ async function loadEstate(serverUrl) {
   if (!spaces || !spaces.length) return { status: 'empty', spaces: [], perSpace: [] };
 
   let anyAuth = false;
-  const perSpace = (await Promise.all(spaces.map(async sp => {
+  // Cap how many spaces we hydrate at once so a many-space instance doesn't fire
+  // a huge concurrent burst of /all requests on load. Order is preserved.
+  const perSpace = (await _mapLimit(spaces, 4, async sp => {
     try {
       const [envs, policies, tenants, machines, workerpools, workers] = await Promise.all([
         fetchJson('/api/' + sp.Id + '/environments/all').catch(() => []),
@@ -50,7 +63,7 @@ async function loadEstate(serverUrl) {
       ]);
       return { sp, envs, policies, tenants, machines, workerpools, workers };
     } catch (e) { if (e && e.auth) anyAuth = true; return null; }
-  }))).filter(Boolean);
+  })).filter(Boolean);
 
   if (!perSpace.length) return { status: anyAuth ? 'auth' : 'error', spaces, perSpace: [] };
   const anyMachines = perSpace.some(s => (s.machines || []).length);
@@ -399,5 +412,5 @@ if (typeof module !== 'undefined') {
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
     machineToTarget, buildEstate, isEmptyEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
-    vkey, majorVersion, versionBand, deriveLatest, agentsModel };
+    vkey, majorVersion, versionBand, deriveLatest, agentsModel, _mapLimit };
 }

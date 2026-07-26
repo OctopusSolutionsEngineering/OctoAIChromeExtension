@@ -1,7 +1,7 @@
 'use strict';
 const Views = (function () {
   function escHtml(s) { return String(s == null ? '' : s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   function stateView(kind, detail) {
     if (kind === 'loading') return '<div class="ip-state"><div class="ip-spinner"></div><p>Loading your infrastructure…</p></div>';
     if (kind === 'auth') return '<div class="ip-state"><h3>Sign in to Octopus</h3>'

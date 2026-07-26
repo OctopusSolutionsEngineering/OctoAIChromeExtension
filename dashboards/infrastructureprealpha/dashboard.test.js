@@ -416,3 +416,27 @@ describe('OS "Unknown" literal treated as blank', () => {
     expect(d.osLabel({ OperatingSystem: 'Windows Server 2022' }, {})).toBe('Windows Server 2022');
   });
 });
+
+describe('escHtml escapes the single quote', () => {
+  const Views = require('./views');
+  test('single quote becomes &#39; (attribute-safe) and other entities still escape', () => {
+    expect(Views.escHtml("O'Brien")).toBe('O&#39;Brien');
+    expect(Views.escHtml(`<a href='x' title="y">&`)).toBe('&lt;a href=&#39;x&#39; title=&quot;y&quot;&gt;&amp;');
+  });
+});
+
+describe('_mapLimit', () => {
+  const d = require('./data');
+  test('preserves input order and caps concurrency', async () => {
+    let inFlight = 0, maxInFlight = 0;
+    const items = [1,2,3,4,5,6,7,8];
+    const out = await d._mapLimit(items, 3, async (n) => {
+      inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(r => setTimeout(r, 5));
+      inFlight--;
+      return n * 10;
+    });
+    expect(out).toEqual([10,20,30,40,50,60,70,80]); // order preserved
+    expect(maxInFlight).toBeLessThanOrEqual(3);      // concurrency capped
+  });
+});
