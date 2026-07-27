@@ -921,22 +921,35 @@ const Views = (function () {
     });
   }
   function renderSpaceSwitch(IP) {
-    const opts = ['<option value=""' + (!IP.spaceId ? ' selected' : '') + '>All spaces</option>']
-      .concat((IP.spaces || []).map(s => '<option value="' + escHtml(s.Id) + '"'
-        + (IP.spaceId === s.Id ? ' selected' : '') + '>' + escHtml(s.Name) + '</option>'));
+    // One space at a time, matching the Octopus UI — there is no all-spaces view there,
+    // and offering one would mean hydrating every space to populate it.
+    const opts = (IP.spaces || []).map(s => '<option value="' + escHtml(s.Id) + '"'
+      + (IP.spaceId === s.Id ? ' selected' : '') + '>' + escHtml(s.Name) + '</option>');
     return '<label class="ip-space-lbl">Space</label>'
       + '<select id="ip-space-select" class="ip-space-select">' + opts.join('') + '</select>';
   }
   function bindSpaceSwitch(IP) {
     const el = document.getElementById('ip-space-select');
     if (!el) return;
-    el.addEventListener('change', e => {
-      IP.spaceId = e.target.value || null;
-      if (typeof IP.rescope === 'function') IP.rescope();
+    el.addEventListener('change', async e => {
+      IP.spaceId = e.target.value;
       IP.filters = {}; IP.search = ''; IP.page = 1;
       IP.wFilters = {}; IP.wSearch = ''; IP.wPage = 1;
       IP.envExpanded = {};
-      Router.render();
+      // Spaces are hydrated on demand now, so switching to one not seen before hits the
+      // network. Show the loading state rather than leaving the previous space's data on
+      // screen under the new space's name.
+      const main = document.getElementById('main-content');
+      if (main) main.innerHTML = stateView('loading');
+      el.disabled = true;
+      try {
+        if (typeof IP.rescope === 'function') await IP.rescope();
+        Router.render();
+      } catch (err) {
+        if (main) main.innerHTML = stateView('error', (err && err.message) || 'Could not load that space');
+      } finally {
+        el.disabled = false;
+      }
     });
   }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,

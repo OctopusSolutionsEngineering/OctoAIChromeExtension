@@ -41,44 +41,41 @@ async function _mapLimit(items, limit, fn) {
   return results;
 }
 
-async function loadEstate(serverUrl) {
+// Boot in two steps. The space list is one cheap request; hydrating a space is six.
+// Loading every space up front to display one is the dominant boot cost on a
+// many-space instance, so callers hydrate only what they're about to show.
+async function loadSpaces(serverUrl) {
   setServerUrl(serverUrl);
   let spaces;
   try { spaces = await fetchJson('/api/spaces/all'); }
-  catch (e) { return { status: e && e.auth ? 'auth' : 'error', spaces: [], perSpace: [] }; }
-  if (!spaces || !spaces.length) return { status: 'empty', spaces: [], perSpace: [] };
+  catch (e) { return { status: e && e.auth ? 'auth' : 'error', spaces: [] }; }
+  if (!spaces || !spaces.length) return { status: 'empty', spaces: [] };
+  return { status: 'ready', spaces };
+}
 
-  let anyAuth = false;
-  // Cap how many spaces we hydrate at once so a many-space instance doesn't fire
-  // a huge concurrent burst of /all requests on load. Order is preserved.
-  const perSpace = (await _mapLimit(spaces, 4, async sp => {
-    // A resource that fails still yields [] so the rest of the space renders, but the
-    // failure is recorded. Without that record an unreadable endpoint is indistinguishable
-    // from an empty one, and the UI ends up asserting "there are none" about data it
-    // never managed to read.
-    const failed = [];
-    const soft = (name, path) => fetchJson(path).catch(e => {
-      failed.push(name);
-      if (e && e.auth) anyAuth = true;
-      return [];
-    });
-    try {
-      const [envs, policies, tenants, machines, workerpools, workers] = await Promise.all([
-        soft('environments', '/api/' + sp.Id + '/environments/all'),
-        soft('policies',     '/api/' + sp.Id + '/machinepolicies/all'),
-        soft('tenants',      '/api/' + sp.Id + '/tenants/all'),
-        fetchJson('/api/' + sp.Id + '/machines/all'),
-        soft('workerpools',  '/api/' + sp.Id + '/workerpools/all'),
-        soft('workers',      '/api/' + sp.Id + '/workers/all')
-      ]);
-      return { sp, envs, policies, tenants, machines, workerpools, workers, failed };
-    } catch (e) { if (e && e.auth) anyAuth = true; return null; }
-  })).filter(Boolean);
-
-  if (!perSpace.length) return { status: anyAuth ? 'auth' : 'error', spaces, perSpace: [] };
-  const anyMachines = perSpace.some(s => (s.machines || []).length);
-  const anyWorkers = perSpace.some(s => (s.workers || []).length);
-  return { status: (anyMachines || anyWorkers) ? 'ready' : 'empty', spaces, perSpace };
+// One space's payload. A resource that fails still yields [] so the rest of the space
+// renders, but the failure is recorded — without that record an unreadable endpoint is
+// indistinguishable from an empty one. Machines are the exception: if they can't be read
+// there is no estate to show, so the space is dropped entirely (null).
+async function hydrateSpace(sp) {
+  const failed = [];
+  let auth = false;
+  const soft = (name, path) => fetchJson(path).catch(e => {
+    failed.push(name);
+    if (e && e.auth) auth = true;
+    return [];
+  });
+  try {
+    const [envs, policies, tenants, machines, workerpools, workers] = await Promise.all([
+      soft('environments', '/api/' + sp.Id + '/environments/all'),
+      soft('policies',     '/api/' + sp.Id + '/machinepolicies/all'),
+      soft('tenants',      '/api/' + sp.Id + '/tenants/all'),
+      fetchJson('/api/' + sp.Id + '/machines/all'),
+      soft('workerpools',  '/api/' + sp.Id + '/workerpools/all'),
+      soft('workers',      '/api/' + sp.Id + '/workers/all')
+    ]);
+    return { sp, envs, policies, tenants, machines, workerpools, workers, failed, auth };
+  } catch (e) { return null; }
 }
 
 function healthLabel(api) {
@@ -524,13 +521,13 @@ function applyFilters(targets, filters, search) {
   });
 }
 
-if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
+if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
 
 if (typeof module !== 'undefined') {
-  module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
+  module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
     machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,

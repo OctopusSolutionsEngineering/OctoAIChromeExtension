@@ -7,6 +7,9 @@ const Router = (function () {
   }
   function render() {
     const el = document.getElementById('main-content');
+    // A space that failed to hydrate has no estate to route over, and rendering views
+    // against it would show zeros as though the space were empty.
+    if (IP.spaceError) { el.innerHTML = Views.stateView('error', IP.spaceError); return; }
     const hash = (window.location.hash || '#overview').slice(1);
     // Cold-start greets you on the landing view when there's no infrastructure; it never
     // intercepts an explicit nav click. Every other view renders itself and shows its own

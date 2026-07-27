@@ -740,34 +740,31 @@ describe('overviewModel byType — disabled targets (Copilot review)', () => {
   });
 });
 
-describe('loadEstate partial failures (Copilot review)', () => {
+describe('per-space partial failures (Copilot review)', () => {
   const d = require('./data');
   const page = items => ({ status:200, ok:true, json: async () => items });
 
   test('a resource that fails to load is recorded, not silently emptied', async () => {
-    global.fetch = async (url) => {
-      const u = String(url);
-      if (u.includes('/spaces/all')) return page([{ Id:'Spaces-1', Name:'Default' }]);
-      if (u.includes('/environments/all')) return { status:403, ok:false, statusText:'Forbidden' };
-      if (u.includes('/machines/all')) return page([]);
-      return page([]);
-    };
-    const res = await d.loadEstate('https://x.octopus.app/');
-    expect(res.perSpace[0].failed).toContain('environments');
+    global.fetch = async (url) => String(url).includes('/environments/all')
+      ? { status:403, ok:false, statusText:'Forbidden' } : page([]);
+    d.setServerUrl('https://x.octopus.app/');
+    const hydrated = await d.hydrateSpace({ Id:'Spaces-1', Name:'Default' });
+    expect(hydrated.failed).toContain('environments');
     // and the estate carries it through, so a view can say "couldn't load" not "there are none"
-    const estate = d.buildEstate(res.perSpace);
+    const estate = d.buildEstate([hydrated]);
     expect(estate.failed.environments).toBe(true);
     expect(estate.failed.policies).toBe(false);
   });
 
   test('everything loading cleanly leaves no failure flags', async () => {
-    global.fetch = async (url) => String(url).includes('/spaces/all')
-      ? page([{ Id:'Spaces-1', Name:'Default' }]) : page([]);
-    const res = await d.loadEstate('https://x.octopus.app/');
-    expect(res.perSpace[0].failed).toEqual([]);
-    expect(d.buildEstate(res.perSpace).failed.environments).toBe(false);
+    global.fetch = async () => page([]);
+    d.setServerUrl('https://x.octopus.app/');
+    const hydrated = await d.hydrateSpace({ Id:'Spaces-1', Name:'Default' });
+    expect(hydrated.failed).toEqual([]);
+    expect(d.buildEstate([hydrated]).failed.environments).toBe(false);
   });
 });
+
 
 describe('unreadable resources are not reported as empty (Copilot review)', () => {
   const Views = require('./views');
@@ -869,4 +866,46 @@ describe('events card rendering', () => {
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;img');
   });
+});
+
+describe('lazy space hydration', () => {
+  const d = require('./data');
+  const page = items => ({ status:200, ok:true, json: async () => items });
+  const spaces = [{ Id:'Spaces-1', Name:'One' }, { Id:'Spaces-2', Name:'Two' }];
+  let calls;
+  const mock = () => { calls = []; global.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes('/spaces/all')) return page(spaces);
+    return page([]);
+  }; };
+  beforeEach(() => { mock(); d.setServerUrl('https://x.octopus.app/'); });
+
+  test('loadSpaces lists spaces without hydrating any of them', async () => {
+    const res = await d.loadSpaces('https://x.octopus.app/');
+    expect(res.spaces).toHaveLength(2);
+    expect(calls).toHaveLength(1);                       // one request, not 1 + 2*6
+    expect(calls[0]).toContain('/spaces/all');
+  });
+
+  test('hydrateSpace loads exactly one space and records its failures', async () => {
+    global.fetch = async (url) => String(url).includes('/environments/all')
+      ? { status:403, ok:false, statusText:'Forbidden' } : page([]);
+    const s = await d.hydrateSpace({ Id:'Spaces-1', Name:'One' });
+    expect(s.sp.Id).toBe('Spaces-1');
+    expect(s.failed).toContain('environments');
+  });
+
+  test('a space whose machines cannot be read yields null, not a half-empty space', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all')
+      ? { status:500, ok:false, statusText:'Server Error' } : page([]);
+    expect(await d.hydrateSpace({ Id:'Spaces-1', Name:'One' })).toBe(null);
+  });
+
+  test('auth failure on the space list is still distinguishable from an empty instance', async () => {
+    global.fetch = async () => ({ status:401, ok:false, statusText:'Unauthorized' });
+    expect((await d.loadSpaces('https://x.octopus.app/')).status).toBe('auth');
+    global.fetch = async () => page([]);
+    expect((await d.loadSpaces('https://x.octopus.app/')).status).toBe('empty');
+  });
+
 });
