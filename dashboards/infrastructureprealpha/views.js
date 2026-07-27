@@ -220,28 +220,86 @@ const Views = (function () {
       +   body + '</div></div>';
   }
   function _row(k,v){ return '<div class="ip-kv"><span>' + escHtml(k) + '</span><b>' + escHtml(v) + '</b></div>'; }
+  function _when(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+  function _taskUrl(serverUrl, spaceId, taskId) {
+    return String(serverUrl || '').replace(/\/$/, '')
+      + '/app#/' + encodeURIComponent(spaceId || '') + '/tasks/' + encodeURIComponent(taskId || '');
+  }
+  // `raw` is the unnormalised fetch result: null means the request failed, [] means the
+  // target genuinely has none. Collapsing those two into one message is the failure mode
+  // this card exists to avoid.
+  function _activityCard(title, rows, raw, t, serverUrl, emptyMsg) {
+    const body = raw === null
+      ? '<p class="ip-sub">Couldn\'t load this from the Octopus API. Try again, or open the '
+        + '<a class="ip-link" href="' + escHtml(String(serverUrl||'').replace(/\/$/,'')
+        + '/app#/infrastructure/machines/' + encodeURIComponent(t.id)) + '" target="_blank" rel="noopener">'
+        + 'target page in Octopus</a>.</p>'
+      : !rows.length
+        ? '<p class="ip-sub">' + escHtml(emptyMsg) + '</p>'
+        : '<table class="ip-table"><tbody>' + rows.map(r =>
+            '<tr><td>' + pill(r.success ? 'healthy' : 'unhealthy', r.state) + '</td>'
+            + '<td><a class="ip-link" href="' + escHtml(_taskUrl(serverUrl, t.spaceId, r.id))
+            + '" target="_blank" rel="noopener">' + escHtml(r.description) + '</a></td>'
+            + '<td class="ip-when">' + escHtml(_when(r.completed)) + '</td></tr>').join('')
+          + '</tbody></table>';
+    return '<section class="ip-card ip-card-wide"><h4>' + escHtml(title) + '</h4>' + body + '</section>';
+  }
+  function deploymentsCardHtml(t, activity, raw, serverUrl) {
+    const last = activity.lastSuccessfulDeploy;
+    const lead = raw === null || !activity.deployments.length ? ''
+      : last
+        ? '<p class="ip-sub">Last successful: ' + escHtml(last.description)
+          + (last.completed ? ' (' + escHtml(_when(last.completed)) + ')' : '') + '</p>'
+        : '<p class="ip-sub">No deployment to this target has succeeded yet.</p>';
+    const card = _activityCard('Deployments', activity.deployments, raw, t, serverUrl,
+      'No deployments to this target in the retained task history.');
+    return card.replace('</h4>', '</h4>' + lead);
+  }
+  function runbooksCardHtml(t, activity, raw, serverUrl) {
+    return _activityCard('Runbook runs', activity.runbooks, raw, t, serverUrl,
+      'No runbook runs against this target in the retained task history.');
+  }
+  function connectivityCardHtml(t, connection) {
+    const rows = connection
+      ? _row('Status', connection.Status || '—')
+        + _row('Communication', t.comm)
+        + _row('Tentacle version', connection.CurrentTentacleVersion || t.version)
+        + (connection.LastChecked ? _row('Last checked', _when(connection.LastChecked)) : '')
+      : _row('Communication', t.comm) + _row('Health', t.health);
+    return '<section class="ip-card"><h4>Connectivity</h4>' + rows + '</section>';
+  }
   function renderTargetDetail(IP) {
     const t = (IP.estate.targets||[]).find(x => x.id === IP.detailId);
     if (!t) return '<div class="ip-state"><h3>Target not found</h3><a class="ip-link" href="#targets">← Back to targets</a></div>';
-    const machineUrl = String(IP.serverUrl||'').replace(/\/$/,'') + '/app#/infrastructure/machines/' + encodeURIComponent(t.id);
-    const placeholder = title => '<section class="ip-card"><h4>' + title + '</h4>'
-      + '<p class="ip-sub">Not available in PreAlpha — view on the <a class="ip-link" href="'
-      + escHtml(machineUrl) + '" target="_blank" rel="noopener">target page in Octopus</a>.</p></section>';
+    const loading = '<p class="ip-sub">Loading…</p>';
     return ''
       + '<a class="ip-link" href="#targets">← Deployment targets</a>'
       + '<header class="ip-head"><h2>' + escHtml(t.name) + '</h2>'
       +   '<p class="ip-sub">' + escHtml(t.kind) + ' · ' + escHtml(t.health) + '</p></header>'
       + '<div class="ip-grid">'
-      +   '<section class="ip-card"><h4>Connectivity</h4>' + _row('Communication', t.comm) + _row('Health', t.health) + '</section>'
+      +   '<div id="ip-td-conn">' + connectivityCardHtml(t, null) + '</div>'
       +   '<section class="ip-card"><h4>Tentacle version</h4>' + _row('Installed', t.version)
       +     '<p class="ip-sub">Upgrades are governed by the ' + escHtml(t.policy) + ' machine policy.</p></section>'
       +   '<section class="ip-card"><h4>Settings</h4>' + _row('Environment', t.env) + _row('Target tag', t.tag)
       +     _row('Tenant', t.tenant) + _row('Machine policy', t.policy) + '</section>'
-      +   placeholder('Projects &amp; last release')
-      +   placeholder('Recent deployments')
-      +   placeholder('Runbook runs')
-      +   placeholder('Events')
+      +   '<div id="ip-td-deploys"><section class="ip-card ip-card-wide"><h4>Deployments</h4>' + loading + '</section></div>'
+      +   '<div id="ip-td-runbooks"><section class="ip-card"><h4>Runbook runs</h4>' + loading + '</section></div>'
       + '</div>';
+  }
+  // Called once the per-target fetch resolves. The rest of the detail view is already on
+  // screen by then, so a slow or failing tasks call never blocks it.
+  function fillTargetDetail(IP, detail) {
+    const t = (IP.estate.targets||[]).find(x => x.id === IP.detailId);
+    if (!t || !detail) return;
+    const activity = Data.machineActivityModel(detail.tasks);
+    const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+    set('ip-td-conn', connectivityCardHtml(t, detail.connection));
+    set('ip-td-deploys', deploymentsCardHtml(t, activity, detail.tasks, IP.serverUrl));
+    set('ip-td-runbooks', runbooksCardHtml(t, activity, detail.tasks, IP.serverUrl));
   }
   function bindTargetDetail(IP) { /* back link is a plain hash anchor; nothing to wire yet */ }
 
@@ -706,7 +764,7 @@ const Views = (function () {
       Router.render();
     });
   }
-  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
+  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,

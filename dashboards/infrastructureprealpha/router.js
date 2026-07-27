@@ -31,6 +31,16 @@ const Router = (function () {
       setActive('targets');
       el.innerHTML = Views.renderTargetDetail(IP);
       Views.bindTargetDetail && Views.bindTargetDetail(IP);
+      // Per-target tasks and connection aren't in the boot payload, so fetch them now and
+      // fill the cards when they land. The id is re-checked on resolve — by then the user
+      // may have navigated to a different target, or away entirely.
+      const wanted = IP.detailId;
+      const target = (IP.estate.targets || []).find(x => x.id === wanted);
+      if (target && Data.fetchMachineDetail) {
+        Data.fetchMachineDetail(target.spaceId, target.id)
+          .then(detail => { if (IP.detailId === wanted) Views.fillTargetDetail(IP, detail); })
+          .catch(() => { if (IP.detailId === wanted) Views.fillTargetDetail(IP, { tasks: null, connection: null }); });
+      }
       return;
     }
     const view = VIEWS.includes(hash) ? hash : 'overview';

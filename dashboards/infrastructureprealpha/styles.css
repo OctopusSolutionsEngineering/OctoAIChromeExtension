@@ -416,3 +416,8 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-theme-btn:hover{background:var(--secondary);border-color:var(--ring)}
 .ip-theme-btn svg{flex:0 0 auto;color:var(--fg2)}
 .ip-theme-btn-label{flex:1;text-align:left}
+
+/* Target-detail activity cards */
+.ip-card-wide{grid-column:1 / -1}
+.ip-card-wide .ip-table td{padding:6px 8px;vertical-align:top}
+.ip-when{color:var(--fg2);white-space:nowrap;text-align:right}

@@ -489,3 +489,125 @@ describe('renderAddTarget', () => {
     expect(html).not.toContain('<script>');
   });
 });
+
+describe('machine activity (per-target tasks)', () => {
+  const d = require('./data');
+  // Shapes taken from a live probe of /api/{space}/machines/{id}/tasks.
+  const tasks = [
+    { Id:'ServerTasks-1', Name:'Deploy', Description:'Deploy TelemetryProxy release 0.0.998 to Production',
+      State:'Success', FinishedSuccessfully:true, CompletedTime:'2025-04-30T03:51:24.000+00:00',
+      ProjectId:'Projects-3225', Arguments:{ DeploymentId:'Deployments-1526356' } },
+    { Id:'ServerTasks-2', Name:'Deploy', Description:'Deploy TelemetryProxy release 0.0.997 to Production',
+      State:'Failed', FinishedSuccessfully:false, CompletedTime:'2025-04-29T01:00:00.000+00:00',
+      ProjectId:'Projects-3225', Arguments:{ DeploymentId:'Deployments-1526000' } },
+    { Id:'ServerTasks-3', Name:'Health', Description:'Check target health',
+      State:'Success', FinishedSuccessfully:true, CompletedTime:'2026-07-27T01:00:00.000+00:00', Arguments:{} }
+  ];
+
+  test('taskKind maps the task names the API actually returns', () => {
+    expect(d.taskKind('Deploy')).toBe('deploy');
+    expect(d.taskKind('Health')).toBe('health');
+    expect(d.taskKind('Upgrade')).toBe('upgrade');
+    expect(d.taskKind('SomethingElse')).toBe('other');
+    expect(d.taskKind(undefined)).toBe('other');
+  });
+
+  test('splits deployments from health checks and keeps newest first', () => {
+    const m = d.machineActivityModel(tasks);
+    expect(m.deployments.map(r => r.id)).toEqual(['ServerTasks-1','ServerTasks-2']);
+    expect(m.health).toHaveLength(1);
+    expect(m.deployments[0].description).toContain('0.0.998');
+    expect(m.deployments[1].success).toBe(false);
+  });
+
+  test('lastSuccessfulDeploy is the newest deploy that actually succeeded', () => {
+    const m = d.machineActivityModel(tasks);
+    expect(m.lastSuccessfulDeploy.id).toBe('ServerTasks-1');
+    // a target whose only deploy failed has no last successful release to show
+    const failedOnly = d.machineActivityModel([tasks[1]]);
+    expect(failedOnly.lastSuccessfulDeploy).toBe(null);
+  });
+
+  test('empty or missing task list yields empty groups, not a crash', () => {
+    const m = d.machineActivityModel(null);
+    expect(m.deployments).toEqual([]);
+    expect(m.lastSuccessfulDeploy).toBe(null);
+  });
+});
+
+describe('fetchMachineDetail', () => {
+  const d = require('./data');
+  beforeEach(() => d.setServerUrl('https://x.octopus.app/'));
+
+  test('returns tasks and connection when both succeed', async () => {
+    global.fetch = async (url) => ({
+      status: 200, ok: true, statusText: 'OK',
+      json: async () => String(url).includes('/tasks')
+        ? { Items: [{ Id:'ServerTasks-1', Name:'Deploy' }] }
+        : { Status: 'Online', CurrentTentacleVersion: '8.5.1' }
+    });
+    const r = await d.fetchMachineDetail('Spaces-1', 'Machines-1');
+    expect(r.tasks).toHaveLength(1);
+    expect(r.connection.CurrentTentacleVersion).toBe('8.5.1');
+  });
+
+  test('a failed half comes back null, not an empty list — "unknown" must not read as "none"', async () => {
+    global.fetch = async (url) => String(url).includes('/tasks')
+      ? { status: 500, ok: false, statusText: 'Server Error' }
+      : { status: 200, ok: true, json: async () => ({ Status: 'Online' }) };
+    const r = await d.fetchMachineDetail('Spaces-1', 'Machines-1');
+    expect(r.tasks).toBe(null);
+    expect(r.connection.Status).toBe('Online');
+  });
+
+  test('no tasks for a target is an empty list, which is a real answer', async () => {
+    global.fetch = async () => ({ status: 200, ok: true, json: async () => ({ Items: [] }) });
+    const r = await d.fetchMachineDetail('Spaces-1', 'Machines-1');
+    expect(r.tasks).toEqual([]);
+  });
+});
+
+describe('target detail cards (async-filled)', () => {
+  const Views = require('./views');
+  const d = require('./data');
+  const t = { id:'Machines-1', spaceId:'Spaces-1', comm:'Polling Tentacle', health:'Healthy', version:'8.5.1' };
+  const tasks = [
+    { Id:'ServerTasks-1', Name:'Deploy', Description:'Deploy Web release 1.2.3 to Production',
+      State:'Success', FinishedSuccessfully:true, CompletedTime:'2026-04-30T03:51:24.000+00:00' }
+  ];
+
+  test('a failed load says so; it does not claim the target has no deployments', () => {
+    const html = Views.deploymentsCardHtml(t, d.machineActivityModel(null), null, 'https://x.octopus.app/');
+    expect(html).toMatch(/couldn.t load/i);
+    expect(html).not.toMatch(/no deployments/i);
+  });
+
+  test('an empty-but-successful load says there are none', () => {
+    const html = Views.deploymentsCardHtml(t, d.machineActivityModel([]), [], 'https://x.octopus.app/');
+    expect(html).toMatch(/no deployments/i);
+  });
+
+  test('renders real rows and names the last successful release', () => {
+    const html = Views.deploymentsCardHtml(t, d.machineActivityModel(tasks), tasks, 'https://x.octopus.app/');
+    expect(html).toContain('Deploy Web release 1.2.3 to Production');
+    expect(html).toContain('Spaces-1/tasks/ServerTasks-1');   // links out to the task
+    expect(html).toMatch(/last successful/i);
+  });
+
+  test('connectivity uses live connection data when present, target fields otherwise', () => {
+    const withConn = Views.connectivityCardHtml(t, { Status:'Online', CurrentTentacleVersion:'8.5.1',
+      LastChecked:'2026-07-27T01:00:00.000+00:00' });
+    expect(withConn).toContain('Online');
+    const without = Views.connectivityCardHtml(t, null);
+    expect(without).toContain('Polling Tentacle');
+    expect(without).not.toContain('Online');
+  });
+
+  test('escapes hostile task descriptions', () => {
+    const nasty = [{ Id:'ServerTasks-2', Name:'Deploy', Description:'<img src=x onerror=alert(1)>',
+      State:'Success', FinishedSuccessfully:true, CompletedTime:'2026-01-01T00:00:00.000+00:00' }];
+    const html = Views.deploymentsCardHtml(t, d.machineActivityModel(nasty), nasty, 'https://x.octopus.app/');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('&lt;img');
+  });
+});

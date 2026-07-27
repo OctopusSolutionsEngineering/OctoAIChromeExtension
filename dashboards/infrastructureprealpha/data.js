@@ -186,6 +186,58 @@ function isEmptyEstate(estate) {
   return !estate || ((estate.targets||[]).length === 0 && (estate.workers||[]).length === 0);
 }
 
+// Per-target activity comes from /api/{space}/machines/{id}/tasks — verified against a live
+// instance. Note /api/{space}/tasks?regarding={id} silently IGNORES the filter and returns the
+// whole task list; don't reach for it.
+function taskKind(name) {
+  switch (String(name || '')) {
+    case 'Deploy': return 'deploy';
+    case 'Health': return 'health';
+    case 'Upgrade': return 'upgrade';
+    case 'RunbookRun': return 'runbook';
+    default: return 'other';
+  }
+}
+function machineTaskRow(t) {
+  return {
+    id: t.Id,
+    kind: taskKind(t.Name),
+    name: t.Name || '',
+    // The API's Description already reads as a sentence ("Deploy X release 1.2.3 to Production"),
+    // so we show it rather than parsing project and version back out of it.
+    description: t.Description || t.Name || '',
+    state: t.State || '',
+    success: t.FinishedSuccessfully === true,
+    completed: t.CompletedTime || null,
+    projectId: t.ProjectId || null,
+    deploymentId: (t.Arguments && t.Arguments.DeploymentId) || null
+  };
+}
+// Fetched lazily when the detail route opens — this is the only data the boot payload
+// doesn't already carry. Each half degrades on its own: null means "we couldn't load it",
+// which the view must not render as "there is none".
+async function fetchMachineDetail(spaceId, machineId) {
+  const base = '/api/' + encodeURIComponent(spaceId) + '/machines/' + encodeURIComponent(machineId);
+  const [tasks, connection] = await Promise.all([
+    fetchJson(base + '/tasks?take=30').then(r => (r && r.Items) || []).catch(() => null),
+    fetchJson(base + '/connection').catch(() => null)
+  ]);
+  return { tasks, connection };
+}
+function machineActivityModel(tasks) {
+  const rows = (tasks || []).map(machineTaskRow)
+    .sort((a, b) => String(b.completed || '').localeCompare(String(a.completed || '')));
+  const of = kind => rows.filter(r => r.kind === kind);
+  const deployments = of('deploy');
+  return {
+    all: rows,
+    deployments,
+    runbooks: of('runbook'),
+    health: of('health'),
+    lastSuccessfulDeploy: deployments.find(r => r.success) || null
+  };
+}
+
 // Which empty state a list view should show. "No workers here" and "no workers match your
 // filters" are different facts and want different advice — telling someone to clear filters
 // they never set is the wrong help.
@@ -411,14 +463,14 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, isEmptyEstate, emptyKind, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+  buildEstate, isEmptyEstate, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, isEmptyEstate, emptyKind, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+    machineToTarget, buildEstate, isEmptyEstate, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel, _mapLimit };
 }
