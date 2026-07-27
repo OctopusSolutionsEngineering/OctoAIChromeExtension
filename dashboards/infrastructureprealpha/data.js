@@ -30,17 +30,6 @@ function readConfig() {
   });
 }
 
-// Run `fn` over `items` with at most `limit` in flight at once; preserves input order.
-async function _mapLimit(items, limit, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) { const i = next++; results[i] = await fn(items[i], i); }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-}
-
 // Boot in two steps. The space list is one cheap request; hydrating a space is six.
 // Loading every space up front to display one is the dominant boot cost on a
 // many-space instance, so callers hydrate only what they're about to show.
@@ -531,5 +520,5 @@ if (typeof module !== 'undefined') {
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
     machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
-    vkey, majorVersion, versionBand, deriveLatest, agentsModel, _mapLimit };
+    vkey, majorVersion, versionBand, deriveLatest, agentsModel };
 }
