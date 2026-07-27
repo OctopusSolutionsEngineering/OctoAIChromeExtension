@@ -421,3 +421,29 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-card-wide{grid-column:1 / -1}
 .ip-card-wide .ip-table td{padding:6px 8px;vertical-align:top}
 .ip-when{color:var(--fg2);white-space:nowrap;text-align:right}
+
+/* ── Designed zero states ─────────────────────────────────────────────────── */
+.ip-zero{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:56px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:0}
+.ip-zero-icon{width:56px;height:56px;border-radius:var(--radius-lg);background:var(--secondary);
+  display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.ip-zero h3{font-size:var(--fs-xl);margin:0 0 8px}
+.ip-zero-body{color:var(--fg2);max-width:60ch;margin:0 0 20px}
+.ip-zero .ip-btn{display:inline-block}
+.ip-zero-learn{margin-top:14px}
+
+/* Sample content, deliberately muted and labelled so it can't read as real data. */
+.ip-preview{margin-top:28px;opacity:.62}
+.ip-preview-head{border-top:1px solid var(--border);margin-bottom:10px;padding-top:12px}
+.ip-preview-label{font-size:var(--fs-xs);letter-spacing:.08em;text-transform:uppercase;color:var(--fg2)}
+.ip-preview .ip-sub{margin:0 0 12px}
+.ip-prev-table{width:100%}
+.ip-prev-group td{background:var(--secondary);font-size:var(--fs-xs);letter-spacing:.06em;
+  text-transform:uppercase;color:var(--fg2)}
+.ip-prev-name{color:var(--ring)}
+.ip-prev-sub{color:var(--fg2);font-size:var(--fs-xs)}
+.ip-prev-pools{grid-template-columns:repeat(3,1fr)}
+.ip-prev-pool-name{display:flex;align-items:center;gap:8px;color:var(--fg1);font-weight:var(--fw-medium)}
+.ip-prev-pool-n{font-size:var(--fs-2xl);color:var(--fg1);margin:8px 0}
+.ip-prev-pool-n span{font-size:var(--fs-sm);color:var(--fg2)}
+.ip-prev-pool-bar{height:4px;border-radius:2px;background:var(--color-green-400)}

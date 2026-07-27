@@ -640,3 +640,48 @@ describe('coldStartApplies — cold-start is a landing screen, not a wall', () =
     ['overview','targets','environments'].forEach(v => expect(d.coldStartApplies(v, full)).toBe(false));
   });
 });
+
+describe('designed zero states (Targets / Workers)', () => {
+  const Views = require('./views');
+  // views.js reaches for `Data` as a browser global; the populated path needs it here.
+  global.Data = require('./data');
+  const IP = { serverUrl:'https://x.octopus.app/', estate:{ targets:[], workers:[], environments:[], policies:[] },
+               filters:{}, search:'', page:1, wFilters:{}, wSearch:'', wPage:1 };
+
+  test('targets zero state matches the design: heading, add action, learn link, no filter panel', () => {
+    const html = Views.renderTargets(IP);
+    expect(html).toContain('Add your first deployment target');
+    expect(html).toContain('#targets/new');
+    expect(html).toMatch(/Learn about deployment targets/);
+    expect(html).not.toContain('ip-facets');           // filters are hidden when there is nothing to filter
+    expect(html).not.toMatch(/clearing your search/i); // and never the wrong-filter advice
+  });
+
+  test('targets zero state carries a labelled preview, not data pretending to be real', () => {
+    const html = Views.renderTargets(IP);
+    expect(html).toMatch(/Preview/i);
+    expect(html).toContain('Once added, your targets appear here');
+    expect(html).toContain('web-prod-public-api-01');
+    expect(html).toContain('ip-preview');              // the dimmed wrapper carries the visual signal
+  });
+
+  test('workers zero state matches the design, previewing pools', () => {
+    const html = Views.renderWorkers(IP);
+    expect(html).toContain('Add your first worker');
+    expect(html).toMatch(/Learn about workers/);
+    expect(html).toContain('Once added, workers are grouped into pools');
+    expect(html).toContain('Default Pool');
+    expect(html).not.toContain('ip-facets');
+  });
+
+  test('a populated estate still renders the real list, not the preview', () => {
+    const live = { ...IP, estate: { ...IP.estate, targets: [
+      { id:'t1', name:'real-target', type:'Tentacle', kind:'Tentacle (Polling)', os:'', osVersion:'',
+        health:'Healthy', healthKey:'healthy', env:'Production', envCat:'production', tag:'web',
+        moreTags:0, tenant:'No tenants', policy:'Default', version:'8.5.1' } ] } };
+    const html = Views.renderTargets(live);
+    expect(html).toContain('real-target');
+    expect(html).not.toContain('web-prod-public-api-01');
+    expect(html).toContain('ip-facets');
+  });
+});

@@ -149,6 +149,8 @@ const Views = (function () {
   }
   function renderTargets(IP) {
     const all = IP.estate.targets;
+    // Nothing to filter, so the facet rail and toolbar would be furniture around a void.
+    if (!all.length) return renderTargetsZero(IP);
     const facets = Data.buildFacets(all);
     const rows = Data.applyFilters(all, IP.filters, IP.search);
 
@@ -218,6 +220,78 @@ const Views = (function () {
       +     escHtml(IP.search||'') + '"><span class="ip-count">' + rows.length + ' of ' + all.length + '</span>'
       +     '<a class="ip-btn" href="#targets/new">Add deployment target</a></div>'
       +   body + '</div></div>';
+  }
+  // ── Designed zero states ──────────────────────────────────────────────────────
+  // A view with nothing in it gets the prototype's treatment: one centred card that
+  // explains what the thing is and how to add one, then a dimmed PREVIEW of what the
+  // populated view will look like. The preview is sample content, so it's labelled and
+  // muted — it has to be impossible to read as this estate's real data.
+  const ZERO_ICON = {
+    target: '<svg width="28" height="28" viewBox="0 0 20 20" fill="none" stroke="var(--color-blue-600)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="16" height="11" rx="1.5"/><path d="M7 17h6M10 14v3"/></svg>',
+    worker: '<svg width="28" height="28" viewBox="0 0 20 20" fill="var(--fg2)"><rect x="4" y="3" width="4" height="14" rx="1"/><rect x="12" y="3" width="4" height="14" rx="1"/></svg>'
+  };
+  function _zeroCard(icon, title, body, actionHref, actionLabel, learnHref, learnLabel) {
+    return '<section class="ip-zero">'
+      + '<div class="ip-zero-icon">' + icon + '</div>'
+      + '<h3>' + escHtml(title) + '</h3>'
+      + '<p class="ip-zero-body">' + escHtml(body) + '</p>'
+      + '<a class="ip-btn" href="' + escHtml(actionHref) + '">+ ' + escHtml(actionLabel) + '</a>'
+      + '<a class="ip-link ip-zero-learn" href="' + escHtml(learnHref) + '" target="_blank" rel="noopener">'
+      +   escHtml(learnLabel) + ' →</a>'
+      + '</section>';
+  }
+  function _previewBlock(caption, inner) {
+    return '<div class="ip-preview" aria-hidden="true">'
+      + '<div class="ip-preview-head"><span class="ip-preview-label">Preview</span></div>'
+      + '<p class="ip-sub">' + escHtml(caption) + '</p>'
+      + inner + '</div>';
+  }
+  function renderTargetsZero(IP) {
+    const rows = [
+      { name:'web-prod-public-api-01', sub:'Tentacle (Listening) · Windows Server 2022',
+        env:'Production', policy:'Auto-upgrade', version:'8.3.0' },
+      { name:'k8s-prod-worker-02', sub:'Kubernetes Agent · Linux',
+        env:'Production', policy:'Default', version:'2.6.0' }
+    ].map(r => '<tr><td><div class="ip-prev-name">' + escHtml(r.name) + '</div>'
+      + '<div class="ip-prev-sub">' + escHtml(r.sub) + '</div></td>'
+      + '<td>' + pill('healthy', 'Healthy') + '</td>'
+      + '<td>' + chip(r.env, 'env') + '</td>'
+      + '<td>' + escHtml(r.policy) + '</td>'
+      + '<td><span class="ip-dot ip-dot-healthy"></span> ' + escHtml(r.version) + '</td></tr>').join('');
+    return ''
+      + '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Deployment targets</h2>'
+      +   '<p class="ip-sub">Assess health across the estate and drill in with fast, faceted filters.</p></div>'
+      +   '<a class="ip-btn" href="#targets/new">+ Add deployment target</a></header>'
+      + _zeroCard(ZERO_ICON.target, 'Add your first deployment target',
+          'Deployment targets are the servers, clusters, and services your projects deploy to. '
+          + 'Add one and Octopus starts tracking its health automatically.',
+          '#targets/new', 'Add deployment target',
+          'https://octopus.com/docs/infrastructure/deployment-targets', 'Learn about deployment targets')
+      + _previewBlock('Once added, your targets appear here with health, environment, and agent version:',
+          '<table class="ip-table ip-prev-table"><thead><tr><th>Deployment target</th><th>Health</th>'
+          + '<th>Environment</th><th>Machine policy</th><th>Agent version</th></tr></thead>'
+          + '<tbody><tr class="ip-prev-group"><td colspan="5">'
+          + '<span class="ip-dot ip-dot-healthy"></span> Healthy</td></tr>'
+          + rows + '</tbody></table>');
+  }
+  function renderWorkersZero(IP) {
+    const pools = [{ name:'Default Pool', n:6 }, { name:'Hosted Ubuntu', n:4 }, { name:'DMZ Pool', n:2 }]
+      .map(p => '<div class="ip-card ip-prev-pool"><div class="ip-prev-pool-name">'
+        + ZERO_ICON.worker.replace('width="28" height="28"', 'width="14" height="14"')
+        + ' ' + escHtml(p.name) + '</div>'
+        + '<div class="ip-prev-pool-n">' + p.n + ' <span>workers</span></div>'
+        + '<div class="ip-prev-pool-bar"></div></div>').join('');
+    return ''
+      + '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Workers</h2>'
+      +   '<p class="ip-sub">A separate class of infrastructure — organised into shared pools, not tenant-scoped.</p></div>'
+      +   '<a class="ip-btn" href="' + escHtml(_workerAddUrl()) + '" target="_blank" rel="noopener">+ Add worker</a></header>'
+      + _zeroCard(ZERO_ICON.worker, 'Add your first worker',
+          'Workers are shared infrastructure that run deployment steps outside your targets — '
+          + 'ideal for tasks like Terraform, database migrations, or cloud API calls.',
+          _workerAddUrl(), 'Add worker',
+          'https://octopus.com/docs/infrastructure/workers', 'Learn about workers & worker pools')
+      + _previewBlock('Once added, workers are grouped into pools with their own health and versions:',
+          '<div class="ip-grid ip-prev-pools">' + pools + '</div>');
   }
   function _row(k,v){ return '<div class="ip-kv"><span>' + escHtml(k) + '</span><b>' + escHtml(v) + '</b></div>'; }
   function _when(iso) {
@@ -530,6 +604,7 @@ const Views = (function () {
   function renderWorkers(IP) {
     IP.wFilters = IP.wFilters || {}; IP.wSearch = IP.wSearch || ''; IP.wPage = IP.wPage || 1;
     const all = IP.estate.workers || [];
+    if (!all.length) return renderWorkersZero(IP);
     const model = Data.workersModel(all);
     const facets = Data.workerFacets(all);
     const rows = Data.applyWorkerFilters(all, IP.wFilters, IP.wSearch);
@@ -764,7 +839,7 @@ const Views = (function () {
       Router.render();
     });
   }
-  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml,
+  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,
