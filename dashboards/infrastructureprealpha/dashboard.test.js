@@ -458,3 +458,34 @@ describe('emptyKind', () => {
     expect(d.emptyKind(null, 0)).toBe('none');
   });
 });
+
+describe('renderAddTarget', () => {
+  const Views = require('./views');
+  const IP = { serverUrl: 'https://x.octopus.app/' };
+
+  test('step 1 lists every target type and creates nothing', () => {
+    const html = Views.renderAddTarget(IP);
+    expect(html).toContain('Step 1 of 2');
+    ['Listening Tentacle','Polling Tentacle','Kubernetes agent','SSH connection'].forEach(n =>
+      expect(html).toContain(n));
+    expect(html).not.toMatch(/<form|method="post"/i); // read-only walkthrough
+  });
+
+  test('step 2 shows the chosen type, what it needs, and a link-out', () => {
+    const html = Views.renderAddTarget({ ...IP, addTargetType: 'polling' });
+    expect(html).toContain('Step 2 of 2');
+    expect(html).toContain('Polling Tentacle');
+    expect(html).toContain('10943');
+    expect(html).toContain('rel="noopener"');
+    expect(html).toContain('#targets/new');   // back to the chooser
+  });
+
+  test('an unknown type falls back to the chooser rather than a blank page', () => {
+    expect(Views.renderAddTarget({ ...IP, addTargetType: 'nonsense' })).toContain('Step 1 of 2');
+  });
+
+  test('escapes the server url into hrefs', () => {
+    const html = Views.renderAddTarget({ serverUrl: 'https://x.octopus.app/"><script>', addTargetType: 'ssh' });
+    expect(html).not.toContain('<script>');
+  });
+});

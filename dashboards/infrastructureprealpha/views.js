@@ -204,7 +204,7 @@ const Views = (function () {
       : Data.emptyKind(all.length, rows.length) === 'none'
         ? '<div class="ip-empty"><h3>No deployment targets in this space</h3>'
           + '<p>Targets are the machines and services Octopus deploys to. Add one to get started.</p>'
-          + '<a class="ip-btn" href="' + escHtml(String(IP.serverUrl||'').replace(/\/$/,'') + '/app#/infrastructure/machines/new') + '" target="_blank" rel="noopener">Add deployment target</a></div>'
+          + '<a class="ip-btn" href="#targets/new">Add deployment target</a></div>'
         : '<div class="ip-empty"><h3>No targets match these filters</h3><p>Try removing a filter or clearing your search.</p></div>';
 
     return '<div class="ip-targets-wrap">'
@@ -216,7 +216,7 @@ const Views = (function () {
       +     '<p class="ip-sub">Assess health across the estate and drill in with fast, faceted filters.</p></header>'
       +   '<div class="ip-toolbar"><input class="ip-search" type="search" placeholder="Search targets…" value="'
       +     escHtml(IP.search||'') + '"><span class="ip-count">' + rows.length + ' of ' + all.length + '</span>'
-      +     '<a class="ip-btn" href="' + escHtml(String(IP.serverUrl||'').replace(/\/$/,'') + '/app#/infrastructure/machines/new') + '" target="_blank" rel="noopener">Add deployment target</a></div>'
+      +     '<a class="ip-btn" href="#targets/new">Add deployment target</a></div>'
       +   body + '</div></div>';
   }
   function _row(k,v){ return '<div class="ip-kv"><span>' + escHtml(k) + '</span><b>' + escHtml(v) + '</b></div>'; }
@@ -244,6 +244,93 @@ const Views = (function () {
       + '</div>';
   }
   function bindTargetDetail(IP) { /* back link is a plain hash anchor; nothing to wire yet */ }
+
+  // Add-target walkthrough. PreAlpha is read-only, so this explains the choice and the
+  // prerequisites, then hands off to Octopus to do the actual creation. The value is the
+  // decision (which connection direction suits this machine?), which is the part the real
+  // Octopus flow makes you resolve after you've already committed to a type.
+  const ADD_TARGET_TYPES = [
+    { key: 'listening', name: 'Listening Tentacle',
+      when: 'Machines on a network the Octopus Server can reach directly.',
+      direction: 'Octopus opens the connection to the machine.',
+      needs: ['Tentacle installed on the machine',
+              'Inbound TCP 10933 open from Octopus to the machine',
+              'The machine’s thumbprint, to trust it'] },
+    { key: 'polling', name: 'Polling Tentacle',
+      when: 'Machines behind NAT, a firewall, or in someone else’s network — anywhere Octopus can’t dial in.',
+      direction: 'The machine opens the connection to Octopus.',
+      needs: ['Tentacle installed on the machine',
+              'Outbound TCP 10943 from the machine to Octopus',
+              'The Octopus Server thumbprint'] },
+    { key: 'kubernetes', name: 'Kubernetes agent',
+      when: 'Deploying into a Kubernetes cluster.',
+      direction: 'The agent runs inside the cluster and polls Octopus.',
+      needs: ['Helm access to the cluster',
+              'Outbound access from the cluster to Octopus',
+              'A namespace for the agent to live in'] },
+    { key: 'ssh', name: 'SSH connection',
+      when: 'Linux and Unix machines you reach over SSH.',
+      direction: 'Octopus opens an SSH connection to the machine.',
+      needs: ['An SSH account — key pair or username and password',
+              'Inbound SSH (usually port 22) from Octopus',
+              'A supported shell on the machine'] },
+    { key: 'cloud', name: 'Azure, AWS or GCP service',
+      when: 'Deploying to a managed cloud service rather than a machine you run.',
+      direction: 'Octopus authenticates against the cloud provider’s API.',
+      needs: ['An Octopus account for the provider',
+              'Permissions on the target service',
+              'Nothing to install — there’s no agent'] }
+  ];
+  function _newTargetUrl(IP) {
+    return String((IP && IP.serverUrl) || '').replace(/\/$/, '') + '/app#/infrastructure/machines/new';
+  }
+  function _addTypeCard(t) {
+    return '<button class="ip-card ip-type-card" data-type="' + escHtml(t.key) + '">'
+      + '<h4>' + escHtml(t.name) + '</h4>'
+      + '<p class="ip-sub">' + escHtml(t.when) + '</p>'
+      + '<span class="ip-type-dir">' + escHtml(t.direction) + '</span></button>';
+  }
+  function renderAddTarget(IP) {
+    const chosen = ADD_TARGET_TYPES.find(t => t.key === (IP && IP.addTargetType));
+    const head = '<a class="ip-link" href="#targets">← Deployment targets</a>'
+      + '<header class="ip-head"><h2>Add a deployment target</h2>';
+    if (!chosen) {
+      return head
+        + '<p class="ip-sub">Step 1 of 2 — choose how Octopus should reach this machine.</p></header>'
+        + '<div class="ip-grid ip-type-grid">' + ADD_TARGET_TYPES.map(_addTypeCard).join('') + '</div>';
+    }
+    return head
+      + '<p class="ip-sub">Step 2 of 2 — ' + escHtml(chosen.name) + '</p></header>'
+      + '<div class="ip-addtarget">'
+      +   '<section class="ip-card">'
+      +     '<h4>How the connection works</h4>'
+      +     '<p class="ip-sub">' + escHtml(chosen.direction) + '</p>'
+      +     '<h4>What you’ll need</h4><ul class="ip-needs">'
+      +       chosen.needs.map(n => '<li>' + escHtml(n) + '</li>').join('')
+      +     '</ul>'
+      +     '<p class="ip-sub">This preview doesn’t create anything. Octopus does the setup — '
+      +       'it’ll ask for these details as you go.</p>'
+      +     '<a class="ip-btn" href="' + escHtml(_newTargetUrl(IP)) + '" target="_blank" rel="noopener">Continue in Octopus →</a>'
+      +     ' <a class="ip-link" href="#targets/new">← Pick a different type</a>'
+      +   '</section></div>';
+  }
+  function bindAddTarget(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    root.querySelectorAll('.ip-type-card').forEach(card => card.addEventListener('click', () => {
+      IP.addTargetType = card.getAttribute('data-type');
+      root.innerHTML = renderAddTarget(IP);
+      bindAddTarget(IP);
+    }));
+    // "Pick a different type" keeps the hash unchanged, so clear the state and re-render here.
+    const back = root.querySelector('a[href="#targets/new"]');
+    if (back) back.addEventListener('click', e => {
+      e.preventDefault();
+      IP.addTargetType = null;
+      root.innerHTML = renderAddTarget(IP);
+      bindAddTarget(IP);
+    });
+  }
   function _envAddUrl() {
     let base = '';
     try { base = (typeof IP !== 'undefined' && IP && IP.serverUrl) || ''; } catch (e) { base = ''; }
@@ -621,7 +708,7 @@ const Views = (function () {
   }
   return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
-    renderAgents, bindAgents, renderArgo,
+    renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,
     renderThemeToggle, bindThemeToggle };
 })();

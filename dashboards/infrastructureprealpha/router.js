@@ -7,11 +7,23 @@ const Router = (function () {
   }
   function render() {
     const el = document.getElementById('main-content');
-    if (typeof Data !== 'undefined' && Data.isEmptyEstate && Data.isEmptyEstate(IP.estate)) {
+    // An empty scope shows cold-start for every route except the add-target walkthrough —
+    // an empty estate is precisely when someone wants that, so it must not bounce back.
+    const rawHash = (window.location.hash || '#overview').slice(1);
+    if (rawHash !== 'targets/new'
+        && typeof Data !== 'undefined' && Data.isEmptyEstate && Data.isEmptyEstate(IP.estate)) {
       Onboarding.renderFirstRun(IP);
       return;
     }
     const hash = (window.location.hash || '#overview').slice(1);
+    // add-target walkthrough: #targets/new — must be tested before the detail route below,
+    // which would otherwise treat "new" as a machine id and render "target not found".
+    if (hash === 'targets/new') {
+      setActive('targets');
+      el.innerHTML = Views.renderAddTarget(IP);
+      Views.bindAddTarget && Views.bindAddTarget(IP);
+      return;
+    }
     // target detail route: #targets/<id>
     if (hash.indexOf('targets/') === 0) {
       let raw = hash.slice('targets/'.length);
