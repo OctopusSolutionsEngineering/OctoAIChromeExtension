@@ -186,6 +186,14 @@ function isEmptyEstate(estate) {
   return !estate || ((estate.targets||[]).length === 0 && (estate.workers||[]).length === 0);
 }
 
+// Which empty state a list view should show. "No workers here" and "no workers match your
+// filters" are different facts and want different advice — telling someone to clear filters
+// they never set is the wrong help.
+function emptyKind(total, shown) {
+  if ((shown || 0) > 0) return 'rows';
+  return (total || 0) === 0 ? 'none' : 'nomatch';
+}
+
 function buildEstate(perSpace) {
   const targets = [], workers = [], environments = [], policies = [];
   perSpace.forEach(s => {
@@ -403,14 +411,14 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, isEmptyEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+  buildEstate, isEmptyEstate, emptyKind, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, isEmptyEstate, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+    machineToTarget, buildEstate, isEmptyEstate, emptyKind, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel, _mapLimit };
 }

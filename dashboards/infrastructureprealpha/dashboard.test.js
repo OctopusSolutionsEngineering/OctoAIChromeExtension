@@ -440,3 +440,21 @@ describe('_mapLimit', () => {
     expect(maxInFlight).toBeLessThanOrEqual(3);      // concurrency capped
   });
 });
+
+describe('emptyKind', () => {
+  const d = require('./data');
+  test('rows when anything is shown', () => {
+    expect(d.emptyKind(10, 3)).toBe('rows');
+    expect(d.emptyKind(1, 1)).toBe('rows');
+  });
+  test('none when the collection itself is empty', () => {
+    expect(d.emptyKind(0, 0)).toBe('none');
+  });
+  test('nomatch when items exist but filters hide them all', () => {
+    expect(d.emptyKind(10, 0)).toBe('nomatch');
+  });
+  test('tolerates missing/garbage counts as empty', () => {
+    expect(d.emptyKind(undefined, undefined)).toBe('none');
+    expect(d.emptyKind(null, 0)).toBe('none');
+  });
+});

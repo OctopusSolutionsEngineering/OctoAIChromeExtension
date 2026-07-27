@@ -233,6 +233,8 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-row-sub{color:var(--fg2);font-size:12px}
 .ip-empty{text-align:center;color:var(--fg2);padding:48px}
 .ip-empty h3{color:var(--fg1)}
+.ip-empty p{margin:8px auto 16px;max-width:44ch}
+.ip-empty .ip-btn{display:inline-block}
 .ip-pager{display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--fg2)}
 .ip-pager button{padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);cursor:pointer}
 

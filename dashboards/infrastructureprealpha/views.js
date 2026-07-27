@@ -201,7 +201,11 @@ const Views = (function () {
         + (pages>1 ? '<div class="ip-pager" data-pages="'+pages+'" data-page="'+page+'">Page ' + page + ' of ' + pages
           + ' <button class="ip-page-prev"' + (page<=1?' disabled':'') + '>Prev</button>'
           + '<button class="ip-page-next"' + (page>=pages?' disabled':'') + '>Next</button></div>' : '')
-      : '<div class="ip-empty"><h3>No targets match these filters</h3><p>Try removing a filter or clearing your search.</p></div>';
+      : Data.emptyKind(all.length, rows.length) === 'none'
+        ? '<div class="ip-empty"><h3>No deployment targets in this space</h3>'
+          + '<p>Targets are the machines and services Octopus deploys to. Add one to get started.</p>'
+          + '<a class="ip-btn" href="' + escHtml(String(IP.serverUrl||'').replace(/\/$/,'') + '/app#/infrastructure/machines/new') + '" target="_blank" rel="noopener">Add deployment target</a></div>'
+        : '<div class="ip-empty"><h3>No targets match these filters</h3><p>Try removing a filter or clearing your search.</p></div>';
 
     return '<div class="ip-targets-wrap">'
       + '<div class="ip-facets"><div class="ip-facet-title">Filters</div>'
@@ -235,7 +239,7 @@ const Views = (function () {
       +     _row('Tenant', t.tenant) + _row('Machine policy', t.policy) + '</section>'
       +   placeholder('Projects &amp; last release')
       +   placeholder('Recent deployments')
-      +   '<section class="ip-card"><h4>Runbook runs</h4><p class="ip-sub">No runbook runs yet — this target hasn\'t been part of a runbook run.</p></section>'
+      +   placeholder('Runbook runs')
       +   placeholder('Events')
       + '</div>';
   }
@@ -303,8 +307,12 @@ const Views = (function () {
       +   '<div class="ip-card-head"><h4>Environments <span class="ip-count-inline">' + rows.length + '</span></h4>'
       +     '<div class="ip-card-actions"><a class="ip-link" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">Add environment</a></div>'
       +   '</div>'
-      +   '<table class="ip-table ip-heatmap ip-env-heatmap">' + _envHeatHead()
-      +   '<tbody>' + (body || '<tr><td colspan="5">No environments</td></tr>') + '</tbody></table>'
+      +   (rows.length
+            ? '<table class="ip-table ip-heatmap ip-env-heatmap">' + _envHeatHead()
+              + '<tbody>' + body + '</tbody></table>'
+            : '<div class="ip-empty"><h3>No environments in this space</h3>'
+              + '<p>Environments are the stages a release moves through — Dev, Test, Production.</p>'
+              + '<a class="ip-btn" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">Add environment</a></div>')
       + '</section>';
   }
   function bindEnvironments(IP) {
@@ -409,7 +417,11 @@ const Views = (function () {
         + (pages > 1 ? '<div class="ip-pager" data-pages="' + pages + '" data-page="' + page + '">Page ' + page + ' of ' + pages
           + ' <button class="ip-page-prev"' + (page <= 1 ? ' disabled' : '') + '>Prev</button>'
           + '<button class="ip-page-next"' + (page >= pages ? ' disabled' : '') + '>Next</button></div>' : '')
-      : '<div class="ip-empty"><h3>No workers match these filters</h3><p>Try removing a filter or clearing your search.</p></div>';
+      : Data.emptyKind(all.length, rows.length) === 'none'
+        ? '<div class="ip-empty"><h3>No workers in this space</h3>'
+          + '<p>Workers run deployment steps that don\'t execute on a target — script steps, cloud API calls, package pushes.</p>'
+          + '<a class="ip-btn" href="' + escHtml(_workerAddUrl()) + '" target="_blank" rel="noopener">Add worker</a></div>'
+        : '<div class="ip-empty"><h3>No workers match these filters</h3><p>Try removing a filter or clearing your search.</p></div>';
 
     return '<header class="ip-head"><h2>Workers</h2>'
       +   '<p class="ip-sub">A separate class of infrastructure — organised into shared pools, not tenant-scoped.</p></header>'
