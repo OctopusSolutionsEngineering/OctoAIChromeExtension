@@ -685,3 +685,29 @@ describe('designed zero states (Targets / Workers)', () => {
     expect(html).toContain('ip-facets');
   });
 });
+
+describe('filterEnvRows', () => {
+  const d = require('./data');
+  const rows = [
+    { name:'Production',  total:5, healthy:3, unhealthy:2, disabled:0 },
+    { name:'Staging',     total:4, healthy:4, unhealthy:0, disabled:0 },
+    { name:'Development', total:0, healthy:0, unhealthy:0, disabled:0 }
+  ];
+  test('all passes everything through', () => {
+    expect(d.filterEnvRows(rows, '', 'all')).toHaveLength(3);
+  });
+  test('needs attention keeps only environments with something unhealthy', () => {
+    expect(d.filterEnvRows(rows, '', 'attention').map(r => r.name)).toEqual(['Production']);
+  });
+  test('all healthy keeps environments with nothing unhealthy', () => {
+    expect(d.filterEnvRows(rows, '', 'healthy').map(r => r.name)).toEqual(['Staging','Development']);
+  });
+  test('search is case-insensitive and combines with the mode', () => {
+    expect(d.filterEnvRows(rows, 'prod', 'all').map(r => r.name)).toEqual(['Production']);
+    expect(d.filterEnvRows(rows, 'prod', 'healthy')).toEqual([]);
+  });
+  test('missing arguments degrade to everything', () => {
+    expect(d.filterEnvRows(rows)).toHaveLength(3);
+    expect(d.filterEnvRows(null, '', 'all')).toEqual([]);
+  });
+});

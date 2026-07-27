@@ -186,6 +186,19 @@ function isEmptyEstate(estate) {
   return !estate || ((estate.targets||[]).length === 0 && (estate.workers||[]).length === 0);
 }
 
+// Environments toolbar: free-text search plus one of three mutually exclusive views.
+// "All healthy" includes environments holding nothing at all — an environment with no
+// targets has nothing unhealthy in it, which is what the filter asks.
+function filterEnvRows(rows, query, mode) {
+  const q = String(query || '').trim().toLowerCase();
+  return (rows || []).filter(r => {
+    if (q && String(r.name || '').toLowerCase().indexOf(q) === -1) return false;
+    if (mode === 'attention') return r.unhealthy > 0;
+    if (mode === 'healthy') return !r.unhealthy;
+    return true;
+  });
+}
+
 // Cold-start is a landing screen, not a wall. Overview gets it when there's no
 // infrastructure — that's the "set this up" moment. Every other view renders itself and
 // uses its own empty state, because clicking a nav item and landing on the screen you
@@ -472,14 +485,14 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, isEmptyEstate, coldStartApplies, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+  buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+    machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel, _mapLimit };
 }

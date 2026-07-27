@@ -492,6 +492,9 @@ const Views = (function () {
     const base = tone === 'bad' ? '214,61,61' : '0,171,98'; // red / green rgb
     return '<td' + attrs + ' style="background:rgba(' + base + ',' + (0.12 + a * 0.7).toFixed(2) + ')">' + value + '</td>';
   }
+  const ENV_ICON = '<svg class="ip-env-icon" width="15" height="15" viewBox="0 0 20 20" fill="none"'
+    + ' stroke="var(--color-blue-400)" stroke-width="1.5" stroke-linejoin="round">'
+    + '<path d="M10 2l8 4-8 4-8-4 8-4z"/><path d="M2 10l8 4 8-4"/><path d="M2 14l8 4 8-4"/></svg>';
   function _envRow(r, maxHealthy, maxUnhealthy, expandedKey) {
     const open = !!expandedKey;
     const shown = open ? filterEnvTargets(r.targets, expandedKey) : [];
@@ -507,32 +510,55 @@ const Views = (function () {
       : '';
     const envAttr = ' data-env="' + escHtml(r.name) + '"';
     return '<tr class="ip-row ip-env-row' + (open ? ' ip-env-row-open' : '') + '"' + envAttr + '>'
-      + '<td class="ip-env-cell"' + envAttr + ' data-health="all"><span class="ip-env-toggle">' + (open ? '▾' : '▸') + '</span>' + escHtml(r.name) + '</td>'
+      + '<td class="ip-env-cell"' + envAttr + ' data-health="all"><span class="ip-env-toggle">' + (open ? '▾' : '▸') + '</span>'
+      +   ENV_ICON + '<span class="ip-env-name">' + escHtml(r.name) + '</span></td>'
       + '<td class="ip-env-cell"' + envAttr + ' data-health="all">' + r.total + '</td>'
       + _envHeatCell(r.healthy, maxHealthy, 'good', r.name, 'healthy')
       + _envHeatCell(r.unhealthy, maxUnhealthy, 'bad', r.name, 'unhealthy')
       + '<td class="ip-env-cell"' + envAttr + ' data-health="disabled">' + r.disabled + '</td></tr>' + sub;
   }
+  const ENV_MODES = [{ key:'all', label:'All' }, { key:'attention', label:'Needs attention' },
+                     { key:'healthy', label:'All healthy' }];
   function renderEnvironments(IP) {
-    const rows = Data.environmentsModel(IP.estate.targets, IP.estate.environments);
+    const all = Data.environmentsModel(IP.estate.targets, IP.estate.environments);
+    IP.envMode = IP.envMode || 'all';
+    IP.envQuery = IP.envQuery || '';
+    const rows = Data.filterEnvRows(all, IP.envQuery, IP.envMode);
     const maxHealthy = rows.reduce((m, r) => Math.max(m, r.healthy), 0);
     const maxUnhealthy = rows.reduce((m, r) => Math.max(m, r.unhealthy), 0);
     IP.envExpanded = IP.envExpanded || {};
     const body = rows.map(r => _envRow(r, maxHealthy, maxUnhealthy, IP.envExpanded[r.name])).join('');
+    const modes = ENV_MODES.map(m => '<button class="ip-seg' + (IP.envMode === m.key ? ' active' : '')
+      + '" data-mode="' + escHtml(m.key) + '">' + escHtml(m.label) + '</button>').join('');
+    const count = all.length + (all.length === 1 ? ' environment' : ' environments');
+
+    if (!all.length) {
+      return ''
+        + '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Environments</h2>'
+        +   '<p class="ip-sub">Infrastructure through the lens of your deployment pipeline. '
+        +   'Expand an environment to see its targets.</p></div>'
+        +   '<a class="ip-btn ip-btn-secondary" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">+ Add environment</a></header>'
+        + '<div class="ip-empty"><h3>No environments in this space</h3>'
+        +   '<p>Environments are the stages a release moves through — Dev, Test, Production.</p>'
+        +   '<a class="ip-btn" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">Add environment</a></div>';
+    }
     return ''
-      + '<header class="ip-head"><h2>Environments</h2>'
-      +   '<p class="ip-sub">Infrastructure through the lens of your deployment pipeline. Expand an environment to see its targets.</p></header>'
-      + '<section class="ip-card">'
-      +   '<div class="ip-card-head"><h4>Environments <span class="ip-count-inline">' + rows.length + '</span></h4>'
-      +     '<div class="ip-card-actions"><a class="ip-link" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">Add environment</a></div>'
-      +   '</div>'
-      +   (rows.length
-            ? '<table class="ip-table ip-heatmap ip-env-heatmap">' + _envHeatHead()
-              + '<tbody>' + body + '</tbody></table>'
-            : '<div class="ip-empty"><h3>No environments in this space</h3>'
-              + '<p>Environments are the stages a release moves through — Dev, Test, Production.</p>'
-              + '<a class="ip-btn" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">Add environment</a></div>')
-      + '</section>';
+      + '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Environments</h2>'
+      +   '<p class="ip-sub">Infrastructure through the lens of your deployment pipeline. '
+      +   'Expand an environment to see its targets.</p></div>'
+      +   '<a class="ip-btn ip-btn-secondary" href="' + escHtml(_envAddUrl()) + '" target="_blank" rel="noopener">+ Add environment</a></header>'
+      + '<div class="ip-env-toolbar">'
+      +   '<input class="ip-search ip-env-search" type="search" placeholder="Search environments…" value="'
+      +     escHtml(IP.envQuery) + '">'
+      +   '<div class="ip-segs">' + modes + '</div>'
+      +   '<span class="ip-count">' + escHtml(count) + '</span>'
+      + '</div>'
+      + '<div class="ip-heatmap-head ip-env-caption"><span class="ip-caption">Cell intensity = share of estate</span></div>'
+      + (rows.length
+          ? '<table class="ip-table ip-heatmap ip-env-heatmap">' + _envHeatHead()
+            + '<tbody>' + body + '</tbody></table>'
+          : '<div class="ip-empty"><h3>No environments match</h3>'
+            + '<p>Try a different search or filter.</p></div>');
   }
   function bindEnvironments(IP) {
     const root = document.getElementById('main-content');
@@ -547,6 +573,19 @@ const Views = (function () {
       else IP.envExpanded[name] = key;
       root.innerHTML = renderEnvironments(IP);
       bindEnvironments(IP);
+    }));
+    const rerender = () => { root.innerHTML = renderEnvironments(IP); bindEnvironments(IP); };
+    const search = root.querySelector('.ip-env-search');
+    if (search) search.addEventListener('input', e => {
+      IP.envQuery = e.target.value;
+      rerender();
+      // Re-focus and restore the caret; the input is replaced wholesale on each keystroke.
+      const again = root.querySelector('.ip-env-search');
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+    root.querySelectorAll('.ip-seg').forEach(b => b.addEventListener('click', () => {
+      IP.envMode = b.getAttribute('data-mode');
+      rerender();
     }));
   }
   function _policyCreateUrl() {
