@@ -711,3 +711,109 @@ describe('filterEnvRows', () => {
     expect(d.filterEnvRows(null, '', 'all')).toEqual([]);
   });
 });
+
+describe('overviewModel byType — disabled targets (Copilot review)', () => {
+  const d = require('./data');
+  const targets = [
+    { type:'Tentacle', healthKey:'healthy' },
+    { type:'Tentacle', healthKey:'unhealthy' },
+    { type:'Tentacle', healthKey:'disabled' },
+    { type:'Kubernetes', healthKey:'disabled' }
+  ];
+  test('a disabled target is counted in its type row, not dropped', () => {
+    const ov = d.overviewModel(targets, []);
+    const tent = ov.byType.find(r => r.name === 'Tentacle');
+    expect(tent).toMatchObject({ healthy:1, unhealthy:1, disabled:1, total:3 });
+  });
+  test('a type whose targets are all disabled still appears with a real count', () => {
+    const ov = d.overviewModel(targets, []);
+    const k8s = ov.byType.find(r => r.name === 'Kubernetes');
+    expect(k8s).toMatchObject({ healthy:0, unhealthy:0, disabled:1, total:1 });
+  });
+  test('per-type totals reconcile with the estate totals', () => {
+    const ov = d.overviewModel(targets, []);
+    const sum = k => ov.byType.reduce((n, r) => n + r[k], 0);
+    expect(sum('healthy')).toBe(ov.healthy);
+    expect(sum('unhealthy')).toBe(ov.unhealthy);
+    expect(sum('disabled')).toBe(ov.disabled);
+    expect(sum('total')).toBe(ov.total);
+  });
+});
+
+describe('loadEstate partial failures (Copilot review)', () => {
+  const d = require('./data');
+  const page = items => ({ status:200, ok:true, json: async () => items });
+
+  test('a resource that fails to load is recorded, not silently emptied', async () => {
+    global.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes('/spaces/all')) return page([{ Id:'Spaces-1', Name:'Default' }]);
+      if (u.includes('/environments/all')) return { status:403, ok:false, statusText:'Forbidden' };
+      if (u.includes('/machines/all')) return page([]);
+      return page([]);
+    };
+    const res = await d.loadEstate('https://x.octopus.app/');
+    expect(res.perSpace[0].failed).toContain('environments');
+    // and the estate carries it through, so a view can say "couldn't load" not "there are none"
+    const estate = d.buildEstate(res.perSpace);
+    expect(estate.failed.environments).toBe(true);
+    expect(estate.failed.policies).toBe(false);
+  });
+
+  test('everything loading cleanly leaves no failure flags', async () => {
+    global.fetch = async (url) => String(url).includes('/spaces/all')
+      ? page([{ Id:'Spaces-1', Name:'Default' }]) : page([]);
+    const res = await d.loadEstate('https://x.octopus.app/');
+    expect(res.perSpace[0].failed).toEqual([]);
+    expect(d.buildEstate(res.perSpace).failed.environments).toBe(false);
+  });
+});
+
+describe('unreadable resources are not reported as empty (Copilot review)', () => {
+  const Views = require('./views');
+  global.Data = require('./data');
+  const base = { serverUrl:'https://x.octopus.app/', envQuery:'', envMode:'all',
+    wFilters:{}, wSearch:'', wPage:1, filters:{}, search:'', page:1 };
+  const estate = (failed) => ({ targets:[], workers:[], environments:[], policies:[],
+    failed: Object.assign({ environments:false, policies:false, tenants:false,
+      workerpools:false, workers:false }, failed) });
+
+  test('environments that failed to load say so, and do not offer to add one', () => {
+    const html = Views.renderEnvironments({ ...base, estate: estate({ environments:true }) });
+    expect(html).toMatch(/couldn.t load/i);
+    expect(html).not.toMatch(/No environments in this space/);
+  });
+
+  test('environments that genuinely are empty still say so', () => {
+    const html = Views.renderEnvironments({ ...base, estate: estate() });
+    expect(html).toMatch(/No environments in this space/);
+    expect(html).not.toMatch(/couldn.t load/i);
+  });
+
+  test('workers that failed to load do not render the add-your-first zero state', () => {
+    const html = Views.renderWorkers({ ...base, estate: estate({ workers:true }) });
+    expect(html).toMatch(/couldn.t load/i);
+    expect(html).not.toContain('Add your first worker');
+  });
+
+  test('workers that genuinely are empty get the designed zero state', () => {
+    const html = Views.renderWorkers({ ...base, estate: estate() });
+    expect(html).toContain('Add your first worker');
+  });
+});
+
+describe('environment heat cells are operable by keyboard (Copilot review)', () => {
+  const Views = require('./views');
+  global.Data = require('./data');
+  const IP = { serverUrl:'https://x.octopus.app/', envQuery:'', envMode:'all', envExpanded:{},
+    estate:{ failed:{}, environments:[{ id:'e1', name:'Production', spaceId:'s1' }],
+      targets:[{ name:'a', type:'Tentacle', healthKey:'healthy', health:'Healthy',
+                 env:'Production', tag:'web', tenant:'No tenants' }] } };
+
+  test('clickable cells expose a role, are focusable, and are labelled', () => {
+    const html = Views.renderEnvironments(IP);
+    expect(html).toContain('role="button"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toMatch(/aria-label="[^"]+"/);
+  });
+});

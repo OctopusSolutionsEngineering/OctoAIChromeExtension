@@ -461,3 +461,4 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-env-icon{vertical-align:-2px;margin-right:6px}
 .ip-env-name{vertical-align:middle}
 .ip-btn-secondary{background:transparent;color:var(--ring);border:1px solid var(--ring)}
+.ip-env-cell:focus-visible,.ip-heat:focus-visible{outline:none;box-shadow:var(--shadow-focus);position:relative;z-index:1}

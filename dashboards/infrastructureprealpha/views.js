@@ -67,9 +67,11 @@ const Views = (function () {
     const typeRows = ov.byType.map(r =>
       '<div class="ip-type-row">'
       + '<div class="ip-type-name">' + escHtml(r.name) + '</div>'
-      + '<div class="ip-type-bar">' + healthBar(r.healthy, r.unhealthy, 0) + '</div>'
+      + '<div class="ip-type-bar">' + healthBar(r.healthy, r.unhealthy, r.disabled || 0) + '</div>'
       + '<div class="ip-type-counts"><span class="ip-num-healthy">' + r.healthy + '</span>'
-      +   '<span class="ip-num-unhealthy">' + r.unhealthy + '</span></div></div>').join('');
+      +   '<span class="ip-num-unhealthy">' + r.unhealthy + '</span>'
+      +   (r.disabled ? '<span class="ip-num-disabled">' + r.disabled + '</span>' : '')
+      + '</div></div>').join('');
     const envTop = ov.byEnv.slice(0,5);
     const maxHealthy = envTop.reduce((m,r)=>Math.max(m, r.healthy), 0);
     const maxUnhealthy = envTop.reduce((m,r)=>Math.max(m, r.unhealthy), 0);
@@ -221,6 +223,16 @@ const Views = (function () {
       +     '<a class="ip-btn" href="#targets/new">Add deployment target</a></div>'
       +   body + '</div></div>';
   }
+  // A resource the API refused or failed to return is not an empty resource. Views call
+  // this instead of their zero state so nobody is told a collection is empty when we
+  // simply couldn't read it — most often a permissions boundary on the space.
+  function _unreadable(label) {
+    return '<div class="ip-empty"><h3>Couldn\'t load ' + escHtml(label) + '</h3>'
+      + '<p>Octopus didn\'t return ' + escHtml(label) + ' for this space. That usually means '
+      + 'your account can\'t read them here, rather than that there are none. '
+      + 'Try another space, or open Octopus directly.</p></div>';
+  }
+
   // ── Designed zero states ──────────────────────────────────────────────────────
   // A view with nothing in it gets the prototype's treatment: one centred card that
   // explains what the thing is and how to add one, then a dimmed PREVIEW of what the
@@ -485,8 +497,14 @@ const Views = (function () {
   // Env heat cells carry data-env/data-health so a click can identify which environment and
   // which filter was clicked. This is a local twin of heatCell(), not a change to it — heatCell
   // is shared with Overview's read-only heatmap, which must stay non-interactive and unchanged.
+  function _envCellAttrs(name, key, extraClass) {
+    const what = key === 'all' ? 'all targets' : key + ' targets';
+    return ' class="' + extraClass + '" role="button" tabindex="0"'
+      + ' aria-label="Show ' + escHtml(what) + ' in ' + escHtml(name) + '"'
+      + ' data-env="' + escHtml(name) + '" data-health="' + escHtml(key) + '"';
+  }
   function _envHeatCell(value, max, tone, name, key) {
-    const attrs = ' class="ip-heat ip-env-cell" data-env="' + escHtml(name) + '" data-health="' + escHtml(key) + '"';
+    const attrs = _envCellAttrs(name, key, 'ip-heat ip-env-cell');
     if (value === 0) return '<td' + attrs + '>0</td>';
     const a = max > 0 ? (value / max) : 0;
     const base = tone === 'bad' ? '214,61,61' : '0,171,98'; // red / green rgb
@@ -510,12 +528,13 @@ const Views = (function () {
       : '';
     const envAttr = ' data-env="' + escHtml(r.name) + '"';
     return '<tr class="ip-row ip-env-row' + (open ? ' ip-env-row-open' : '') + '"' + envAttr + '>'
-      + '<td class="ip-env-cell"' + envAttr + ' data-health="all"><span class="ip-env-toggle">' + (open ? '▾' : '▸') + '</span>'
+      + '<td' + _envCellAttrs(r.name, 'all', 'ip-env-cell') + ' aria-expanded="' + (open ? 'true' : 'false') + '">'
+      +   '<span class="ip-env-toggle">' + (open ? '▾' : '▸') + '</span>'
       +   ENV_ICON + '<span class="ip-env-name">' + escHtml(r.name) + '</span></td>'
-      + '<td class="ip-env-cell"' + envAttr + ' data-health="all">' + r.total + '</td>'
+      + '<td' + _envCellAttrs(r.name, 'all', 'ip-env-cell') + '>' + r.total + '</td>'
       + _envHeatCell(r.healthy, maxHealthy, 'good', r.name, 'healthy')
       + _envHeatCell(r.unhealthy, maxUnhealthy, 'bad', r.name, 'unhealthy')
-      + '<td class="ip-env-cell"' + envAttr + ' data-health="disabled">' + r.disabled + '</td></tr>' + sub;
+      + '<td' + _envCellAttrs(r.name, 'disabled', 'ip-env-cell') + '>' + r.disabled + '</td></tr>' + sub;
   }
   const ENV_MODES = [{ key:'all', label:'All' }, { key:'attention', label:'Needs attention' },
                      { key:'healthy', label:'All healthy' }];
@@ -532,6 +551,12 @@ const Views = (function () {
       + '" data-mode="' + escHtml(m.key) + '">' + escHtml(m.label) + '</button>').join('');
     const count = all.length + (all.length === 1 ? ' environment' : ' environments');
 
+    if (!all.length && IP.estate.failed && IP.estate.failed.environments) {
+      return ''
+        + '<header class="ip-head"><h2>Environments</h2>'
+        + '<p class="ip-sub">Infrastructure through the lens of your deployment pipeline.</p></header>'
+        + _unreadable('environments');
+    }
     if (!all.length) {
       return ''
         + '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Environments</h2>'
@@ -565,15 +590,25 @@ const Views = (function () {
     // Each clickable cell (name, Total, Healthy, Unhealthy, Disabled) carries its own
     // data-env/data-health pair, so binding per-cell (not per-row) means a single click
     // fires exactly one handler — no row-level listener to double-fire alongside it.
-    root.querySelectorAll('.ip-env-row [data-health]').forEach(cell => cell.addEventListener('click', () => {
-      const name = cell.getAttribute('data-env');
-      const key = cell.getAttribute('data-health');
-      IP.envExpanded = IP.envExpanded || {};
-      if (IP.envExpanded[name] === key) delete IP.envExpanded[name];
-      else IP.envExpanded[name] = key;
-      root.innerHTML = renderEnvironments(IP);
-      bindEnvironments(IP);
-    }));
+    root.querySelectorAll('.ip-env-row [data-health]').forEach(cell => {
+      const toggle = () => {
+        const name = cell.getAttribute('data-env');
+        const key = cell.getAttribute('data-health');
+        IP.envExpanded = IP.envExpanded || {};
+        if (IP.envExpanded[name] === key) delete IP.envExpanded[name];
+        else IP.envExpanded[name] = key;
+        root.innerHTML = renderEnvironments(IP);
+        bindEnvironments(IP);
+        // Re-render replaces the node, so put focus back where the user left it.
+        const again = root.querySelector('.ip-env-row [data-env="' + (name || '').replace(/"/g, '\\"')
+          + '"][data-health="' + key + '"]');
+        if (again) again.focus();
+      };
+      cell.addEventListener('click', toggle);
+      cell.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); toggle(); }
+      });
+    });
     const rerender = () => { root.innerHTML = renderEnvironments(IP); bindEnvironments(IP); };
     const search = root.querySelector('.ip-env-search');
     if (search) search.addEventListener('input', e => {
@@ -643,6 +678,11 @@ const Views = (function () {
   function renderWorkers(IP) {
     IP.wFilters = IP.wFilters || {}; IP.wSearch = IP.wSearch || ''; IP.wPage = IP.wPage || 1;
     const all = IP.estate.workers || [];
+    const wFailed = IP.estate.failed && IP.estate.failed.workers;
+    if (!all.length && wFailed) return ''
+      + '<header class="ip-head"><h2>Workers</h2>'
+      + '<p class="ip-sub">A separate class of infrastructure — organised into shared pools, not tenant-scoped.</p></header>'
+      + _unreadable('workers');
     if (!all.length) return renderWorkersZero(IP);
     const model = Data.workersModel(all);
     const facets = Data.workerFacets(all);

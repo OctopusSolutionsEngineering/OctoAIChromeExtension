@@ -52,16 +52,26 @@ async function loadEstate(serverUrl) {
   // Cap how many spaces we hydrate at once so a many-space instance doesn't fire
   // a huge concurrent burst of /all requests on load. Order is preserved.
   const perSpace = (await _mapLimit(spaces, 4, async sp => {
+    // A resource that fails still yields [] so the rest of the space renders, but the
+    // failure is recorded. Without that record an unreadable endpoint is indistinguishable
+    // from an empty one, and the UI ends up asserting "there are none" about data it
+    // never managed to read.
+    const failed = [];
+    const soft = (name, path) => fetchJson(path).catch(e => {
+      failed.push(name);
+      if (e && e.auth) anyAuth = true;
+      return [];
+    });
     try {
       const [envs, policies, tenants, machines, workerpools, workers] = await Promise.all([
-        fetchJson('/api/' + sp.Id + '/environments/all').catch(() => []),
-        fetchJson('/api/' + sp.Id + '/machinepolicies/all').catch(() => []),
-        fetchJson('/api/' + sp.Id + '/tenants/all').catch(() => []),
+        soft('environments', '/api/' + sp.Id + '/environments/all'),
+        soft('policies',     '/api/' + sp.Id + '/machinepolicies/all'),
+        soft('tenants',      '/api/' + sp.Id + '/tenants/all'),
         fetchJson('/api/' + sp.Id + '/machines/all'),
-        fetchJson('/api/' + sp.Id + '/workerpools/all').catch(() => []),
-        fetchJson('/api/' + sp.Id + '/workers/all').catch(() => [])
+        soft('workerpools',  '/api/' + sp.Id + '/workerpools/all'),
+        soft('workers',      '/api/' + sp.Id + '/workers/all')
       ]);
-      return { sp, envs, policies, tenants, machines, workerpools, workers };
+      return { sp, envs, policies, tenants, machines, workerpools, workers, failed };
     } catch (e) { if (e && e.auth) anyAuth = true; return null; }
   })).filter(Boolean);
 
@@ -285,7 +295,12 @@ function buildEstate(perSpace) {
         version:extractVersion(ep), kind:kindLabel(ep.CommunicationStyle) });
     });
   });
-  return { targets, workers, environments, policies, overview: overviewModel(targets, workers) };
+  // Which resources couldn't be read for the spaces in scope. A view consults this before
+  // telling the user a collection is empty.
+  const failed = { environments:false, policies:false, tenants:false, workerpools:false, workers:false };
+  perSpace.forEach(s => (s.failed || []).forEach(k => { if (k in failed) failed[k] = true; }));
+  return { targets, workers, environments, policies, failed,
+    overview: overviewModel(targets, workers) };
 }
 
 /* ─── Agent version model (latest, behind, bands) ────────────────────────
@@ -342,9 +357,16 @@ function overviewModel(targets, workers) {
   const unhealthy = _count(targets, t=>t.healthKey==='unhealthy');
   const disabled = _count(targets, t=>t.healthKey==='disabled');
   const total = targets.length;
+  // Every target lands in exactly one bucket, so the per-type rows reconcile with the
+  // estate totals above. Counting only healthy/unhealthy silently dropped disabled
+  // targets out of their type row altogether.
   const byTypeMap = {};
-  targets.forEach(t => { const k=t.type || t.kind; (byTypeMap[k]=byTypeMap[k]||{name:k,healthy:0,unhealthy:0});
-    if (t.healthKey==='healthy') byTypeMap[k].healthy++; else if (t.healthKey==='unhealthy') byTypeMap[k].unhealthy++; });
+  targets.forEach(t => { const k=t.type || t.kind;
+    const e = (byTypeMap[k]=byTypeMap[k]||{name:k,healthy:0,unhealthy:0,disabled:0,total:0});
+    e.total++;
+    if (t.healthKey==='healthy') e.healthy++;
+    else if (t.healthKey==='disabled') e.disabled++;
+    else e.unhealthy++; });
   const byEnvMap = {};
   targets.forEach(t => { const k=t.env; const e=(byEnvMap[k]=byEnvMap[k]||{name:k,total:0,healthy:0,unhealthy:0,disabled:0});
     e.total++; if (t.healthKey==='healthy') e.healthy++; else if (t.healthKey==='disabled') e.disabled++; else e.unhealthy++; });
