@@ -612,24 +612,24 @@ describe('target detail cards (async-filled)', () => {
   });
 });
 
-describe('coldStartApplies — which views hide behind first-run', () => {
+describe('coldStartApplies — cold-start is a landing screen, not a wall', () => {
   const d = require('./data');
-  const bare    = { targets:[], workers:[], environments:[],       policies:[] };
+  const bare    = { targets:[], workers:[], environments:[],        policies:[] };
   const noInfra = { targets:[], workers:[], environments:[{id:'e'}], policies:[{Id:'p'}] };
   const full    = { targets:[{id:'t'}], workers:[], environments:[], policies:[] };
 
-  test('a wholly bare space shows cold-start everywhere', () => {
-    ['overview','targets','workers','agents','environments','machinepolicies']
-      .forEach(v => expect(d.coldStartApplies(v, bare)).toBe(true));
+  test('overview is the welcome moment when there is no infrastructure', () => {
+    expect(d.coldStartApplies('overview', bare)).toBe(true);
+    expect(d.coldStartApplies('overview', noInfra)).toBe(true);
   });
 
-  test('no targets but real environments/policies: only the target-centric views hide', () => {
-    expect(d.coldStartApplies('overview', noInfra)).toBe(true);
-    expect(d.coldStartApplies('targets', noInfra)).toBe(true);
-    expect(d.coldStartApplies('workers', noInfra)).toBe(true);
-    // these have data of their own — hiding them asserts "nothing here" while holding 9 environments
-    expect(d.coldStartApplies('environments', noInfra)).toBe(false);
-    expect(d.coldStartApplies('machinepolicies', noInfra)).toBe(false);
+  test('an explicit nav click always reaches its own view, empty or not', () => {
+    // clicking a nav item and getting the screen you were already on is a dead end
+    ['targets','workers','agents','environments','machinepolicies','argocd']
+      .forEach(v => {
+        expect(d.coldStartApplies(v, bare)).toBe(false);
+        expect(d.coldStartApplies(v, noInfra)).toBe(false);
+      });
   });
 
   test('the add-target walkthrough is never gated', () => {

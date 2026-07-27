@@ -7,18 +7,15 @@ const Router = (function () {
   }
   function render() {
     const el = document.getElementById('main-content');
-    // Cold-start is per-view, not per-section. A space with no targets but nine
-    // environments still has something to show on Environments and Machine policies;
-    // blanking those out claims the space is empty when it isn't. Target-centric views
-    // (and a wholly bare space) still get first-run. The add-target walkthrough is never
-    // gated — an empty estate is exactly when it's wanted.
-    const rawHash = (window.location.hash || '#overview').slice(1);
-    const routeKey = rawHash.indexOf('targets/') === 0 && rawHash !== 'targets/new' ? 'targets' : rawHash;
-    if (typeof Data !== 'undefined' && Data.coldStartApplies && Data.coldStartApplies(routeKey, IP.estate)) {
+    const hash = (window.location.hash || '#overview').slice(1);
+    // Cold-start greets you on the landing view when there's no infrastructure; it never
+    // intercepts an explicit nav click. Every other view renders itself and shows its own
+    // empty state, so a space with no targets can still reach its environments, its
+    // machine policies, and the add-target walkthrough.
+    if (typeof Data !== 'undefined' && Data.coldStartApplies && Data.coldStartApplies(hash, IP.estate)) {
       Onboarding.renderFirstRun(IP);
       return;
     }
-    const hash = (window.location.hash || '#overview').slice(1);
     // add-target walkthrough: #targets/new — must be tested before the detail route below,
     // which would otherwise treat "new" as a machine id and render "target not found".
     if (hash === 'targets/new') {
