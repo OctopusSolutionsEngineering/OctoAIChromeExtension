@@ -7,11 +7,14 @@ const Router = (function () {
   }
   function render() {
     const el = document.getElementById('main-content');
-    // An empty scope shows cold-start for every route except the add-target walkthrough —
-    // an empty estate is precisely when someone wants that, so it must not bounce back.
+    // Cold-start is per-view, not per-section. A space with no targets but nine
+    // environments still has something to show on Environments and Machine policies;
+    // blanking those out claims the space is empty when it isn't. Target-centric views
+    // (and a wholly bare space) still get first-run. The add-target walkthrough is never
+    // gated — an empty estate is exactly when it's wanted.
     const rawHash = (window.location.hash || '#overview').slice(1);
-    if (rawHash !== 'targets/new'
-        && typeof Data !== 'undefined' && Data.isEmptyEstate && Data.isEmptyEstate(IP.estate)) {
+    const routeKey = rawHash.indexOf('targets/') === 0 && rawHash !== 'targets/new' ? 'targets' : rawHash;
+    if (typeof Data !== 'undefined' && Data.coldStartApplies && Data.coldStartApplies(routeKey, IP.estate)) {
       Onboarding.renderFirstRun(IP);
       return;
     }

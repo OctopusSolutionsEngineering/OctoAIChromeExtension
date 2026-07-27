@@ -22,9 +22,18 @@ async function ipBoot() {
     if (res.status === 'auth')  { el.innerHTML = Views.stateView('auth'); return; }
     if (res.status === 'error') { el.innerHTML = Views.stateView('error', 'Failed to reach the Octopus API'); return; }
     if (!res.perSpace || !res.perSpace.length) {
-      // No spaces at all (or nothing loadable) — nothing to switch between.
+      // No spaces at all (or nothing loadable) — nothing to switch between. Still go
+      // through Router.init(): rendering first-run directly and returning skips the
+      // hashchange listener entirely, which leaves every nav item inert and strands
+      // the user on the cold-start screen. The router's own empty-estate check draws
+      // first-run for each route, and keeps #targets/new reachable.
       IP.estate = Data.buildEstate([]);
-      Onboarding.renderFirstRun(IP);
+      IP.perSpace = [];
+      IP.spaces = [];
+      IP.rescope = () => { IP.estate = Data.buildEstate([]); };
+      const themeOnly = document.getElementById('ip-theme-toggle');
+      if (themeOnly) { themeOnly.innerHTML = Views.renderThemeToggle(IP); Views.bindThemeToggle(IP); }
+      Router.init();
       return;
     }
     IP.perSpace = res.perSpace;

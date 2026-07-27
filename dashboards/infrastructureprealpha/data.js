@@ -186,6 +186,20 @@ function isEmptyEstate(estate) {
   return !estate || ((estate.targets||[]).length === 0 && (estate.workers||[]).length === 0);
 }
 
+// Views that only make sense once there's infrastructure to look at. Environments and
+// machine policies exist independently of targets — a space can hold nine environments
+// and no machines, and hiding them behind "Set up your infrastructure" tells the user
+// there's nothing here while we're sitting on their data.
+const _TARGET_CENTRIC = ['overview', 'targets', 'workers', 'agents', 'argocd'];
+function coldStartApplies(view, estate) {
+  if (view === 'targets/new') return false;          // the walkthrough is the way out of an empty estate
+  if (!isEmptyEstate(estate)) return false;
+  if (_TARGET_CENTRIC.indexOf(view) !== -1) return true;
+  // A wholly bare space has nothing to show anywhere, so cold-start is the honest answer.
+  const e = estate || {};
+  return (e.environments || []).length === 0 && (e.policies || []).length === 0;
+}
+
 // Per-target activity comes from /api/{space}/machines/{id}/tasks — verified against a live
 // instance. Note /api/{space}/tasks?regarding={id} silently IGNORES the filter and returns the
 // whole task list; don't reach for it.
@@ -463,14 +477,14 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, isEmptyEstate, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+  buildEstate, isEmptyEstate, coldStartApplies, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, isEmptyEstate, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+    machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel, _mapLimit };
 }
