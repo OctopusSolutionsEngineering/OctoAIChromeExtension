@@ -349,6 +349,25 @@ const Views = (function () {
     return _activityCard('Runbook runs', activity.runbooks, raw, t, serverUrl,
       'No runbook runs against this target in the retained task history.');
   }
+  function eventsCardHtml(t, rows, raw, serverUrl) {
+    const body = raw === null
+      ? '<p class="ip-sub">Couldn\'t load events from the Octopus API. Try again, or open the '
+        + '<a class="ip-link" href="' + escHtml(String(serverUrl||'').replace(/\/$/,'')
+        + '/app#/infrastructure/machines/' + encodeURIComponent(t.id)) + '" target="_blank" rel="noopener">'
+        + 'target page in Octopus</a>.</p>'
+      : !rows.length
+        // The query succeeded and matched nothing. Octopus prunes events, so an
+        // untouched target legitimately has none — say that rather than implying
+        // nothing has ever happened to it.
+        ? '<p class="ip-sub">No events retained for this target. Octopus prunes its event '
+          + 'history, so a target that has been quiet for a while will show none.</p>'
+        : '<table class="ip-table"><tbody>' + rows.map(r =>
+            '<tr><td class="ip-when">' + escHtml(_when(r.occurred)) + '</td>'
+            + '<td>' + escHtml(r.message) + '</td>'
+            + '<td class="ip-ev-who">' + escHtml(r.who) + '</td></tr>').join('')
+          + '</tbody></table>';
+    return '<section class="ip-card ip-card-wide"><h4>Events</h4>' + body + '</section>';
+  }
   function connectivityCardHtml(t, connection) {
     const rows = connection
       ? _row('Status', connection.Status || '—')
@@ -374,6 +393,7 @@ const Views = (function () {
       +     _row('Tenant', t.tenant) + _row('Machine policy', t.policy) + '</section>'
       +   '<div id="ip-td-deploys"><section class="ip-card ip-card-wide"><h4>Deployments</h4>' + loading + '</section></div>'
       +   '<div id="ip-td-runbooks"><section class="ip-card"><h4>Runbook runs</h4>' + loading + '</section></div>'
+      +   '<div id="ip-td-events"><section class="ip-card ip-card-wide"><h4>Events</h4>' + loading + '</section></div>'
       + '</div>';
   }
   // Called once the per-target fetch resolves. The rest of the detail view is already on
@@ -386,6 +406,7 @@ const Views = (function () {
     set('ip-td-conn', connectivityCardHtml(t, detail.connection));
     set('ip-td-deploys', deploymentsCardHtml(t, activity, detail.tasks, IP.serverUrl));
     set('ip-td-runbooks', runbooksCardHtml(t, activity, detail.tasks, IP.serverUrl));
+    set('ip-td-events', eventsCardHtml(t, Data.eventsModel(detail.events), detail.events, IP.serverUrl));
   }
   function bindTargetDetail(IP) { /* back link is a plain hash anchor; nothing to wire yet */ }
 
@@ -918,7 +939,7 @@ const Views = (function () {
       Router.render();
     });
   }
-  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml,
+  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,

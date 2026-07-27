@@ -817,3 +817,56 @@ describe('environment heat cells are operable by keyboard (Copilot review)', () 
     expect(html).toMatch(/aria-label="[^"]+"/);
   });
 });
+
+describe('per-target events', () => {
+  const d = require('./data');
+  // Shape from a live probe of /api/{space}/events?regarding={machineId}
+  const raw = [
+    { Id:'Events-1', Category:'MachineHealthy', Username:'system', IsService:false,
+      Occurred:'2026-07-27T03:49:42.220+00:00', Message:'Machine web-01 is now healthy',
+      MessageHtml:'<a href="#">Machine</a> web-01 is now healthy' },
+    { Id:'Events-2', Category:'Modified', Username:'lucy.spence',
+      Occurred:'2026-07-26T01:00:00.000+00:00', Message:'Machine web-01 was modified' }
+  ];
+  test('normalises to id, category, who, when and plain message', () => {
+    const rows = d.eventsModel(raw);
+    expect(rows[0]).toMatchObject({ id:'Events-1', category:'MachineHealthy',
+      who:'system', message:'Machine web-01 is now healthy' });
+    expect(rows[0].occurred).toBe('2026-07-27T03:49:42.220+00:00');
+  });
+  test('takes the plain Message, never MessageHtml', () => {
+    const rows = d.eventsModel(raw);
+    expect(rows[0].message).not.toContain('<a');
+  });
+  test('newest first', () => {
+    expect(d.eventsModel(raw).map(r => r.id)).toEqual(['Events-1','Events-2']);
+  });
+  test('null and empty degrade without throwing', () => {
+    expect(d.eventsModel(null)).toEqual([]);
+    expect(d.eventsModel([])).toEqual([]);
+  });
+});
+
+describe('events card rendering', () => {
+  const Views = require('./views');
+  const d = require('./data');
+  const t = { id:'Machines-1', spaceId:'Spaces-1' };
+  test('a failed events fetch is not reported as no events', () => {
+    const html = Views.eventsCardHtml(t, d.eventsModel(null), null, 'https://x.octopus.app/');
+    expect(html).toMatch(/couldn.t load/i);
+    expect(html).not.toMatch(/no events/i);
+  });
+  test('an empty result says none are retained, and says why that can happen', () => {
+    const html = Views.eventsCardHtml(t, d.eventsModel([]), [], 'https://x.octopus.app/');
+    expect(html).toMatch(/no events/i);
+    // must explain why an empty result is possible, not just assert emptiness
+    expect(html).toMatch(/prune|retention|retained/i);
+  });
+  test('renders rows and escapes the message', () => {
+    const nasty = [{ Id:'Events-9', Category:'Modified', Username:'x',
+      Occurred:'2026-01-01T00:00:00.000+00:00', Message:'<img src=x onerror=alert(1)>' }];
+    const html = Views.eventsCardHtml(t, d.eventsModel(nasty), nasty, 'https://x.octopus.app/');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('&lt;img');
+  });
+});

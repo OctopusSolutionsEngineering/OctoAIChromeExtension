@@ -249,12 +249,30 @@ function machineTaskRow(t) {
 // doesn't already carry. Each half degrades on its own: null means "we couldn't load it",
 // which the view must not render as "there is none".
 async function fetchMachineDetail(spaceId, machineId) {
-  const base = '/api/' + encodeURIComponent(spaceId) + '/machines/' + encodeURIComponent(machineId);
-  const [tasks, connection] = await Promise.all([
+  const sp = encodeURIComponent(spaceId);
+  const base = '/api/' + sp + '/machines/' + encodeURIComponent(machineId);
+  // events?regarding= IS honoured, unlike tasks?regarding= — verified on a live instance:
+  // a space holding 159,294 events returns 22 for a machine-scoped query. A zero here is a
+  // real "nothing retained for this target", not a filter that quietly matches nothing.
+  const [tasks, connection, events] = await Promise.all([
     fetchJson(base + '/tasks?take=30').then(r => (r && r.Items) || []).catch(() => null),
-    fetchJson(base + '/connection').catch(() => null)
+    fetchJson(base + '/connection').catch(() => null),
+    fetchJson('/api/' + sp + '/events?regarding=' + encodeURIComponent(machineId) + '&take=20')
+      .then(r => (r && r.Items) || []).catch(() => null)
   ]);
-  return { tasks, connection };
+  return { tasks, connection, events };
+}
+
+// Octopus also returns MessageHtml, which carries anchors. We take the plain Message and
+// escape it at render time rather than injecting markup we didn't build.
+function eventsModel(events) {
+  return (events || []).map(e => ({
+    id: e.Id,
+    category: e.Category || '',
+    who: e.Username || (e.IsService ? 'system' : ''),
+    message: e.Message || '',
+    occurred: e.Occurred || null
+  })).sort((a, b) => String(b.occurred || '').localeCompare(String(a.occurred || '')));
 }
 function machineActivityModel(tasks) {
   const rows = (tasks || []).map(machineTaskRow)
@@ -507,14 +525,14 @@ function applyFilters(targets, filters, search) {
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
-  buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+  buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadEstate,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
-    machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
+    machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel, _mapLimit };
 }
