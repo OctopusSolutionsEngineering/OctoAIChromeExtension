@@ -32,6 +32,10 @@
           {
             "dashboardName": "Target agent versions",
             "dashboardFile": "targetagentversions/index.html"
+          },
+          {
+            "dashboardName": "Infrastructure (PreAlpha)",
+            "dashboardFile": "infrastructureprealpha/index.html"
           }
         ]
       },
@@ -79,6 +83,10 @@
           {
             "dashboardName": "Target agent versions",
             "dashboardFile": "targetagentversions/index.html"
+          },
+          {
+            "dashboardName": "Infrastructure (PreAlpha)",
+            "dashboardFile": "infrastructureprealpha/index.html"
           }
         ]
       },
