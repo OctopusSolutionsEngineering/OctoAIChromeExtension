@@ -29,14 +29,42 @@ const Views = (function () {
   function chip(text, tone) {
     return '<span class="ip-chipx ip-chipx-' + escHtml(tone || 'neutral') + '">' + escHtml(text) + '</span>';
   }
-  function donut(pct) {
-    const p = Math.max(0, Math.min(100, Math.round(pct || 0)));
-    const R = 52, C = 2 * Math.PI * R, off = C * (1 - p / 100);
+  // The ring drew a single green arc against a grey remainder, which left unhealthy and
+  // disabled targets sharing one undifferentiated track — next to health-by-type bars that
+  // were already green/red/slate. It now segments on the same colours as bar(), so the ring,
+  // the legend under it and the type bars read as one thing. Takes the overview counts;
+  // still accepts a bare percentage for a healthy-only ring.
+  function donut(counts) {
+    const R = 52, C = 2 * Math.PI * R;
+    const clampPct = v => Math.max(0, Math.min(100, Math.round(v || 0)));
+    const num = v => Math.max(0, Math.round(Number(v) || 0));
+    let p, segs;
+    if (counts && typeof counts === 'object') {
+      const h = num(counts.healthy), u = num(counts.unhealthy), d = num(counts.disabled);
+      const total = h + u + d;
+      p = counts.healthyPct == null ? (total ? clampPct(h / total * 100) : 0) : clampPct(counts.healthyPct);
+      // Fractions come off the bucket total, not healthyPct, so the three arcs always close
+      // the circle even where healthyPct has been rounded.
+      segs = total ? [[h, 'var(--color-green-400)'], [u, 'var(--color-red-400)'], [d, 'var(--color-slate-300)']]
+        .filter(s => s[0] > 0).map(s => [s[0] / total, s[1]]) : [];
+    } else {
+      p = clampPct(counts);
+      segs = p > 0 ? [[p / 100, 'var(--color-green-400)']] : [];
+    }
+    // One dash run per segment, each shifted forward by the fraction already drawn (negative
+    // dashoffset advances along the path). Butt caps, not round: round caps on adjacent
+    // segments overlap, which overstates whichever segment is smaller.
+    let drawn = 0;
+    const arcs = segs.map(seg => {
+      const len = C * seg[0], off = -C * drawn;
+      drawn += seg[0];
+      return '<circle cx="64" cy="64" r="' + R + '" fill="none" stroke="' + seg[1] + '" stroke-width="14"'
+        + ' stroke-dasharray="' + len.toFixed(1) + ' ' + C.toFixed(1) + '"'
+        + ' stroke-dashoffset="' + off.toFixed(1) + '" transform="rotate(-90 64 64)"/>';
+    }).join('');
     return '<svg class="ip-donut" viewBox="0 0 128 128" width="128" height="128">'
       + '<circle cx="64" cy="64" r="' + R + '" fill="none" stroke="var(--muted)" stroke-width="14"/>'
-      + '<circle cx="64" cy="64" r="' + R + '" fill="none" stroke="var(--color-green-400)" stroke-width="14"'
-      + ' stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '"'
-      + ' transform="rotate(-90 64 64)"/>'
+      + arcs
       + '<text x="64" y="60" text-anchor="middle" class="ip-donut-pct">' + p + '%</text>'
       + '<text x="64" y="80" text-anchor="middle" class="ip-donut-sub">healthy</text></svg>';
   }
@@ -98,7 +126,7 @@ const Views = (function () {
       +   '</div>'
       +   '<div class="ip-panel-cols">'
       +     '<div class="ip-panel-left">'
-      +       '<div class="ip-donut-wrap">' + donut(ov.healthyPct) + '</div>'
+      +       '<div class="ip-donut-wrap">' + donut(ov) + '</div>'
       +       '<div class="ip-legend-big">'
       +         '<div class="ip-legend-stat"><div class="ip-legend-label"><span class="ip-dot ip-dot-healthy"></span>Healthy</div>'
       +           '<div class="ip-legend-num ip-num-healthy">' + ov.healthy + '</div></div>'
@@ -130,15 +158,55 @@ const Views = (function () {
       + '</div>';
   }
   const IP_PAGE_SIZE = 100;
+  // ─── Deployment Targets section (Paul Stovell's feedback, 28 Jul) ────────────
+  // Machine policies and deployment agents used to be top-level nav items. Both are rare
+  // destinations next to the targets list itself, so they're tabs within one Deployment
+  // Targets section and the sidebar carries only the five places people actually navigate to.
+  //
+  // The routes stay flat — #agents and #machinepolicies, rendered inside this shell with
+  // "Deployment Targets" active in the sidebar. #targets/agents would collide with the
+  // #targets/<machine-id> detail route, which already has to reserve "new" for that reason,
+  // and flat routes keep the overview's agent-versions pill working.
+  const IP_TARGET_SECTIONS = [
+    { key:'targets',  hash:'#targets',         label:'Deployment Targets' },
+    { key:'agents',   hash:'#agents',          label:'Agents' },
+    { key:'policies', hash:'#machinepolicies', label:'Policies' }
+  ];
+  function _sectionTabs(active) {
+    return '<nav class="ip-tabs ip-section-tabs" aria-label="Deployment targets sections">'
+      + IP_TARGET_SECTIONS.map(s => '<a class="ip-tab ip-section-tab'
+        + (s.key === active ? ' ip-tab-active' : '') + '" href="' + s.hash + '"'
+        + (s.key === active ? ' aria-current="page"' : '') + '>' + escHtml(s.label) + '</a>').join('')
+      + '</nav>';
+  }
+  // The <h2> stays "Deployment targets" on all three tabs — a title that changed per tab
+  // would make the tabs read as navigation. Each section's own framing moves to the subtitle.
+  // `sub` is trusted markup: callers escape anything dynamic before passing it.
+  function _sectionHead(sub, actionHtml) {
+    const text = '<h2>Deployment targets</h2><p class="ip-sub">' + sub + '</p>';
+    return actionHtml
+      ? '<header class="ip-head ip-head-actions"><div class="ip-head-text">' + text + '</div>'
+        + actionHtml + '</header>'
+      : '<header class="ip-head">' + text + '</header>';
+  }
   function filterChip(key, value, label) {
     return '<button class="ip-chip" data-key="' + escHtml(key) + '" data-value="' + escHtml(value) + '">'
       + escHtml(label) + ' ✕</button>';
   }
   const IP_TARGETS_COLS = 10;
   const IP_HEALTH_GROUP_ORDER = ['unhealthy', 'healthy', 'disabled'];
+  // A target's name links to its detail page wherever it appears — the targets table, the
+  // agent table, and the environments sub-list. Falls back to plain text without an id, so a
+  // row from a model that doesn't carry one never renders a link to nowhere.
+  function targetNameLink(id, name) {
+    return id
+      ? '<a class="ip-target-link" href="#targets/' + escHtml(encodeURIComponent(id)) + '">'
+        + escHtml(name) + '</a>'
+      : escHtml(name);
+  }
   function _targetRow(t) {
     return '<tr class="ip-row" data-id="' + escHtml(t.id) + '">'
-      + '<td><a class="ip-target-link" href="#targets/' + escHtml(encodeURIComponent(t.id)) + '">' + escHtml(t.name) + '</a></td>'
+      + '<td>' + targetNameLink(t.id, t.name) + '</td>'
       + '<td>' + escHtml(t.type) + '</td>'
       + '<td>' + escHtml(t.os) + '</td>'
       + '<td>' + escHtml(t.osVersion) + '</td>'
@@ -211,13 +279,15 @@ const Views = (function () {
           + '<a class="ip-btn" href="#targets/new">Add deployment target</a></div>'
         : '<div class="ip-empty"><h3>No targets match these filters</h3><p>Try removing a filter or clearing your search.</p></div>';
 
-    return '<div class="ip-targets-wrap">'
+    // Header and tabs sit above the facet rail: the rail filters within this list, the tabs
+    // switch section. Side by side they'd read as another filter.
+    return _sectionHead('Assess health across the estate and drill in with fast, faceted filters.')
+      + _sectionTabs('targets')
+      + '<div class="ip-targets-wrap">'
       + '<div class="ip-facets"><div class="ip-facet-title">Filters</div>'
       +   (chips.length ? '<div class="ip-chips">' + chips.join('') + '<button class="ip-clear">Clear all</button></div>' : '')
       +   facetHtml + '</div>'
       + '<div class="ip-targets-main">'
-      +   '<header class="ip-head"><h2>Deployment targets</h2>'
-      +     '<p class="ip-sub">Assess health across the estate and drill in with fast, faceted filters.</p></header>'
       +   '<div class="ip-toolbar"><input class="ip-search" type="search" placeholder="Search targets…" value="'
       +     escHtml(IP.search||'') + '"><span class="ip-count">' + rows.length + ' of ' + all.length + '</span>'
       +     '<a class="ip-btn" href="#targets/new">Add deployment target</a></div>'
@@ -270,10 +340,13 @@ const Views = (function () {
       + '<td>' + chip(r.env, 'env') + '</td>'
       + '<td>' + escHtml(r.policy) + '</td>'
       + '<td><span class="ip-dot ip-dot-healthy"></span> ' + escHtml(r.version) + '</td></tr>').join('');
+    // The tabs belong here too. Phase 4 established that an explicit nav click always
+    // reaches its own view; an empty estate that couldn't reach Agents or Policies would
+    // reintroduce the same dead end one level down.
     return ''
-      + '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Deployment targets</h2>'
-      +   '<p class="ip-sub">Assess health across the estate and drill in with fast, faceted filters.</p></div>'
-      +   '<a class="ip-btn" href="#targets/new">+ Add deployment target</a></header>'
+      + _sectionHead('Assess health across the estate and drill in with fast, faceted filters.',
+          '<a class="ip-btn" href="#targets/new">+ Add deployment target</a>')
+      + _sectionTabs('targets')
       + _zeroCard(ZERO_ICON.target, 'Add your first deployment target',
           'Deployment targets are the servers, clusters, and services your projects deploy to. '
           + 'Add one and Octopus starts tracking its health automatically.',
@@ -503,7 +576,7 @@ const Views = (function () {
   }
   function _envTargetRow(t) {
     return '<tr class="ip-row-static">'
-      + '<td>' + escHtml(t.name) + '</td>'
+      + '<td>' + targetNameLink(t.id, t.name) + '</td>'
       + '<td>' + escHtml(t.type) + '</td>'
       + '<td>' + pill(t.healthKey, t.health) + '</td>'
       + '<td>' + chip(t.tag, 'tag') + '</td>'
@@ -669,9 +742,9 @@ const Views = (function () {
     const rows = Data.policiesModel(IP.estate.policies, IP.estate.targets);
     const cards = rows.map(_policyCard).join('');
     return ''
-      + '<header class="ip-head"><h2>Machine policies</h2>'
-      +   '<p class="ip-sub">Govern targets collectively — health-check schedules and the tentacle upgrade '
-      +   'behaviour that drives version state across the estate.</p></header>'
+      + _sectionHead('Govern targets collectively — health-check schedules and the tentacle upgrade '
+          + 'behaviour that drives version state across the estate.')
+      + _sectionTabs('policies')
       + '<div class="ip-card-head"><h4>Machine policies <span class="ip-count-inline">' + rows.length + '</span></h4>'
       +   '<div class="ip-card-actions"><a class="ip-link" href="' + escHtml(_policyCreateUrl())
       +     '" target="_blank" rel="noopener">Create machine policy</a></div></div>'
@@ -806,10 +879,16 @@ const Views = (function () {
     }));
   }
   // ─── Deployment agents (Task P3-2) ──────────────────────────────────────
-  function _agentTabBar(tab) {
-    return '<div class="ip-tabs">'
-      + '<button type="button" class="ip-tab' + (tab === 'tentacle' ? ' ip-tab-active' : '') + '" data-tab="tentacle">Tentacle</button>'
-      + '<button type="button" class="ip-tab' + (tab === 'kubernetes' ? ' ip-tab-active' : '') + '" data-tab="kubernetes">Kubernetes</button>'
+  // A segmented control rather than a second tab bar: this sits under the section tabs, and
+  // two rows in identical styling leaves the hierarchy ambiguous at a glance. The class name
+  // is load-bearing — bindAgents binds these buttons, and .ip-tab now belongs to the section
+  // tab anchors, which must route rather than re-render Agents in place.
+  function _agentKindBar(tab) {
+    return '<div class="ip-kind-seg" role="group" aria-label="Agent type">'
+      + '<button type="button" class="ip-kind-btn' + (tab === 'tentacle' ? ' ip-kind-active' : '')
+      +   '" data-tab="tentacle"' + (tab === 'tentacle' ? ' aria-pressed="true"' : '') + '>Tentacle</button>'
+      + '<button type="button" class="ip-kind-btn' + (tab === 'kubernetes' ? ' ip-kind-active' : '')
+      +   '" data-tab="kubernetes"' + (tab === 'kubernetes' ? ' aria-pressed="true"' : '') + '>Kubernetes</button>'
       + '</div>';
   }
   function _bandColor(band) {
@@ -825,16 +904,22 @@ const Views = (function () {
       + '<div class="ip-dist-bar"><span style="width:' + pct + '%;background:' + _bandColor(d.band) + '"></span></div>'
       + '<div class="ip-dist-count">' + d.count + '</div></div>';
   }
-  // Row model (from Data.agentsModel) has no machine id, only name/env/version/band/behind/policy,
-  // so "Upgrade" links out to the general Octopus machines list rather than a specific machine —
-  // consistent with the read-only, no-mutation contract for this dashboard.
+  // "Upgrade" still links to the general Octopus machines list rather than to this machine.
+  // The row model now carries the id, so a per-machine link is possible — it's left general
+  // pending a decision, not for want of the id.
+  //
+  // OS cells render blank where the machine reports nothing, matching the targets table:
+  // osLabel deliberately returns '' rather than 'Unknown' so a column of un-health-checked
+  // machines doesn't read as a wall of "Unknown". Kubernetes agents commonly report no OS.
   function _agentRow(r) {
     const status = r.band === 'unknown'
       ? pill('disabled', 'Unknown')
       : pill(r.behind ? 'unhealthy' : 'healthy', r.behind ? 'Behind' : 'Up to date');
     return '<tr class="ip-row-static">'
-      + '<td>' + escHtml(r.name) + '</td>'
+      + '<td>' + targetNameLink(r.id, r.name) + '</td>'
       + '<td>' + chip(r.env, 'env') + '</td>'
+      + '<td>' + escHtml(r.os) + '</td>'
+      + '<td>' + escHtml(r.osVersion) + '</td>'
       + '<td>' + escHtml(r.version) + '</td>'
       + '<td>' + status + '</td>'
       + '<td>' + escHtml(r.policy) + '</td>'
@@ -849,15 +934,16 @@ const Views = (function () {
     const rowsHtml = G.rows.map(_agentRow).join('');
     const body = G.rows.length
       ? '<div class="ip-targets-scroll"><table class="ip-table ip-targets"><thead><tr>'
-        + '<th>Agent name</th><th>Environment</th><th>Version</th><th>Status</th><th>Machine policy</th><th></th>'
+        + '<th>Machine name</th><th>Environment</th><th>Operating system</th><th>OS version</th>'
+        + '<th>Agent version</th><th>Status</th><th>Machine policy</th><th></th>'
         + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
       : '<div class="ip-empty"><h3>No ' + escHtml(IP.agentTab) + ' agents</h3>'
         + '<p>No matching deployment targets in this estate.</p></div>';
     return ''
-      + '<header class="ip-head"><h2>Deployment agents</h2>'
-      +   '<p class="ip-sub">Review agent versions across the estate and upgrade what\'s fallen behind. '
-      +   'Latest available ' + escHtml(G.latest) + '.</p></header>'
-      + _agentTabBar(IP.agentTab)
+      + _sectionHead('Review agent versions across the estate and upgrade what\'s fallen behind. '
+          + 'Latest available ' + escHtml(G.latest) + '.')
+      + _sectionTabs('agents')
+      + _agentKindBar(IP.agentTab)
       + '<div class="ip-grid ip-kpi-grid">'
       +   '<section class="ip-card"><h4>Total</h4><div class="ip-big">' + G.total + '</div></section>'
       +   '<section class="ip-card"><h4>Up to date</h4><div class="ip-big ip-num-healthy">' + G.upToDate + '</div></section>'
@@ -873,7 +959,7 @@ const Views = (function () {
   }
   function bindAgents(IP) {
     const root = document.getElementById('main-content');
-    root.querySelectorAll('.ip-tab').forEach(btn => btn.addEventListener('click', () => {
+    root.querySelectorAll('.ip-kind-btn').forEach(btn => btn.addEventListener('click', () => {
       IP.agentTab = btn.getAttribute('data-tab') === 'kubernetes' ? 'kubernetes' : 'tentacle';
       root.innerHTML = renderAgents(IP);
       bindAgents(IP);

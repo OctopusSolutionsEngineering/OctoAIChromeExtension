@@ -895,3 +895,306 @@ describe('lazy space hydration', () => {
   });
 
 });
+
+// Paul Stovell's feedback on the walkthrough (28 Jul 2026): Machine Policies is a rare
+// destination and belongs inside Deployment Targets; the sidebar should carry five items,
+// with Deployment Targets | Agents | Policies as horizontal tabs within one section.
+describe('Deployment Targets section tabs (Paul Stovell feedback)', () => {
+  const Views = require('./views');
+  global.Data = require('./data');
+  const target = { id:'t1', name:'real-target', type:'Tentacle', kind:'Tentacle (Polling)', os:'', osVersion:'',
+    health:'Healthy', healthKey:'healthy', env:'Production', envCat:'production', tag:'web',
+    moreTags:0, tenant:'No tenants', policy:'Default', version:'8.5.1' };
+  const base = { serverUrl:'https://x.octopus.app/', filters:{}, search:'', page:1,
+                 wFilters:{}, wSearch:'', wPage:1 };
+  const empty = { ...base, estate:{ targets:[], workers:[], environments:[], policies:[] } };
+  const full  = { ...base, estate:{ targets:[target], workers:[], environments:[], policies:[] } };
+  const activeLabels = html => (html.match(/ip-section-tab ip-tab-active"[^>]*>([^<]+)</g) || [])
+    .map(m => m.replace(/^.*>/, '').replace(/<$/, ''));
+
+  test('every section renders all three tabs, so none is a dead end', () => {
+    [Views.renderTargets(full), Views.renderTargets(empty),
+     Views.renderAgents(full), Views.renderMachinePolicies(full)].forEach(html => {
+      expect(html).toContain('href="#targets"');
+      expect(html).toContain('href="#agents"');
+      expect(html).toContain('href="#machinepolicies"');
+    });
+  });
+
+  test('exactly one tab is active, and it is the section being rendered', () => {
+    expect(activeLabels(Views.renderTargets(full))).toEqual(['Deployment Targets']);
+    expect(activeLabels(Views.renderTargets(empty))).toEqual(['Deployment Targets']);
+    expect(activeLabels(Views.renderAgents(full))).toEqual(['Agents']);
+    expect(activeLabels(Views.renderMachinePolicies(full))).toEqual(['Policies']);
+  });
+
+  test('the page title is stable across tabs, so the tabs read as tabs', () => {
+    [Views.renderTargets(full), Views.renderTargets(empty),
+     Views.renderAgents(full), Views.renderMachinePolicies(full)].forEach(html => {
+      expect(html).toContain('<h2>Deployment targets</h2>');
+    });
+    // the old top-level headings are gone; the tab label names the sub-view now
+    expect(Views.renderAgents(full)).not.toContain('<h2>Deployment agents</h2>');
+    expect(Views.renderMachinePolicies(full)).not.toContain('<h2>Machine policies</h2>');
+  });
+
+  test('each tab keeps its own framing in the subtitle', () => {
+    expect(Views.renderTargets(full)).toMatch(/faceted filters/);
+    expect(Views.renderAgents(full)).toMatch(/Latest available/);
+    expect(Views.renderMachinePolicies(full)).toMatch(/health-check schedules/);
+  });
+
+  test('the tab bar sits above the facet rail, not inside the targets column', () => {
+    const html = Views.renderTargets(full);
+    expect(html.indexOf('ip-section-tabs')).toBeLessThan(html.indexOf('ip-targets-wrap'));
+    expect(html.indexOf('ip-section-tabs')).toBeGreaterThan(html.indexOf('<h2>Deployment targets</h2>'));
+  });
+
+  test('Tentacle/Kubernetes is a segmented control, subordinate to the section tabs', () => {
+    const html = Views.renderAgents(full);
+    expect(html).toContain('ip-kind-btn');
+    expect(html).toMatch(/ip-kind-btn[^>]*data-tab="tentacle"/);
+    expect(html).toMatch(/ip-kind-btn[^>]*data-tab="kubernetes"/);
+    // bindAgents binds .ip-kind-btn; a leftover .ip-tab button here would swallow tab
+    // navigation clicks and re-render Agents in place instead of routing.
+    expect(html).not.toMatch(/<button[^>]*class="ip-tab/);
+  });
+
+  test('the agent-kind choice still switches which group is shown', () => {
+    const t = Views.renderAgents({ ...full, agentTab:'tentacle' });
+    const k = Views.renderAgents({ ...full, agentTab:'kubernetes' });
+    expect(t).toMatch(/ip-kind-btn ip-kind-active"[^>]*data-tab="tentacle"/);
+    expect(k).toMatch(/ip-kind-btn ip-kind-active"[^>]*data-tab="kubernetes"/);
+  });
+
+  // .ip-seg is the Environments mode button. The agent-kind control briefly reused it as a
+  // container class, which left the two CSS rules overwriting each other's background and
+  // border. Keep the two vocabularies disjoint.
+  test('the agent-kind control does not reuse the Environments .ip-seg class', () => {
+    expect(Views.renderAgents(full)).not.toMatch(/class="ip-seg[ "]/);
+  });
+
+  test('each segmented-control class is defined exactly once in the stylesheet', () => {
+    const fs = require('fs');
+    const css = fs.readFileSync(require('path').join(__dirname, 'styles.css'), 'utf8');
+    const defs = sel => (css.match(new RegExp('^\\' + sel + '\\{', 'gm')) || []).length;
+    expect(defs('.ip-seg')).toBe(1);
+    expect(defs('.ip-kind-seg')).toBe(1);
+  });
+});
+
+// The Environments view expands into a per-environment target sub-list. The target name was
+// plain text there, while the same name in the Targets table linked to its detail page.
+describe('environments sub-list links its targets', () => {
+  const Views = require('./views');
+  const d = require('./data');
+  global.Data = d;
+  const t = (id, name, healthKey) => ({ id, name, spaceId:'Spaces-1', type:'Tentacle',
+    kind:'Tentacle (Polling)', os:'Ubuntu', osVersion:'22.04', health:healthKey,
+    healthKey, env:'Production', envCat:'production', tag:'web', moreTags:0,
+    tenant:'No tenants', policy:'Default', version:'8.5.1' });
+  const targets = [t('Machines-1','web-prod-01','healthy'), t('Machines-2','db-prod-01','unhealthy')];
+  const IP = () => ({ serverUrl:'https://x.octopus.app/', envMode:'all', envQuery:'',
+    envExpanded:{ Production:'all' },
+    estate:{ targets, workers:[], environments:[{ id:'Environments-1', name:'Production' }], policies:[] } });
+
+  test('an expanded environment links each target to its detail page', () => {
+    const html = Views.renderEnvironments(IP());
+    expect(html).toContain('href="#targets/Machines-1"');
+    expect(html).toContain('href="#targets/Machines-2"');
+    expect(html).toContain('ip-target-link');
+  });
+
+  test('the link is inside the sub-list row, not the environment row', () => {
+    const html = Views.renderEnvironments(IP());
+    const sub = /<tr class="ip-env-sub">([\s\S]*?)<\/tr>\s*<\/tbody>|<tr class="ip-env-sub">([\s\S]*)/
+      .exec(html);
+    expect((sub[1] || sub[2])).toContain('href="#targets/Machines-1"');
+  });
+
+  test('a collapsed environment renders no target links', () => {
+    const collapsed = { ...IP(), envExpanded:{} };
+    expect(Views.renderEnvironments(collapsed)).not.toContain('href="#targets/');
+  });
+
+  test('an id needing escaping is encoded', () => {
+    const odd = { ...IP(), estate: { ...IP().estate, targets:[t('Machines-a b','odd','healthy')] } };
+    expect(Views.renderEnvironments(odd)).toContain('href="#targets/Machines-a%20b"');
+  });
+
+  // The sub-list table is nested inside a .ip-heatmap cell, so the heatmap's link-neutralising
+  // rule reached it as a descendant and rendered the linked names as plain label text.
+  test('the heatmap link reset cannot reach the nested sub-list', () => {
+    const fs = require('fs');
+    const css = fs.readFileSync(require('path').join(__dirname, 'styles.css'), 'utf8');
+    const resets = css.match(/^\.ip-heatmap[^{]*td:first-child[^{]*a[^{]*\{[^}]*\}/gm) || [];
+    expect(resets.length).toBeGreaterThan(0);
+    resets.forEach(rule => expect(rule).toMatch(/td:first-child\s*>\s*a/));
+  });
+
+  test('a target with no id stays plain text rather than linking nowhere', () => {
+    const noId = { ...IP(), estate: { ...IP().estate, targets:[t('','no-id','healthy')] } };
+    const html = Views.renderEnvironments(noId);
+    expect(html).toContain('no-id');
+    expect(html).not.toContain('href="#targets/"');
+  });
+});
+
+// The agent table identified a machine by name only, and the name wasn't clickable — the row
+// model dropped the machine id and OS fields that machineToTarget already carries.
+describe('agent table carries machine identity', () => {
+  const d = require('./data');
+  const Views = require('./views');
+  global.Data = d;
+  const t = (over) => Object.assign({
+    id:'Machines-1', name:'web-prod-01', spaceId:'Spaces-1', type:'Tentacle',
+    kind:'Tentacle (Listening)', os:'Microsoft Windows Server 2022', osVersion:'10.0.20348',
+    health:'Healthy', healthKey:'healthy', env:'Production', envCat:'production', tag:'web',
+    moreTags:0, tenant:'No tenants', policy:'Auto-upgrade', version:'8.5.1' }, over || {});
+
+  test('the row model keeps the machine id and OS fields', () => {
+    const row = d.agentsModel([t()]).tentacle.rows[0];
+    expect(row).toMatchObject({ id:'Machines-1', name:'web-prod-01',
+      os:'Microsoft Windows Server 2022', osVersion:'10.0.20348' });
+  });
+
+  test('the machine name links to its detail page, the way the targets table does', () => {
+    const html = Views.renderAgents({ serverUrl:'https://x.octopus.app/', agentTab:'tentacle',
+      estate:{ targets:[t()], workers:[], environments:[], policies:[] } });
+    expect(html).toContain('href="#targets/Machines-1"');
+    expect(html).toContain('ip-target-link');
+  });
+
+  test('an id needing escaping is encoded in the href', () => {
+    const html = Views.renderAgents({ serverUrl:'https://x.octopus.app/', agentTab:'tentacle',
+      estate:{ targets:[t({ id:'Machines-a b' })], workers:[], environments:[], policies:[] } });
+    expect(html).toContain('href="#targets/Machines-a%20b"');
+  });
+
+  test('the OS and OS version reach the rendered row', () => {
+    const html = Views.renderAgents({ serverUrl:'https://x.octopus.app/', agentTab:'tentacle',
+      estate:{ targets:[t()], workers:[], environments:[], policies:[] } });
+    expect(html).toContain('Microsoft Windows Server 2022');
+    expect(html).toContain('10.0.20348');
+  });
+
+  test('columns are headed to match the targets table vocabulary', () => {
+    const html = Views.renderAgents({ serverUrl:'https://x.octopus.app/', agentTab:'tentacle',
+      estate:{ targets:[t()], workers:[], environments:[], policies:[] } });
+    ['<th>Machine name</th>','<th>Environment</th>','<th>Operating system</th>',
+     '<th>OS version</th>','<th>Agent version</th>','<th>Status</th>','<th>Machine policy</th>']
+      .forEach(th => expect(html).toContain(th));
+    // "Version" alone is ambiguous once OS version is in the table
+    expect(html).not.toContain('<th>Version</th>');
+  });
+
+  test('a machine with no reported OS leaves the cells blank, not "Unknown"', () => {
+    const html = Views.renderAgents({ serverUrl:'https://x.octopus.app/', agentTab:'kubernetes',
+      estate:{ targets:[t({ type:'Kubernetes', kind:'Kubernetes Agent', os:'', osVersion:'',
+        version:'2.6.0' })], workers:[], environments:[], policies:[] } });
+    // scoped to the row: "Unknown" is also a KPI card heading (the unknown-version bucket)
+    const row = /<tr class="ip-row-static">([\s\S]*?)<\/tr>/.exec(html)[1];
+    expect(row).not.toMatch(/Unknown/);
+    expect(row).toContain('<td></td><td></td>');       // OS and OS version, both empty
+    expect(row).toContain('href="#targets/Machines-1"');
+  });
+});
+
+// The overview ring drew one green arc against a grey remainder, so unhealthy and disabled
+// targets shared an undifferentiated track — while the health-by-type bars beside it were
+// already green/red/slate. The ring now segments the same way.
+describe('overview ring segments unhealthy in red', () => {
+  const Views = require('./views');
+  const arcs = svg => [...svg.matchAll(/stroke="(var\(--color-[a-z]+-\d+\))"/g)].map(m => m[1]);
+
+  test('unhealthy targets get their own red arc', () => {
+    const svg = Views.donut({ healthy:10, unhealthy:3, disabled:1, healthyPct:71 });
+    expect(arcs(svg)).toEqual([
+      'var(--color-green-400)', 'var(--color-red-400)', 'var(--color-slate-300)']);
+  });
+
+  test('the ring uses the same colours as the health bar', () => {
+    const ring = arcs(Views.donut({ healthy:7, unhealthy:2, disabled:1 }));
+    const bar = [...Views.healthBar(7, 2, 1).matchAll(/background:(var\(--color-[a-z]+-\d+\))/g)].map(m => m[1]);
+    expect(ring).toEqual(bar);
+  });
+
+  test('arc lengths are proportional to the counts, and fill the ring exactly', () => {
+    const svg = Views.donut({ healthy:10, unhealthy:3, disabled:1 });
+    const lens = [...svg.matchAll(/stroke-dasharray="([\d.]+) ([\d.]+)"/g)]
+      .map(m => ({ len: parseFloat(m[1]), circ: parseFloat(m[2]) }));
+    const C = lens[0].circ;
+    expect(lens.map(l => Math.round(l.len / C * 100))).toEqual([71, 21, 7]);
+    expect(lens.reduce((s, l) => s + l.len, 0)).toBeCloseTo(C, 1);
+  });
+
+  test('segments are laid end to end, each offset by what precedes it', () => {
+    const svg = Views.donut({ healthy:10, unhealthy:3, disabled:1 });
+    const offs = [...svg.matchAll(/stroke-dashoffset="(-?[\d.]+)"/g)].map(m => parseFloat(m[1]));
+    const lens = [...svg.matchAll(/stroke-dasharray="([\d.]+) /g)].map(m => parseFloat(m[1]));
+    expect(offs[0]).toBe(0);
+    expect(offs[1]).toBeCloseTo(-lens[0], 1);
+    expect(offs[2]).toBeCloseTo(-(lens[0] + lens[1]), 1);
+  });
+
+  test('a bucket with nothing in it draws no arc', () => {
+    expect(arcs(Views.donut({ healthy:12, unhealthy:0, disabled:0 })))
+      .toEqual(['var(--color-green-400)']);
+    expect(arcs(Views.donut({ healthy:0, unhealthy:4, disabled:0 })))
+      .toEqual(['var(--color-red-400)']);
+  });
+
+  test('an empty estate draws the bare track and reads 0%', () => {
+    const svg = Views.donut({ healthy:0, unhealthy:0, disabled:0 });
+    expect(arcs(svg)).toEqual([]);
+    expect(svg).toContain('>0%<');
+    expect(svg).toContain('var(--muted)');            // the track is still there
+  });
+
+  test('healthyPct is honoured when given, derived when not', () => {
+    expect(Views.donut({ healthy:10, unhealthy:3, disabled:1, healthyPct:71 })).toContain('>71%<');
+    expect(Views.donut({ healthy:1, unhealthy:1, disabled:0 })).toContain('>50%<');
+  });
+
+  test('the overview passes the counts through, not just the percentage', () => {
+    global.Data = require('./data');
+    const d = require('./data');
+    const t = (name, healthKey) => ({ id:name, name, type:'Tentacle', kind:'Tentacle (Polling)', os:'', osVersion:'',
+      health:healthKey, healthKey, env:'Production', envCat:'production', tag:'web', moreTags:0,
+      tenant:'No tenants', policy:'Default', version:'8.5.1' });
+    const targets = [t('a','healthy'), t('b','unhealthy'), t('c','disabled')];
+    const ov = d.overviewModel(targets, []);
+    const html = Views.renderOverview(ov, { targets, workers:[], environments:[], policies:[] });
+    expect(html).toContain('var(--color-red-400)');   // the ring, not only the type bars
+    expect(html.match(/var\(--color-red-400\)/g).length).toBeGreaterThan(1);
+  });
+});
+
+describe('sidebar is down to Paul\'s five items', () => {
+  const fs = require('fs');
+  const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+  const items = [...html.matchAll(/class="ip-nav-item" data-view="([^"]+)">([^<]+)</g)]
+    .map(m => ({ view:m[1], label:m[2] }));
+
+  test('five nav items, in the order Paul proposed', () => {
+    expect(items.map(i => i.view)).toEqual(
+      ['overview','targets','environments','workers','argocd']);
+  });
+
+  test('Machine Policies and Deployment Agents are no longer nav destinations', () => {
+    expect(items.map(i => i.view)).not.toContain('machinepolicies');
+    expect(items.map(i => i.view)).not.toContain('agents');
+    expect(html).not.toContain('>Machine Policies<');
+    expect(html).not.toContain('>Deployment Agents<');
+  });
+
+  test('every nav item still has a route to render it', () => {
+    const router = fs.readFileSync(require('path').join(__dirname, 'router.js'), 'utf8');
+    const views = /const VIEWS = \[([^\]]+)\]/.exec(router)[1];
+    items.forEach(i => expect(views).toContain("'" + i.view + "'"));
+    // the demoted views keep their routes — they're reached by tab now, and the overview's
+    // agent-versions pill still links straight to #agents
+    expect(views).toContain("'agents'");
+    expect(views).toContain("'machinepolicies'");
+  });
+});

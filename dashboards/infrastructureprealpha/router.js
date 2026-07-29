@@ -1,6 +1,8 @@
 'use strict';
 const Router = (function () {
   const VIEWS = ['overview','targets','environments','machinepolicies','workers','agents','argocd'];
+  // Views that render inside the Deployment Targets section shell.
+  const IP_TARGET_SECTION_VIEWS = ['targets','agents','machinepolicies'];
   function setActive(view) {
     document.querySelectorAll('.ip-nav-item').forEach(a =>
       a.classList.toggle('active', a.getAttribute('data-view') === view));
@@ -47,7 +49,11 @@ const Router = (function () {
       return;
     }
     const view = VIEWS.includes(hash) ? hash : 'overview';
-    setActive(view);
+    // Agents and machine policies are tabs inside the Deployment Targets section rather than
+    // nav items of their own, so the sidebar highlights the section they live in. Their
+    // routes are unchanged: the tabs are anchors, and the overview's agent-versions pill
+    // still links straight to #agents.
+    setActive(IP_TARGET_SECTION_VIEWS.includes(view) ? 'targets' : view);
     if (view === 'overview')  { el.innerHTML = Views.renderOverview(IP.estate.overview, IP.estate); }
     else if (view === 'targets') { el.innerHTML = Views.renderTargets(IP); Views.bindTargets && Views.bindTargets(IP); }
     else if (view === 'environments') { el.innerHTML = Views.renderEnvironments(IP); Views.bindEnvironments && Views.bindEnvironments(IP); }

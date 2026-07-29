@@ -314,8 +314,11 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-heatmap th:nth-child(3),.ip-heatmap td:nth-child(3){width:16%}
 .ip-heatmap th:nth-child(4),.ip-heatmap td:nth-child(4){width:16%}
 .ip-heatmap th:nth-child(5),.ip-heatmap td:nth-child(5){width:16%}
-.ip-heatmap td:first-child a{color:inherit;text-decoration:none}
-.ip-heatmap td:first-child a:hover{text-decoration:underline}
+/* Neutralises the Overview heatmap's environment-name link so the cell reads as a label.
+   Direct-child chain on purpose: the Environments sub-list is a table nested inside a heatmap
+   cell, and a descendant selector here stripped the colour off its .ip-target-link names. */
+.ip-heatmap > tbody > tr > td:first-child > a{color:inherit;text-decoration:none}
+.ip-heatmap > tbody > tr > td:first-child > a:hover{text-decoration:underline}
 .ip-grid-below{margin-top:16px}
 
 /* Task B3 — targets list: name link, tag chip tone, health-grouped rows, column widths */
@@ -357,12 +360,29 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-pool-card .ip-card-head{margin-bottom:8px}
 .ip-chipx-pool{background:var(--color-purple-100);border-color:var(--color-purple-200);color:var(--color-purple-700)}
 
-/* Task P3-2 — Deployment agents: Tentacle/Kubernetes tabs, KPI row, version distribution bars */
+/* Task P3-2 — Deployment agents: KPI row, version distribution bars */
 .ip-tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border)}
 .ip-tab{background:none;border:0;padding:8px 14px;font-size:13px;font-weight:500;
   color:var(--fg2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .ip-tab:hover{color:var(--fg1)}
 .ip-tab-active{color:var(--fg1);border-bottom-color:var(--ring);font-weight:600}
+
+/* Task P5-1 — Deployment Targets section tabs. The class was written for <button>; these are
+   anchors so the tabs are real routes (deep-linkable, back button works). */
+.ip-section-tab{text-decoration:none;display:inline-block}
+.ip-section-tab:hover{text-decoration:none}
+
+/* Task P5-2 — agent type as a segmented control, sitting under the section tabs. Deliberately
+   quieter than .ip-tab: a second tab row in the same styling flattens the hierarchy.
+   Named ip-kind-*, not ip-seg-*: .ip-seg is already the Environments mode button (below), and
+   reusing it made the two rules overwrite each other's background and border. */
+.ip-kind-seg{display:inline-flex;margin-bottom:16px;border:1px solid var(--border);
+  border-radius:6px;overflow:hidden;background:var(--muted)}
+.ip-kind-btn{background:none;border:0;padding:5px 14px;font-size:12px;font-weight:500;
+  color:var(--fg2);cursor:pointer}
+.ip-kind-btn + .ip-kind-btn{border-left:1px solid var(--border)}
+.ip-kind-btn:hover{color:var(--fg1)}
+.ip-kind-active{background:var(--card);color:var(--fg1);font-weight:600}
 .ip-kpi-grid{grid-template-columns:repeat(4,1fr);margin-bottom:16px}
 .ip-dist-card{margin-bottom:16px}
 .ip-dist-rows{display:flex;flex-direction:column;gap:8px}
