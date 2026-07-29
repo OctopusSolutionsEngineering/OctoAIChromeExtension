@@ -339,8 +339,10 @@ function _agentGroup(rows) {
     const isUnknown = !t.version || t.version === '—';
     const isBehind = !isUnknown && majorVersion(t.version) < latestMajor;
     if (isUnknown) unknown++; else if (isBehind) behind++; else upToDate++;
-    return { name: t.name, env: t.env, version: t.version, band: versionBand(t.version),
-      behind: isBehind, policy: t.policy };
+    // Carries the machine id and OS through from machineToTarget: the agent table names the
+    // machine, links to its detail page, and reports the OS it's running on.
+    return { id: t.id, name: t.name, env: t.env, os: t.os, osVersion: t.osVersion,
+      version: t.version, band: versionBand(t.version), behind: isBehind, policy: t.policy };
   });
   const distMap = {};
   outRows.forEach(r => { const d = (distMap[r.version] = distMap[r.version] || { version: r.version, count: 0, band: r.band }); d.count++; });
@@ -430,7 +432,10 @@ function environmentsModel(targets, environments) {
     if (t.healthKey === 'healthy') e.healthy++;
     else if (t.healthKey === 'disabled') e.disabled++;
     else e.unhealthy++;
-    e.targets.push({ name: t.name, type: t.type, healthKey: t.healthKey, health: t.health, tag: t.tag, tenant: t.tenant });
+    // id comes through so the expanded sub-list can link each target to its detail page,
+    // the same way the targets table and the agent table do.
+    e.targets.push({ id: t.id, name: t.name, type: t.type, healthKey: t.healthKey,
+      health: t.health, tag: t.tag, tenant: t.tenant });
   });
   (environments || []).forEach(env => {
     if (!map[env.name]) map[env.name] = { name: env.name, total: 0, healthy: 0, unhealthy: 0, disabled: 0, targets: [] };
