@@ -212,11 +212,45 @@ function resetFilters() { Object.assign(state, { search: '', fSpace: 'all', fEnv
 /* ─── Real Octopus API (instance-wide) ───────────────────────── */
 function apiUrl(path) { return new URL(path, state.serverUrl).toString(); }
 
+/* Rate-limit API access to 200 requests / minute via p-throttle, and back off
+ * and retry when the server responds with 429 (Too Many Requests). */
+const octopusRequestThrottle = pThrottle({
+  limit: 200,
+  interval: 60000
+});
+
+const max429Retries = 3;
+const baseRetryDelayMs = 1000;
+
+function sleep(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function getRetryDelayMs(response, retryAttempt) {
+  const retryAfterHeader = response.headers.get('Retry-After');
+  const retryAfterSeconds = Number.parseInt(retryAfterHeader, 10);
+  if (!Number.isNaN(retryAfterSeconds) && retryAfterSeconds >= 0) {
+    return retryAfterSeconds * 1000;
+  }
+
+  return baseRetryDelayMs * retryAttempt;
+}
+
 async function fetchJson(path) {
-  const res = await fetch(apiUrl(path), { method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json' } });
-  if (res.status === 401 || res.status === 403) { const e = new Error('auth'); e.auth = true; throw e; }
-  if (!res.ok) { const e = new Error(res.status + ' ' + res.statusText); e.code = res.status + ' ' + res.statusText; throw e; }
-  return res.json();
+  for (let retryAttempt = 1; retryAttempt <= max429Retries + 1; retryAttempt += 1) {
+    const res = await octopusRequestThrottle(() => fetch(apiUrl(path), { method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json' } }))();
+
+    if (res.status === 429 && retryAttempt <= max429Retries) {
+      await sleep(getRetryDelayMs(res, retryAttempt));
+      continue;
+    }
+
+    if (res.status === 401 || res.status === 403) { const e = new Error('auth'); e.auth = true; throw e; }
+    if (!res.ok) { const e = new Error(res.status + ' ' + res.statusText); e.code = res.status + ' ' + res.statusText; throw e; }
+    return res.json();
+  }
+
+  const e = new Error('429 Too Many Requests'); e.code = '429 Too Many Requests'; throw e;
 }
 
 function commLabel(style) {
