@@ -221,6 +221,10 @@ const octopusRequestThrottle = pThrottle({
 
 const max429Retries = 3;
 const baseRetryDelayMs = 1000;
+// Dashboards are a low priority. If there is API contention (as indicted by a 429 response), wait the
+// required amount of time, and then wait some more. This will allow other, higher priority clients
+// to make their requests.
+const retryPadding = 5;
 
 function sleep(delayMs) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -230,7 +234,7 @@ function getRetryDelayMs(response, retryAttempt) {
   const retryAfterHeader = response.headers.get('Retry-After');
   const retryAfterSeconds = Number.parseInt(retryAfterHeader, 10);
   if (!Number.isNaN(retryAfterSeconds) && retryAfterSeconds >= 0) {
-    return retryAfterSeconds * 1000;
+    return (retryAfterSeconds + retryPadding) * 1000;
   }
 
   return baseRetryDelayMs * retryAttempt;
