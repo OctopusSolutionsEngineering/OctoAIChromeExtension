@@ -32,6 +32,10 @@ The dashboard must be in a file called `index.html`.
 
 Any values saved to local storage must be prefixed with an identifier for the dashboard to prevent conflicts with other dashboards.
 
+## Network access
+
+Network requests must respond to a 429 status code (Too Many Requests) by retrying the request after a delay. You must check that the custom dashboards handle this correctly.
+
 ## Sample Prompts
 
 The files named `promptsv#.json` (where `#` is a number) contain sample prompts displayed by the AI Assistant. These
