@@ -43,6 +43,16 @@ This is an example of the JSON entry to include in the `promptsv#.json` file to 
 
 See the [example dashboard](example) for a simple example of a dashboard that interacts with the Octopus API and sends prompts to the AI Assistant.
 
+Open it with:
+
+```javascript
+showDashboard({
+   dashboardFile: "example/index.html", 
+   serverUrl: "https://yourinstance.octopus.app/", 
+   context: {}
+})
+```
+
 ## Testing
 
 You can open the page for testing without needing to modify the `promptsv#.json` file by running the `showDashboard()` function from the service worker in the Chrome extension developer tools.

@@ -36,6 +36,26 @@ Any values saved to local storage must be prefixed with an identifier for the da
 
 Network requests must respond to a 429 status code (Too Many Requests) by retrying the request after a delay. You must check that the custom dashboards handle this correctly.
 
+API access must be rate limited to 200 requests per minute. This must be achieved with the p-throttle library. This is an example:
+
+```javascript
+const throttle = pThrottle({
+	limit: 200,
+	interval: 60000
+});
+
+const result = await throttle(() => fetch(
+    "https://yourinstance.octopus.app/api/yourendpoint",
+    {
+        method: "GET",
+        headers: {
+            "Accept": "application/json"
+        },
+        credentials: "include"
+    }
+))();
+```
+
 ## Sample Prompts
 
 The files named `promptsv#.json` (where `#` is a number) contain sample prompts displayed by the AI Assistant. These
