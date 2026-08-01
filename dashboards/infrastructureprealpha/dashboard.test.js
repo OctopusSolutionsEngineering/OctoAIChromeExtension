@@ -28,6 +28,57 @@ describe('fetchJson', () => {
   });
 });
 
+// The retries wait between attempts. Run the timers through immediately so the suite
+// doesn't sit out the real backoff.
+describe('fetchJson backs off on 429', () => {
+  const data = require('./data');
+  let timeouts;
+  beforeEach(() => {
+    timeouts = [];
+    jest.spyOn(global, 'setTimeout').mockImplementation((fn, delayMs) => { timeouts.push(delayMs); fn(); return 0; });
+    data.setServerUrl('https://x.octopus.app/');
+  });
+  afterEach(() => { global.setTimeout.mockRestore(); });
+
+  const res429 = (retryAfter) => ({
+    status: 429, ok: false, statusText: 'Too Many Requests',
+    headers: { get: (name) => (name === 'Retry-After' ? retryAfter : null) }
+  });
+
+  test('a 429 is retried and the eventual success is returned', async () => {
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return calls === 1 ? res429(null) : { status: 200, ok: true, json: async () => [{ Id: 'Spaces-1' }] };
+    };
+    await expect(data.fetchJson('/api/spaces/all')).resolves.toEqual([{ Id: 'Spaces-1' }]);
+    expect(calls).toBe(2);
+  });
+
+  test('Retry-After is honoured, plus the padding that yields to higher-priority clients', async () => {
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return calls === 1 ? res429('2') : { status: 200, ok: true, json: async () => [] };
+    };
+    await data.fetchJson('/api/spaces/all');
+    expect(timeouts).toEqual([7000]); // (2 + 5) seconds
+  });
+
+  test('without Retry-After the delay grows with each attempt', async () => {
+    global.fetch = async () => res429(null);
+    await expect(data.fetchJson('/api/spaces/all')).rejects.toMatchObject({ code: '429 Too Many Requests' });
+    expect(timeouts).toEqual([1000, 2000, 3000]);
+  });
+
+  test('retries are capped, so a permanently throttled server does not loop forever', async () => {
+    let calls = 0;
+    global.fetch = async () => { calls += 1; return res429(null); };
+    await expect(data.fetchJson('/api/spaces/all')).rejects.toMatchObject({ code: '429 Too Many Requests' });
+    expect(calls).toBe(4); // the first attempt plus three retries
+  });
+});
+
 describe('normalisation', () => {
   const d = require('./data');
   test('healthLabel maps API values', () => {
