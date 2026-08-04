@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Timeline</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="tt-header">
+  <span class="tt-dot" aria-hidden="true"></span>
+  <h1 class="tt-title">Task Timeline</h1>
+  <label class="tt-field">
+    <span class="tt-field__label">Space</span>
+    <select id="tt-space" class="tt-select"></select>
+  </label>
+  <span class="tt-scope" id="tt-scope"></span>
+  <div class="tt-spacer"></div>
+
+  <div class="tt-menu">
+    <button class="tt-btn" id="tt-scope-trigger" type="button" aria-expanded="false">
+      <span id="tt-scope-label">Last 24h</span> <span aria-hidden="true">▾</span>
+    </button>
+    <div class="tt-menu__panel tt-menu__panel--scope hidden" id="tt-scope-panel">
+      <p class="tt-hint">These change what the Octopus API returns. The toolbar below filters what has already been fetched.</p>
+
+      <label class="tt-scope__row">
+        <span>Window</span>
+        <select id="tt-window" class="tt-select">
+          <option value="0.25">15 minutes</option>
+          <option value="1">1 hour</option>
+          <option value="3">3 hours</option>
+          <option value="6">6 hours</option>
+          <option value="12">12 hours</option>
+          <option value="24" selected>24 hours</option>
+          <option value="72">3 days</option>
+          <option value="168">7 days</option>
+        </select>
+      </label>
+
+      <label class="tt-scope__row">
+        <span>Ending</span>
+        <select id="tt-anchor" class="tt-select">
+          <option value="now">Now</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </label>
+      <label class="tt-scope__row hidden" id="tt-endat-row">
+        <span>End at</span>
+        <input type="datetime-local" id="tt-endat" class="tt-select">
+      </label>
+
+      <label class="tt-scope__row">
+        <span>Task type</span>
+        <select id="tt-fetch-type" class="tt-select">
+          <option value="both" selected>Deployments and runbooks</option>
+          <option value="Deploy">Deployments only</option>
+          <option value="RunbookRun">Runbook runs only</option>
+        </select>
+      </label>
+
+      <label class="tt-scope__row">
+        <span>Task state</span>
+        <select id="tt-fetch-state" class="tt-select">
+          <option value="" selected>Any</option>
+          <option value="Failed">Failed</option>
+          <option value="Success">Success</option>
+          <option value="Executing">Executing</option>
+          <option value="Queued">Queued</option>
+          <option value="TimedOut">Timed out</option>
+          <option value="Canceled">Canceled</option>
+        </select>
+      </label>
+
+      <label class="tt-scope__row">
+        <span>Per-call cap</span>
+        <select id="tt-take" class="tt-select">
+          <option value="250">250</option>
+          <option value="500">500</option>
+          <option value="1000" selected>1000</option>
+          <option value="2000">2000</option>
+        </select>
+      </label>
+
+      <div class="tt-scope__envs">
+        <span class="tt-scope__envhead">Environments <button class="tt-linkbtn" id="tt-env-all" type="button">all</button></span>
+        <div class="tt-menu__list tt-menu__list--short" id="tt-env-list"></div>
+      </div>
+
+      <p class="tt-budget" id="tt-budget"></p>
+      <div class="tt-menu__foot">
+        <button class="tt-btn tt-btn--sm" id="tt-apply" type="button">Fetch</button>
+        <button class="tt-btn tt-btn--sm" id="tt-scope-close" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="tt-theme" class="tt-btn" type="button">Light</button>
+  <button id="tt-reload" class="tt-btn" type="button">Reload</button>
+</header>
+
+<div class="tt-banner tt-banner--error hidden" id="tt-error" role="alert"></div>
+<div class="tt-banner tt-banner--warn hidden" id="tt-warn" role="status"></div>
+
+<nav class="tt-tabs" aria-label="Views">
+  <button class="tt-tab is-active" id="tt-tab-topology" type="button">Topology</button>
+  <button class="tt-tab" id="tt-tab-table" type="button">Tenant table</button>
+</nav>
+
+<div class="tt-toolbar" id="tt-toolbar">
+  <div class="tt-group" role="group" aria-label="Task type">
+    <span class="tt-group__label">Type</span>
+    <div class="tt-seg" id="tt-type"></div>
+  </div>
+
+  <div class="tt-group" role="group" aria-label="Include tasks">
+    <span class="tt-group__label" title="Filters the data — every count, block and bar recomputes">Include</span>
+    <div class="tt-seg" id="tt-status"></div>
+  </div>
+
+  <div class="tt-group">
+    <div class="tt-menu">
+      <button class="tt-btn" id="tt-proj-trigger" type="button" aria-expanded="false">
+        <span id="tt-proj-label">All projects</span> <span aria-hidden="true">▾</span>
+      </button>
+      <div class="tt-menu__panel hidden" id="tt-proj-panel">
+        <p class="tt-hint" id="tt-proj-hint">Click once to isolate a project, twice to exclude it.</p>
+        <input type="text" id="tt-proj-search" class="tt-input" placeholder="Filter by project name" autocomplete="off">
+        <div class="tt-menu__list" id="tt-proj-list"></div>
+        <div class="tt-menu__foot">
+          <button class="tt-btn tt-btn--sm" id="tt-proj-reset" type="button">Reset</button>
+          <button class="tt-btn tt-btn--sm" id="tt-proj-worst" type="button">Exclude worst offender</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tt-group" role="group" aria-label="Draw connectors">
+    <span class="tt-group__label" title="Drawing only — does not change any count">Connectors</span>
+    <div class="tt-seg" id="tt-conn"></div>
+  </div>
+
+  <div class="tt-spacer"></div>
+  <div class="tt-tiles" id="tt-tiles"></div>
+</div>
+
+<div class="tt-chips" id="tt-chips"></div>
+
+<main class="tt-main" id="tt-main">
+
+  <section class="tt-view" id="tt-view-topology">
+    <div class="tt-stage">
+      <div class="tt-canvas-wrap" id="tt-canvas-wrap">
+        <canvas id="tt-canvas"></canvas>
+        <div class="tt-loading" id="tt-loading">Loading tasks…</div>
+        <div class="tt-tip hidden" id="tt-tip" role="status"></div>
+      </div>
+      <div class="tt-strip">
+        <div class="tt-strip__bar">
+          <button class="tt-btn tt-btn--sm" id="tt-play" type="button">Play</button>
+          <button class="tt-btn tt-btn--sm" id="tt-now" type="button">Jump to end</button>
+          <button class="tt-btn tt-btn--sm" id="tt-peakq" type="button" title="Move the playhead to the deepest concurrent queue in this window">Peak queue</button>
+          <div class="tt-seg" id="tt-mode" role="group" aria-label="Playhead mode"></div>
+          <div class="tt-seg" id="tt-phase" role="group" aria-label="Timeline phases"></div>
+          <span class="tt-strip__note" id="tt-overflow"></span>
+          <div class="tt-spacer"></div>
+          <span class="tt-strip__read" id="tt-playhead"></span>
+        </div>
+        <canvas id="tt-stripcanvas" aria-label="Task queueing and execution over time"></canvas>
+      </div>
+    </div>
+
+    <aside class="tt-side">
+      <div class="tt-side__block">
+        <h2 class="tt-side__h">Sort tenant blocks</h2>
+        <div class="tt-stack" id="tt-sort"></div>
+        <p class="tt-hint" id="tt-sort-note"></p>
+      </div>
+
+      <div class="tt-side__block">
+        <h2 class="tt-side__h">Connect to</h2>
+        <div class="tt-seg tt-seg--fill" id="tt-gran"></div>
+        <p class="tt-hint" id="tt-gran-note"></p>
+      </div>
+
+      <div class="tt-side__block">
+        <h2 class="tt-side__h">Selection</h2>
+        <div class="tt-sel" id="tt-sel">
+          <p class="tt-sel__title" id="tt-sel-title">Nothing selected</p>
+          <p class="tt-sel__sub" id="tt-sel-sub"></p>
+          <p class="tt-sel__body" id="tt-sel-body">Click a project row, a tenant block, or an untenanted band.</p>
+          <div class="tt-sel__acts hidden" id="tt-sel-acts">
+            <button class="tt-btn tt-btn--sm" id="tt-sel-table" type="button">View tasks</button>
+            <button class="tt-btn tt-btn--sm" id="tt-sel-clear" type="button">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tt-side__block">
+        <h2 class="tt-side__h">Legend</h2>
+        <p class="tt-legend__cap">Tenant block — failed tasks to the playhead</p>
+        <div class="tt-ramp" id="tt-ramp"></div>
+        <ul class="tt-legend">
+          <li><span class="tt-sw tt-sw--none" aria-hidden="true"></span>Nothing completed yet at the playhead</li>
+          <li><span class="tt-sw tt-sw--qpend" aria-hidden="true"></span>Nothing completed, but work queued on it</li>
+          <li><span class="tt-sw tt-sw--untenanted" aria-hidden="true"></span>Untenanted band — its own row per environment</li>
+          <li><span class="tt-sw tt-sw--queue" aria-hidden="true"></span>Queued — waiting for a slot</li>
+          <li><span class="tt-sw tt-sw--succ" aria-hidden="true"></span>Executing, succeeded</li>
+          <li><span class="tt-sw tt-sw--fail" aria-hidden="true"></span>Executing, failed</li>
+          <li><span class="tt-sw tt-sw--qconn" aria-hidden="true"></span>Queued connector — dashed, reaching the tenants waiting right now</li>
+        </ul>
+        <p class="tt-hint">Blocks count <em>completed</em> tasks. A task queued at the playhead has no outcome yet, so it counts as queue depth only. Scrub forward to see it land.</p>
+        <p class="tt-hint">Queued is a neutral, not amber: amber against the failure red measures &Delta;E 3.5 under deuteranopia and cannot carry status on colour alone.</p>
+      </div>
+
+      <div class="tt-side__block">
+        <h2 class="tt-side__h">Project stack order</h2>
+        <div class="tt-seg tt-seg--wrap" id="tt-projsort"></div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="tt-view tt-view--table hidden" id="tt-view-table">
+    <div class="tt-table-head" id="tt-table-head"></div>
+    <div class="tt-table-scroll" id="tt-table-scroll">
+      <table class="tt-table">
+        <thead id="tt-thead"></thead>
+        <tbody id="tt-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script src="../api.js"></script>
+<script src="api.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>

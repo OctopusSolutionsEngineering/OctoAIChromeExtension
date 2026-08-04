@@ -36,6 +36,10 @@
           {
             "dashboardName": "Infrastructure (PreAlpha)",
             "dashboardFile": "infrastructureprealpha/index.html"
+          },
+          {
+            "dashboardName": "Task Timeline",
+            "dashboardFile": "tasktimeline/index.html"
           }
         ]
       },
@@ -87,6 +91,10 @@
           {
             "dashboardName": "Infrastructure (PreAlpha)",
             "dashboardFile": "infrastructureprealpha/index.html"
+          },
+          {
+            "dashboardName": "Task Timeline",
+            "dashboardFile": "tasktimeline/index.html"
           }
         ]
       },
