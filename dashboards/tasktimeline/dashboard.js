@@ -615,14 +615,17 @@
     });
 
     // peaks resolve after the pass: a sweep needs every interval first
-    var lo = D.winStart, hi = ph;
+    // Named apart from the rolling-window `lo` above: that one bounds which
+    // completions count, these bound the interval sweep for queue depth. Both
+    // are function-scoped vars, so a shared name invites a bad refactor.
+    var peakLo = D.winStart, peakHi = ph;
     Object.keys(proj).forEach(function (k) {
-      proj[k].peakQ = peakOverlap(proj[k].qiv, lo, hi);
+      proj[k].peakQ = peakOverlap(proj[k].qiv, peakLo, peakHi);
     });
     Object.keys(tenant).forEach(function (k) {
-      tenant[k].peakQ = peakOverlap(tenant[k].qiv, lo, hi);
+      tenant[k].peakQ = peakOverlap(tenant[k].qiv, peakLo, peakHi);
     });
-    var peakQAll = peakOverlap(allQ, lo, hi);
+    var peakQAll = peakOverlap(allQ, peakLo, peakHi);
     // computed over the whole window, not just up to the playhead, so the
     // jump target does not move as you scrub
     var peakMoment = peakQueueMoment(allQWindow, D.winStart, D.winEnd);
@@ -2187,15 +2190,25 @@
 
   /* ---- boot -------------------------------------------------------------- */
 
+  /* The single place a menu opens or closes. Three call sites used to do it by
+     hand and two of them forgot aria-expanded, leaving assistive tech with a
+     panel reported as open after it had closed. Routing every path through here
+     means the panel state and the announced state cannot diverge. */
+  function setMenu(name, open) {
+    var flag = name === 'proj' ? 'projMenuOpen' : 'scopeOpen';
+    if (S[flag] === open) return;
+    S[flag] = open;
+    el('tt-' + name + '-panel').classList.toggle('hidden', !open);
+    el('tt-' + name + '-trigger').setAttribute('aria-expanded', String(open));
+  }
+
   function wire() {
     el('tt-tab-topology').addEventListener('click', function () { setView('topology'); });
     el('tt-tab-table').addEventListener('click', function () { setView('table'); });
 
     el('tt-proj-trigger').addEventListener('click', function (e) {
       e.stopPropagation();
-      S.projMenuOpen = !S.projMenuOpen;
-      el('tt-proj-panel').classList.toggle('hidden', !S.projMenuOpen);
-      el('tt-proj-trigger').setAttribute('aria-expanded', String(S.projMenuOpen));
+      setMenu('proj', !S.projMenuOpen);
     });
     el('tt-proj-panel').addEventListener('click', function (e) { e.stopPropagation(); });
     el('tt-proj-search').addEventListener('input', function (e) { S.projSearch = e.target.value; renderProjectMenu(); });
@@ -2209,25 +2222,14 @@
 
     el('tt-scope-trigger').addEventListener('click', function (e) {
       e.stopPropagation();
-      S.scopeOpen = !S.scopeOpen;
-      el('tt-scope-panel').classList.toggle('hidden', !S.scopeOpen);
-      el('tt-scope-trigger').setAttribute('aria-expanded', String(S.scopeOpen));
+      setMenu('scope', !S.scopeOpen);
     });
     el('tt-scope-panel').addEventListener('click', function (e) { e.stopPropagation(); });
-    el('tt-scope-close').addEventListener('click', function () {
-      S.scopeOpen = false;
-      el('tt-scope-panel').classList.add('hidden');
-    });
+    el('tt-scope-close').addEventListener('click', function () { setMenu('scope', false); });
 
     document.addEventListener('click', function () {
-      ['proj', 'scope'].forEach(function (n) {
-        var open = n === 'proj' ? S.projMenuOpen : S.scopeOpen;
-        if (!open) return;
-        if (n === 'proj') S.projMenuOpen = false;
-        if (n === 'scope') S.scopeOpen = false;
-        el('tt-' + n + '-panel').classList.add('hidden');
-        el('tt-' + n + '-trigger').setAttribute('aria-expanded', 'false');
-      });
+      setMenu('proj', false);
+      setMenu('scope', false);
     });
 
     var winSel = el('tt-window');
@@ -2291,8 +2293,7 @@
     });
 
     el('tt-apply').addEventListener('click', function () {
-      S.scopeOpen = false;
-      el('tt-scope-panel').classList.add('hidden');
+      setMenu('scope', false);
       reloadAll();
     });
     el('tt-reload').addEventListener('click', reloadAll);

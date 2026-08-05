@@ -1,11 +1,11 @@
 /* ==========================================================================
-   Task Telemetry — self-contained styles. Dark by default, light via
+   Task Timeline — self-contained styles. Dark by default, light via
    :root[data-theme="light"], toggled from the header.
 
-   Chrome colours live here. The data colours — the failure ramp, the
-   zero-failure neutral, the queued neutral and the two executing colours —
-   live only in THEMES in app.js, because the canvas needs them as values
-   rather than as CSS variables. Don't mirror them here; they drift.
+   Chrome colours live here. The data colours (the failure ramp, the
+   zero-failure neutral, the queued neutral and the two executing colours) live
+   only in THEMES in dashboard.js, because the canvas needs them as values and
+   not as CSS variables. Don't mirror them here; the two copies drift.
    ========================================================================== */
 
 :root {
