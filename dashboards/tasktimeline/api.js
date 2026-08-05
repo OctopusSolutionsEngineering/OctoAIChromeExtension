@@ -100,8 +100,12 @@ var Api = (function () {
   }
 
   /* Batched ID lookup. Deduplicates first, then runs a bounded number of
-     batches at a fixed concurrency — sequential would be slow on a busy
-     instance and unbounded parallelism would flood the API. */
+     batches at a fixed concurrency: sequential is slow on a busy instance, and
+     unbounded parallelism floods the API.
+
+     Resolves to {items, requested, looked, dropped}. The counts are part of the
+     result because the MAX_BATCHES ceiling can drop IDs, and a caller that only
+     received an array would report the shortfall as "those tasks don't exist". */
   function byIds(resource, ids) {
     var seen = Object.create(null);
     var unique = [];
@@ -110,12 +114,13 @@ var Api = (function () {
       seen[id] = 1;
       unique.push(id);
     });
-    if (!unique.length) return Promise.resolve([]);
+    if (!unique.length) return Promise.resolve({ items: [], requested: 0, looked: 0, dropped: 0 });
 
     var batches = [];
     for (var i = 0; i < unique.length && batches.length < MAX_BATCHES; i += IDS_PER_BATCH) {
       batches.push(unique.slice(i, i + IDS_PER_BATCH));
     }
+    var looked = batches.reduce(function (a, b) { return a + b.length; }, 0);
 
     var out = [];
     var next = 0;
@@ -133,7 +138,9 @@ var Api = (function () {
 
     var workers = [];
     for (var w = 0; w < Math.min(CONCURRENCY, batches.length); w++) workers.push(worker());
-    return Promise.all(workers).then(function () { return out; });
+    return Promise.all(workers).then(function () {
+      return { items: out, requested: unique.length, looked: looked, dropped: unique.length - looked };
+    });
   }
 
   return { init: init, get: get, items: items, byIds: byIds, serverUrl: function () { return serverUrl; } };

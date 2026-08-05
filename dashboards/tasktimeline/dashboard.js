@@ -228,7 +228,7 @@
     tasks: [], spaces: [], projects: [], allEnvs: [], fetchStats: null,
     tenantName: Object.create(null), tagSets: [],
     projName: Object.create(null), envName: Object.create(null),
-    spaceNameById: Object.create(null),
+    spaceNameById: Object.create(null), lookup: null,
     winStart: 0, winEnd: 0, earliestStart: 0, preCount: 0,
     truncated: false, worst: null
   };
@@ -276,7 +276,8 @@
         sel.appendChild(o);
         D.spaceNameById[s.Id] = s.Name;
       });
-      var saved = window.localStorage.getItem(LS + 'space');
+      var saved = null;
+      try { saved = window.localStorage.getItem(LS + 'space'); } catch (e) { /* private mode */ }
       var pick = spaces.some(function (s) { return s.Id === saved; }) ? saved : (spaces[0] && spaces[0].Id);
       sel.value = pick || '';
       return pick;
@@ -346,7 +347,16 @@
       }));
 
       return Api.byIds('tasks', records.map(function (r) { return r.TaskId; }))
-        .then(function (tasks) {
+        .then(function (lookup) {
+          var tasks = lookup.items;
+          // A record whose task did not come back is dropped by ingest(). Record
+          // why, so a short window is never reported as a quiet period.
+          D.lookup = {
+            requested: lookup.requested,
+            returned: tasks.length,
+            dropped: lookup.dropped,
+            missing: Math.max(0, lookup.looked - tasks.length)
+          };
           ingest({
             envs: envs, projects: projects, tenants: tenants,
             records: records, tasks: tasks, now: end, hours: hours,
@@ -2340,11 +2350,32 @@
     loadSpace(S.spaceId).then(afterLoad, onLoadError);
   }
 
+  /* Every reason the picture might be incomplete, stated together. These used
+     to be separate showBanner() calls, where the last one silently overwrote
+     the ones before it — so a window that hit the cap AND came back empty
+     reported only the emptiness, which reads as a quiet period. */
   function afterLoad() {
     S.ready = true;
     setLoading(null);
-    if (D.truncated) showBanner('tt-warn', 'The API hit the per-call cap, so the oldest activity in this window is missing. Narrow the fetch in the scope menu.');
-    if (!D.tasks.length) showBanner('tt-warn', 'No Deploy or RunbookRun tasks completed in this window for this space.');
+
+    var notes = [];
+    if (D.truncated) {
+      notes.push('The API returned the full per-call cap of ' + nf(S.take) +
+        ', so the oldest activity in this window is missing. Narrow the fetch in the scope menu.');
+    }
+    if (D.lookup && D.lookup.dropped) {
+      notes.push(nf(D.lookup.dropped) + ' of ' + nf(D.lookup.requested) +
+        ' tasks were past this dashboard\'s lookup ceiling and were not read at all.');
+    }
+    if (D.lookup && D.lookup.missing) {
+      notes.push(nf(D.lookup.missing) + ' tasks returned no detail and are not shown — they may have been deleted since they ran.');
+    }
+    if (!D.tasks.length) {
+      notes.push('No Deploy or RunbookRun task completed in this window for ' + S.spaceName + '.');
+    }
+
+    if (notes.length) showBanner('tt-warn', notes.join(' '));
+    else hideBanner('tt-warn');
     refresh();
   }
 
