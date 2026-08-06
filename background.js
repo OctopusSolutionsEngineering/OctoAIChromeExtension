@@ -101,10 +101,12 @@ chrome.runtime.onMessage.addListener(
             addFeedback(request);
             sendResponse({ok: true});
         } else if (request.action === 'getPrompts') {
-            fetch('https://raw.githubusercontent.com/OctopusSolutionsEngineering/OctoAIChromeExtension/main/promptsv4.json')
+            // The prompts are loaded from the copy bundled in the extension package. They must NOT be
+            // fetched from a remote host, as Manifest V3 forbids remotely hosted code.
+            fetch(chrome.runtime.getURL('promptsv4.json'))
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
+                        throw new Error(`Failed to load bundled prompts: ${response.status} ${response.statusText}`);
                     }
                     return response.json()
                 })
