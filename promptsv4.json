@@ -22,10 +22,6 @@
             "dashboardFile": "changemanagement/index.html"
           },
           {
-            "dashboardName": "Spinnaker Migration (Alpha)",
-            "dashboardFile": "spinnaker/index.html"
-          },
-          {
             "dashboardName": "OSFI Compliance Audit Report",
             "dashboardFile": "osfi/index.html"
           },
