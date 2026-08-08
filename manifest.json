@@ -1,8 +1,8 @@
 {
   "name": "Octopus AI Assistant",
   "description": "Octopus AI Assistant",
-  "version": "1.0.63",
-  "version_name": "1.0.63",
+  "version": "1.0.64",
+  "version_name": "1.0.64",
   "manifest_version": 3,
   "action": {
     "default_icon": "octopusai.png",
@@ -10,7 +10,7 @@
     "default_popup": "popup.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+    "extension_pages": "script-src 'self'; object-src 'self';"
   },
   "host_permissions": [
     "*://*/app#/Spaces-*/*"

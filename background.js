@@ -13,6 +13,11 @@ const Timeout = 8 * 60 * 1000 // 8 minutes
 amplitude.init(AMPLITUDE_API_KEY, {
     autocapture: false,
     defaultTracking: false,
+    // Manifest V3 forbids remotely hosted code. Amplitude's remote config can deliver a
+    // "custom enrichment" function body that the SDK would otherwise compile and run, so both
+    // the remote config fetch and the enrichment plugin are disabled.
+    fetchRemoteConfig: false,
+    customEnrichment: false,
 });
 
 function trackEvent(eventName, properties = {}) {
