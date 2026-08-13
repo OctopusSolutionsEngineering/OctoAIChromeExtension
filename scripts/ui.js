@@ -557,6 +557,16 @@ function ensureOctoAiStyles(theme) {
         }
 
         /* ---- Utility ---- */
+        .octoai-item:focus-visible,
+        .octoai-icon-btn:focus-visible,
+        .octoai-go:focus-visible,
+        #octoai-submit:focus-visible,
+        #octo-ai-thumbs-up:focus-visible,
+        #octo-ai-thumbs-down:focus-visible {
+            outline: 2px solid ${theme.accentStart};
+            outline-offset: 2px;
+        }
+
         .octo-ai-fade-out {
             opacity: 0;
             transition: opacity 0.5s ease-out;
@@ -694,6 +704,22 @@ function addSvgFromFile(filePath, parent) {
         .catch(error => console.error(error));
 }
 
+// Non-button elements with click handlers need explicit keyboard support
+function makeKeyboardClickable(element, label) {
+    element.setAttribute('role', 'button');
+    element.setAttribute('tabindex', '0');
+    if (label) {
+        element.setAttribute('aria-label', label);
+    }
+    element.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            event.stopPropagation();
+            element.click();
+        }
+    });
+}
+
 async function displayAIChatForEmptyProjects() {
     const onProjectPage = await isOnEmptyDashboardPage();
 
@@ -729,6 +755,7 @@ function createPrompt(text, theme) {
     const goButton = document.createElement('span');
     goButton.className = 'octoai-go';
     goButton.title = "Quick run"
+    makeKeyboardClickable(goButton, 'Quick run');
     button.appendChild(goButton);
     addSvgFromFile('img/go.svg', goButton);
 
@@ -763,6 +790,7 @@ function createButton(text, theme, id, icon, badge) {
     }
 
     button.title = text;
+    makeKeyboardClickable(button, text);
 
     return button;
 }
@@ -955,6 +983,7 @@ function displayPromptUIV2(theme) {
     gear.setAttribute('title', 'Settings');
     gear.id = 'octoai-gear';
     gear.className = 'octoai-icon-btn';
+    makeKeyboardClickable(gear, 'Settings');
     header.appendChild(gear);
     addSvgFromFile('img/gear.svg', 'octoai-gear');
 
@@ -968,6 +997,7 @@ function displayPromptUIV2(theme) {
     closeButton.textContent = '✕';
     closeButton.setAttribute('title', 'Close');
     closeButton.className = 'octoai-icon-btn';
+    makeKeyboardClickable(closeButton, 'Close');
 
     // Add click event to remove the container
     closeButton.addEventListener('click', () => {
@@ -998,12 +1028,14 @@ function displayPromptUIV2(theme) {
     // Add thumbs up and thumbs down buttons
     const thumbsUp = document.createElement('span');
     thumbsUp.id = 'octo-ai-thumbs-up';
+    makeKeyboardClickable(thumbsUp, 'This response was helpful');
     feedback.appendChild(thumbsUp);
 
     addSvgFromFile('img/thumbs-up.svg', 'octo-ai-thumbs-up');
 
     const thumbsDown = document.createElement('span');
     thumbsDown.id = 'octo-ai-thumbs-down';
+    makeKeyboardClickable(thumbsDown, 'This response was not helpful');
     feedback.appendChild(thumbsDown);
 
     addSvgFromFile('img/thumbs-down.svg', 'octo-ai-thumbs-down');
