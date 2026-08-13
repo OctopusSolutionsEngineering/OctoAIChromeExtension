@@ -347,6 +347,22 @@ function ensureOctoAiStyles(theme) {
             margin-right: 6px;
         }
 
+        .octoai-hint {
+            font-size: 12px;
+            color: ${theme.textSecondary};
+            text-align: center;
+            padding: 10px 0 2px 0;
+        }
+
+        .octoai-hint a {
+            color: ${theme.link};
+            text-decoration: none;
+        }
+
+        .octoai-hint a:hover {
+            text-decoration: underline;
+        }
+
         .octoai-go {
             display: flex;
             align-items: center;
@@ -904,6 +920,25 @@ function displayExamples(prompts, parentPrompts, theme) {
         button.style.animationDelay = Math.min(index * 30, 300) + 'ms';
         examplesContainer.appendChild(button);
     });
+
+    // Invite contributions when browsing a list of community dashboards
+    if (prompts.some(prompt => prompt.dashboardName)) {
+        const hint = document.createElement('div');
+        hint.className = 'octoai-hint';
+
+        const hintText = document.createElement('span');
+        hintText.textContent = 'Want to make your own? ';
+        hint.appendChild(hintText);
+
+        const hintLink = document.createElement('a');
+        hintLink.href = 'https://github.com/OctopusSolutionsEngineering/OctoAIChromeExtension/blob/main/dashboards/instructions.md';
+        hintLink.target = '_blank';
+        hintLink.rel = 'noopener noreferrer';
+        hintLink.textContent = 'Read the dashboard guide';
+        hint.appendChild(hintLink);
+
+        examplesContainer.appendChild(hint);
+    }
 }
 
 function hideForm() {
