@@ -2041,3 +2041,44 @@ describe('Projects — grouping by time or type', () => {
     expect(render('Type')).toContain('Not shown:');
   });
 });
+
+describe('Flag rows are visually separated', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: grid.map(e => ({ envId: e.id, envName: e.name, entries: [], versionCount: 0, tenantTotal: 0 })),
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  const flagPayload = { total: 1, truncated: false, items: [
+    { Id: 'F1', Name: 'new-checkout', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 }] } ] };
+  const html = Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: grid } } },
+    projectFlags: { P1: { status: 'ready', model: data.featureFlagModel(flagPayload, grid),
+      changes: [{ id: 'c1', flagName: 'x', scope: 'environment', envId: 'E3', envName: 'Prod',
+        occurred: Date.now(), before: { key: 'off', percent: null }, after: { key: 'on', percent: 100 } }] } },
+    grouping: 'Type', releases: { status: 'ready', model }
+  });
+
+  test('flag rows carry the class the wash is attached to', () => {
+    expect(html).toContain('ip-rel-hrow ip-rel-frow');
+  });
+
+  test('release rows do not', () => {
+    // A release row is an ip-rel-hrow that is not an ip-rel-frow.
+    expect(html).not.toContain('ip-rel-hrow ip-rel-hrow');
+  });
+
+  test('the wash is not the only signal a row is a flag', () => {
+    // Square node, purple line and the flag name each survive without colour.
+    expect(html).toContain('ip-rel-fnode');
+    expect(html).toContain('ip-rel-flagname');
+  });
+});

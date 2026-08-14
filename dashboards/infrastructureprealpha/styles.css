@@ -730,3 +730,24 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-rel-flagdelta { color: var(--color-purple-200); }
 .dark .ip-rel-flagscope { background: rgba(255,255,255,.10); color: var(--color-grey-300); }
 .dark .ip-rel-fnode.is-change { box-shadow: 0 0 0 3px var(--ip-rel-surface), 0 0 0 4px var(--color-purple-800); }
+
+/* Flag rows carry a purple wash so they separate from the releases at a glance
+   when a project has a lot of history.
+
+   The wash is also assigned to --ip-rel-surface on the row, because the version
+   labels and cell ages mask the line behind them using that variable — without
+   this they would punch surface-coloured holes through the tint.
+
+   The tint is not the only signal: a flag row already has a square node, a
+   purple line and the flag's name, so it survives being read without colour. */
+.ip-rel-groups { --ip-rel-flagtint: var(--color-purple-100); }
+.ip-rel-frow {
+  --ip-rel-surface: var(--ip-rel-flagtint);
+  background: var(--ip-rel-flagtint);
+  /* Inset rather than a border: a real border would shift the track and undo
+     the column alignment. */
+  box-shadow: inset 3px 0 0 var(--color-purple-300);
+  border-radius: 0 3px 3px 0;
+}
+.dark .ip-rel-groups { --ip-rel-flagtint: #241C39; }
+.dark .ip-rel-frow { box-shadow: inset 3px 0 0 var(--color-purple-700); }
