@@ -1694,17 +1694,24 @@ describe('Projects — tenant split lives in the environment cell', () => {
     expect(cell.entries.map(e => e.tenantCount).sort((a, b) => a - b)).toEqual([3, 6, 11]);
   });
 
-  test('the contracted row carries each release share as its own fill', () => {
+  test('the contracted row carries a share bar per release', () => {
     const html = render(false);
     expect(html).toContain('ip-rel-entry-share');
-    expect(html).toContain('--ip-rel-share:55.0%');   // 11 of 20
+    expect(html).toContain('ip-rel-tsbar');
+    expect(html).toContain('width:55.0%');   // 11 of 20
   });
 
-  test('a share row is one line: version, then the tenant count', () => {
-    const html = render(false);
-    // No separate bar element, so the share costs no extra height.
-    expect(html).not.toContain('ip-rel-tsbar');
-    expect(html).not.toContain('ip-rel-entry-head');
+  test('a share row is one line: version, bar, count — and no status', () => {
+    const failing = Object.assign({}, payload, {
+      Items: payload.Items.map((it, i) => i === 0 ? Object.assign({}, it, { State: 'Failed' }) : it)
+    });
+    const html = Views.renderProjects({ projectOpen: {},
+      releases: { status: 'ready', model: data.releasesModel(failing) } });
+    // The node above carries the environment's state; the rollout rows answer
+    // "how much of the estate", so they stay free of status chips.
+    const cell = /<div class="ip-rel-cell has-split">[\s\S]*?<\/div><\/div>/.exec(html)[0];
+    expect(cell).not.toContain('ip-rel-state');
+    expect(cell).not.toContain('ip-rel-entry-head');
   });
 
   test('there is no separate tenant panel above the history', () => {
@@ -1734,5 +1741,66 @@ describe('Projects — tenant split lives in the environment cell', () => {
     });
     const html = Views.renderProjects({ projectOpen: {}, releases: { status: 'ready', model: data.releasesModel(single) } });
     expect(html).not.toContain('ip-rel-entry-share');
+  });
+});
+
+describe('Projects — muting an environment', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Branch Instances' }, { id: 'E2', name: 'Production' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: [{ envId: 'E1', envName: 'Branch Instances', entries: [], versionCount: 0, tenantTotal: 0 },
+                { envId: 'E2', envName: 'Production', entries: [], versionCount: 0, tenantTotal: 0 }],
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  // One release that only ever reached the noisy environment, one that reached Production.
+  const history = { status: 'ready', model: {
+    environments: grid, channels: ['Main'], totalReleases: 2, hiddenByWindow: 0, neverDeployedCount: 0,
+    releases: [
+      { version: 'noise.1', channelName: 'Main', assembled: null, lag: 0, everDeployed: true, frontier: 0,
+        cells: [{ envId: 'E1', envName: 'Branch Instances', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: null, tenantCount: 0, count: 1 },
+                { envId: 'E2', envName: 'Production', deployed: false, stateKey: null, stateLabel: '', when: null, tenantCount: 0, count: 0 }] },
+      { version: 'real.1', channelName: 'Main', assembled: null, lag: 0, everDeployed: true, frontier: 1,
+        cells: [{ envId: 'E1', envName: 'Branch Instances', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: null, tenantCount: 0, count: 1 },
+                { envId: 'E2', envName: 'Production', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: null, tenantCount: 0, count: 1 }] }
+    ] } };
+  const render = envOff => Views.renderProjects({
+    projectOpen: { P1: true }, projectHistory: { P1: history },
+    envOff: envOff, releases: { status: 'ready', model }
+  });
+
+  test('every environment has a switch, on by default', () => {
+    const html = render(undefined);
+    expect((html.match(/data-envtoggle=/g) || []).length).toBe(2);
+    expect(html).not.toContain('aria-checked="false"');
+  });
+
+  test('muting drops releases that only reached the muted environment', () => {
+    const html = render({ G1: { E1: true } });
+    expect(html).toContain('real.1');
+    expect(html).not.toContain('noise.1');
+    expect(html).toContain('1 release only reached muted environments');
+  });
+
+  test('the muted column stays in place so nothing shifts', () => {
+    const html = render({ G1: { E1: true } });
+    expect(html).toContain('repeat(2,calc((100% - var(--ip-rel-endgutter)) / var(--ip-rel-cols)))');
+    expect(html).toContain('ip-rel-hcell is-off');
+  });
+
+  test('the collapsed row still reports the muted environment', () => {
+    const html = render({ G1: { E1: true } });
+    // The grid answers "what is running where"; muting is a history filter.
+    expect(html).toContain('Branch Instances');
+    expect(html).toContain('aria-checked="false"');
+  });
+
+  test('muting everything says so rather than showing a blank panel', () => {
+    const html = render({ G1: { E1: true, E2: true } });
+    expect(html).toContain('only reached environments you have muted');
   });
 });

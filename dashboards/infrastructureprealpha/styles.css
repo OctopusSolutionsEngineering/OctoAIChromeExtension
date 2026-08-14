@@ -647,25 +647,37 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   border-bottom: 1px solid var(--color-grey-200); }
 .dark .ip-nav-lead { border-bottom-color: var(--color-navy-700); }
 
-/* Tenant share: one line per release. The share is the row's own fill, so the
-   bar costs no extra height and a deep split stays compact — version on the
-   left, tenant count on the right, both reading over the fill. */
-.ip-rel-entry-share { display: flex; flex-wrap: nowrap; justify-content: space-between;
-  align-items: baseline; gap: 6px; width: 100%; min-width: 0;
-  padding: 1px 5px; border-radius: 3px;
-  background: linear-gradient(to right,
-    var(--ip-rel-share-fill) var(--ip-rel-share, 0%),
-    var(--color-grey-200) var(--ip-rel-share, 0%));
-}
-.ip-rel-groups { --ip-rel-share-fill: #B8E7D3; }
+/* Tenant share: one line per release — version, a bar for its slice of the
+   environment's tenants, then the count. The bar is its own element again
+   rather than a fill behind the text, which read as a highlight instead of a
+   measure. */
+.ip-rel-entry-share { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px;
+  width: 100%; min-width: 0; }
 .ip-rel-entry-share .ip-rel-ver { overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; word-break: normal; font-weight: 600; }
-.ip-rel-tscount { font-size: 10px; color: var(--color-navy-900);
-  font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  white-space: nowrap; word-break: normal; flex: 0 1 auto; max-width: 45%; }
+.ip-rel-tsbar { flex: 1 1 auto; min-width: 24px; height: 5px; border-radius: 3px;
+  background: var(--color-grey-200); overflow: hidden; }
+.ip-rel-tsbar > span { display: block; height: 100%; background: var(--color-green-500); }
+.ip-rel-tscount { font-size: 10px; color: var(--color-grey-700); flex: 0 0 auto;
+  font-variant-numeric: tabular-nums; }
 .ip-rel-tssum { font-size: 10px; color: var(--color-grey-600); padding-bottom: 1px; }
-.dark .ip-rel-groups { --ip-rel-share-fill: #14603F; }
-.dark .ip-rel-entry-share { background: linear-gradient(to right,
-  var(--ip-rel-share-fill) var(--ip-rel-share, 0%),
-  var(--color-navy-700) var(--ip-rel-share, 0%)); }
-.dark .ip-rel-tscount { color: var(--color-grey-100); }
+.dark .ip-rel-tsbar { background: var(--color-navy-700); }
+.dark .ip-rel-tscount { color: var(--color-grey-300); }
 .dark .ip-rel-tssum { color: var(--color-grey-400); }
+
+/* Environment mute: a switch under each column heading, scoped to its group.
+   Muting affects the expanded history only — the collapsed row still reports
+   what every environment is running, because that is the question the grid
+   exists to answer. The column stays in place either way, so nothing shifts. */
+.ip-rel-envhead { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ip-rel-envhead.is-off .ip-rel-envname { opacity: .45; text-decoration: line-through; }
+.ip-rel-envtoggle { border: 0; padding: 0; background: none; cursor: pointer; line-height: 0; }
+.ip-rel-envtoggle:focus-visible { outline: 2px solid var(--color-blue-500); outline-offset: 2px; border-radius: 8px; }
+.ip-rel-envtoggle-track { display: block; width: 22px; height: 12px; border-radius: 6px;
+  background: var(--color-green-500); position: relative; transition: background .12s ease; }
+.ip-rel-envtoggle-knob { position: absolute; top: 2px; left: 12px; width: 8px; height: 8px;
+  border-radius: 50%; background: #fff; transition: left .12s ease; }
+.ip-rel-envtoggle[aria-checked="false"] .ip-rel-envtoggle-track { background: var(--color-grey-400); }
+.ip-rel-envtoggle[aria-checked="false"] .ip-rel-envtoggle-knob { left: 2px; }
+.ip-rel-hcell.is-off { visibility: hidden; }
+.dark .ip-rel-envtoggle[aria-checked="false"] .ip-rel-envtoggle-track { background: var(--color-navy-600); }

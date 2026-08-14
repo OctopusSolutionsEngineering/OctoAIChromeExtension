@@ -1023,24 +1023,25 @@ const Views = (function () {
   // separate panel that repeats the column headings.
   function _relEntry(e, cell, withBar) {
     const age = _relWhen(e.when);
-    const state = e.stateKey !== 'success'
-      ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">' + escHtml(e.stateLabel) + '</span>' : '';
     if (!withBar) {
       return '<span class="ip-rel-entry">'
         + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
         + '<span class="ip-rel-age">' + escHtml(age) + '</span>'
         + (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml('· ' + e.tenantCount
             + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : '')
-        + state + '</span>';
+        + (e.stateKey !== 'success' ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">'
+            + escHtml(e.stateLabel) + '</span>' : '')
+        + '</span>';
     }
-    // One line per release: the share is the row's own fill rather than a
-    // separate bar, so a twelve-way split stays readable in a column.
+    // One line per release: version, the share as a small bar, then the count.
+    // No status here — a rollout row is answering "how much of the estate", and
+    // the node above already carries the environment's state.
     const share = cell.tenantTotal ? (e.tenantCount / cell.tenantTotal * 100) : 0;
-    return '<span class="ip-rel-entry ip-rel-entry-share" style="--ip-rel-share:' + share.toFixed(1) + '%"'
+    return '<span class="ip-rel-entry ip-rel-entry-share"'
       + ' title="' + escHtml(e.version + ' — ' + e.tenantCount.toLocaleString() + ' of '
           + cell.tenantTotal.toLocaleString() + ' tenants' + (age ? ', ' + age : '')) + '">'
       + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
-      + state
+      + '<span class="ip-rel-tsbar"><span style="width:' + share.toFixed(1) + '%"></span></span>'
       + '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString() + '</span>'
       + '</span>';
   }
@@ -1079,7 +1080,7 @@ const Views = (function () {
       + '<div class="ip-rel-labels">' + summary + labels + more + '</div></div>';
   }
 
-  function _relRow(proj, cols, expanded, history, windowLabel) {
+  function _relRow(proj, cols, expanded, history, windowLabel, envOff) {
     const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i], expanded)).join('');
     const row = '<div class="ip-rel-row' + (expanded ? ' expanded' : '') + '" role="button" tabindex="0"'
       + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
@@ -1089,15 +1090,20 @@ const Views = (function () {
       + '</div>'
       + _relTrack(cells, cols)
       + '</div>';
-    return row + (expanded ? _relHistory(proj, cols, history, windowLabel) : '');
+    return row + (expanded ? _relHistory(proj, cols, history, windowLabel, envOff || {}) : '');
   }
 
   // The version rides the line at the furthest environment the release reached.
   // The age beside it is when it ARRIVED there, not when the release was cut —
   // a release assembled weeks ago and promoted this morning is this morning's
   // event, and showing its birthday made the window look broken.
-  function _relHistoryRow(r, cols, multiChannel) {
-    const headCell = r.frontier >= 0 ? r.cells[r.frontier] : null;
+  function _relHistoryRow(r, cols, multiChannel, envOff) {
+    const off = envOff || {};
+    // The label rides the furthest environment still showing, so muting the
+    // noisiest one doesn't strand a release's name in a blank column.
+    let frontier = -1;
+    r.cells.forEach((c, i) => { if (c.deployed && !off[c.envId]) frontier = i; });
+    const headCell = frontier >= 0 ? r.cells[frontier] : null;
     const headAge = headCell && headCell.when ? headCell.when : r.assembled;
     const meta = '<span class="ip-rel-hlabel">'
       + '<span class="ip-rel-hver">' + escHtml(r.version) + '</span>'
@@ -1109,14 +1115,15 @@ const Views = (function () {
       + '</span>';
 
     const cells = r.cells.map((c, i) => {
-      const seg = (i > 0 && i <= r.frontier)
-        ? '<span class="ip-rel-seg ip-rel-seg-' + (i === r.frontier ? 'strong' : 'pale') + '"></span>' : '';
-      const atHead = (r.frontier === -1 && i === 0) || i === r.frontier;
+      if (off[c.envId]) return '<div class="ip-rel-hcell is-off"></div>';
+      const seg = (i > 0 && i <= frontier)
+        ? '<span class="ip-rel-seg ip-rel-seg-' + (i === frontier ? 'strong' : 'pale') + '"></span>' : '';
+      const atHead = (frontier === -1 && i === 0) || i === frontier;
       const node = c.deployed
         ? '<span class="ip-rel-hnode ip-rel-node-' + escHtml(REL_STATE_TONE[c.stateKey] || 'disabled')
           + '" title="' + escHtml(c.stateLabel + ' in ' + c.envName) + '"></span>'
-        : (r.frontier === -1 && i === 0 ? '<span class="ip-rel-hnode ip-rel-node-empty"></span>' : '');
-      const age = c.deployed && i !== r.frontier
+        : (frontier === -1 && i === 0 ? '<span class="ip-rel-hnode ip-rel-node-empty"></span>' : '');
+      const age = c.deployed && i !== frontier
         ? '<span class="ip-rel-hcellage">' + escHtml(_relWhen(c.when))
           + (c.tenantCount ? ' · ' + c.tenantCount + 't' : '') + '</span>' : '';
       return '<div class="ip-rel-hcell">' + seg + node + age + (atHead ? meta : '') + '</div>';
@@ -1125,7 +1132,7 @@ const Views = (function () {
     return '<div class="ip-rel-hrow' + (r.everDeployed ? '' : ' undeployed') + '">' + _relTrack(cells, cols) + '</div>';
   }
 
-  function _relHistory(proj, cols, history, windowLabel) {
+  function _relHistory(proj, cols, history, windowLabel, envOff) {
     const st = history || { status: 'loading' };
     // Mirrors the row structure — a label-width gutter, then the track — so an
     // expanded row starts on exactly the same x as the row it opened from.
@@ -1149,9 +1156,20 @@ const Views = (function () {
         + ' — widen the window to see ' + (m.totalReleases === 1 ? 'it' : 'them') + '.</p>');
     }
 
+    const off = envOff || {};
+    const anyOff = Object.keys(off).some(k => off[k]);
+    const visible = anyOff
+      ? m.releases.filter(r => r.cells.some((c, i) => c.deployed && !off[c.envId]))
+      : m.releases;
+    const mutedOut = m.releases.length - visible.length;
+    if (anyOff && !visible.length) {
+      return wrap('<p class="ip-rel-hempty">Every release in this window only reached environments you have muted.</p>');
+    }
     const multiChannel = m.channels.length > 1;
-    const rows = m.releases.map(r => _relHistoryRow(r, cols, multiChannel)).join('');
+    const rows = visible.map(r => _relHistoryRow(r, cols, multiChannel, off)).join('');
     const notes = [];
+    if (mutedOut) notes.push(mutedOut + ' ' + (mutedOut === 1 ? 'release' : 'releases')
+      + ' only reached muted environments.');
     if (m.hiddenByWindow) notes.push(m.hiddenByWindow + ' older ' + (m.hiddenByWindow === 1 ? 'release is' : 'releases are') + ' outside this window.');
     if (m.windowed) notes.push('History reaches back ' + m.historyCount + ' releases per channel.');
     if (m.neverDeployedCount) notes.push(m.neverDeployedCount + ' of these were created and never deployed anywhere.');
@@ -1201,8 +1219,19 @@ const Views = (function () {
         return '<section class="ip-rel-group"><h3 class="ip-rel-group-name">' + escHtml(g.name) + '</h3>'
           + '<p class="ip-rel-hempty">Nothing in this group has been deployed yet.</p></section>';
       }
-      const heads = g.environments.map(e => '<div class="ip-rel-envhead">' + escHtml(e.name) + '</div>').join('');
-      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id], active)).join('');
+      const off = (IP.envOff && IP.envOff[g.id]) || {};
+      const heads = g.environments.map(e => {
+        const isOff = !!off[e.id];
+        return '<div class="ip-rel-envhead' + (isOff ? ' is-off' : '') + '">'
+          + '<span class="ip-rel-envname">' + escHtml(e.name) + '</span>'
+          + '<button type="button" class="ip-rel-envtoggle" role="switch"'
+          +   ' aria-checked="' + (isOff ? 'false' : 'true') + '"'
+          +   ' data-envtoggle="' + escHtml(g.id) + '|' + escHtml(e.id) + '"'
+          +   ' title="' + escHtml((isOff ? 'Show ' : 'Hide ') + e.name + ' in expanded history') + '">'
+          +   '<span class="ip-rel-envtoggle-track"><span class="ip-rel-envtoggle-knob"></span></span>'
+          + '</button></div>';
+      }).join('');
+      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id], active, off)).join('');
       const hiddenNote = g.hiddenEnvironments.length
         ? '<p class="ip-rel-hidden">Not shown, because this group has never deployed to them: '
           + escHtml(g.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
@@ -1243,6 +1272,17 @@ const Views = (function () {
       el.addEventListener('click', () => toggle(el));
       el.addEventListener('keydown', ev => {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(el); }
+      });
+    });
+    root.querySelectorAll('[data-envtoggle]').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        const parts = String(btn.getAttribute('data-envtoggle')).split('|');
+        const gid = parts[0], eid = parts[1];
+        IP.envOff = IP.envOff || {};
+        IP.envOff[gid] = IP.envOff[gid] || {};
+        if (IP.envOff[gid][eid]) delete IP.envOff[gid][eid]; else IP.envOff[gid][eid] = true;
+        redraw();
       });
     });
     // The window filters what was already fetched, so switching it never
