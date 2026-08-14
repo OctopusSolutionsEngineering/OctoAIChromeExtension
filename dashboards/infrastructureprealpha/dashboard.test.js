@@ -1610,14 +1610,56 @@ describe('Projects — column geometry', () => {
       { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E1', ReleaseVersion: '1.0', State: 'Success' }
     ]
   };
-  test('every track uses the fixed column width, never a stretching fraction', () => {
+  test('columns are a share of the page, never a stretching fraction per group', () => {
     const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
-    expect(html).toContain('var(--ip-rel-col)');
+    expect(html).toContain('calc(100% / var(--ip-rel-cols))');
     expect(html).not.toContain('minmax(0,1fr)');
   });
-  test('a group with fewer environments still starts at the same left edge', () => {
+  test('the widest group sets the column count for the whole page', () => {
     const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
-    expect(html).toContain('repeat(2,var(--ip-rel-col))'); // Cloud
-    expect(html).toContain('repeat(1,var(--ip-rel-col))'); // Tools
+    // Cloud has two environments, Tools one — both size against 2.
+    expect(html).toContain('--ip-rel-cols:2');
+    expect(html).toContain('repeat(2,calc(100% / var(--ip-rel-cols)))');
+    expect(html).toContain('repeat(1,calc(100% / var(--ip-rel-cols)))');
+  });
+});
+
+describe('Project history — the age on the line', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Prod' }];
+  // _relWhen reads the real clock, so this fixture is anchored to it rather than
+  // to a fixed instant — otherwise the timestamps land in the future.
+  const NOW = Date.now();
+  const hoursAgo = h => new Date(NOW - h * 3600000).toISOString();
+
+  test('the label shows when the release arrived, not when it was cut', () => {
+    // Assembled a month ago, promoted to Production two hours ago. Inside a
+    // 24-hour window because it moved; the label must say so.
+    const prog = { Releases: [{
+      Release: { Id: 'R1', Version: '1.0', ChannelId: 'C1', Assembled: hoursAgo(720) },
+      Channel: { Id: 'C1', Name: 'Main' },
+      Deployments: { E2: [{ State: 'Success', CompletedTime: hoursAgo(2) }] } }] };
+    const m = data.progressionModel(prog, grid, 24, NOW);
+    expect(m.releases).toHaveLength(1);
+    const html = Views.renderProjects({
+      projectOpen: { P1: true },
+      projectHistory: { P1: { status: 'ready', model: m } },
+      releases: { status: 'ready', model: { environments: grid, groups: [{ id: 'G', name: 'G',
+        environments: grid, hiddenEnvironments: [],
+        projects: [{ id: 'P1', name: 'P', cells: [{ envId:'E1', envName:'Dev', entries: [] },
+          { envId:'E2', envName:'Prod', entries: [] }], links: [null, 'none'] }] }],
+        projects: [{ id: 'P1' }], truncated: {} } }
+    });
+    expect(html).toContain('2h ago');
+    expect(html).not.toContain('30d ago');
+  });
+
+  test('a release that never deployed still says when it was created', () => {
+    const prog = { Releases: [{
+      Release: { Id: 'R1', Version: '1.0', ChannelId: 'C1', Assembled: hoursAgo(3) },
+      Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} }] };
+    const m = data.progressionModel(prog, grid, 24, NOW);
+    expect(m.releases[0].everDeployed).toBe(false);
   });
 });

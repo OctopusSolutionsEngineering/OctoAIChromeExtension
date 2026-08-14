@@ -485,18 +485,17 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-ev-who{color:var(--fg2);white-space:nowrap;text-align:right}
 
 /* ── Projects ────────────────────────────────────────────────────────────────
-   Environments are fixed-width columns, left-aligned, and identical on every
-   row of the page: collapsed rows, expanded history rows, and every project
-   group. Spare width goes to the right of the last column rather than
-   stretching them, so a node sits at the same x wherever it appears — which is
-   the whole point of a grid you read down.
+   Environment columns are one width for the whole page, taken from the group
+   with the most environments, so every group lines up in the same columns. The
+   width is a share of the available space rather than a fixed pixel count, so
+   the grid spreads in a wide window and tightens in a narrow one.
 
-   Nodes sit at the START of their column, not the centre, so a version label
-   can ride the line to the right of the node it belongs to.
+   Nodes are centred in their column, under the environment name, and a version
+   label sits to the right of the node it belongs to.
 
    Colour is backed by node shape and a written state: a green/red pair alone
    failed a deuteranopia check earlier in this series. */
-.ip-rel-grid { --ip-rel-label: 220px; --ip-rel-col: 176px; }
+.ip-rel-groups { --ip-rel-label: 220px; }
 .ip-rel-note { margin: 0 0 14px; padding: 10px 12px; border-left: 3px solid var(--color-blue-400);
   background: var(--color-blue-100); border-radius: 4px; }
 .ip-rel-note p { margin: 0; font-size: 12px; color: var(--color-navy-700); }
@@ -518,38 +517,39 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-rel-group-count { font-size: 11px; font-weight: 400; color: var(--color-grey-600); }
 .ip-rel-hidden { margin: 6px 0 0; font-size: 11px; color: var(--color-grey-600); }
 
-.ip-rel-grid { border: 1px solid var(--color-grey-300); border-radius: 6px; overflow: hidden; }
-.ip-rel-head, .ip-rel-row { display: flex; align-items: stretch; }
+.ip-rel-grid { border: 1px solid var(--color-grey-300); border-radius: 6px; overflow: hidden;
+  background: var(--color-white, #fff); }
+.ip-rel-head, .ip-rel-row, .ip-rel-history { display: flex; align-items: stretch; }
 .ip-rel-head { background: var(--color-grey-100); border-bottom: 1px solid var(--color-grey-300); }
 .ip-rel-row { border-bottom: 1px solid var(--color-grey-200); cursor: pointer; }
 .ip-rel-row:last-child { border-bottom: 0; }
 .ip-rel-row:hover { background: var(--color-grey-100); }
 .ip-rel-row:focus-visible { outline: 2px solid var(--color-blue-500); outline-offset: -2px; }
+/* The project name sits at the top of the cell: rows grow tall when a cell
+   carries several releases, and a name floating in the middle of that reads as
+   unrelated to the line it labels. */
 .ip-rel-proj { width: var(--ip-rel-label, 220px); flex: 0 0 var(--ip-rel-label, 220px);
-  padding: 12px 14px; display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px; display: flex; align-items: flex-start; gap: 8px;
   border-right: 1px solid var(--color-grey-200); }
 .ip-rel-head .ip-rel-proj { font-size: 11px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--color-grey-700); }
-.ip-rel-proj-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ip-rel-proj-name { font-size: 13px; font-weight: 600; color: var(--color-navy-900); }
-.ip-rel-caret { width: 0; height: 0; flex: 0 0 auto;
+  letter-spacing: .06em; color: var(--color-grey-700); align-items: center; }
+.ip-rel-proj-name { font-size: 13px; font-weight: 600; color: var(--color-navy-900);
+  line-height: 16px; min-width: 0; word-break: break-word; }
+.ip-rel-caret { width: 0; height: 0; flex: 0 0 auto; margin-top: 5px;
   border-left: 5px solid var(--color-grey-600); border-top: 4px solid transparent;
   border-bottom: 4px solid transparent; transition: transform .12s ease; }
 .ip-rel-row.expanded .ip-rel-caret { transform: rotate(90deg); }
-/* justify-content:start is what stops the columns stretching to fill. */
 .ip-rel-track { flex: 1 1 auto; display: grid; justify-content: start; min-width: 0; }
-.ip-rel-envhead { padding: 10px 0 10px 2px; font-size: 11px; font-weight: 600;
+.ip-rel-envhead { padding: 10px 4px; font-size: 11px; font-weight: 600; text-align: center;
   text-transform: uppercase; letter-spacing: .06em; color: var(--color-grey-700); }
 
-.ip-rel-cell { position: relative; padding: 12px 12px 12px 0; display: flex;
-  flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
-/* Reaches back to the previous column's node; nodes sit at column start, so a
-   segment is exactly one column wide. */
-.ip-rel-seg { position: absolute; top: 20px; right: 100%; width: var(--ip-rel-col); height: 2px;
-  border-radius: 2px; margin-left: 8px; }
+.ip-rel-cell { position: relative; padding: 12px 6px; display: flex; flex-direction: column;
+  align-items: center; gap: 6px; min-width: 0; }
+/* Centre to centre: nodes sit mid-column, so a segment is exactly one column. */
+.ip-rel-seg { position: absolute; top: 20px; right: 50%; width: 100%; height: 2px; border-radius: 2px; }
 .ip-rel-seg-strong { background: var(--color-green-500); }
 .ip-rel-seg-pale { background: var(--color-green-200); }
-.ip-rel-node { position: relative; z-index: 1; width: 16px; height: 16px; border-radius: 50%;
+.ip-rel-node { position: relative; z-index: 2; width: 16px; height: 16px; border-radius: 50%;
   display: block; flex: 0 0 auto; }
 .ip-rel-node-healthy { background: var(--color-green-500); }
 .ip-rel-node-running { background: var(--color-blue-500); }
@@ -558,8 +558,9 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-rel-node-split { background: transparent; box-shadow: inset 0 0 0 3px var(--color-green-500); }
 .ip-rel-node-empty { background: transparent; box-shadow: inset 0 0 0 2px var(--color-grey-300);
   width: 10px; height: 10px; }
-.ip-rel-labels { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.ip-rel-entry { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; }
+.ip-rel-labels { display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 0; text-align: center; position: relative; z-index: 2; }
+.ip-rel-entry { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 5px; }
 .ip-rel-ver { font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 600;
   color: var(--color-navy-900); word-break: break-all; }
 .ip-rel-age, .ip-rel-tenants { font-size: 11px; color: var(--color-grey-600); }
@@ -569,19 +570,30 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-rel-state-running { background: var(--color-blue-100); color: var(--color-blue-700); }
 .ip-rel-state-cancelled, .ip-rel-state-unknown { background: var(--color-grey-200); color: var(--color-grey-700); }
 
-/* History: no header bar, no second table. It reads as the same grid continuing
-   underneath the row it belongs to, indented by the same label column. */
-.ip-rel-history { padding: 4px 0 10px var(--ip-rel-label, 220px); background: transparent;
-  border-bottom: 1px solid var(--color-grey-200); }
+/* History reads as the same grid continuing under the row it belongs to. The
+   gutter matches the project column exactly, border included, so the columns
+   do not shift when a row opens. */
+.ip-rel-history { border-bottom: 1px solid var(--color-grey-200); }
+.ip-rel-history-gutter { padding: 0; }
+.ip-rel-history-body { flex: 1 1 auto; padding: 4px 0 10px; min-width: 0; }
+.ip-rel-history-body > .ip-rel-hempty,
+.ip-rel-history-body > .ip-rel-err,
+.ip-rel-history-body > .ip-rel-loading,
+.ip-rel-history-body > .ip-rel-hnote { padding-left: 6px; }
 .ip-rel-hrow { display: flex; align-items: center; min-height: 26px; }
 .ip-rel-hrow.undeployed { opacity: .7; }
-.ip-rel-hcell { position: relative; display: flex; align-items: center; gap: 6px;
-  padding: 0 12px 0 0; min-width: 0; }
+.ip-rel-hcell { position: relative; display: flex; align-items: center; justify-content: center;
+  padding: 0 6px; min-width: 0; }
 .ip-rel-hcell .ip-rel-seg { top: 50%; margin-top: -1px; }
-.ip-rel-hnode { position: relative; z-index: 1; width: 11px; height: 11px; border-radius: 50%;
+.ip-rel-hnode { position: relative; z-index: 2; width: 11px; height: 11px; border-radius: 50%;
   display: block; flex: 0 0 auto; }
+/* Text sits in front of the line and masks it, rather than the line cutting
+   through the words. */
 .ip-rel-hlabel { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap;
-  position: absolute; left: 18px; z-index: 2; }
+  position: absolute; left: 50%; margin-left: 12px; z-index: 3;
+  padding: 0 4px; background: var(--color-white, #fff); }
+.ip-rel-hcellage { position: relative; z-index: 3; padding: 0 3px;
+  background: var(--color-white, #fff); }
 .ip-rel-hver { font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 600;
   color: var(--color-navy-900); }
 .ip-rel-hchan { font-size: 10px; padding: 0 4px; border-radius: 3px;
@@ -597,12 +609,12 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 
 .dark .ip-rel-note { background: rgba(26,119,202,.14); }
 .dark .ip-rel-note p { color: var(--color-grey-200); }
-.dark .ip-rel-grid { border-color: var(--color-navy-600); }
+.dark .ip-rel-grid { border-color: var(--color-navy-600); background: var(--color-navy-900); }
 .dark .ip-rel-head { background: var(--color-navy-800); border-bottom-color: var(--color-navy-600); }
-.dark .ip-rel-row { border-bottom-color: var(--color-navy-700); }
+.dark .ip-rel-row, .dark .ip-rel-history { border-bottom-color: var(--color-navy-700); }
 .dark .ip-rel-row:hover { background: var(--color-navy-800); }
 .dark .ip-rel-proj { border-right-color: var(--color-navy-700); }
-.dark .ip-rel-history { border-bottom-color: var(--color-navy-700); }
+.dark .ip-rel-hlabel, .dark .ip-rel-hcellage { background: var(--color-navy-900); }
 .dark .ip-rel-proj-name, .dark .ip-rel-ver, .dark .ip-rel-hver { color: var(--color-grey-100); }
 .dark .ip-rel-group-name { color: var(--color-grey-100); }
 .dark .ip-rel-caret { border-left-color: var(--color-grey-400); }

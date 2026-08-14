@@ -997,8 +997,11 @@ const Views = (function () {
   const REL_STATE_TONE = { success:'healthy', failed:'unhealthy', timedout:'unhealthy', cancelled:'disabled', running:'running', unknown:'disabled' };
 
   function _relTrack(inner, cols) {
-    return '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols + ',var(--ip-rel-col))">'
-      + inner + '</div>';
+    // Columns are one page-wide width, set on the wrapper from the widest
+    // group, so every group lines up. The width itself is a share of the
+    // available space, so a wide window spreads and a narrow one tightens.
+    return '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols
+      + ',calc(100% / var(--ip-rel-cols)))">' + inner + '</div>';
   }
 
   function _relWhen(iso) {
@@ -1047,26 +1050,27 @@ const Views = (function () {
       + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
       + '<div class="ip-rel-proj">'
       +   '<span class="ip-rel-caret" aria-hidden="true"></span>'
-      +   '<span class="ip-rel-proj-text">'
-      +     '<span class="ip-rel-proj-name">' + escHtml(proj.name) + '</span>'
-      +   '</span>'
+      +   '<span class="ip-rel-proj-name">' + escHtml(proj.name) + '</span>'
       + '</div>'
       + _relTrack(cells, cols)
       + '</div>';
     return row + (expanded ? _relHistory(proj, cols, history, windowLabel) : '');
   }
 
-  // The version rides the line at the furthest environment the release reached,
-  // rather than sitting in a column on the left. Where a release stops is then
-  // the same thing as where its name is.
+  // The version rides the line at the furthest environment the release reached.
+  // The age beside it is when it ARRIVED there, not when the release was cut —
+  // a release assembled weeks ago and promoted this morning is this morning's
+  // event, and showing its birthday made the window look broken.
   function _relHistoryRow(r, cols, multiChannel) {
+    const headCell = r.frontier >= 0 ? r.cells[r.frontier] : null;
+    const headAge = headCell && headCell.when ? headCell.when : r.assembled;
     const meta = '<span class="ip-rel-hlabel">'
       + '<span class="ip-rel-hver">' + escHtml(r.version) + '</span>'
       + (multiChannel && r.channelName ? '<span class="ip-rel-hchan">' + escHtml(r.channelName) + '</span>' : '')
-      + '<span class="ip-rel-hage">' + escHtml(_relWhen(r.assembled)) + '</span>'
+      + '<span class="ip-rel-hage">' + escHtml(_relWhen(headAge)) + '</span>'
       + (r.lag > 0 ? '<span class="ip-rel-hlag">' + r.lag + ' behind'
           + (multiChannel ? ' in ' + escHtml(r.channelName) : '') + '</span>' : '')
-      + (!r.everDeployed ? '<span class="ip-rel-hnever">created, never deployed</span>' : '')
+      + (!r.everDeployed ? '<span class="ip-rel-hnever">created ' + escHtml(_relWhen(r.assembled)) + ', never deployed</span>' : '')
       + '</span>';
 
     const cells = r.cells.map((c, i) => {
@@ -1087,7 +1091,11 @@ const Views = (function () {
 
   function _relHistory(proj, cols, history, windowLabel) {
     const st = history || { status: 'loading' };
-    const wrap = body => '<div class="ip-rel-history">' + body + '</div>';
+    // Mirrors the row structure — a label-width gutter, then the track — so an
+    // expanded row starts on exactly the same x as the row it opened from.
+    const wrap = body => '<div class="ip-rel-history">'
+      + '<div class="ip-rel-proj ip-rel-history-gutter" aria-hidden="true"></div>'
+      + '<div class="ip-rel-history-body">' + body + '</div></div>';
 
     if (st.status === 'loading' || !st.status) {
       return wrap('<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading releases…</span></div>');
@@ -1150,6 +1158,7 @@ const Views = (function () {
     const open = IP.projectOpen || {};
     const hist = IP.projectHistory || {};
 
+    const maxCols = (m.groups || []).reduce((n, g) => Math.max(n, g.environments.length), 1);
     const blocks = (m.groups || []).map(g => {
       const cols = g.environments.length;
       if (!cols) {
@@ -1178,7 +1187,8 @@ const Views = (function () {
       +   '<span><i class="ip-rel-key ip-rel-key-split"></i>Split across tenants</span>'
       +   '<span><i class="ip-rel-key ip-rel-key-strong"></i>Same release both sides</span>'
       +   '<span><i class="ip-rel-key ip-rel-key-pale"></i>Drifted</span>'
-      + '</div>' + blocks;
+      + '</div>'
+      + '<div class="ip-rel-groups" style="--ip-rel-cols:' + maxCols + '">' + blocks + '</div>';
   }
 
   function bindProjects(IP) {
