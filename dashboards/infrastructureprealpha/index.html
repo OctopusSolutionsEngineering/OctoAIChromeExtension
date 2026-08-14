@@ -14,6 +14,12 @@
     <!-- sidebar (216px) -->
     <aside class="ip-sidebar">
       <div id="ip-space-switch" class="ip-space-switch"></div>
+      <!-- Projects sits above Infrastructure: it is what the estate exists to
+           deliver, and it is a destination people arrive wanting rather than a
+           part of the infrastructure model. -->
+      <nav class="ip-nav ip-nav-lead">
+        <a href="#projects"     class="ip-nav-item" data-view="projects">Projects</a>
+      </nav>
       <div class="ip-sidebar-title">Infrastructure</div>
       <!-- Five items, per Paul Stovell's feedback on the 28 Jul walkthrough. Machine Policies
            and Deployment Agents are rare destinations and are now tabs inside Deployment
@@ -24,7 +30,6 @@
         <a href="#environments" class="ip-nav-item" data-view="environments">Environments</a>
         <a href="#workers"      class="ip-nav-item" data-view="workers">Workers &amp; Worker Pools</a>
         <a href="#argocd"       class="ip-nav-item" data-view="argocd">Argo CD Instances</a>
-        <a href="#releases"     class="ip-nav-item" data-view="releases">Releases</a>
       </nav>
       <div id="ip-theme-toggle" class="ip-theme-toggle"></div>
     </aside>

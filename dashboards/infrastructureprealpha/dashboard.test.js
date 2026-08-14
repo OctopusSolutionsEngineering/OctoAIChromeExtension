@@ -1231,9 +1231,12 @@ describe('sidebar composition', () => {
   const items = [...html.matchAll(/class="ip-nav-item" data-view="([^"]+)">([^<]+)</g)]
     .map(m => ({ view:m[1], label:m[2] }));
 
-  test('Paul\'s five, in his order, with Releases appended', () => {
+  test('Projects leads, then Paul\'s five in his order', () => {
     expect(items.map(i => i.view)).toEqual(
-      ['overview','targets','environments','workers','argocd','releases']);
+      ['projects','overview','targets','environments','workers','argocd']);
+  });
+  test('Projects sits above the Infrastructure heading', () => {
+    expect(html.indexOf('data-view="projects"')).toBeLessThan(html.indexOf('ip-sidebar-title'));
   });
 
   test('Machine Policies and Deployment Agents are no longer nav destinations', () => {
@@ -1318,7 +1321,7 @@ describe('Releases — model', () => {
       { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '9.1', State: 'Success', TenantId: 'T1', CompletedTime: '2026-08-14T02:00:00Z' },
       { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '9.0', State: 'Success', TenantId: 'T2', CompletedTime: '2026-08-12T02:00:00Z' }
     ]));
-    const prod = m.projects[0].cells[2].entries;
+    const prod = m.projects[0].cells.find(c => c.envName === 'Prod').entries;
     expect(prod.map(e => e.version)).toEqual(['9.1', '9.0']);
     expect(prod[0].tenantCount).toBe(1);
     expect(prod[0].tenantNames).toEqual(['Acme']);
@@ -1341,13 +1344,37 @@ describe('Releases — model', () => {
     expect(m.projects[0].links).toEqual([null, 'pale', 'strong']);
   });
 
-  test('an environment with nothing deployed keeps its place in the row', () => {
+  test('an environment nothing has reached is dropped from the grid, and named', () => {
     const m = data.releasesModel(withItems([
       { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }
     ]));
-    expect(m.projects[0].cells).toHaveLength(3);
+    expect(m.environments.map(e => e.name)).toEqual(['Dev']);
+    expect(m.hiddenEnvironments.map(e => e.name)).toEqual(['Test', 'Prod']);
+  });
+
+  test('a gap for one project still shows while another project uses that environment', () => {
+    const two = Object.assign({}, base, {
+      Projects: [{ Id: 'P1', Name: 'Alpha' }, { Id: 'P2', Name: 'Beta' }],
+      Items: [
+        { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+        { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E3', ReleaseVersion: '2.0', State: 'Success' }
+      ]
+    });
+    const m = data.releasesModel(two);
+    // E2 is used by nobody and goes; E1 and E3 stay, so Alpha keeps an empty Prod cell.
+    expect(m.environments.map(e => e.name)).toEqual(['Dev', 'Prod']);
     expect(m.projects[0].cells[1].entries).toEqual([]);
     expect(m.projects[0].links[1]).toBe('none');
+  });
+
+  test('the hidden environments are reported in the view', () => {
+    const Views = require('./views');
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }
+    ]));
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    expect(html).toContain('nothing has been deployed to them');
+    expect(html).toContain('Test, Prod');
   });
 
   test('a capped project list is reported, not silently truncated', () => {
@@ -1393,14 +1420,15 @@ describe('Releases — many releases live in one environment', () => {
     expect(cell.tenantTotal).toBe(41);
   });
   test('the view names a few and summarises the rest', () => {
-    const html = Views.renderReleases({ releases: { status: 'ready', model: data.releasesModel(many) } });
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(many) } });
     expect(html).toContain('more releases across 41 tenants');
+    expect(html).not.toContain('ip-rel-tenants" style');
     // Three named, not forty-one.
     expect((html.match(/ip-rel-ver/g) || []).length).toBe(3);
   });
   test('a single release needs no summary line', () => {
     const one = Object.assign({}, many, { Items: many.Items.slice(0, 1) });
-    const html = Views.renderReleases({ releases: { status: 'ready', model: data.releasesModel(one) } });
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(one) } });
     expect(html).not.toContain('ip-rel-more');
   });
 });

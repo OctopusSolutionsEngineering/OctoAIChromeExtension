@@ -1029,7 +1029,7 @@ const Views = (function () {
       '<span class="ip-rel-entry">'
       + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
       + '<span class="ip-rel-age">' + escHtml(_relWhen(e.when)) + '</span>'
-      + (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml(e.tenantCount + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : '')
+      + (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml('· ' + e.tenantCount + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : '')
       + (e.stateKey !== 'success' ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">' + escHtml(e.stateLabel) + '</span>' : '')
       + '</span>').join('');
     const more = hidden > 0
@@ -1052,9 +1052,9 @@ const Views = (function () {
       + '</div>';
   }
 
-  function renderReleases(IP) {
+  function renderProjects(IP) {
     const st = IP.releases || { status: 'idle' };
-    const head = '<header class="ip-head"><h2>Releases</h2>'
+    const head = '<header class="ip-head"><h2>Projects</h2>'
       + '<p class="ip-sub">What each project is running in each environment, and where a release has stopped moving.</p></header>';
 
     if (st.status === 'loading' || st.status === 'idle') {
@@ -1079,6 +1079,9 @@ const Views = (function () {
     const notes = [];
     if (m.truncated.capped) notes.push('Showing ' + m.truncated.shown + ' projects — the server caps the dashboard at ' + m.truncated.projectLimit + '. Projects beyond the cap are missing from this view.');
     if (m.truncated.isFiltered) notes.push('The dashboard is filtered on this instance, so this is a subset of its projects.');
+    const hidden = m.hiddenEnvironments || [];
+    if (hidden.length) notes.push('Not shown, because nothing has been deployed to them: '
+      + hidden.map(e => e.name).join(', ') + '.');
     const note = notes.length
       ? '<div class="ip-rel-note">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '';
 
@@ -1152,7 +1155,7 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderReleases, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderProjects, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,

@@ -542,8 +542,10 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   color: var(--color-navy-900); word-break: break-all; }
 .ip-rel-age { font-size: 11px; color: var(--color-grey-600); }
 .ip-rel-none { font-size: 11px; color: var(--color-grey-500); }
-.ip-rel-tenants { font-size: 10px; padding: 1px 5px; border-radius: 3px;
-  background: var(--color-blue-100); color: var(--color-blue-700); }
+/* The tenant count is the least important number in the cell, and a filled chip
+   made it the brightest thing on the row — badly so against a dark background.
+   It reads as quiet text now, in the same weight as the age beside it. */
+.ip-rel-tenants { font-size: 11px; color: var(--color-grey-600); }
 .ip-rel-state { font-size: 10px; padding: 1px 5px; border-radius: 3px; }
 .ip-rel-state-failed, .ip-rel-state-timedout { background: var(--color-red-100); color: var(--color-red-700); }
 .ip-rel-state-running { background: var(--color-blue-100); color: var(--color-blue-700); }
@@ -557,5 +559,20 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-rel-proj { border-right-color: var(--color-navy-700); }
 .dark .ip-rel-proj-name, .dark .ip-rel-ver { color: var(--color-grey-100); }
 .dark .ip-rel-node-empty { box-shadow: inset 0 0 0 2px var(--color-navy-500); }
+.dark .ip-rel-tenants, .dark .ip-rel-age, .dark .ip-rel-none { color: var(--color-grey-400); }
+/* Translucent fills sit on the row rather than punching a light block through it. */
+.dark .ip-rel-state-failed, .dark .ip-rel-state-timedout {
+  background: rgba(214,61,61,.22); color: var(--color-red-200); }
+.dark .ip-rel-state-running { background: rgba(26,119,202,.24); color: var(--color-blue-200); }
+.dark .ip-rel-state-cancelled, .dark .ip-rel-state-unknown {
+  background: rgba(255,255,255,.10); color: var(--color-grey-300); }
+.dark .ip-rel-proj-group { color: var(--color-grey-400); }
+.dark .ip-rel-envhead, .dark .ip-rel-head .ip-rel-proj { color: var(--color-grey-300); }
+.dark .ip-rel-legend { color: var(--color-grey-400); }
+
+/* Projects sits in its own group above the Infrastructure heading. */
+.ip-nav-lead { margin-bottom: 10px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-grey-200); }
+.dark .ip-nav-lead { border-bottom-color: var(--color-navy-700); }
 .ip-rel-more { font-size: 10px; color: var(--color-grey-600); }
 .dark .ip-rel-more { color: var(--color-grey-400); }

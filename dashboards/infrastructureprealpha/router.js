@@ -1,6 +1,6 @@
 'use strict';
 const Router = (function () {
-  const VIEWS = ['overview','targets','environments','machinepolicies','workers','agents','argocd','releases'];
+  const VIEWS = ['overview','targets','environments','machinepolicies','workers','agents','argocd','projects'];
   // Views that render inside the Deployment Targets section shell.
   const IP_TARGET_SECTION_VIEWS = ['targets','agents','machinepolicies'];
   function setActive(view) {
@@ -61,14 +61,14 @@ const Router = (function () {
     else if (view === 'workers') { el.innerHTML = Views.renderWorkers(IP); Views.bindWorkers && Views.bindWorkers(IP); }
     else if (view === 'agents') { el.innerHTML = Views.renderAgents(IP); Views.bindAgents && Views.bindAgents(IP); }
     else if (view === 'argocd') { el.innerHTML = Views.renderArgo(IP); }
-    else if (view === 'releases') {
+    else if (view === 'projects') {
       // The project dashboard isn't in the boot payload — it's one request, made
       // the first time someone opens this section, and re-made when they switch
       // space. Keyed on spaceId so a switch can't leave the previous space's
       // releases on screen.
       const needed = !IP.releases || IP.releases.spaceId !== IP.spaceId;
       if (needed) IP.releases = { status: 'loading', spaceId: IP.spaceId };
-      el.innerHTML = Views.renderReleases(IP);
+      el.innerHTML = Views.renderProjects(IP);
       if (needed && Data.fetchDashboard) {
         const wanted = IP.spaceId;
         Data.fetchDashboard(wanted)

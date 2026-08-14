@@ -602,7 +602,7 @@ function linkTone(prevVersions, versions) {
 
 function releasesModel(dash) {
   const d = dash || {};
-  const environments = (d.Environments || []).map(e => ({ id: e.Id, name: e.Name }));
+  const allEnvironments = (d.Environments || []).map(e => ({ id: e.Id, name: e.Name }));
   const tenantNames = {};
   (d.Tenants || []).forEach(t => { tenantNames[t.Id] = t.Name; });
   const groupNames = {};
@@ -624,6 +624,15 @@ function releasesModel(dash) {
     if (!agg.stateKey) agg.stateKey = releaseStateKey(item.State);
     if (item.TenantId) agg.tenants.push(item.TenantId);
   });
+
+  // An environment nothing has ever been deployed to costs a column and tells
+  // you nothing. Dropped from the grid and named underneath instead, so the
+  // remaining columns get the width — and so a space with a dormant environment
+  // doesn't read as though the environment were missing.
+  const usedEnvIds = {};
+  Object.keys(byProject).forEach(pid => Object.keys(byProject[pid]).forEach(eid => { usedEnvIds[eid] = true; }));
+  const environments = allEnvironments.filter(e => usedEnvIds[e.id]);
+  const hiddenEnvironments = allEnvironments.filter(e => !usedEnvIds[e.id]);
 
   const projects = (d.Projects || []).map(p => {
     const envMap = byProject[p.Id] || {};
@@ -665,6 +674,7 @@ function releasesModel(dash) {
   // instance, and someone reading "3 projects" has no way to tell which it is.
   return {
     environments: environments,
+    hiddenEnvironments: hiddenEnvironments,
     projects: projects,
     truncated: {
       projectLimit: typeof d.ProjectLimit === 'number' ? d.ProjectLimit : null,
