@@ -1544,3 +1544,80 @@ describe('Project history — progression model', () => {
     expect(data.progressionModel({}, grid).releases).toEqual([]);
   });
 });
+
+describe('Project history — window', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Prod' }];
+  const NOW = Date.parse('2026-08-14T12:00:00Z');
+  const hoursAgo = h => new Date(NOW - h * 3600000).toISOString();
+  const prog = {
+    Releases: [
+      { Release: { Id: 'R3', Version: '3.0', ChannelId: 'C1', Assembled: hoursAgo(2) },
+        Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} },
+      { Release: { Id: 'R2', Version: '2.0', ChannelId: 'C1', Assembled: hoursAgo(72) },
+        Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} },
+      // Cut long ago, promoted an hour ago — recent news despite an old birthday.
+      { Release: { Id: 'R1', Version: '1.0', ChannelId: 'C1', Assembled: hoursAgo(800) },
+        Channel: { Id: 'C1', Name: 'Main' },
+        Deployments: { E2: [{ State: 'Success', CompletedTime: hoursAgo(1) }] } }
+    ]
+  };
+
+  test('24 hours keeps what was created or moved inside it', () => {
+    const m = data.progressionModel(prog, grid, 24, NOW);
+    expect(m.releases.map(r => r.version).sort()).toEqual(['1.0', '3.0']);
+    expect(m.hiddenByWindow).toBe(1);
+  });
+
+  test('7 days widens to everything created inside it', () => {
+    const m = data.progressionModel(prog, grid, 24 * 7, NOW);
+    expect(m.releases).toHaveLength(3);
+    expect(m.hiddenByWindow).toBe(0);
+  });
+
+  test('no window keeps the lot', () => {
+    const m = data.progressionModel(prog, grid, null, NOW);
+    expect(m.releases).toHaveLength(3);
+  });
+
+  test('totalReleases reports the unfiltered count so an empty window can explain itself', () => {
+    // Half an hour excludes even the deployment made an hour ago.
+    const m = data.progressionModel(prog, grid, 0.5, NOW);
+    expect(m.releases).toHaveLength(0);
+    expect(m.totalReleases).toBe(3);
+  });
+
+  test('lag is counted before the window filter, so it stays true', () => {
+    const m = data.progressionModel(prog, grid, 24, NOW);
+    expect(m.releases.find(r => r.version === '1.0').lag).toBe(2);
+  });
+
+  test('the window options are 24 hours, 7 days and All', () => {
+    expect(data.HISTORY_WINDOWS.map(w => w.label)).toEqual(['24 hours', '7 days', 'All']);
+  });
+});
+
+describe('Projects — column geometry', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const payload = {
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }, { Id: 'G2', Name: 'Tools' }],
+    Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' }, { Id: 'P2', Name: 'Script', ProjectGroupId: 'G2' }],
+    Items: [
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E1', ReleaseVersion: '1.0', State: 'Success' }
+    ]
+  };
+  test('every track uses the fixed column width, never a stretching fraction', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
+    expect(html).toContain('var(--ip-rel-col)');
+    expect(html).not.toContain('minmax(0,1fr)');
+  });
+  test('a group with fewer environments still starts at the same left edge', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
+    expect(html).toContain('repeat(2,var(--ip-rel-col))'); // Cloud
+    expect(html).toContain('repeat(1,var(--ip-rel-col))'); // Tools
+  });
+});

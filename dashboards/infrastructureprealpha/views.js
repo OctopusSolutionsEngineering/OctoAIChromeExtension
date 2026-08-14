@@ -989,12 +989,17 @@ const Views = (function () {
     + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
 
-  // ─── Releases ──────────────────────────────────────────────────────────────
-  // One line per project across the environments: what each is running now.
-  // A segment is drawn strong where two environments hold a release in common
-  // and pale where they have drifted, so the eye finds the break rather than
-  // reading four version strings and comparing them.
+  // ─── Projects ──────────────────────────────────────────────────────────────
+  // Environments are fixed-width columns, left-aligned, identical on every row
+  // of the page — collapsed rows, history rows, and every project group. Any
+  // spare width goes to the right of the last column rather than stretching the
+  // columns, so a node sits at the same x wherever it appears.
   const REL_STATE_TONE = { success:'healthy', failed:'unhealthy', timedout:'unhealthy', cancelled:'disabled', running:'running', unknown:'disabled' };
+
+  function _relTrack(inner, cols) {
+    return '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols + ',var(--ip-rel-col))">'
+      + inner + '</div>';
+  }
 
   function _relWhen(iso) {
     if (!iso) return '';
@@ -1009,8 +1014,7 @@ const Views = (function () {
   }
 
   function _relCell(cell, link) {
-    const seg = link && link !== 'none'
-      ? '<span class="ip-rel-seg ip-rel-seg-' + escHtml(link) + '"></span>' : '';
+    const seg = link && link !== 'none' ? '<span class="ip-rel-seg ip-rel-seg-' + escHtml(link) + '"></span>' : '';
     if (!cell.entries.length) {
       return '<div class="ip-rel-cell">' + seg
         + '<span class="ip-rel-node ip-rel-node-empty" title="Never deployed"></span>'
@@ -1020,10 +1024,8 @@ const Views = (function () {
     const split = cell.entries.length > 1;
     const node = '<span class="ip-rel-node ip-rel-node-' + escHtml(REL_STATE_TONE[head.stateKey] || 'disabled')
       + (split ? ' ip-rel-node-split' : '') + '" title="' + escHtml(head.stateLabel + ' in ' + cell.envName) + '"></span>';
-    // Cap the stack. Beyond a few, the useful facts are the newest release and
-    // how far the estate is spread, not forty version strings.
-    const REL_MAX_ENTRIES = 3;
-    const shown = cell.entries.slice(0, REL_MAX_ENTRIES);
+    const MAX = 3;
+    const shown = cell.entries.slice(0, MAX);
     const hidden = cell.entries.length - shown.length;
     const labels = shown.map(e =>
       '<span class="ip-rel-entry">'
@@ -1033,121 +1035,102 @@ const Views = (function () {
       + (e.stateKey !== 'success' ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">' + escHtml(e.stateLabel) + '</span>' : '')
       + '</span>').join('');
     const more = hidden > 0
-      ? '<span class="ip-rel-more">+' + hidden + ' more '
-        + (hidden === 1 ? 'release' : 'releases')
-        + (cell.tenantTotal ? ' across ' + cell.tenantTotal + (cell.tenantTotal === 1 ? ' tenant' : ' tenants') : '')
-        + '</span>'
+      ? '<span class="ip-rel-more">+' + hidden + ' more ' + (hidden === 1 ? 'release' : 'releases')
+        + (cell.tenantTotal ? ' across ' + cell.tenantTotal + (cell.tenantTotal === 1 ? ' tenant' : ' tenants') : '') + '</span>'
       : '';
     return '<div class="ip-rel-cell">' + seg + node + '<div class="ip-rel-labels">' + labels + more + '</div></div>';
   }
 
-  function _relRow(proj, envCount, expanded, history) {
+  function _relRow(proj, cols, expanded, history, windowLabel) {
     const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i])).join('');
     const row = '<div class="ip-rel-row' + (expanded ? ' expanded' : '') + '" role="button" tabindex="0"'
-      + ' aria-expanded="' + (expanded ? 'true' : 'false') + '"'
-      + ' data-project="' + escHtml(proj.id) + '">'
+      + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
       + '<div class="ip-rel-proj">'
       +   '<span class="ip-rel-caret" aria-hidden="true"></span>'
       +   '<span class="ip-rel-proj-text">'
       +     '<span class="ip-rel-proj-name">' + escHtml(proj.name) + '</span>'
-      +     (proj.groupName ? '<span class="ip-rel-proj-group">' + escHtml(proj.groupName) + '</span>' : '')
       +   '</span>'
       + '</div>'
-      + '<div class="ip-rel-track" style="grid-template-columns:repeat(' + envCount + ',minmax(0,1fr))">' + cells + '</div>'
+      + _relTrack(cells, cols)
       + '</div>';
-    return row + (expanded ? _relHistory(proj, envCount, history) : '');
+    return row + (expanded ? _relHistory(proj, cols, history, windowLabel) : '');
   }
 
-  // ─── Expanded history ──────────────────────────────────────────────────────
-  // Same columns as the row above, one line per release, so a release's journey
-  // reads across and the environment it stopped at is where the line stops.
-  function _relHistory(proj, envCount, history) {
+  // The version rides the line at the furthest environment the release reached,
+  // rather than sitting in a column on the left. Where a release stops is then
+  // the same thing as where its name is.
+  function _relHistoryRow(r, cols, multiChannel) {
+    const meta = '<span class="ip-rel-hlabel">'
+      + '<span class="ip-rel-hver">' + escHtml(r.version) + '</span>'
+      + (multiChannel && r.channelName ? '<span class="ip-rel-hchan">' + escHtml(r.channelName) + '</span>' : '')
+      + '<span class="ip-rel-hage">' + escHtml(_relWhen(r.assembled)) + '</span>'
+      + (r.lag > 0 ? '<span class="ip-rel-hlag">' + r.lag + ' behind'
+          + (multiChannel ? ' in ' + escHtml(r.channelName) : '') + '</span>' : '')
+      + (!r.everDeployed ? '<span class="ip-rel-hnever">created, never deployed</span>' : '')
+      + '</span>';
+
+    const cells = r.cells.map((c, i) => {
+      const seg = (i > 0 && i <= r.frontier)
+        ? '<span class="ip-rel-seg ip-rel-seg-' + (i === r.frontier ? 'strong' : 'pale') + '"></span>' : '';
+      const atHead = (r.frontier === -1 && i === 0) || i === r.frontier;
+      const node = c.deployed
+        ? '<span class="ip-rel-hnode ip-rel-node-' + escHtml(REL_STATE_TONE[c.stateKey] || 'disabled')
+          + '" title="' + escHtml(c.stateLabel + ' in ' + c.envName) + '"></span>'
+        : (r.frontier === -1 && i === 0 ? '<span class="ip-rel-hnode ip-rel-node-empty"></span>' : '');
+      const age = c.deployed && i !== r.frontier
+        ? '<span class="ip-rel-hcellage">' + escHtml(_relWhen(c.when)) + '</span>' : '';
+      return '<div class="ip-rel-hcell">' + seg + node + age + (atHead ? meta : '') + '</div>';
+    }).join('');
+
+    return '<div class="ip-rel-hrow' + (r.everDeployed ? '' : ' undeployed') + '">' + _relTrack(cells, cols) + '</div>';
+  }
+
+  function _relHistory(proj, cols, history, windowLabel) {
     const st = history || { status: 'loading' };
-    const wrap = inner => '<div class="ip-rel-history"><div class="ip-rel-proj ip-rel-history-side">' + inner.side
-      + '</div><div class="ip-rel-history-body">' + inner.body + '</div></div>';
+    const wrap = body => '<div class="ip-rel-history">' + body + '</div>';
 
     if (st.status === 'loading' || !st.status) {
-      return wrap({ side: '<span class="ip-rel-history-title">History</span>',
-        body: '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading releases…</span></div>' });
+      return wrap('<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading releases…</span></div>');
     }
     if (st.status === 'error') {
-      return wrap({ side: '<span class="ip-rel-history-title">History</span>',
-        body: '<p class="ip-rel-err">' + escHtml(st.error || 'Could not load this project\'s releases.') + '</p>' });
+      return wrap('<p class="ip-rel-err">' + escHtml(st.error || 'Could not load this project\'s releases.') + '</p>');
     }
     const m = st.model;
+    if (!m.totalReleases) {
+      return wrap('<p class="ip-rel-hempty">No releases have been created for this project.</p>');
+    }
     if (!m.releases.length) {
-      return wrap({ side: '<span class="ip-rel-history-title">History</span>',
-        body: '<p class="ip-rel-none">No releases have been created for this project.</p>' });
+      return wrap('<p class="ip-rel-hempty">Nothing moved in the last ' + escHtml(String(windowLabel).toLowerCase())
+        + '. ' + m.totalReleases + ' older ' + (m.totalReleases === 1 ? 'release' : 'releases')
+        + ' — widen the window to see ' + (m.totalReleases === 1 ? 'it' : 'them') + '.</p>');
     }
 
     const multiChannel = m.channels.length > 1;
-    const rows = m.releases.map(r => {
-      const cells = r.cells.map((c, i) => {
-        const seg = (i > 0 && i <= r.frontier)
-          ? '<span class="ip-rel-seg ip-rel-seg-' + (i === r.frontier ? 'strong' : 'pale') + '"></span>' : '';
-        if (!c.deployed) return '<div class="ip-rel-hcell">' + seg + '</div>';
-        const tone = REL_STATE_TONE[c.stateKey] || 'disabled';
-        return '<div class="ip-rel-hcell">' + seg
-          + '<span class="ip-rel-hnode ip-rel-node-' + escHtml(tone) + '" title="'
-          + escHtml(c.stateLabel + ' in ' + c.envName) + '"></span>'
-          + '<span class="ip-rel-hage">' + escHtml(_relWhen(c.when)) + '</span></div>';
-      }).join('');
-      const meta = '<span class="ip-rel-hver">' + escHtml(r.version) + '</span>'
-        + (multiChannel && r.channelName ? '<span class="ip-rel-hchan">' + escHtml(r.channelName) + '</span>' : '')
-        + '<span class="ip-rel-hage">' + escHtml(_relWhen(r.assembled)) + '</span>'
-        + (r.lag > 0 ? '<span class="ip-rel-hlag">' + r.lag + ' behind'
-            + (multiChannel ? ' in ' + escHtml(r.channelName) : '') + '</span>' : '')
-        + (!r.everDeployed ? '<span class="ip-rel-hnever">created, never deployed</span>' : '');
-      return '<div class="ip-rel-hrow' + (r.everDeployed ? '' : ' undeployed') + '">'
-        + '<div class="ip-rel-hmeta">' + meta + '</div>'
-        + '<div class="ip-rel-track" style="grid-template-columns:repeat(' + envCount + ',minmax(0,1fr))">' + cells + '</div>'
-        + '</div>';
-    }).join('');
-
+    const rows = m.releases.map(r => _relHistoryRow(r, cols, multiChannel)).join('');
     const notes = [];
-    if (m.windowed) notes.push('The most recent ' + m.historyCount + ' releases per channel. Older releases are not shown.');
+    if (m.hiddenByWindow) notes.push(m.hiddenByWindow + ' older ' + (m.hiddenByWindow === 1 ? 'release is' : 'releases are') + ' outside this window.');
+    if (m.windowed) notes.push('History reaches back ' + m.historyCount + ' releases per channel.');
     if (m.neverDeployedCount) notes.push(m.neverDeployedCount + ' of these were created and never deployed anywhere.');
 
-    return wrap({
-      side: '<span class="ip-rel-history-title">History</span>'
-        + '<span class="ip-rel-history-count">' + m.releases.length
-        + (m.releases.length === 1 ? ' release' : ' releases') + '</span>'
-        + (multiChannel ? '<span class="ip-rel-history-count">' + m.channels.length + ' channels</span>' : ''),
-      body: rows + (notes.length ? '<div class="ip-rel-hnote">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '')
-    });
-  }
-
-  function bindProjects(IP) {
-    const root = document.getElementById('main-content');
-    if (!root) return;
-    const toggle = el => {
-      const id = el.getAttribute('data-project');
-      if (!id) return;
-      IP.projectOpen = IP.projectOpen || {};
-      if (IP.projectOpen[id]) delete IP.projectOpen[id]; else IP.projectOpen[id] = true;
-      root.innerHTML = renderProjects(IP);
-      bindProjects(IP);
-      if (IP.projectOpen[id] && IP.loadProjectHistory) IP.loadProjectHistory(id);
-    };
-    root.querySelectorAll('.ip-rel-row[data-project]').forEach(el => {
-      el.addEventListener('click', () => toggle(el));
-      el.addEventListener('keydown', ev => {
-        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(el); }
-      });
-    });
+    return wrap(rows + (notes.length
+      ? '<div class="ip-rel-hnote">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : ''));
   }
 
   function renderProjects(IP) {
     const st = IP.releases || { status: 'idle' };
-    const head = '<header class="ip-head"><h2>Projects</h2>'
-      + '<p class="ip-sub">What each project is running in each environment, and where a release has stopped moving.</p></header>';
+    const windows = (typeof Data !== 'undefined' && Data.HISTORY_WINDOWS) || [{ label: '24 hours' }, { label: '7 days' }, { label: 'All' }];
+    const active = IP.historyWindow || windows[0].label;
+    const segs = windows.map(w => '<button class="ip-seg' + (w.label === active ? ' active' : '')
+      + '" data-window="' + escHtml(w.label) + '">' + escHtml(w.label) + '</button>').join('');
+    const head = '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Projects</h2>'
+      + '<p class="ip-sub">What each project is running in each environment, and where a release has stopped moving.</p></div>'
+      + '<div class="ip-rel-window"><span class="ip-caption">History</span><div class="ip-segs">' + segs + '</div></div></header>';
 
     if (st.status === 'loading' || st.status === 'idle') {
       return head + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading the project dashboard…</p></div>';
     }
     if (st.status === 'error') {
-      return head + '<div class="ip-state"><h3>Couldn\'t load the project dashboard</h3>'
-        + '<p>' + escHtml(st.error || 'Unknown error') + '</p></div>';
+      return head + '<div class="ip-state"><h3>Couldn\'t load the project dashboard</h3><p>' + escHtml(st.error || 'Unknown error') + '</p></div>';
     }
     const m = st.model;
     if (!m.projects.length) {
@@ -1155,48 +1138,36 @@ const Views = (function () {
         + '<p>Releases move through environments once a space has a project to deploy.</p></div>';
     }
     if (!m.environments.length) {
-      return head + '<div class="ip-empty"><h3>No environments in this space</h3>'
-        + '<p>There is nothing for a release to progress through yet.</p></div>';
+      return head + '<div class="ip-empty"><h3>Nothing has been deployed in this space</h3>'
+        + '<p>Projects exist, but no release has reached an environment yet.</p></div>';
     }
 
-    // The dashboard endpoint caps and filters. A capped list is
-    // indistinguishable from a small instance unless we say so.
     const notes = [];
     if (m.truncated.capped) notes.push('Showing ' + m.truncated.shown + ' projects — the server caps the dashboard at ' + m.truncated.projectLimit + '. Projects beyond the cap are missing from this view.');
     if (m.truncated.isFiltered) notes.push('The dashboard is filtered on this instance, so this is a subset of its projects.');
-    const note = notes.length
-      ? '<div class="ip-rel-note">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '';
+    const note = notes.length ? '<div class="ip-rel-note">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '';
 
     const open = IP.projectOpen || {};
     const hist = IP.projectHistory || {};
 
-    // One grid per project group. Each carries its own columns, because an
-    // environment is hidden where the group never deploys to it — a group that
-    // has nothing to do with Preprod shouldn't hold a column open for it.
     const blocks = (m.groups || []).map(g => {
       const cols = g.environments.length;
       if (!cols) {
-        return '<section class="ip-rel-group">'
-          + '<h3 class="ip-rel-group-name">' + escHtml(g.name) + '</h3>'
-          + '<p class="ip-rel-none">Nothing in this group has been deployed yet.</p></section>';
+        return '<section class="ip-rel-group"><h3 class="ip-rel-group-name">' + escHtml(g.name) + '</h3>'
+          + '<p class="ip-rel-hempty">Nothing in this group has been deployed yet.</p></section>';
       }
       const heads = g.environments.map(e => '<div class="ip-rel-envhead">' + escHtml(e.name) + '</div>').join('');
-      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id])).join('');
+      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id], active)).join('');
       const hiddenNote = g.hiddenEnvironments.length
         ? '<p class="ip-rel-hidden">Not shown, because this group has never deployed to them: '
-          + escHtml(g.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>'
-        : '';
+          + escHtml(g.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
       return '<section class="ip-rel-group">'
         + '<h3 class="ip-rel-group-name">' + escHtml(g.name)
-        +   '<span class="ip-rel-group-count">' + g.projects.length
-        +   (g.projects.length === 1 ? ' project' : ' projects') + '</span></h3>'
+        +   '<span class="ip-rel-group-count">' + g.projects.length + (g.projects.length === 1 ? ' project' : ' projects') + '</span></h3>'
         + '<div class="ip-rel-grid">'
-        +   '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>'
-        +     '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols + ',minmax(0,1fr))">' + heads + '</div></div>'
+        +   '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>' + _relTrack(heads, cols) + '</div>'
         +   rows
-        + '</div>'
-        + hiddenNote
-        + '</section>';
+        + '</div>' + hiddenNote + '</section>';
     }).join('');
 
     return head + note
@@ -1207,9 +1178,39 @@ const Views = (function () {
       +   '<span><i class="ip-rel-key ip-rel-key-split"></i>Split across tenants</span>'
       +   '<span><i class="ip-rel-key ip-rel-key-strong"></i>Same release both sides</span>'
       +   '<span><i class="ip-rel-key ip-rel-key-pale"></i>Drifted</span>'
-      + '</div>'
-      + blocks;
+      + '</div>' + blocks;
   }
+
+  function bindProjects(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    const redraw = () => { root.innerHTML = renderProjects(IP); bindProjects(IP); };
+    const toggle = el => {
+      const id = el.getAttribute('data-project');
+      if (!id) return;
+      IP.projectOpen = IP.projectOpen || {};
+      if (IP.projectOpen[id]) delete IP.projectOpen[id]; else IP.projectOpen[id] = true;
+      redraw();
+      if (IP.projectOpen[id] && IP.loadProjectHistory) IP.loadProjectHistory(id);
+    };
+    root.querySelectorAll('.ip-rel-row[data-project]').forEach(el => {
+      el.addEventListener('click', () => toggle(el));
+      el.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(el); }
+      });
+    });
+    // The window filters what was already fetched, so switching it never
+    // re-requests — the 30-per-channel payload is the ceiling either way.
+    root.querySelectorAll('.ip-rel-window [data-window]').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        IP.historyWindow = btn.getAttribute('data-window');
+        if (IP.rebuildHistories) IP.rebuildHistories();
+        redraw();
+      });
+    });
+  }
+
   function renderThemeToggle(IP) {
     const dark = IP.theme === 'dark';
     const icon = dark ? _sunSvg : _moonSvg;

@@ -67,27 +67,46 @@ const Router = (function () {
       // space. Keyed on spaceId so a switch can't leave the previous space's
       // releases on screen.
       const needed = !IP.releases || IP.releases.spaceId !== IP.spaceId;
-      if (needed) { IP.releases = { status: 'loading', spaceId: IP.spaceId }; IP.projectHistory = {}; IP.projectOpen = {}; }
+      if (needed) { IP.releases = { status: 'loading', spaceId: IP.spaceId }; IP.projectHistory = {}; IP.progressionRaw = {}; IP.projectOpen = {}; }
       el.innerHTML = Views.renderProjects(IP);
       Views.bindProjects && Views.bindProjects(IP);
       // Expanding a project fetches its release history once and keeps it for
       // the session. Re-render is driven from here so the view stays a pure
       // string builder.
+      // Columns come from the group the project sits in, not the estate-wide
+      // set, or an expanded row would not line up with the grid it opened from.
+      const gridFor = projectId => {
+        const model = IP.releases && IP.releases.model;
+        const group = model && (model.groups || []).find(g => g.projects.some(p => p.id === projectId));
+        return group ? group.environments : (model ? model.environments : []);
+      };
+      const windowHours = () => {
+        const label = IP.historyWindow || (Data.HISTORY_WINDOWS[0] && Data.HISTORY_WINDOWS[0].label);
+        const w = Data.HISTORY_WINDOWS.find(x => x.label === label);
+        return w ? w.hours : null;
+      };
+      // The raw payload is kept so changing the window re-filters what we
+      // already have instead of asking the server again.
+      IP.rebuildHistories = function () {
+        IP.progressionRaw = IP.progressionRaw || {};
+        IP.projectHistory = IP.projectHistory || {};
+        Object.keys(IP.progressionRaw).forEach(pid => {
+          IP.projectHistory[pid] = { status: 'ready',
+            model: Data.progressionModel(IP.progressionRaw[pid], gridFor(pid), windowHours()) };
+        });
+      };
       IP.loadProjectHistory = function (projectId) {
         IP.projectHistory = IP.projectHistory || {};
+        IP.progressionRaw = IP.progressionRaw || {};
         if (IP.projectHistory[projectId]) return;
         IP.projectHistory[projectId] = { status: 'loading' };
         const wantedSpace = IP.spaceId;
         Data.fetchProgression(wantedSpace, projectId)
           .then(prog => {
             if (IP.spaceId !== wantedSpace) return;
-            // Align the history to the columns of the group this project sits
-            // in, not the estate-wide set, or an expanded row would not line up
-            // with the grid it opened from.
-            const model = IP.releases && IP.releases.model;
-            const group = model && (model.groups || []).find(g => g.projects.some(p => p.id === projectId));
-            const grid = group ? group.environments : (model ? model.environments : []);
-            IP.projectHistory[projectId] = { status: 'ready', model: Data.progressionModel(prog, grid) };
+            IP.progressionRaw[projectId] = prog;
+            IP.projectHistory[projectId] = { status: 'ready',
+              model: Data.progressionModel(prog, gridFor(projectId), windowHours()) };
             render();
           })
           .catch(e => {

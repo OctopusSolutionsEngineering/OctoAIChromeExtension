@@ -732,7 +732,13 @@ async function fetchProgression(spaceId, projectId) {
     + '?releaseHistoryCount=' + PROGRESSION_HISTORY);
 }
 
-function progressionModel(prog, gridEnvironments) {
+const HISTORY_WINDOWS = [
+  { label: '24 hours', hours: 24 },
+  { label: '7 days', hours: 24 * 7 },
+  { label: 'All', hours: null }
+];
+
+function progressionModel(prog, gridEnvironments, windowHours, now) {
   const p = prog || {};
   // Columns come from the grid, not from this payload, so an expanded row lines
   // up with the collapsed one above it.
@@ -780,17 +786,31 @@ function progressionModel(prog, gridEnvironments) {
     };
   });
 
+  // A release is in the window if it was created in it or moved in it. A release
+  // cut a month ago and promoted to Production this morning is this morning's
+  // news, and filtering on creation alone would hide it.
+  const cutoff = windowHours ? (now || Date.now()) - windowHours * 3600 * 1000 : null;
+  const latestTouch = r => {
+    let t = r.assembled ? Date.parse(r.assembled) : 0;
+    r.cells.forEach(c => { if (c.when) { const w = Date.parse(c.when); if (w > t) t = w; } });
+    return t;
+  };
+  const all = releases;
+  const shown = cutoff == null ? all : all.filter(r => latestTouch(r) >= cutoff);
+
   const channels = [];
-  releases.forEach(r => { if (r.channelName && channels.indexOf(r.channelName) === -1) channels.push(r.channelName); });
+  shown.forEach(r => { if (r.channelName && channels.indexOf(r.channelName) === -1) channels.push(r.channelName); });
 
   return {
     environments: envs,
-    releases: releases,
+    releases: shown,
+    totalReleases: all.length,
+    hiddenByWindow: all.length - shown.length,
     channels: channels,
-    neverDeployedCount: releases.filter(r => !r.everDeployed).length,
+    neverDeployedCount: shown.filter(r => !r.everDeployed).length,
     // The server caps history. Say when we are probably looking at a window
     // rather than the whole story.
-    windowed: releases.length >= PROGRESSION_HISTORY,
+    windowed: all.length >= PROGRESSION_HISTORY,
     historyCount: PROGRESSION_HISTORY
   };
 }
@@ -800,7 +820,7 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel,
   fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
-  fetchProgression, progressionModel }; }
+  fetchProgression, progressionModel, HISTORY_WINDOWS }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -809,5 +829,5 @@ if (typeof module !== 'undefined') {
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel,
     fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
-    fetchProgression, progressionModel };
+    fetchProgression, progressionModel, HISTORY_WINDOWS };
 }
