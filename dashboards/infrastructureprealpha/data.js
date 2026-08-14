@@ -554,15 +554,138 @@ function applyFilters(targets, filters, search) {
   });
 }
 
+
+// ─── Releases ────────────────────────────────────────────────────────────────
+// "What is running in each environment" is one request. The project dashboard
+// returns every deployment the server considers current, one item per
+// project/environment/tenant — so an untenanted project yields a single item in
+// an environment and a tenanted one yields several, which is how a part-way
+// rollout shows two releases living in Production at once.
+//
+// It is fetched on first visit to the section rather than during boot. Boot
+// already costs six requests per space, and someone who never opens Releases
+// should not pay for it.
+
+async function fetchDashboard(spaceId) {
+  return fetchJson('/api/' + spaceId + '/dashboard');
+}
+
+// Task states collapse to the four outcomes worth drawing differently. Queued
+// and Executing are both "in flight" to a reader; Canceled and TimedOut are
+// their own thing and are deliberately not folded into failed, because a
+// deployment someone stopped is a different fact from one that broke.
+function releaseStateKey(state) {
+  if (state === 'Success') return 'success';
+  if (state === 'Executing' || state === 'Queued') return 'running';
+  if (state === 'Failed') return 'failed';
+  if (state === 'TimedOut') return 'timedout';
+  if (state === 'Canceled' || state === 'Cancelled') return 'cancelled';
+  return 'unknown';
+}
+function releaseStateLabel(key) {
+  if (key === 'success') return 'Succeeded';
+  if (key === 'running') return 'In progress';
+  if (key === 'failed') return 'Failed';
+  if (key === 'timedout') return 'Timed out';
+  if (key === 'cancelled') return 'Cancelled';
+  return 'Unknown';
+}
+
+// A boundary between two environments is strong when they hold a release in
+// common — the change has flowed through — and pale when they hold different
+// ones. Either side being empty means there is nothing to compare, so no line
+// is drawn at all rather than a line implying a relationship.
+function linkTone(prevVersions, versions) {
+  if (!prevVersions.length || !versions.length) return 'none';
+  return prevVersions.some(v => versions.indexOf(v) !== -1) ? 'strong' : 'pale';
+}
+
+function releasesModel(dash) {
+  const d = dash || {};
+  const environments = (d.Environments || []).map(e => ({ id: e.Id, name: e.Name }));
+  const tenantNames = {};
+  (d.Tenants || []).forEach(t => { tenantNames[t.Id] = t.Name; });
+  const groupNames = {};
+  (d.ProjectGroups || []).forEach(g => { groupNames[g.Id] = g.Name; });
+
+  // project id -> env id -> version -> aggregate
+  const byProject = {};
+  (d.Items || []).forEach(item => {
+    if (!item || !item.IsCurrent) return;
+    const pid = item.ProjectId, eid = item.EnvironmentId, ver = item.ReleaseVersion;
+    if (!pid || !eid || ver == null) return;
+    const envs = byProject[pid] || (byProject[pid] = {});
+    const vers = envs[eid] || (envs[eid] = {});
+    const when = item.CompletedTime || item.StartTime || item.QueueTime || item.Created || null;
+    const agg = vers[ver] || (vers[ver] = { version: ver, stateKey: null, when: null, tenants: [] });
+    // Most recent item wins the state, so an environment mid-redeploy reads as
+    // in progress rather than showing whichever item happened to come first.
+    if (!agg.when || (when && when > agg.when)) { agg.when = when; agg.stateKey = releaseStateKey(item.State); }
+    if (!agg.stateKey) agg.stateKey = releaseStateKey(item.State);
+    if (item.TenantId) agg.tenants.push(item.TenantId);
+  });
+
+  const projects = (d.Projects || []).map(p => {
+    const envMap = byProject[p.Id] || {};
+    const cells = environments.map(env => {
+      const vers = envMap[env.id] || {};
+      const entries = Object.keys(vers).map(v => {
+        const a = vers[v];
+        return {
+          version: a.version,
+          stateKey: a.stateKey || 'unknown',
+          stateLabel: releaseStateLabel(a.stateKey || 'unknown'),
+          when: a.when,
+          tenantCount: a.tenants.length,
+          tenantNames: a.tenants.map(id => tenantNames[id] || id)
+        };
+      }).sort((x, y) => String(y.when || '').localeCompare(String(x.when || '')));
+      // A tenanted project can have dozens of releases live in one environment at
+      // once — 41 in one cell on Cloud Platform. The cell reports the spread so
+      // the view can name the newest and summarise the rest instead of stacking
+      // forty labels into a column.
+      const tenantTotal = entries.reduce((n, e) => n + e.tenantCount, 0);
+      return {
+        envId: env.id, envName: env.name, entries: entries,
+        versionCount: entries.length, tenantTotal: tenantTotal
+      };
+    });
+    const links = cells.map((c, i) =>
+      i === 0 ? null : linkTone(cells[i - 1].entries.map(e => e.version), c.entries.map(e => e.version)));
+    const deployed = cells.reduce((n, c) => n + (c.entries.length ? 1 : 0), 0);
+    return {
+      id: p.Id, name: p.Name, slug: p.Slug,
+      groupId: p.ProjectGroupId, groupName: groupNames[p.ProjectGroupId] || '',
+      cells: cells, links: links, deployedCount: deployed
+    };
+  }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  // The server caps how many projects the dashboard returns. Reporting the cap
+  // matters more here than elsewhere: a capped list looks exactly like a small
+  // instance, and someone reading "3 projects" has no way to tell which it is.
+  return {
+    environments: environments,
+    projects: projects,
+    truncated: {
+      projectLimit: typeof d.ProjectLimit === 'number' ? d.ProjectLimit : null,
+      isFiltered: !!d.IsFiltered,
+      shown: projects.length,
+      capped: typeof d.ProjectLimit === 'number' && projects.length >= d.ProjectLimit
+    }
+  };
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
-  vkey, majorVersion, versionBand, deriveLatest, agentsModel }; }
+  vkey, majorVersion, versionBand, deriveLatest, agentsModel,
+  fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
     healthLabel, healthKey, healthKeyLabel, commLabel, kindLabel, typeGroup, envCat, extractVersion, osLabel, osVersionLabel,
     machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
-    vkey, majorVersion, versionBand, deriveLatest, agentsModel };
+    vkey, majorVersion, versionBand, deriveLatest, agentsModel,
+    fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone };
 }

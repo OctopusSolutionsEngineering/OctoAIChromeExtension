@@ -483,3 +483,79 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-btn-secondary{background:transparent;color:var(--ring);border:1px solid var(--ring)}
 .ip-env-cell:focus-visible,.ip-heat:focus-visible{outline:none;box-shadow:var(--shadow-focus);position:relative;z-index:1}
 .ip-ev-who{color:var(--fg2);white-space:nowrap;text-align:right}
+
+/* ── Releases ───────────────────────────────────────────────────────────────
+   Environments are columns and each project is one line across them. The
+   segment between two columns carries the reading: solid where both hold the
+   same release, faded where they have drifted. Colour is backed by node shape
+   and a written state, because a green/red pair alone failed a deuteranopia
+   check earlier in this series. */
+.ip-rel-note { margin: 0 0 14px; padding: 10px 12px; border-left: 3px solid var(--color-blue-400);
+  background: var(--color-blue-100); border-radius: 4px; }
+.ip-rel-note p { margin: 0; font-size: 12px; color: var(--color-navy-700); }
+.ip-rel-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 12px;
+  font-size: 11px; color: var(--color-grey-700); }
+.ip-rel-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ip-rel-key { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.ip-rel-key-healthy { background: var(--color-green-500); }
+.ip-rel-key-running { background: var(--color-blue-500); }
+.ip-rel-key-unhealthy { background: var(--color-red-500); }
+.ip-rel-key-split { background: transparent; border: 2px solid var(--color-green-500); }
+.ip-rel-key-strong { width: 22px; height: 2px; border-radius: 2px; background: var(--color-green-500); }
+.ip-rel-key-pale { width: 22px; height: 2px; border-radius: 2px; background: var(--color-green-200); }
+
+.ip-rel-grid { border: 1px solid var(--color-grey-300); border-radius: 6px; overflow: hidden; }
+.ip-rel-head, .ip-rel-row { display: flex; align-items: stretch; }
+.ip-rel-head { background: var(--color-grey-100); border-bottom: 1px solid var(--color-grey-300); }
+.ip-rel-row { border-bottom: 1px solid var(--color-grey-200); }
+.ip-rel-row:last-child { border-bottom: 0; }
+.ip-rel-proj { width: 220px; flex: 0 0 220px; padding: 12px 14px; display: flex; flex-direction: column;
+  justify-content: center; gap: 2px; border-right: 1px solid var(--color-grey-200); }
+.ip-rel-head .ip-rel-proj { font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--color-grey-700); }
+.ip-rel-proj-name { font-size: 13px; font-weight: 600; color: var(--color-navy-900); }
+.ip-rel-proj-group { font-size: 11px; color: var(--color-grey-600); }
+.ip-rel-track { flex: 1 1 auto; display: grid; }
+.ip-rel-envhead { padding: 10px 8px; text-align: center; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--color-grey-700); }
+
+.ip-rel-cell { position: relative; padding: 12px 8px 12px; display: flex; flex-direction: column;
+  align-items: center; gap: 6px; min-width: 0; }
+/* Reaches back to the previous column's centre; equal columns make that one cell wide. */
+.ip-rel-seg { position: absolute; top: 20px; right: 50%; width: 100%; height: 2px; border-radius: 2px; }
+.ip-rel-seg-strong { background: var(--color-green-500); }
+.ip-rel-seg-pale { background: var(--color-green-200); }
+.ip-rel-node { position: relative; z-index: 1; width: 16px; height: 16px; border-radius: 50%;
+  display: block; flex: 0 0 auto; }
+.ip-rel-node-healthy { background: var(--color-green-500); }
+.ip-rel-node-running { background: var(--color-blue-500); }
+.ip-rel-node-unhealthy { background: var(--color-red-500); }
+.ip-rel-node-disabled { background: var(--color-slate-300); }
+/* A tenant split leaves two releases live at once — drawn as a ring so the
+   difference reads without relying on the label underneath. */
+.ip-rel-node-split { background: transparent; box-shadow: inset 0 0 0 3px var(--color-green-500); }
+.ip-rel-node-empty { background: transparent; box-shadow: inset 0 0 0 2px var(--color-grey-300);
+  width: 10px; height: 10px; }
+.ip-rel-labels { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.ip-rel-entry { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 5px; }
+.ip-rel-ver { font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 600;
+  color: var(--color-navy-900); word-break: break-all; }
+.ip-rel-age { font-size: 11px; color: var(--color-grey-600); }
+.ip-rel-none { font-size: 11px; color: var(--color-grey-500); }
+.ip-rel-tenants { font-size: 10px; padding: 1px 5px; border-radius: 3px;
+  background: var(--color-blue-100); color: var(--color-blue-700); }
+.ip-rel-state { font-size: 10px; padding: 1px 5px; border-radius: 3px; }
+.ip-rel-state-failed, .ip-rel-state-timedout { background: var(--color-red-100); color: var(--color-red-700); }
+.ip-rel-state-running { background: var(--color-blue-100); color: var(--color-blue-700); }
+.ip-rel-state-cancelled, .ip-rel-state-unknown { background: var(--color-grey-200); color: var(--color-grey-700); }
+
+.dark .ip-rel-note { background: rgba(26,119,202,.14); }
+.dark .ip-rel-note p { color: var(--color-grey-200); }
+.dark .ip-rel-grid { border-color: var(--color-navy-600); }
+.dark .ip-rel-head { background: var(--color-navy-800); border-bottom-color: var(--color-navy-600); }
+.dark .ip-rel-row { border-bottom-color: var(--color-navy-700); }
+.dark .ip-rel-proj { border-right-color: var(--color-navy-700); }
+.dark .ip-rel-proj-name, .dark .ip-rel-ver { color: var(--color-grey-100); }
+.dark .ip-rel-node-empty { box-shadow: inset 0 0 0 2px var(--color-navy-500); }
+.ip-rel-more { font-size: 10px; color: var(--color-grey-600); }
+.dark .ip-rel-more { color: var(--color-grey-400); }

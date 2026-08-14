@@ -1221,15 +1221,19 @@ describe('overview ring segments unhealthy in red', () => {
   });
 });
 
-describe('sidebar is down to Paul\'s five items', () => {
+// Paul's five-item sidebar (28 Jul walkthrough) gained a sixth on 14 Aug when
+// Releases was added. That reopens a decision Paul made, so the count is
+// asserted explicitly rather than loosely — if someone adds a seventh without
+// a conversation, this fails and the conversation happens.
+describe('sidebar composition', () => {
   const fs = require('fs');
   const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
   const items = [...html.matchAll(/class="ip-nav-item" data-view="([^"]+)">([^<]+)</g)]
     .map(m => ({ view:m[1], label:m[2] }));
 
-  test('five nav items, in the order Paul proposed', () => {
+  test('Paul\'s five, in his order, with Releases appended', () => {
     expect(items.map(i => i.view)).toEqual(
-      ['overview','targets','environments','workers','argocd']);
+      ['overview','targets','environments','workers','argocd','releases']);
   });
 
   test('Machine Policies and Deployment Agents are no longer nav destinations', () => {
@@ -1247,5 +1251,156 @@ describe('sidebar is down to Paul\'s five items', () => {
     // agent-versions pill still links straight to #agents
     expect(views).toContain("'agents'");
     expect(views).toContain("'machinepolicies'");
+  });
+});
+
+describe('Releases — state mapping', () => {
+  const data = require('./data');
+  test('queued and executing both read as in flight', () => {
+    expect(data.releaseStateKey('Queued')).toBe('running');
+    expect(data.releaseStateKey('Executing')).toBe('running');
+  });
+  test('cancelled and timed out stay distinct from failed', () => {
+    expect(data.releaseStateKey('Failed')).toBe('failed');
+    expect(data.releaseStateKey('TimedOut')).toBe('timedout');
+    expect(data.releaseStateKey('Canceled')).toBe('cancelled');
+  });
+  test('an unrecognised state degrades to unknown rather than success', () => {
+    expect(data.releaseStateKey('Something')).toBe('unknown');
+    expect(data.releaseStateKey(undefined)).toBe('unknown');
+  });
+});
+
+describe('Releases — link tone between environments', () => {
+  const data = require('./data');
+  test('a shared release reads as strong', () => {
+    expect(data.linkTone(['9.1'], ['9.1'])).toBe('strong');
+    expect(data.linkTone(['9.1', '9.0'], ['9.0'])).toBe('strong');
+  });
+  test('different releases read as drifted', () => {
+    expect(data.linkTone(['9.3'], ['9.1'])).toBe('pale');
+  });
+  test('an empty side draws no line at all', () => {
+    expect(data.linkTone([], ['9.1'])).toBe('none');
+    expect(data.linkTone(['9.1'], [])).toBe('none');
+  });
+});
+
+describe('Releases — model', () => {
+  const data = require('./data');
+  const base = {
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Test' }, { Id: 'E3', Name: 'Prod' }],
+    Projects: [{ Id: 'P1', Name: 'Portal', Slug: 'portal', ProjectGroupId: 'G1' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud Platform' }],
+    Tenants: [{ Id: 'T1', Name: 'Acme' }, { Id: 'T2', Name: 'Globex' }],
+    ProjectLimit: 200,
+    IsFiltered: false,
+    Items: []
+  };
+  const withItems = items => Object.assign({}, base, { Items: items });
+
+  test('an empty payload yields no projects and does not throw', () => {
+    const m = data.releasesModel({});
+    expect(m.projects).toEqual([]);
+    expect(m.environments).toEqual([]);
+  });
+
+  test('only current deployments are counted', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: false, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '8.0', State: 'Success' }
+    ]));
+    expect(m.projects[0].cells[0].entries.map(e => e.version)).toEqual(['9.3']);
+  });
+
+  test('a tenant split leaves two releases live in one environment', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '9.1', State: 'Success', TenantId: 'T1', CompletedTime: '2026-08-14T02:00:00Z' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '9.0', State: 'Success', TenantId: 'T2', CompletedTime: '2026-08-12T02:00:00Z' }
+    ]));
+    const prod = m.projects[0].cells[2].entries;
+    expect(prod.map(e => e.version)).toEqual(['9.1', '9.0']);
+    expect(prod[0].tenantCount).toBe(1);
+    expect(prod[0].tenantNames).toEqual(['Acme']);
+  });
+
+  test('the most recent deployment decides the environment state', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success', CompletedTime: '2026-08-14T01:00:00Z' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Executing', CompletedTime: '2026-08-14T03:00:00Z' }
+    ]));
+    expect(m.projects[0].cells[0].entries[0].stateKey).toBe('running');
+  });
+
+  test('links describe drift across the row', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '9.1', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '9.1', State: 'Success' }
+    ]));
+    expect(m.projects[0].links).toEqual([null, 'pale', 'strong']);
+  });
+
+  test('an environment with nothing deployed keeps its place in the row', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }
+    ]));
+    expect(m.projects[0].cells).toHaveLength(3);
+    expect(m.projects[0].cells[1].entries).toEqual([]);
+    expect(m.projects[0].links[1]).toBe('none');
+  });
+
+  test('a capped project list is reported, not silently truncated', () => {
+    const capped = Object.assign({}, base, {
+      ProjectLimit: 1,
+      Projects: [{ Id: 'P1', Name: 'Portal' }],
+      Items: []
+    });
+    expect(data.releasesModel(capped).truncated.capped).toBe(true);
+    expect(data.releasesModel(base).truncated.capped).toBe(false);
+  });
+
+  test('a filtered dashboard is reported', () => {
+    const filtered = Object.assign({}, base, { IsFiltered: true });
+    expect(data.releasesModel(filtered).truncated.isFiltered).toBe(true);
+  });
+
+  test('projects are ordered by name', () => {
+    const two = Object.assign({}, base, {
+      Projects: [{ Id: 'P2', Name: 'Zebra' }, { Id: 'P1', Name: 'Alpha' }]
+    });
+    expect(data.releasesModel(two).projects.map(p => p.name)).toEqual(['Alpha', 'Zebra']);
+  });
+});
+
+describe('Releases — many releases live in one environment', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  // Cloud Platform has a cell holding 41 distinct versions across its tenants.
+  const many = {
+    Environments: [{ Id: 'E1', Name: 'Production' }],
+    Projects: [{ Id: 'P1', Name: 'Tenanted' }],
+    Tenants: Array.from({ length: 41 }, (_, i) => ({ Id: 'T' + i, Name: 'Tenant ' + i })),
+    Items: Array.from({ length: 41 }, (_, i) => ({
+      IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1',
+      ReleaseVersion: '1.' + i, State: 'Success', TenantId: 'T' + i,
+      CompletedTime: '2026-08-' + String(10 + (i % 4)).padStart(2, '0') + 'T00:00:00Z'
+    }))
+  };
+  test('the model keeps every version and reports the spread', () => {
+    const cell = data.releasesModel(many).projects[0].cells[0];
+    expect(cell.versionCount).toBe(41);
+    expect(cell.tenantTotal).toBe(41);
+  });
+  test('the view names a few and summarises the rest', () => {
+    const html = Views.renderReleases({ releases: { status: 'ready', model: data.releasesModel(many) } });
+    expect(html).toContain('more releases across 41 tenants');
+    // Three named, not forty-one.
+    expect((html.match(/ip-rel-ver/g) || []).length).toBe(3);
+  });
+  test('a single release needs no summary line', () => {
+    const one = Object.assign({}, many, { Items: many.Items.slice(0, 1) });
+    const html = Views.renderReleases({ releases: { status: 'ready', model: data.releasesModel(one) } });
+    expect(html).not.toContain('ip-rel-more');
   });
 });

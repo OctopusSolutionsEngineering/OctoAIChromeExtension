@@ -988,6 +988,120 @@ const Views = (function () {
   const _moonSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" '
     + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+
+  // ─── Releases ──────────────────────────────────────────────────────────────
+  // One line per project across the environments: what each is running now.
+  // A segment is drawn strong where two environments hold a release in common
+  // and pale where they have drifted, so the eye finds the break rather than
+  // reading four version strings and comparing them.
+  const REL_STATE_TONE = { success:'healthy', failed:'unhealthy', timedout:'unhealthy', cancelled:'disabled', running:'running', unknown:'disabled' };
+
+  function _relWhen(iso) {
+    if (!iso) return '';
+    const then = Date.parse(iso);
+    if (isNaN(then)) return '';
+    const mins = Math.round((Date.now() - then) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return hours + 'h ago';
+    return Math.round(hours / 24) + 'd ago';
+  }
+
+  function _relCell(cell, link) {
+    const seg = link && link !== 'none'
+      ? '<span class="ip-rel-seg ip-rel-seg-' + escHtml(link) + '"></span>' : '';
+    if (!cell.entries.length) {
+      return '<div class="ip-rel-cell">' + seg
+        + '<span class="ip-rel-node ip-rel-node-empty" title="Never deployed"></span>'
+        + '<div class="ip-rel-labels"><span class="ip-rel-none">Never deployed</span></div></div>';
+    }
+    const head = cell.entries[0];
+    const split = cell.entries.length > 1;
+    const node = '<span class="ip-rel-node ip-rel-node-' + escHtml(REL_STATE_TONE[head.stateKey] || 'disabled')
+      + (split ? ' ip-rel-node-split' : '') + '" title="' + escHtml(head.stateLabel + ' in ' + cell.envName) + '"></span>';
+    // Cap the stack. Beyond a few, the useful facts are the newest release and
+    // how far the estate is spread, not forty version strings.
+    const REL_MAX_ENTRIES = 3;
+    const shown = cell.entries.slice(0, REL_MAX_ENTRIES);
+    const hidden = cell.entries.length - shown.length;
+    const labels = shown.map(e =>
+      '<span class="ip-rel-entry">'
+      + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
+      + '<span class="ip-rel-age">' + escHtml(_relWhen(e.when)) + '</span>'
+      + (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml(e.tenantCount + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : '')
+      + (e.stateKey !== 'success' ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">' + escHtml(e.stateLabel) + '</span>' : '')
+      + '</span>').join('');
+    const more = hidden > 0
+      ? '<span class="ip-rel-more">+' + hidden + ' more '
+        + (hidden === 1 ? 'release' : 'releases')
+        + (cell.tenantTotal ? ' across ' + cell.tenantTotal + (cell.tenantTotal === 1 ? ' tenant' : ' tenants') : '')
+        + '</span>'
+      : '';
+    return '<div class="ip-rel-cell">' + seg + node + '<div class="ip-rel-labels">' + labels + more + '</div></div>';
+  }
+
+  function _relRow(proj, envCount) {
+    const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i])).join('');
+    return '<div class="ip-rel-row">'
+      + '<div class="ip-rel-proj">'
+      +   '<span class="ip-rel-proj-name">' + escHtml(proj.name) + '</span>'
+      +   (proj.groupName ? '<span class="ip-rel-proj-group">' + escHtml(proj.groupName) + '</span>' : '')
+      + '</div>'
+      + '<div class="ip-rel-track" style="grid-template-columns:repeat(' + envCount + ',minmax(0,1fr))">' + cells + '</div>'
+      + '</div>';
+  }
+
+  function renderReleases(IP) {
+    const st = IP.releases || { status: 'idle' };
+    const head = '<header class="ip-head"><h2>Releases</h2>'
+      + '<p class="ip-sub">What each project is running in each environment, and where a release has stopped moving.</p></header>';
+
+    if (st.status === 'loading' || st.status === 'idle') {
+      return head + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading the project dashboard…</p></div>';
+    }
+    if (st.status === 'error') {
+      return head + '<div class="ip-state"><h3>Couldn\'t load the project dashboard</h3>'
+        + '<p>' + escHtml(st.error || 'Unknown error') + '</p></div>';
+    }
+    const m = st.model;
+    if (!m.projects.length) {
+      return head + '<div class="ip-empty"><h3>No projects in this space</h3>'
+        + '<p>Releases move through environments once a space has a project to deploy.</p></div>';
+    }
+    if (!m.environments.length) {
+      return head + '<div class="ip-empty"><h3>No environments in this space</h3>'
+        + '<p>There is nothing for a release to progress through yet.</p></div>';
+    }
+
+    // The dashboard endpoint caps and filters. A capped list is
+    // indistinguishable from a small instance unless we say so.
+    const notes = [];
+    if (m.truncated.capped) notes.push('Showing ' + m.truncated.shown + ' projects — the server caps the dashboard at ' + m.truncated.projectLimit + '. Projects beyond the cap are missing from this view.');
+    if (m.truncated.isFiltered) notes.push('The dashboard is filtered on this instance, so this is a subset of its projects.');
+    const note = notes.length
+      ? '<div class="ip-rel-note">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '';
+
+    const cols = m.environments.length;
+    const heads = m.environments.map(e => '<div class="ip-rel-envhead">' + escHtml(e.name) + '</div>').join('');
+    const rows = m.projects.map(p => _relRow(p, cols)).join('');
+
+    return head + note
+      + '<div class="ip-rel-legend">'
+      +   '<span><i class="ip-rel-key ip-rel-key-healthy"></i>Deployed</span>'
+      +   '<span><i class="ip-rel-key ip-rel-key-running"></i>In progress</span>'
+      +   '<span><i class="ip-rel-key ip-rel-key-unhealthy"></i>Failed or timed out</span>'
+      +   '<span><i class="ip-rel-key ip-rel-key-split"></i>Split across tenants</span>'
+      +   '<span><i class="ip-rel-key ip-rel-key-strong"></i>Same release both sides</span>'
+      +   '<span><i class="ip-rel-key ip-rel-key-pale"></i>Drifted</span>'
+      + '</div>'
+      + '<div class="ip-rel-grid">'
+      +   '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>'
+      +     '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols + ',minmax(0,1fr))">' + heads + '</div></div>'
+      +   rows
+      + '</div>';
+  }
+
   function renderThemeToggle(IP) {
     const dark = IP.theme === 'dark';
     const icon = dark ? _sunSvg : _moonSvg;
@@ -1038,7 +1152,7 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderReleases, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,
