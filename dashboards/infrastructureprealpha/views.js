@@ -1016,7 +1016,32 @@ const Views = (function () {
     return Math.round(hours / 24) + 'd ago';
   }
 
-  function _relCell(cell, link) {
+  // An environment holding several releases is a tenant rollout part-way
+  // through. Each entry carries a share bar so the split reads at a glance, and
+  // the cell shows a few of them contracted and every one of them expanded —
+  // the detail lives with the environment it describes rather than in a
+  // separate panel that repeats the column headings.
+  function _relEntry(e, cell, withBar) {
+    const share = cell.tenantTotal ? (e.tenantCount / cell.tenantTotal * 100) : 0;
+    return '<span class="ip-rel-entry">'
+      + '<span class="ip-rel-entry-head">'
+      +   '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
+      +   '<span class="ip-rel-age">' + escHtml(_relWhen(e.when)) + '</span>'
+      + '</span>'
+      + (withBar
+          ? '<span class="ip-rel-tsbar" title="' + escHtml(e.tenantCount.toLocaleString() + ' of '
+              + cell.tenantTotal.toLocaleString() + ' tenants')
+            + '"><span style="width:' + share.toFixed(1) + '%"></span></span>'
+            + '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString()
+            + (e.tenantCount === 1 ? ' tenant' : ' tenants') + '</span>'
+          : (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml('· ' + e.tenantCount
+              + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : ''))
+      + (e.stateKey !== 'success'
+          ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">' + escHtml(e.stateLabel) + '</span>' : '')
+      + '</span>';
+  }
+
+  function _relCell(cell, link, expanded) {
     const seg = link && link !== 'none' ? '<span class="ip-rel-seg ip-rel-seg-' + escHtml(link) + '"></span>' : '';
     if (!cell.entries.length) {
       return '<div class="ip-rel-cell">' + seg
@@ -1025,27 +1050,33 @@ const Views = (function () {
     }
     const head = cell.entries[0];
     const split = cell.entries.length > 1;
+    const withBar = split && cell.tenantTotal > 0;
     const node = '<span class="ip-rel-node ip-rel-node-' + escHtml(REL_STATE_TONE[head.stateKey] || 'disabled')
       + (split ? ' ip-rel-node-split' : '') + '" title="' + escHtml(head.stateLabel + ' in ' + cell.envName) + '"></span>';
-    const MAX = 3;
-    const shown = cell.entries.slice(0, MAX);
+
+    // Contracted shows the leading few. Expanded shows the lot, capped only
+    // where a list would stop being readable at all.
+    const CAP = expanded ? 25 : 3;
+    const shown = cell.entries.slice(0, CAP);
     const hidden = cell.entries.length - shown.length;
-    const labels = shown.map(e =>
-      '<span class="ip-rel-entry">'
-      + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
-      + '<span class="ip-rel-age">' + escHtml(_relWhen(e.when)) + '</span>'
-      + (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml('· ' + e.tenantCount + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : '')
-      + (e.stateKey !== 'success' ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">' + escHtml(e.stateLabel) + '</span>' : '')
-      + '</span>').join('');
+    const hiddenTenants = cell.entries.slice(CAP).reduce((n, e) => n + e.tenantCount, 0);
+
+    const labels = shown.map(e => _relEntry(e, cell, withBar)).join('');
+    const summary = withBar && expanded
+      ? '<span class="ip-rel-tssum">' + cell.versionCount + ' releases · '
+        + cell.tenantTotal.toLocaleString() + (cell.tenantTotal === 1 ? ' tenant' : ' tenants') + '</span>'
+      : '';
     const more = hidden > 0
       ? '<span class="ip-rel-more">+' + hidden + ' more ' + (hidden === 1 ? 'release' : 'releases')
-        + (cell.tenantTotal ? ' across ' + cell.tenantTotal + (cell.tenantTotal === 1 ? ' tenant' : ' tenants') : '') + '</span>'
+        + (hiddenTenants ? ' on ' + hiddenTenants.toLocaleString() + (hiddenTenants === 1 ? ' tenant' : ' tenants') : '')
+        + '</span>'
       : '';
-    return '<div class="ip-rel-cell">' + seg + node + '<div class="ip-rel-labels">' + labels + more + '</div></div>';
+    return '<div class="ip-rel-cell' + (withBar ? ' has-split' : '') + '">' + seg + node
+      + '<div class="ip-rel-labels">' + summary + labels + more + '</div></div>';
   }
 
   function _relRow(proj, cols, expanded, history, windowLabel) {
-    const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i])).join('');
+    const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i], expanded)).join('');
     const row = '<div class="ip-rel-row' + (expanded ? ' expanded' : '') + '" role="button" tabindex="0"'
       + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
       + '<div class="ip-rel-proj">'
@@ -1090,62 +1121,13 @@ const Views = (function () {
     return '<div class="ip-rel-hrow' + (r.everDeployed ? '' : ' undeployed') + '">' + _relTrack(cells, cols) + '</div>';
   }
 
-  // Where a tenant rollout is part-way through, an environment holds several
-  // releases at once. The collapsed cell can only say how many; this names them,
-  // in the environment's own column so it reads against the row above rather
-  // than as a separate list.
-  //
-  // The counts come from the dashboard payload — /progression returns one
-  // deployment per environment and carries no tenant detail at all.
-  function _relTenantSpread(proj, cols) {
-    const cells = proj.cells || [];
-    if (!cells.some(c => c.versionCount > 1 && c.tenantTotal > 0)) return '';
-    const MAX = 6;
-
-    const body = cells.map(c => {
-      if (!c.tenantTotal) return '<div class="ip-rel-tscell"></div>';
-      if (c.versionCount <= 1) {
-        return '<div class="ip-rel-tscell"><span class="ip-rel-tsall">All '
-          + c.tenantTotal.toLocaleString() + (c.tenantTotal === 1 ? ' tenant' : ' tenants')
-          + ' on one release</span></div>';
-      }
-      const shown = c.entries.slice(0, MAX);
-      const rest = c.entries.length - shown.length;
-      const restTenants = c.entries.slice(MAX).reduce((n, e) => n + e.tenantCount, 0);
-      const rows = shown.map(e => {
-        const share = c.tenantTotal ? (e.tenantCount / c.tenantTotal * 100) : 0;
-        return '<div class="ip-rel-tsentry">'
-          + '<span class="ip-rel-tshead">'
-          +   '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
-          +   '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString() + '</span>'
-          + '</span>'
-          + '<span class="ip-rel-tsbar" title="' + escHtml(e.tenantCount + ' of ' + c.tenantTotal + ' tenants')
-          +   '"><span style="width:' + share.toFixed(1) + '%"></span></span>'
-          + '</div>';
-      }).join('');
-      const more = rest > 0
-        ? '<span class="ip-rel-tsmore">+' + rest + ' more on ' + restTenants.toLocaleString()
-          + (restTenants === 1 ? ' tenant' : ' tenants') + '</span>' : '';
-      return '<div class="ip-rel-tscell">'
-        + '<span class="ip-rel-tssum">' + c.versionCount + ' releases · '
-        +   c.tenantTotal.toLocaleString() + (c.tenantTotal === 1 ? ' tenant' : ' tenants') + '</span>'
-        + rows + more + '</div>';
-    }).join('');
-
-    return '<div class="ip-rel-tsblock">'
-      + '<p class="ip-rel-tscaption">Tenant split</p>'
-      + _relTrack(body, cols)
-      + '</div>';
-  }
-
   function _relHistory(proj, cols, history, windowLabel) {
     const st = history || { status: 'loading' };
-    const spread = _relTenantSpread(proj, cols);
     // Mirrors the row structure — a label-width gutter, then the track — so an
     // expanded row starts on exactly the same x as the row it opened from.
     const wrap = body => '<div class="ip-rel-history">'
       + '<div class="ip-rel-proj ip-rel-history-gutter" aria-hidden="true"></div>'
-      + '<div class="ip-rel-history-body">' + spread + body + '</div></div>';
+      + '<div class="ip-rel-history-body">' + body + '</div></div>';
 
     if (st.status === 'loading' || !st.status) {
       return wrap('<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading releases…</span></div>');

@@ -1422,8 +1422,8 @@ describe('Releases — many releases live in one environment', () => {
   });
   test('the view names a few and summarises the rest', () => {
     const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(many) } });
-    expect(html).toContain('more releases across 41 tenants');
-    expect(html).not.toContain('ip-rel-tenants" style');
+    // The tail reports the tenants it covers, which is the actionable half.
+    expect(html).toContain('+38 more releases on 38 tenants');
     // Three named, not forty-one.
     expect((html.match(/ip-rel-ver/g) || []).length).toBe(3);
   });
@@ -1664,61 +1664,68 @@ describe('Project history — the age on the line', () => {
   });
 });
 
-describe('Projects — tenant spread in the expanded row', () => {
+describe('Projects — tenant split lives in the environment cell', () => {
   const data = require('./data');
   const Views = require('./views');
-  // One environment holding several releases across many tenants: the case the
-  // collapsed cell can only summarise.
+  const tenants = Array.from({ length: 20 }, (_, i) => ({ Id: 'T' + i, Name: 'Tenant ' + i }));
   const payload = {
     Environments: [{ Id: 'E1', Name: 'Production' }],
     ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
     Projects: [{ Id: 'P1', Name: 'Octopus Server', ProjectGroupId: 'G1' }],
-    Tenants: Array.from({ length: 10 }, (_, i) => ({ Id: 'T' + i, Name: 'Tenant ' + i })),
-    Items: Array.from({ length: 10 }, (_, i) => ({
+    Tenants: tenants,
+    // 11 tenants on 9.3, 6 on 9.2, 3 on 9.0 — a rollout part-way through.
+    Items: tenants.map((t, i) => ({
       IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1',
-      // Six tenants on 2.0, four on 1.0.
-      ReleaseVersion: i < 6 ? '2.0' : '1.0', State: 'Success',
-      TenantId: 'T' + i, CompletedTime: '2026-08-14T0' + (i % 5) + ':00:00Z'
+      ReleaseVersion: i < 11 ? '9.3' : (i < 17 ? '9.2' : '9.0'),
+      State: 'Success', TenantId: t.Id, CompletedTime: '2026-08-14T0' + (i % 5) + ':00:00Z'
     }))
   };
   const model = data.releasesModel(payload);
-  const render = () => Views.renderProjects({
-    projectOpen: { P1: true },
+  const render = open => Views.renderProjects({
+    projectOpen: open ? { P1: true } : {},
     projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: [] } } },
     releases: { status: 'ready', model }
   });
 
   test('the model keeps every version and its tenant count', () => {
     const cell = model.groups[0].projects[0].cells[0];
-    expect(cell.versionCount).toBe(2);
-    expect(cell.tenantTotal).toBe(10);
-    expect(cell.entries.map(e => e.tenantCount).sort()).toEqual([4, 6]);
+    expect(cell.versionCount).toBe(3);
+    expect(cell.tenantTotal).toBe(20);
+    expect(cell.entries.map(e => e.tenantCount).sort((a, b) => a - b)).toEqual([3, 6, 11]);
   });
 
-  test('expanding names each release and how many tenants are on it', () => {
-    const html = render();
-    expect(html).toContain('2 releases · 10 tenants');
-    expect(html).toContain('>6<');
-    expect(html).toContain('>4<');
+  test('the contracted row carries a share bar per release', () => {
+    const html = render(false);
+    expect(html).toContain('ip-rel-tsbar');
+    expect(html).toContain('width:55.0%');   // 11 of 20
   });
 
-  test('the split is laid out in the environment columns, not stacked', () => {
-    const html = render();
-    const block = /<div class="ip-rel-tsblock">([\s\S]*?)<\/div><\/div>/.exec(html);
-    expect(block).not.toBeNull();
-    // It uses the same column template as the row above it.
-    expect(block[0]).toContain('var(--ip-rel-cols)');
+  test('there is no separate tenant panel above the history', () => {
+    expect(render(true)).not.toContain('ip-rel-tsblock');
   });
 
-  test('a project with no split shows no tenant block', () => {
-    const single = Object.assign({}, payload, {
-      Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '2.0', State: 'Success', TenantId: 'T0' }]
+  test('expanding shows every release in the cell, contracted caps at three', () => {
+    const many = Object.assign({}, payload, {
+      Items: tenants.map((t, i) => ({
+        IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1',
+        ReleaseVersion: 'v' + i, State: 'Success', TenantId: t.Id
+      }))
     });
-    const html = Views.renderProjects({
-      projectOpen: { P1: true },
+    const m2 = data.releasesModel(many);
+    const shut = Views.renderProjects({ projectOpen: {}, releases: { status: 'ready', model: m2 } });
+    const open = Views.renderProjects({ projectOpen: { P1: true },
       projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: [] } } },
-      releases: { status: 'ready', model: data.releasesModel(single) }
+      releases: { status: 'ready', model: m2 } });
+    expect((shut.match(/ip-rel-entry"/g) || []).length).toBe(3);
+    expect((open.match(/ip-rel-entry"/g) || []).length).toBe(20);
+    expect(shut).toContain('+17 more releases on 17 tenants');
+  });
+
+  test('an environment on a single release draws no bar', () => {
+    const single = Object.assign({}, payload, {
+      Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success', TenantId: 'T0' }]
     });
-    expect(html).not.toContain('ip-rel-tsblock');
+    const html = Views.renderProjects({ projectOpen: {}, releases: { status: 'ready', model: data.releasesModel(single) } });
+    expect(html).not.toContain('ip-rel-tsbar');
   });
 });
