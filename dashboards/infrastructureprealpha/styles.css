@@ -751,3 +751,25 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 }
 .dark .ip-rel-groups { --ip-rel-flagtint: #241C39; }
 .dark .ip-rel-frow { box-shadow: inset 3px 0 0 var(--color-purple-700); }
+
+/* Variable changes: amber, so they separate from flags (purple) and releases
+   (green) without any of the three borrowing another's meaning. Same wash
+   treatment as flags, including reassigning --ip-rel-surface so the labels mask
+   the line in the row's own colour rather than punching through it. */
+.ip-rel-groups { --ip-rel-vartint: var(--color-orange-100); }
+.ip-rel-vrow {
+  --ip-rel-surface: var(--ip-rel-vartint);
+  background: var(--ip-rel-vartint);
+  box-shadow: inset 3px 0 0 var(--color-orange-300);
+  border-radius: 0 3px 3px 0;
+}
+.ip-rel-vnode { position: relative; z-index: 2; width: 9px; height: 9px; flex: 0 0 auto;
+  background: var(--color-orange-500); transform: rotate(45deg); border-radius: 1px; }
+.ip-rel-varname { font-size: 11px; font-weight: 600; color: var(--color-navy-900); }
+.ip-rel-vardelta { font-size: 10px; color: var(--color-orange-700);
+  font-family: var(--font-mono, monospace); }
+.ip-rel-vardelta.is-secret { font-family: inherit; font-style: italic; }
+.dark .ip-rel-groups { --ip-rel-vartint: #33240F; }
+.dark .ip-rel-vrow { box-shadow: inset 3px 0 0 var(--color-orange-700); }
+.dark .ip-rel-varname { color: var(--color-grey-100); }
+.dark .ip-rel-vardelta { color: var(--color-orange-200); }

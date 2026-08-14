@@ -67,7 +67,7 @@ const Router = (function () {
       // space. Keyed on spaceId so a switch can't leave the previous space's
       // releases on screen.
       const needed = !IP.releases || IP.releases.spaceId !== IP.spaceId;
-      if (needed) { IP.releases = { status: 'loading', spaceId: IP.spaceId }; IP.projectHistory = {}; IP.progressionRaw = {}; IP.projectFlags = {}; IP.flagEventsRaw = {}; IP.projectOpen = {}; }
+      if (needed) { IP.releases = { status: 'loading', spaceId: IP.spaceId }; IP.projectHistory = {}; IP.progressionRaw = {}; IP.projectFlags = {}; IP.flagEventsRaw = {}; IP.varEventsRaw = {}; IP.projectOpen = {}; }
       el.innerHTML = Views.renderProjects(IP);
       Views.bindProjects && Views.bindProjects(IP);
       // Expanding a project fetches its release history once and keeps it for
@@ -101,6 +101,13 @@ const Router = (function () {
             cur.changes = Data.flagChangeModel(IP.flagEventsRaw[pid], gridFor(pid), windowHours());
           }
         });
+        IP.varEventsRaw = IP.varEventsRaw || {};
+        Object.keys(IP.varEventsRaw).forEach(pid => {
+          const cur = IP.projectFlags && IP.projectFlags[pid];
+          if (cur && cur.status === 'ready') {
+            cur.variables = Data.variableChangeModel(IP.varEventsRaw[pid], gridFor(pid), windowHours());
+          }
+        });
       };
       // Flags are a second, independent request on expand. It failing must not
       // take the release history with it, so they are tracked separately.
@@ -111,17 +118,24 @@ const Router = (function () {
         const wantedSpace = IP.spaceId;
         // Two requests: current state, and the audit trail that gives the
         // changes timestamps. Events failing leaves the current state usable.
+        // Three requests: current flag state, plus the two audit trails that
+        // give flag and variable changes their timestamps. Either trail may
+        // fail on its own without taking the others down.
         Promise.all([
           Data.fetchFeatureToggles(wantedSpace, projectId),
-          Data.fetchFlagEvents(wantedSpace, projectId).catch(() => ({ Items: [] }))
+          Data.fetchFlagEvents(wantedSpace, projectId).catch(() => ({ Items: [] })),
+          Data.fetchVariableEvents(wantedSpace, projectId).catch(() => ({ Items: [] }))
         ])
           .then(res => {
             if (IP.spaceId !== wantedSpace) return;
             IP.flagEventsRaw = IP.flagEventsRaw || {};
+            IP.varEventsRaw = IP.varEventsRaw || {};
             IP.flagEventsRaw[projectId] = res[1];
+            IP.varEventsRaw[projectId] = res[2];
             IP.projectFlags[projectId] = { status: 'ready',
               model: Data.featureFlagModel(res[0], gridFor(projectId)),
-              changes: Data.flagChangeModel(res[1], gridFor(projectId), windowHours()) };
+              changes: Data.flagChangeModel(res[1], gridFor(projectId), windowHours()),
+              variables: Data.variableChangeModel(res[2], gridFor(projectId), windowHours()) };
             render();
           })
           .catch(e => {

@@ -2082,3 +2082,192 @@ describe('Flag rows are visually separated', () => {
     expect(html).toContain('ip-rel-flagname');
   });
 });
+
+describe('Variable changes — model', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const PLACEHOLDER = 'x'.repeat(45);
+  const events = { Items: [
+    { Id: 'V1', Occurred: '2026-08-14T03:00:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'ApiTimeout', Value: '30s', Scope: { Environment: ['E3'] } }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: '60s' }] } },
+    { Id: 'V2', Occurred: '2026-08-14T02:00:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'DbPassword', Type: 'Sensitive', Value: PLACEHOLDER, Scope: { Environment: ['E1', 'E3'] } }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: 'y'.repeat(45) }] } },
+    { Id: 'V3', Occurred: '2026-08-14T01:00:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'Global', Value: 'a' }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: 'b' }] } },
+    { Id: 'V4', Occurred: '2026-08-14T00:30:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'Elsewhere', Value: 'a', Scope: { Environment: ['E9'] } }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: 'b' }] } },
+    // Renames and description edits are not value changes and are ignored.
+    { Id: 'V5', Occurred: '2026-08-14T00:15:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'Renamed', Value: 'a' }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Name', value: 'NewName' }] } }
+  ] };
+  const model = () => data.variableChangeModel(events, grid, null, Date.now());
+
+  test('both ends of the arrow come from context plus patch', () => {
+    const c = model().find(x => x.name === 'ApiTimeout');
+    expect(data.variableChangeLabel(c)).toBe('30s → 60s');
+  });
+
+  test('a sensitive value never reaches the model, placeholder or not', () => {
+    const c = model().find(x => x.name === 'DbPassword');
+    expect(c.sensitive).toBe(true);
+    expect(c.before).toBeNull();
+    expect(c.after).toBeNull();
+    expect(data.variableChangeLabel(c)).toBe('secret changed');
+    expect(JSON.stringify(c)).not.toContain(PLACEHOLDER);
+  });
+
+  test('one edit scoped to two environments is one change marking both', () => {
+    const c = model().find(x => x.name === 'DbPassword');
+    expect(c.envIds).toEqual(['E1', 'E3']);
+  });
+
+  test('a variable with no environment scope applies everywhere', () => {
+    const c = model().find(x => x.name === 'Global');
+    expect(c.envIds).toEqual([]);
+    expect(c.scopedElsewhere).toBe(false);
+  });
+
+  test('scoped to an environment this grid does not show is flagged, not silently dropped', () => {
+    const c = model().find(x => x.name === 'Elsewhere');
+    expect(c.envIds).toEqual([]);
+    expect(c.scopedElsewhere).toBe(true);
+  });
+
+  test('a rename is not a value change', () => {
+    expect(model().some(x => x.name === 'Renamed')).toBe(false);
+  });
+
+  test('long values are truncated for display', () => {
+    const long = { Items: [{ Id: 'L', Occurred: '2026-08-14T03:00:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'Long', Value: 'a'.repeat(200) }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: 'b'.repeat(200) }] } }] };
+    const c = data.variableChangeModel(long, grid, null, Date.now())[0];
+    expect(c.before.length).toBeLessThanOrEqual(40);
+    expect(c.after.length).toBeLessThanOrEqual(40);
+  });
+
+  test('the window filters changes', () => {
+    const now = Date.parse('2026-08-14T04:00:00Z');
+    // 90 minutes excludes the 02:00 edit; a 2-hour window would include it,
+    // since a change exactly on the boundary is inside the window.
+    expect(data.variableChangeModel(events, grid, 1.5, now)).toHaveLength(1);
+    expect(data.variableChangeModel(events, grid, 2, now)).toHaveLength(2);
+  });
+
+  test('an empty payload yields nothing and does not throw', () => {
+    expect(data.variableChangeModel(undefined, grid, null, Date.now())).toEqual([]);
+  });
+});
+
+describe('Variable changes — view', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: grid.map(e => ({ envId: e.id, envName: e.name, entries: [], versionCount: 0, tenantTotal: 0 })),
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  const vars = [
+    { id: 'v1', name: 'ApiTimeout', kind: 'value', sensitive: false, before: '30s', after: '60s',
+      envIds: ['E3'], scopedElsewhere: false, occurred: Date.now() - 3600000 },
+    { id: 'v2', name: 'DbPassword', kind: 'value', sensitive: true, before: null, after: null,
+      envIds: ['E1', 'E3'], scopedElsewhere: false, occurred: Date.now() - 7200000 },
+    { id: 'v3', name: 'Global', kind: 'value', sensitive: false, before: 'a', after: 'b',
+      envIds: [], scopedElsewhere: false, occurred: Date.now() - 10800000 },
+    { id: 'v4', name: 'Elsewhere', kind: 'value', sensitive: false, before: 'a', after: 'b',
+      envIds: [], scopedElsewhere: true, occurred: Date.now() - 14400000 }
+  ];
+  const render = grouping => Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 1, channels: [], environments: grid,
+      hiddenByWindow: 0, neverDeployedCount: 0 } } },
+    projectFlags: { P1: { status: 'ready', model: { flags: [], total: 0, settled: {}, truncated: false },
+      changes: [], variables: vars } },
+    grouping: grouping, releases: { status: 'ready', model }
+  });
+
+  test('grouped by type, variables get their own band', () => {
+    const html = render('Type');
+    expect(html).toContain('Variable changes');
+    expect(html).toContain('ApiTimeout');
+    expect(html).toContain('30s → 60s');
+  });
+
+  test('a secret says it changed and never shows a value', () => {
+    const html = render('Type');
+    expect(html).toContain('secret changed');
+    expect(html).toContain('DbPassword');
+  });
+
+  test('an unscoped variable is labelled as applying everywhere', () => {
+    expect(render('Type')).toContain('all environments');
+  });
+
+  test('the snapshot caveat is stated, since a change alters nothing deployed', () => {
+    expect(render('Type')).toContain('snapshotted into a release');
+  });
+
+  test('a change scoped outside the grid is counted, not drawn', () => {
+    const html = render('Type');
+    expect(html).toContain('1 change is scoped to environments this project does not deploy to');
+    expect(html).not.toContain('Elsewhere');
+  });
+
+  test('grouped by time, variables interleave with everything else', () => {
+    const html = render('Time');
+    expect(html).toContain('ip-rel-vrow');
+    expect(html).not.toContain('Variable changes');
+  });
+
+  test('variable rows are amber, distinct from flags and releases', () => {
+    const html = render('Type');
+    expect(html).toContain('ip-rel-vnode');
+    expect(html).not.toContain('ip-rel-fnode');
+  });
+});
+
+describe('An empty release window still shows what changed', () => {
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: [{ envId: 'E1', envName: 'Dev', entries: [], versionCount: 0, tenantTotal: 0 }], links: [null] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  // Nothing released in the window, but a flag flipped and a variable changed.
+  const html = Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 4, channels: [],
+      environments: grid, hiddenByWindow: 4, neverDeployedCount: 0 } } },
+    projectFlags: { P1: { status: 'ready', model: { flags: [], total: 0, settled: {}, truncated: false },
+      changes: [{ id: 'c1', flagName: 'new-checkout', scope: 'environment', envId: 'E1', envName: 'Dev',
+        occurred: Date.now(), before: { key: 'off', percent: null }, after: { key: 'on', percent: 100 } }],
+      variables: [{ id: 'v1', name: 'ApiTimeout', kind: 'value', sensitive: false, before: '30s', after: '60s',
+        envIds: ['E1'], scopedElsewhere: false, occurred: Date.now() }] } },
+    grouping: 'Type', releases: { status: 'ready', model }
+  });
+
+  test('the empty release state is stated', () => {
+    expect(html).toContain('Nothing moved in the last');
+  });
+
+  test('but the flag change still shows', () => {
+    expect(html).toContain('new-checkout');
+  });
+
+  test('and so does the variable change', () => {
+    expect(html).toContain('ApiTimeout');
+    expect(html).toContain('30s → 60s');
+  });
+});

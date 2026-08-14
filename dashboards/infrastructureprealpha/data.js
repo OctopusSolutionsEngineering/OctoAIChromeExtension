@@ -983,6 +983,104 @@ function flagChangeLabel(change) {
   return side(change.before) + ' → ' + side(change.after);
 }
 
+
+// ─── Variable changes ────────────────────────────────────────────────────────
+// Same reconstruction as flags: DocumentContext holds the variables before the
+// change, Differences the patch. Three things are particular to variables.
+//
+//   Scope.Environment places a change in columns. A variable scoped to two
+//   environments changed once, so it is one row marking two columns rather than
+//   two rows. Variables with no environment scope apply everywhere.
+//
+//   Sensitive values are never shown. The audit returns a fixed-width
+//   placeholder for them — identical on both sides of the change — so there is
+//   no before and after to render even if we wanted one. The row says a secret
+//   changed, which is the whole truth available.
+//
+//   A variable change alters nothing already deployed. Variables are snapshotted
+//   into a release when it is created, so the change lands with the next one.
+
+const VARIABLE_EVENT_TAKE = 100;
+const VALUE_MAX = 40;
+
+async function fetchVariableEvents(spaceId, projectId) {
+  return fetchJson('/api/' + spaceId + '/events?documentTypes=variableset&projects='
+    + encodeURIComponent(projectId) + '&take=' + VARIABLE_EVENT_TAKE);
+}
+
+function isSensitiveVariable(v) {
+  return !!(v && (v.Type === 'Sensitive' || v.IsSensitive));
+}
+
+function shortValue(v) {
+  if (v == null) return '';
+  const str = String(v);
+  if (!str.length) return 'empty';
+  return str.length > VALUE_MAX ? str.slice(0, VALUE_MAX - 1) + '…' : str;
+}
+
+function variableChangeModel(events, gridEnvironments, windowHours, now) {
+  const items = (events && events.Items) || [];
+  const envName = {};
+  (gridEnvironments || []).forEach(e => { envName[e.id] = e.name; });
+  const cutoff = windowHours ? (now || Date.now()) - windowHours * 3600 * 1000 : null;
+
+  const changes = [];
+  items.forEach(ev => {
+    const cd = ev.ChangeDetails || {};
+    const ctx = cd.DocumentContext || {};
+    const at = ev.Occurred ? Date.parse(ev.Occurred) : null;
+    if (at == null || isNaN(at)) return;
+    if (cutoff != null && at < cutoff) return;
+    const vars = ctx.Variables || [];
+
+    (cd.Differences || []).forEach((d, dIndex) => {
+      const path = String(d.path || '');
+      const valueMatch = /^\/Variables\/(\d+)\/Value$/.exec(path);
+      const wholeMatch = /^\/Variables\/(\d+)$/.exec(path);
+      if (!valueMatch && !wholeMatch) return;
+
+      const idx = Number((valueMatch || wholeMatch)[1]);
+      const before = vars[idx] || null;
+      const after = wholeMatch ? (d.value || null) : null;
+      const subject = before || after;
+      if (!subject) return;
+
+      const sensitive = isSensitiveVariable(before) || isSensitiveVariable(after);
+      const scopeEnvs = ((subject.Scope && subject.Scope.Environment) || [])
+        .filter(id => id in envName);
+      const hasEnvScope = !!((subject.Scope && subject.Scope.Environment) || []).length;
+
+      changes.push({
+        id: ev.Id + ':' + dIndex,
+        name: subject.Name || '(unnamed)',
+        kind: wholeMatch ? 'added' : 'value',
+        sensitive: sensitive,
+        // Never carry a sensitive value through, placeholder or not.
+        before: sensitive || !valueMatch ? null : shortValue(before ? before.Value : null),
+        after: sensitive || !valueMatch ? null : shortValue(d.value),
+        envIds: scopeEnvs,
+        // Scoped somewhere this grid does not show, versus scoped nowhere.
+        scopedElsewhere: hasEnvScope && !scopeEnvs.length,
+        occurred: at,
+        username: ev.Username || ''
+      });
+    });
+  });
+
+  return changes.sort((a, b) => b.occurred - a.occurred);
+}
+
+function variableChangeLabel(change) {
+  if (!change) return '';
+  if (change.sensitive) return 'secret changed';
+  if (change.kind === 'added') return 'added';
+  const before = change.before === '' ? 'empty' : change.before;
+  const after = change.after === '' ? 'empty' : change.after;
+  if (before == null && after == null) return 'changed';
+  return before + ' → ' + after;
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
@@ -990,7 +1088,8 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
   fetchProgression, progressionModel, HISTORY_WINDOWS,
   fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
-  fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS }; }
+  fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
+  fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1001,5 +1100,6 @@ if (typeof module !== 'undefined') {
     fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
     fetchProgression, progressionModel, HISTORY_WINDOWS,
     fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
-    fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS };
+    fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
+    fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue };
 }

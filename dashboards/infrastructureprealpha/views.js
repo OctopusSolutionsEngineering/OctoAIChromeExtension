@@ -1192,6 +1192,43 @@ const Views = (function () {
     return '<div class="ip-rel-hrow ip-rel-frow">' + _relTrack(cells, cols) + '</div>';
   }
 
+  // A variable change is a point event like a flag change, but it can land in
+  // several environments at once — one edit, scoped to two environments, marks
+  // two columns rather than becoming two rows. An unscoped variable applies
+  // everywhere, so it marks every column.
+  function _relVarChangeRow(change, cols, envOff, envIds) {
+    const off = envOff || {};
+    const scoped = change.envIds && change.envIds.length ? change.envIds : null;
+    const marks = envIds.filter(id => !off[id] && (!scoped || scoped.indexOf(id) !== -1));
+    if (!marks.length) return '';
+    const firstCol = envIds.indexOf(marks[0]);
+
+    const label = '<span class="ip-rel-hlabel">'
+      + '<span class="ip-rel-varname">' + escHtml(change.name) + '</span>'
+      + '<span class="ip-rel-vardelta' + (change.sensitive ? ' is-secret' : '') + '">'
+      +   escHtml(Data.variableChangeLabel(change)) + '</span>'
+      + (scoped ? '' : '<span class="ip-rel-flagscope">all environments</span>')
+      + '<span class="ip-rel-hage">' + escHtml(_relWhen(new Date(change.occurred).toISOString())) + '</span>'
+      + '</span>';
+
+    const cells = envIds.map((eid, i) => {
+      if (off[eid]) return '<div class="ip-rel-hcell is-off"></div>';
+      if (marks.indexOf(eid) === -1) return '<div class="ip-rel-hcell"></div>';
+      return '<div class="ip-rel-hcell ip-rel-fcell">'
+        + '<span class="ip-rel-vnode" title="' + escHtml(change.name) + '"></span>'
+        + (i === firstCol ? label : '') + '</div>';
+    }).join('');
+    return '<div class="ip-rel-hrow ip-rel-vrow">' + _relTrack(cells, cols) + '</div>';
+  }
+
+  function _relVarNote(vars) {
+    const elsewhere = (vars || []).filter(c => c.scopedElsewhere).length;
+    const parts = ['A variable change alters nothing already deployed — variables are snapshotted into a release when it is created, so an edit lands with the next one.'];
+    if (elsewhere) parts.push(elsewhere + ' ' + (elsewhere === 1 ? 'change is' : 'changes are')
+      + ' scoped to environments this project does not deploy to.');
+    return '<p class="ip-rel-hnote-inline">' + parts.map(escHtml).join(' ') + '</p>';
+  }
+
   function _relFlags(proj, cols, flags, envOff) {
     const st = flags || { status: 'loading' };
     if (st.status === 'loading' || !st.status) {
@@ -1242,41 +1279,46 @@ const Views = (function () {
       return wrap('<p class="ip-rel-err">' + escHtml(st.error || 'Could not load this project\'s releases.') + '</p>');
     }
     const m = st.model;
-    if (!m.totalReleases) {
-      return wrap('<p class="ip-rel-hempty">No releases have been created for this project.</p>');
-    }
-    if (!m.releases.length) {
-      return wrap('<p class="ip-rel-hempty">Nothing moved in the last ' + escHtml(String(windowLabel).toLowerCase())
-        + '. ' + m.totalReleases + ' older ' + (m.totalReleases === 1 ? 'release' : 'releases')
-        + ' — widen the window to see ' + (m.totalReleases === 1 ? 'it' : 'them') + '.</p>');
-    }
-
     const off = envOff || {};
     const anyOff = Object.keys(off).some(k => off[k]);
+    // A project can have nothing released in the window and still have a flag
+    // flip or a variable edit worth seeing, so an empty release list is a
+    // message inside the panel rather than the end of it.
+    const releaseEmpty = !m.totalReleases
+      ? '<p class="ip-rel-hempty">No releases have been created for this project.</p>'
+      : (!m.releases.length
+          ? '<p class="ip-rel-hempty">Nothing moved in the last ' + escHtml(String(windowLabel).toLowerCase())
+            + '. ' + m.totalReleases + ' older ' + (m.totalReleases === 1 ? 'release' : 'releases')
+            + ' — widen the window to see ' + (m.totalReleases === 1 ? 'it' : 'them') + '.</p>'
+          : '');
     const visible = anyOff
       ? m.releases.filter(r => r.cells.some((c, i) => c.deployed && !off[c.envId]))
       : m.releases;
     const mutedOut = m.releases.length - visible.length;
-    if (anyOff && !visible.length) {
-      return wrap('<p class="ip-rel-hempty">Every release in this window only reached environments you have muted.</p>');
-    }
+    const mutedAll = anyOff && m.releases.length && !visible.length;
     const multiChannel = m.channels.length > 1;
     // Grouping by time interleaves flag changes with the releases, so a flip
     // that shipped alongside a deployment reads as one moment rather than as
     // two facts in two sections.
     const changes = (grouping === 'Time' && flags && flags.status === 'ready' && flags.changes) ? flags.changes : [];
+    const varsAll = (flags && flags.status === 'ready' && flags.variables) ? flags.variables : [];
+    const varsShown = varsAll.filter(c => !c.scopedElsewhere);
+    const varChanges = grouping === 'Time' ? varsShown : [];
     let rows;
-    if (grouping === 'Time' && changes.length) {
+    if (grouping === 'Time' && (changes.length || varChanges.length)) {
       const envIds = (m.environments || []).map(e => e.id);
       const items = visible.map(r => {
         const head = r.frontier >= 0 ? r.cells[r.frontier] : null;
         const at = head && head.when ? Date.parse(head.when) : (r.assembled ? Date.parse(r.assembled) : 0);
         return { at: at, html: _relHistoryRow(r, cols, multiChannel, off) };
-      }).concat(changes.map(c => ({ at: c.occurred, html: _relFlagChangeRow(c, cols, off, envIds) })));
+      }).concat(changes.map(c => ({ at: c.occurred, html: _relFlagChangeRow(c, cols, off, envIds) })))
+        .concat(varChanges.map(c => ({ at: c.occurred, html: _relVarChangeRow(c, cols, off, envIds) })));
       rows = items.filter(i => i.html).sort((a, b) => b.at - a.at).map(i => i.html).join('');
     } else {
       rows = visible.map(r => _relHistoryRow(r, cols, multiChannel, off)).join('');
     }
+    if (mutedAll) rows = '<p class="ip-rel-hempty">Every release in this window only reached environments you have muted.</p>';
+    else if (releaseEmpty) rows = releaseEmpty + rows;
     const notes = [];
     if (mutedOut) notes.push(mutedOut + ' ' + (mutedOut === 1 ? 'release' : 'releases')
       + ' only reached muted environments.');
@@ -1296,9 +1338,20 @@ const Views = (function () {
           + changeRows + '</div>';
       }
     }
-    return wrap(rows + (notes.length
+    let varBand = '';
+    if (grouping === 'Type' && varsShown.length) {
+      const envIds2 = (m.environments || []).map(e => e.id);
+      const varRows = varsShown.map(c => _relVarChangeRow(c, cols, off, envIds2)).filter(Boolean).join('');
+      if (varRows) {
+        varBand = '<div class="ip-rel-band"><p class="ip-rel-bandhead">Variable changes'
+          + '<span class="ip-rel-bandcount">last ' + escHtml(String(windowLabel).toLowerCase()) + '</span></p>'
+          + varRows + _relVarNote(varsAll) + '</div>';
+      }
+    }
+    const varInline = (grouping === 'Time' && varsShown.length) ? _relVarNote(varsAll) : '';
+    return wrap(rows + varInline + (notes.length
       ? '<div class="ip-rel-hnote">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '')
-      + changeBand);
+      + changeBand + varBand);
   }
 
   function renderProjects(IP) {
