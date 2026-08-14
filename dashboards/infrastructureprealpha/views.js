@@ -1091,41 +1091,56 @@ const Views = (function () {
   }
 
   // Where a tenant rollout is part-way through, an environment holds several
-  // releases at once. The collapsed cell can only say how many; this names them.
-  // The counts come from the dashboard payload — progression returns one
-  // deployment per environment and no tenant detail at all.
-  function _relTenantSpread(proj) {
-    const split = (proj.cells || []).filter(c => c.versionCount > 1 && c.tenantTotal > 0);
-    if (!split.length) return '';
-    const MAX_ROWS = 12;
-    const blocks = split.map(c => {
-      const rows = c.entries.slice(0, MAX_ROWS).map(e => {
-        const share = c.tenantTotal ? Math.round(e.tenantCount / c.tenantTotal * 100) : 0;
-        return '<li class="ip-rel-tsrow">'
-          + '<span class="ip-rel-tsbar"><span style="width:' + share + '%"></span></span>'
-          + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
-          + '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString()
-          +   (e.tenantCount === 1 ? ' tenant' : ' tenants') + '</span>'
-          + '<span class="ip-rel-hage">' + escHtml(_relWhen(e.when)) + '</span>'
-          + (e.stateKey !== 'success' ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">'
-              + escHtml(e.stateLabel) + '</span>' : '')
-          + '</li>';
+  // releases at once. The collapsed cell can only say how many; this names them,
+  // in the environment's own column so it reads against the row above rather
+  // than as a separate list.
+  //
+  // The counts come from the dashboard payload — /progression returns one
+  // deployment per environment and carries no tenant detail at all.
+  function _relTenantSpread(proj, cols) {
+    const cells = proj.cells || [];
+    if (!cells.some(c => c.versionCount > 1 && c.tenantTotal > 0)) return '';
+    const MAX = 6;
+
+    const body = cells.map(c => {
+      if (!c.tenantTotal) return '<div class="ip-rel-tscell"></div>';
+      if (c.versionCount <= 1) {
+        return '<div class="ip-rel-tscell"><span class="ip-rel-tsall">All '
+          + c.tenantTotal.toLocaleString() + (c.tenantTotal === 1 ? ' tenant' : ' tenants')
+          + ' on one release</span></div>';
+      }
+      const shown = c.entries.slice(0, MAX);
+      const rest = c.entries.length - shown.length;
+      const restTenants = c.entries.slice(MAX).reduce((n, e) => n + e.tenantCount, 0);
+      const rows = shown.map(e => {
+        const share = c.tenantTotal ? (e.tenantCount / c.tenantTotal * 100) : 0;
+        return '<div class="ip-rel-tsentry">'
+          + '<span class="ip-rel-tshead">'
+          +   '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
+          +   '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString() + '</span>'
+          + '</span>'
+          + '<span class="ip-rel-tsbar" title="' + escHtml(e.tenantCount + ' of ' + c.tenantTotal + ' tenants')
+          +   '"><span style="width:' + share.toFixed(1) + '%"></span></span>'
+          + '</div>';
       }).join('');
-      const rest = c.entries.length - Math.min(c.entries.length, MAX_ROWS);
-      return '<div class="ip-rel-tsenv">'
-        + '<p class="ip-rel-tstitle">' + escHtml(c.envName) + ' — '
-        +   c.versionCount + (c.versionCount === 1 ? ' release' : ' releases') + ' across '
-        +   c.tenantTotal.toLocaleString() + (c.tenantTotal === 1 ? ' tenant' : ' tenants') + '</p>'
-        + '<ul class="ip-rel-tslist">' + rows + '</ul>'
-        + (rest > 0 ? '<p class="ip-rel-tsmore">+' + rest + ' further ' + (rest === 1 ? 'release' : 'releases') + '</p>' : '')
-        + '</div>';
+      const more = rest > 0
+        ? '<span class="ip-rel-tsmore">+' + rest + ' more on ' + restTenants.toLocaleString()
+          + (restTenants === 1 ? ' tenant' : ' tenants') + '</span>' : '';
+      return '<div class="ip-rel-tscell">'
+        + '<span class="ip-rel-tssum">' + c.versionCount + ' releases · '
+        +   c.tenantTotal.toLocaleString() + (c.tenantTotal === 1 ? ' tenant' : ' tenants') + '</span>'
+        + rows + more + '</div>';
     }).join('');
-    return '<div class="ip-rel-tenants-block">' + blocks + '</div>';
+
+    return '<div class="ip-rel-tsblock">'
+      + '<p class="ip-rel-tscaption">Tenant split</p>'
+      + _relTrack(body, cols)
+      + '</div>';
   }
 
   function _relHistory(proj, cols, history, windowLabel) {
     const st = history || { status: 'loading' };
-    const spread = _relTenantSpread(proj);
+    const spread = _relTenantSpread(proj, cols);
     // Mirrors the row structure — a label-width gutter, then the track — so an
     // expanded row starts on exactly the same x as the row it opened from.
     const wrap = body => '<div class="ip-rel-history">'

@@ -1697,9 +1697,17 @@ describe('Projects — tenant spread in the expanded row', () => {
 
   test('expanding names each release and how many tenants are on it', () => {
     const html = render();
-    expect(html).toContain('Production — 2 releases across 10 tenants');
-    expect(html).toContain('6 tenants');
-    expect(html).toContain('4 tenants');
+    expect(html).toContain('2 releases · 10 tenants');
+    expect(html).toContain('>6<');
+    expect(html).toContain('>4<');
+  });
+
+  test('the split is laid out in the environment columns, not stacked', () => {
+    const html = render();
+    const block = /<div class="ip-rel-tsblock">([\s\S]*?)<\/div><\/div>/.exec(html);
+    expect(block).not.toBeNull();
+    // It uses the same column template as the row above it.
+    expect(block[0]).toContain('var(--ip-rel-cols)');
   });
 
   test('a project with no split shows no tenant block', () => {
@@ -1711,6 +1719,6 @@ describe('Projects — tenant spread in the expanded row', () => {
       projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: [] } } },
       releases: { status: 'ready', model: data.releasesModel(single) }
     });
-    expect(html).not.toContain('ip-rel-tenants-block');
+    expect(html).not.toContain('ip-rel-tsblock');
   });
 });

@@ -644,21 +644,29 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   border-bottom: 1px solid var(--color-grey-200); }
 .dark .ip-nav-lead { border-bottom-color: var(--color-navy-700); }
 
-/* Tenant spread: which release each slice of the estate is on. The bar is a
-   share of the environment's tenants, so a long tail is visible as a long tail
-   rather than as a list of numbers to compare by eye. */
-.ip-rel-tenants-block { margin: 2px 0 10px; padding: 0 6px; }
-.ip-rel-tsenv { margin: 0 0 10px; }
-.ip-rel-tstitle { margin: 0 0 4px; font-size: 11px; font-weight: 600;
+/* Tenant spread: laid out in the environment columns, so each breakdown sits
+   under the environment it describes and against the row above it. The bar is a
+   share of that environment's tenants, so a long tail reads as a long tail
+   rather than as numbers to compare by eye. */
+.ip-rel-tsblock { margin: 2px 0 10px; }
+.ip-rel-tscaption { margin: 0 0 6px; font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: .05em; color: var(--color-grey-700); }
-.ip-rel-tslist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
-.ip-rel-tsrow { display: flex; align-items: baseline; gap: 8px; font-size: 11px; }
-.ip-rel-tsbar { flex: 0 0 120px; height: 6px; border-radius: 3px; align-self: center;
+.ip-rel-tscell { display: flex; flex-direction: column; gap: 5px; padding: 0 12px 0 0;
+  min-width: 0; align-items: stretch; }
+.ip-rel-tssum { font-size: 10px; color: var(--color-grey-600); }
+.ip-rel-tsall { font-size: 10px; color: var(--color-grey-500); font-style: italic; }
+.ip-rel-tsentry { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ip-rel-tshead { display: flex; align-items: baseline; justify-content: space-between;
+  gap: 6px; min-width: 0; }
+.ip-rel-tshead .ip-rel-ver { font-size: 11px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; word-break: normal; }
+.ip-rel-tscount { font-size: 10px; color: var(--color-grey-600);
+  font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.ip-rel-tsbar { display: block; width: 100%; height: 5px; border-radius: 3px;
   background: var(--color-grey-200); overflow: hidden; }
 .ip-rel-tsbar > span { display: block; height: 100%; background: var(--color-green-500); }
-.ip-rel-tscount { color: var(--color-navy-900); font-variant-numeric: tabular-nums; }
-.ip-rel-tsmore { margin: 3px 0 0; font-size: 10px; color: var(--color-grey-500); }
-.dark .ip-rel-tstitle { color: var(--color-grey-300); }
+.ip-rel-tsmore { font-size: 10px; color: var(--color-grey-500); }
+.dark .ip-rel-tscaption { color: var(--color-grey-300); }
+.dark .ip-rel-tssum, .dark .ip-rel-tscount { color: var(--color-grey-400); }
+.dark .ip-rel-tsall, .dark .ip-rel-tsmore { color: var(--color-grey-500); }
 .dark .ip-rel-tsbar { background: var(--color-navy-700); }
-.dark .ip-rel-tscount { color: var(--color-grey-100); }
-.dark .ip-rel-tsmore { color: var(--color-grey-500); }
