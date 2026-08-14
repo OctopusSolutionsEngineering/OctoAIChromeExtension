@@ -1612,15 +1612,15 @@ describe('Projects — column geometry', () => {
   };
   test('columns are a share of the page, never a stretching fraction per group', () => {
     const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
-    expect(html).toContain('calc(100% / var(--ip-rel-cols))');
+    expect(html).toContain('var(--ip-rel-cols)');
     expect(html).not.toContain('minmax(0,1fr)');
   });
   test('the widest group sets the column count for the whole page', () => {
     const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
     // Cloud has two environments, Tools one — both size against 2.
     expect(html).toContain('--ip-rel-cols:2');
-    expect(html).toContain('repeat(2,calc(100% / var(--ip-rel-cols)))');
-    expect(html).toContain('repeat(1,calc(100% / var(--ip-rel-cols)))');
+    expect(html).toContain('repeat(2,calc((100% - var(--ip-rel-endgutter)) / var(--ip-rel-cols)))');
+    expect(html).toContain('repeat(1,calc((100% - var(--ip-rel-endgutter)) / var(--ip-rel-cols)))');
   });
 });
 
@@ -1661,5 +1661,56 @@ describe('Project history — the age on the line', () => {
       Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} }] };
     const m = data.progressionModel(prog, grid, 24, NOW);
     expect(m.releases[0].everDeployed).toBe(false);
+  });
+});
+
+describe('Projects — tenant spread in the expanded row', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  // One environment holding several releases across many tenants: the case the
+  // collapsed cell can only summarise.
+  const payload = {
+    Environments: [{ Id: 'E1', Name: 'Production' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+    Projects: [{ Id: 'P1', Name: 'Octopus Server', ProjectGroupId: 'G1' }],
+    Tenants: Array.from({ length: 10 }, (_, i) => ({ Id: 'T' + i, Name: 'Tenant ' + i })),
+    Items: Array.from({ length: 10 }, (_, i) => ({
+      IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1',
+      // Six tenants on 2.0, four on 1.0.
+      ReleaseVersion: i < 6 ? '2.0' : '1.0', State: 'Success',
+      TenantId: 'T' + i, CompletedTime: '2026-08-14T0' + (i % 5) + ':00:00Z'
+    }))
+  };
+  const model = data.releasesModel(payload);
+  const render = () => Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: [] } } },
+    releases: { status: 'ready', model }
+  });
+
+  test('the model keeps every version and its tenant count', () => {
+    const cell = model.groups[0].projects[0].cells[0];
+    expect(cell.versionCount).toBe(2);
+    expect(cell.tenantTotal).toBe(10);
+    expect(cell.entries.map(e => e.tenantCount).sort()).toEqual([4, 6]);
+  });
+
+  test('expanding names each release and how many tenants are on it', () => {
+    const html = render();
+    expect(html).toContain('Production — 2 releases across 10 tenants');
+    expect(html).toContain('6 tenants');
+    expect(html).toContain('4 tenants');
+  });
+
+  test('a project with no split shows no tenant block', () => {
+    const single = Object.assign({}, payload, {
+      Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '2.0', State: 'Success', TenantId: 'T0' }]
+    });
+    const html = Views.renderProjects({
+      projectOpen: { P1: true },
+      projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: [] } } },
+      releases: { status: 'ready', model: data.releasesModel(single) }
+    });
+    expect(html).not.toContain('ip-rel-tenants-block');
   });
 });

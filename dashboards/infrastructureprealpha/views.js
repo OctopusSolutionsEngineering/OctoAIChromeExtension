@@ -1001,7 +1001,7 @@ const Views = (function () {
     // group, so every group lines up. The width itself is a share of the
     // available space, so a wide window spreads and a narrow one tightens.
     return '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols
-      + ',calc(100% / var(--ip-rel-cols)))">' + inner + '</div>';
+      + ',calc((100% - var(--ip-rel-endgutter)) / var(--ip-rel-cols)))">' + inner + '</div>';
   }
 
   function _relWhen(iso) {
@@ -1082,20 +1082,55 @@ const Views = (function () {
           + '" title="' + escHtml(c.stateLabel + ' in ' + c.envName) + '"></span>'
         : (r.frontier === -1 && i === 0 ? '<span class="ip-rel-hnode ip-rel-node-empty"></span>' : '');
       const age = c.deployed && i !== r.frontier
-        ? '<span class="ip-rel-hcellage">' + escHtml(_relWhen(c.when)) + '</span>' : '';
+        ? '<span class="ip-rel-hcellage">' + escHtml(_relWhen(c.when))
+          + (c.tenantCount ? ' · ' + c.tenantCount + 't' : '') + '</span>' : '';
       return '<div class="ip-rel-hcell">' + seg + node + age + (atHead ? meta : '') + '</div>';
     }).join('');
 
     return '<div class="ip-rel-hrow' + (r.everDeployed ? '' : ' undeployed') + '">' + _relTrack(cells, cols) + '</div>';
   }
 
+  // Where a tenant rollout is part-way through, an environment holds several
+  // releases at once. The collapsed cell can only say how many; this names them.
+  // The counts come from the dashboard payload — progression returns one
+  // deployment per environment and no tenant detail at all.
+  function _relTenantSpread(proj) {
+    const split = (proj.cells || []).filter(c => c.versionCount > 1 && c.tenantTotal > 0);
+    if (!split.length) return '';
+    const MAX_ROWS = 12;
+    const blocks = split.map(c => {
+      const rows = c.entries.slice(0, MAX_ROWS).map(e => {
+        const share = c.tenantTotal ? Math.round(e.tenantCount / c.tenantTotal * 100) : 0;
+        return '<li class="ip-rel-tsrow">'
+          + '<span class="ip-rel-tsbar"><span style="width:' + share + '%"></span></span>'
+          + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
+          + '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString()
+          +   (e.tenantCount === 1 ? ' tenant' : ' tenants') + '</span>'
+          + '<span class="ip-rel-hage">' + escHtml(_relWhen(e.when)) + '</span>'
+          + (e.stateKey !== 'success' ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">'
+              + escHtml(e.stateLabel) + '</span>' : '')
+          + '</li>';
+      }).join('');
+      const rest = c.entries.length - Math.min(c.entries.length, MAX_ROWS);
+      return '<div class="ip-rel-tsenv">'
+        + '<p class="ip-rel-tstitle">' + escHtml(c.envName) + ' — '
+        +   c.versionCount + (c.versionCount === 1 ? ' release' : ' releases') + ' across '
+        +   c.tenantTotal.toLocaleString() + (c.tenantTotal === 1 ? ' tenant' : ' tenants') + '</p>'
+        + '<ul class="ip-rel-tslist">' + rows + '</ul>'
+        + (rest > 0 ? '<p class="ip-rel-tsmore">+' + rest + ' further ' + (rest === 1 ? 'release' : 'releases') + '</p>' : '')
+        + '</div>';
+    }).join('');
+    return '<div class="ip-rel-tenants-block">' + blocks + '</div>';
+  }
+
   function _relHistory(proj, cols, history, windowLabel) {
     const st = history || { status: 'loading' };
+    const spread = _relTenantSpread(proj);
     // Mirrors the row structure — a label-width gutter, then the track — so an
     // expanded row starts on exactly the same x as the row it opened from.
     const wrap = body => '<div class="ip-rel-history">'
       + '<div class="ip-rel-proj ip-rel-history-gutter" aria-hidden="true"></div>'
-      + '<div class="ip-rel-history-body">' + body + '</div></div>';
+      + '<div class="ip-rel-history-body">' + spread + body + '</div></div>';
 
     if (st.status === 'loading' || !st.status) {
       return wrap('<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading releases…</span></div>');

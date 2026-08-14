@@ -495,7 +495,12 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 
    Colour is backed by node shape and a written state: a green/red pair alone
    failed a deuteranopia check earlier in this series. */
-.ip-rel-groups { --ip-rel-label: 220px; }
+.ip-rel-groups { --ip-rel-label: 220px; --ip-rel-endgutter: 180px; --ip-rel-surface: #fff; }
+/* The stylesheet has no global box-sizing, so a declared width here would
+   otherwise exclude padding and border — which is exactly how the expanded
+   gutter ended up 28px narrower than the project cell it had to match. */
+.ip-rel-groups, .ip-rel-groups *, .ip-rel-groups *::before, .ip-rel-groups *::after {
+  box-sizing: border-box; }
 .ip-rel-note { margin: 0 0 14px; padding: 10px 12px; border-left: 3px solid var(--color-blue-400);
   background: var(--color-blue-100); border-radius: 4px; }
 .ip-rel-note p { margin: 0; font-size: 12px; color: var(--color-navy-700); }
@@ -518,7 +523,7 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-rel-hidden { margin: 6px 0 0; font-size: 11px; color: var(--color-grey-600); }
 
 .ip-rel-grid { border: 1px solid var(--color-grey-300); border-radius: 6px; overflow: hidden;
-  background: var(--color-white, #fff); }
+  background: var(--ip-rel-surface); }
 .ip-rel-head, .ip-rel-row, .ip-rel-history { display: flex; align-items: stretch; }
 .ip-rel-head { background: var(--color-grey-100); border-bottom: 1px solid var(--color-grey-300); }
 .ip-rel-row { border-bottom: 1px solid var(--color-grey-200); cursor: pointer; }
@@ -574,7 +579,8 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
    gutter matches the project column exactly, border included, so the columns
    do not shift when a row opens. */
 .ip-rel-history { border-bottom: 1px solid var(--color-grey-200); }
-.ip-rel-history-gutter { padding: 0; }
+.ip-rel-history-gutter { padding: 0; flex: 0 0 var(--ip-rel-label, 220px);
+  width: var(--ip-rel-label, 220px); }
 .ip-rel-history-body { flex: 1 1 auto; padding: 4px 0 10px; min-width: 0; }
 .ip-rel-history-body > .ip-rel-hempty,
 .ip-rel-history-body > .ip-rel-err,
@@ -591,9 +597,9 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
    through the words. */
 .ip-rel-hlabel { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap;
   position: absolute; left: 50%; margin-left: 12px; z-index: 3;
-  padding: 0 4px; background: var(--color-white, #fff); }
-.ip-rel-hcellage { position: relative; z-index: 3; padding: 0 3px;
-  background: var(--color-white, #fff); }
+  padding: 0 4px; background: var(--ip-rel-surface); }
+.ip-rel-hcellage { position: absolute; left: 50%; margin-left: 12px; z-index: 3;
+  white-space: nowrap; padding: 0 4px; background: var(--ip-rel-surface); }
 .ip-rel-hver { font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 600;
   color: var(--color-navy-900); }
 .ip-rel-hchan { font-size: 10px; padding: 0 4px; border-radius: 3px;
@@ -609,12 +615,13 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 
 .dark .ip-rel-note { background: rgba(26,119,202,.14); }
 .dark .ip-rel-note p { color: var(--color-grey-200); }
-.dark .ip-rel-grid { border-color: var(--color-navy-600); background: var(--color-navy-900); }
+.dark .ip-rel-groups { --ip-rel-surface: var(--color-navy-900); }
+.dark .ip-rel-grid { border-color: var(--color-navy-600); background: var(--ip-rel-surface); }
 .dark .ip-rel-head { background: var(--color-navy-800); border-bottom-color: var(--color-navy-600); }
 .dark .ip-rel-row, .dark .ip-rel-history { border-bottom-color: var(--color-navy-700); }
 .dark .ip-rel-row:hover { background: var(--color-navy-800); }
 .dark .ip-rel-proj { border-right-color: var(--color-navy-700); }
-.dark .ip-rel-hlabel, .dark .ip-rel-hcellage { background: var(--color-navy-900); }
+
 .dark .ip-rel-proj-name, .dark .ip-rel-ver, .dark .ip-rel-hver { color: var(--color-grey-100); }
 .dark .ip-rel-group-name { color: var(--color-grey-100); }
 .dark .ip-rel-caret { border-left-color: var(--color-grey-400); }
@@ -636,3 +643,22 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-nav-lead { margin-bottom: 10px; padding-bottom: 10px;
   border-bottom: 1px solid var(--color-grey-200); }
 .dark .ip-nav-lead { border-bottom-color: var(--color-navy-700); }
+
+/* Tenant spread: which release each slice of the estate is on. The bar is a
+   share of the environment's tenants, so a long tail is visible as a long tail
+   rather than as a list of numbers to compare by eye. */
+.ip-rel-tenants-block { margin: 2px 0 10px; padding: 0 6px; }
+.ip-rel-tsenv { margin: 0 0 10px; }
+.ip-rel-tstitle { margin: 0 0 4px; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--color-grey-700); }
+.ip-rel-tslist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.ip-rel-tsrow { display: flex; align-items: baseline; gap: 8px; font-size: 11px; }
+.ip-rel-tsbar { flex: 0 0 120px; height: 6px; border-radius: 3px; align-self: center;
+  background: var(--color-grey-200); overflow: hidden; }
+.ip-rel-tsbar > span { display: block; height: 100%; background: var(--color-green-500); }
+.ip-rel-tscount { color: var(--color-navy-900); font-variant-numeric: tabular-nums; }
+.ip-rel-tsmore { margin: 3px 0 0; font-size: 10px; color: var(--color-grey-500); }
+.dark .ip-rel-tstitle { color: var(--color-grey-300); }
+.dark .ip-rel-tsbar { background: var(--color-navy-700); }
+.dark .ip-rel-tscount { color: var(--color-grey-100); }
+.dark .ip-rel-tsmore { color: var(--color-grey-500); }
