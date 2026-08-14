@@ -1066,12 +1066,17 @@ const Views = (function () {
     const hidden = cell.entries.length - shown.length;
     const hiddenTenants = cell.entries.slice(CAP).reduce((n, e) => n + e.tenantCount, 0);
 
-    const labels = shown.map(e => _relEntry(e, cell, withBar)).join('');
+    // Name a release where it stops, not in every environment it passed
+    // through. A split still names each entry, because its tenant counts are a
+    // per-environment fact, and anything that did not succeed is named where it
+    // happened — a failure is not repetition.
+    const named = shown.filter(e => withBar || e.isFurthest !== false || e.stateKey !== 'success');
+    const labels = named.map(e => _relEntry(e, cell, withBar)).join('');
     const summary = withBar
       ? '<span class="ip-rel-tssum">' + cell.versionCount + ' releases · '
         + cell.tenantTotal.toLocaleString() + (cell.tenantTotal === 1 ? ' tenant' : ' tenants') + '</span>'
       : '';
-    const more = hidden > 0
+    const more = hidden > 0 && named.length
       ? '<span class="ip-rel-more">+' + hidden + ' more ' + (hidden === 1 ? 'release' : 'releases')
         + (hiddenTenants ? ' on ' + hiddenTenants.toLocaleString() + (hiddenTenants === 1 ? ' tenant' : ' tenants') : '')
         + '</span>'

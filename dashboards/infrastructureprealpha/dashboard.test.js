@@ -2312,3 +2312,66 @@ describe('A space we cannot read infrastructure in still has Projects', () => {
     expect(html).toContain('Portal');
   });
 });
+
+describe('A release is named where it stops, not everywhere it went', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const envs = [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Test' },
+                { Id: 'E3', Name: 'Preprod' }, { Id: 'E4', Name: 'Prod' }];
+  const build = items => data.releasesModel({
+    Environments: envs, ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+    Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' }],
+    Tenants: [{ Id: 'T1', Name: 'A' }, { Id: 'T2', Name: 'B' }], Items: items
+  });
+  const item = (env, ver, extra) => Object.assign({ IsCurrent: true, ProjectId: 'P1',
+    EnvironmentId: env, ReleaseVersion: ver, State: 'Success' }, extra || {});
+
+  test('only the furthest environment a version reaches is marked', () => {
+    const m = build([item('E1', '9.3'), item('E2', '9.3'), item('E3', '9.3'), item('E4', '9.1')]);
+    const cells = m.groups[0].projects[0].cells;
+    expect(cells.map(c => c.entries[0] && c.entries[0].isFurthest)).toEqual([false, false, true, true]);
+  });
+
+  test('the version is printed once, not once per environment', () => {
+    const m = build([item('E1', '9.3'), item('E2', '9.3'), item('E3', '9.3'), item('E4', '9.1')]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    expect((html.match(/9\.3</g) || []).length).toBe(1);
+    expect((html.match(/9\.1</g) || []).length).toBe(1);
+  });
+
+  test('the nodes still appear in every environment the release is in', () => {
+    const m = build([item('E1', '9.3'), item('E2', '9.3'), item('E3', '9.3'), item('E4', '9.1')]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    // Four environments hold something, so four head nodes.
+    expect((html.match(/ip-rel-node ip-rel-node-healthy/g) || []).length).toBe(4);
+  });
+
+  test('a failure is named where it happened, even mid-journey', () => {
+    const m = build([item('E1', '9.3'), item('E2', '9.3', { State: 'Failed' }), item('E3', '9.3')]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    // Named at Test because it failed there, and at Preprod because it stops there.
+    expect((html.match(/9\.3</g) || []).length).toBe(2);
+    expect(html).toContain('Failed');
+  });
+
+  test('a tenant split names every entry, since its counts are per environment', () => {
+    // Both environments are mid-rollout, so both need their own counts named.
+    const m = build([
+      item('E3', '9.3', { TenantId: 'T1' }), item('E3', '9.1', { TenantId: 'T2' }),
+      item('E4', '9.3', { TenantId: 'T1' }), item('E4', '9.1', { TenantId: 'T2' })
+    ]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    expect((html.match(/9\.3</g) || []).length).toBe(2);
+    expect((html.match(/9\.1</g) || []).length).toBe(2);
+  });
+
+  test('a single release passing through a split environment is still suppressed', () => {
+    // Preprod holds one release and is not a rollout, so it stays a bare node.
+    const m = build([
+      item('E3', '9.3', { TenantId: 'T1' }),
+      item('E4', '9.3', { TenantId: 'T1' }), item('E4', '9.1', { TenantId: 'T2' })
+    ]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    expect((html.match(/9\.3</g) || []).length).toBe(1);
+  });
+});

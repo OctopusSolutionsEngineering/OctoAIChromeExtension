@@ -654,6 +654,13 @@ function releasesModel(dash) {
         versionCount: entries.length, tenantTotal: tenantTotal
       };
     });
+    // A release sitting in four environments does not need naming four times —
+    // the line and the nodes already say it is the same one. Mark the furthest
+    // environment each version reaches; that is the only place worth a label.
+    const furthest = {};
+    cells.forEach((c, i) => c.entries.forEach(e => { furthest[e.version] = i; }));
+    cells.forEach((c, i) => c.entries.forEach(e => { e.isFurthest = furthest[e.version] === i; }));
+
     const links = cells.map((c, i) =>
       i === 0 ? null : linkTone(cells[i - 1].entries.map(e => e.version), c.entries.map(e => e.version)));
     return {
