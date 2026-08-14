@@ -1080,7 +1080,7 @@ const Views = (function () {
       + '<div class="ip-rel-labels">' + summary + labels + more + '</div></div>';
   }
 
-  function _relRow(proj, cols, expanded, history, windowLabel, envOff, flags) {
+  function _relRow(proj, cols, expanded, history, windowLabel, envOff, flags, grouping) {
     const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i], expanded)).join('');
     const row = '<div class="ip-rel-row' + (expanded ? ' expanded' : '') + '" role="button" tabindex="0"'
       + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
@@ -1090,7 +1090,7 @@ const Views = (function () {
       + '</div>'
       + _relTrack(cells, cols)
       + '</div>';
-    return row + (expanded ? _relHistory(proj, cols, history, windowLabel, envOff || {}, flags) : '');
+    return row + (expanded ? _relHistory(proj, cols, history, windowLabel, envOff || {}, flags, grouping) : '');
   }
 
   // The version rides the line at the furthest environment the release reached.
@@ -1170,6 +1170,28 @@ const Views = (function () {
     return '<div class="ip-rel-hrow ip-rel-frow">' + _relTrack(cells, cols) + '</div>';
   }
 
+  // A flag change is a point event: it happened in one environment, at one
+  // moment. No line — it did not travel anywhere, it landed.
+  function _relFlagChangeRow(change, cols, envOff, envIds) {
+    const off = envOff || {};
+    const col = change.scope === 'environment' ? envIds.indexOf(change.envId) : 0;
+    if (change.scope === 'environment' && (col < 0 || off[change.envId])) return '';
+    const label = '<span class="ip-rel-hlabel">'
+      + '<span class="ip-rel-flagname">' + escHtml(change.flagName) + '</span>'
+      + '<span class="ip-rel-flagdelta">' + escHtml(Data.flagChangeLabel(change)) + '</span>'
+      + (change.scope === 'default' ? '<span class="ip-rel-flagscope">default</span>' : '')
+      + '<span class="ip-rel-hage">' + escHtml(_relWhen(new Date(change.occurred).toISOString())) + '</span>'
+      + '</span>';
+    const cells = envIds.map((eid, i) => {
+      if (off[eid]) return '<div class="ip-rel-hcell is-off"></div>';
+      if (i !== col) return '<div class="ip-rel-hcell"></div>';
+      return '<div class="ip-rel-hcell ip-rel-fcell">'
+        + '<span class="ip-rel-fnode is-change" title="' + escHtml(change.flagName) + '"></span>'
+        + label + '</div>';
+    }).join('');
+    return '<div class="ip-rel-hrow ip-rel-frow">' + _relTrack(cells, cols) + '</div>';
+  }
+
   function _relFlags(proj, cols, flags, envOff) {
     const st = flags || { status: 'loading' };
     if (st.status === 'loading' || !st.status) {
@@ -1205,7 +1227,7 @@ const Views = (function () {
       + '</div>';
   }
 
-  function _relHistory(proj, cols, history, windowLabel, envOff, flags) {
+  function _relHistory(proj, cols, history, windowLabel, envOff, flags, grouping) {
     const st = history || { status: 'loading' };
     // Mirrors the row structure — a label-width gutter, then the track — so an
     // expanded row starts on exactly the same x as the row it opened from.
@@ -1239,7 +1261,22 @@ const Views = (function () {
       return wrap('<p class="ip-rel-hempty">Every release in this window only reached environments you have muted.</p>');
     }
     const multiChannel = m.channels.length > 1;
-    const rows = visible.map(r => _relHistoryRow(r, cols, multiChannel, off)).join('');
+    // Grouping by time interleaves flag changes with the releases, so a flip
+    // that shipped alongside a deployment reads as one moment rather than as
+    // two facts in two sections.
+    const changes = (grouping === 'Time' && flags && flags.status === 'ready' && flags.changes) ? flags.changes : [];
+    let rows;
+    if (grouping === 'Time' && changes.length) {
+      const envIds = (m.environments || []).map(e => e.id);
+      const items = visible.map(r => {
+        const head = r.frontier >= 0 ? r.cells[r.frontier] : null;
+        const at = head && head.when ? Date.parse(head.when) : (r.assembled ? Date.parse(r.assembled) : 0);
+        return { at: at, html: _relHistoryRow(r, cols, multiChannel, off) };
+      }).concat(changes.map(c => ({ at: c.occurred, html: _relFlagChangeRow(c, cols, off, envIds) })));
+      rows = items.filter(i => i.html).sort((a, b) => b.at - a.at).map(i => i.html).join('');
+    } else {
+      rows = visible.map(r => _relHistoryRow(r, cols, multiChannel, off)).join('');
+    }
     const notes = [];
     if (mutedOut) notes.push(mutedOut + ' ' + (mutedOut === 1 ? 'release' : 'releases')
       + ' only reached muted environments.');
@@ -1247,8 +1284,21 @@ const Views = (function () {
     if (m.windowed) notes.push('History reaches back ' + m.historyCount + ' releases per channel.');
     if (m.neverDeployedCount) notes.push(m.neverDeployedCount + ' of these were created and never deployed anywhere.');
 
+    // Grouped by type, the changes get their own band rather than being mixed
+    // into the releases; grouped by time they are already interleaved above.
+    let changeBand = '';
+    if (grouping === 'Type' && flags && flags.status === 'ready' && (flags.changes || []).length) {
+      const envIds = (m.environments || []).map(e => e.id);
+      const changeRows = flags.changes.map(c => _relFlagChangeRow(c, cols, off, envIds)).filter(Boolean).join('');
+      if (changeRows) {
+        changeBand = '<div class="ip-rel-band"><p class="ip-rel-bandhead">Flag changes'
+          + '<span class="ip-rel-bandcount">last ' + escHtml(String(windowLabel).toLowerCase()) + '</span></p>'
+          + changeRows + '</div>';
+      }
+    }
     return wrap(rows + (notes.length
-      ? '<div class="ip-rel-hnote">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : ''));
+      ? '<div class="ip-rel-hnote">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '')
+      + changeBand);
   }
 
   function renderProjects(IP) {
@@ -1257,9 +1307,16 @@ const Views = (function () {
     const active = IP.historyWindow || windows[0].label;
     const segs = windows.map(w => '<button class="ip-seg' + (w.label === active ? ' active' : '')
       + '" data-window="' + escHtml(w.label) + '">' + escHtml(w.label) + '</button>').join('');
+    const groupings = (typeof Data !== 'undefined' && Data.GROUPINGS) || ['Time', 'Type'];
+    const grouping = IP.grouping || groupings[0];
+    const gsegs = groupings.map(gname => '<button class="ip-seg' + (gname === grouping ? ' active' : '')
+      + '" data-grouping="' + escHtml(gname) + '">' + escHtml(gname) + '</button>').join('');
     const head = '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Projects</h2>'
       + '<p class="ip-sub">What each project is running in each environment, and where a release has stopped moving.</p></div>'
-      + '<div class="ip-rel-window"><span class="ip-caption">History</span><div class="ip-segs">' + segs + '</div></div></header>';
+      + '<div class="ip-rel-controls">'
+      +   '<div class="ip-rel-window"><span class="ip-caption">History</span><div class="ip-segs">' + segs + '</div></div>'
+      +   '<div class="ip-rel-window"><span class="ip-caption">Group by</span><div class="ip-segs">' + gsegs + '</div></div>'
+      + '</div></header>';
 
     if (st.status === 'loading' || st.status === 'idle') {
       return head + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading the project dashboard…</p></div>';
@@ -1305,7 +1362,7 @@ const Views = (function () {
           + '</button></div>';
       }).join('');
       const flg = IP.projectFlags || {};
-      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id], active, off, flg[p.id])).join('');
+      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id], active, off, flg[p.id], grouping)).join('');
       const hiddenNote = g.hiddenEnvironments.length
         ? '<p class="ip-rel-hidden">Not shown, because this group has never deployed to them: '
           + escHtml(g.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
@@ -1349,6 +1406,13 @@ const Views = (function () {
       el.addEventListener('click', () => toggle(el));
       el.addEventListener('keydown', ev => {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(el); }
+      });
+    });
+    root.querySelectorAll('[data-grouping]').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        IP.grouping = btn.getAttribute('data-grouping');
+        redraw();
       });
     });
     root.querySelectorAll('[data-envtoggle]').forEach(btn => {

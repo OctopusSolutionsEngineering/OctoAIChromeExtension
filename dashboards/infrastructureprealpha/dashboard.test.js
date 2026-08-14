@@ -1924,3 +1924,120 @@ describe('Feature flags — view', () => {
     expect(html).toContain('ip-rel-history');
   });
 });
+
+describe('Flag changes — reconstructed from the audit trail', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const events = { Items: [
+    { Id: 'Ev1', Occurred: '2026-08-14T03:00:00Z', ChangeDetails: {
+      DocumentContext: { Name: 'new-checkout', Environments: [{ DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 0 }] },
+      Differences: [{ op: 'replace', path: '/Environments/0', value: { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 } }] } },
+    { Id: 'Ev2', Occurred: '2026-08-14T01:00:00Z', ChangeDetails: {
+      DocumentContext: { Name: 'new-checkout', Environments: [] },
+      Differences: [{ op: 'add', path: '/Environments/0', value: { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 } }] } },
+    { Id: 'Ev3', Occurred: '2026-08-13T01:00:00Z', ChangeDetails: {
+      DocumentContext: { Name: 'legacy', DefaultIsEnabled: false },
+      Differences: [{ op: 'replace', path: '/DefaultIsEnabled', value: true }] } },
+    // An override for an environment this project's grid does not show.
+    { Id: 'Ev4', Occurred: '2026-08-14T02:00:00Z', ChangeDetails: {
+      DocumentContext: { Name: 'elsewhere', Environments: [] },
+      Differences: [{ op: 'add', path: '/Environments/0', value: { DeploymentEnvironmentId: 'E9', IsEnabled: true } }] } }
+  ] };
+
+  test('both ends of the arrow come out of context plus patch', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const first = c.find(x => x.id.indexOf('Ev1') === 0);
+    expect(data.flagChangeLabel(first)).toBe('0% → 10%');
+  });
+
+  test('an added override reads as "no override", not as off', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const added = c.find(x => x.id.indexOf('Ev2') === 0);
+    expect(added.before).toBeNull();
+    expect(data.flagChangeLabel(added)).toBe('no override → On');
+  });
+
+  test('a default-level change is kept and marked as such', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const def = c.find(x => x.scope === 'default');
+    expect(def.flagName).toBe('legacy');
+    expect(data.flagChangeLabel(def)).toBe('Off → On');
+  });
+
+  test('a change in an environment the grid does not show is dropped', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    expect(c.some(x => x.flagName === 'elsewhere')).toBe(false);
+  });
+
+  test('changes come back newest first', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const times = c.map(x => x.occurred);
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+  });
+
+  test('the window filters changes', () => {
+    const now = Date.parse('2026-08-14T04:00:00Z');
+    expect(data.flagChangeModel(events, grid, 2, now)).toHaveLength(1);   // only Ev1
+    expect(data.flagChangeModel(events, grid, null, now).length).toBe(3); // Ev4 excluded by grid
+  });
+
+  test('an empty payload yields nothing and does not throw', () => {
+    expect(data.flagChangeModel(undefined, grid, null, Date.now())).toEqual([]);
+    expect(data.flagChangeModel({ Items: [] }, grid, null, Date.now())).toEqual([]);
+  });
+});
+
+describe('Projects — grouping by time or type', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: grid.map(e => ({ envId: e.id, envName: e.name, entries: [], versionCount: 0, tenantTotal: 0 })),
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  const history = { status: 'ready', model: {
+    environments: grid, channels: ['Main'], totalReleases: 1, hiddenByWindow: 0, neverDeployedCount: 0,
+    releases: [{ version: '9.3', channelName: 'Main', assembled: '2026-08-14T02:00:00Z', lag: 0,
+      everDeployed: true, frontier: 1,
+      cells: [{ envId: 'E1', envName: 'Dev', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: '2026-08-14T02:00:00Z', tenantCount: 0, count: 1 },
+              { envId: 'E3', envName: 'Prod', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: '2026-08-14T02:30:00Z', tenantCount: 0, count: 1 }] }] } };
+  const flags = { status: 'ready',
+    model: { flags: [], total: 2, settled: { onEverywhere: 2 }, truncated: false },
+    changes: [{ id: 'c1', flagName: 'new-checkout', scope: 'environment', envId: 'E3', envName: 'Prod',
+      occurred: Date.parse('2026-08-14T02:45:00Z'), before: { key: 'partial', percent: 0 }, after: { key: 'partial', percent: 10 } }] };
+  const render = grouping => Views.renderProjects({
+    projectOpen: { P1: true }, projectHistory: { P1: history }, projectFlags: { P1: flags },
+    grouping: grouping, releases: { status: 'ready', model }
+  });
+
+  test('the control offers Time and Type, defaulting to Time', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model } });
+    expect(html).toContain('data-grouping="Time"');
+    expect(html).toContain('data-grouping="Type"');
+    expect(html).toContain('class="ip-seg active" data-grouping="Time"');
+  });
+
+  test('grouped by time, a flag change sits among the releases', () => {
+    const html = render('Time');
+    const body = /ip-rel-history-body[\s\S]*$/.exec(html)[0];
+    // The change is more recent than the release, so it comes first.
+    expect(body.indexOf('new-checkout')).toBeLessThan(body.indexOf('9.3'));
+    expect(html).not.toContain('Flag changes');
+  });
+
+  test('grouped by type, changes get their own band instead', () => {
+    const html = render('Type');
+    expect(html).toContain('Flag changes');
+    const body = /ip-rel-history-body[\s\S]*$/.exec(html)[0];
+    expect(body.indexOf('9.3')).toBeLessThan(body.indexOf('new-checkout'));
+  });
+
+  test('current flag state survives both groupings', () => {
+    expect(render('Time')).toContain('Not shown:');
+    expect(render('Type')).toContain('Not shown:');
+  });
+});

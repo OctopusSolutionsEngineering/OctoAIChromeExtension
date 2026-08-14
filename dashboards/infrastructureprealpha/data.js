@@ -732,6 +732,8 @@ async function fetchProgression(spaceId, projectId) {
     + '?releaseHistoryCount=' + PROGRESSION_HISTORY);
 }
 
+const GROUPINGS = ['Time', 'Type'];
+
 const HISTORY_WINDOWS = [
   { label: '24 hours', hours: 24 },
   { label: '7 days', hours: 24 * 7 },
@@ -900,13 +902,95 @@ function featureFlagModel(payload, gridEnvironments) {
   return { flags: inFlight, total: src.total || all.length, settled: settled, truncated: !!src.truncated };
 }
 
+
+// ─── Feature flag changes ────────────────────────────────────────────────────
+// Current state has no timestamp, so seeing a flag flip next to the release it
+// shipped with means reading the audit trail. Each event carries DocumentContext
+// (the document BEFORE the change) and Differences (a JSON patch describing the
+// change), which together give both ends of the arrow.
+//
+// Environment overrides arrive as a whole-object add or replace at
+// /Environments/N. An `add` has no before-state at that index, which is a real
+// distinction: no override existed, which is not the same as the flag being off.
+
+const FLAG_EVENT_TAKE = 100;
+
+async function fetchFlagEvents(spaceId, projectId) {
+  return fetchJson('/api/' + spaceId + '/events?documentTypes=FeatureToggles&projects='
+    + encodeURIComponent(projectId) + '&take=' + FLAG_EVENT_TAKE);
+}
+
+function flagChangeModel(events, gridEnvironments, windowHours, now) {
+  const items = (events && events.Items) || [];
+  const envName = {};
+  (gridEnvironments || []).forEach(e => { envName[e.id] = e.name; });
+  const cutoff = windowHours ? (now || Date.now()) - windowHours * 3600 * 1000 : null;
+
+  const changes = [];
+  items.forEach((ev, evIndex) => {
+    const cd = ev.ChangeDetails || {};
+    const ctx = cd.DocumentContext || {};
+    const name = ctx.Name || '';
+    const at = ev.Occurred ? Date.parse(ev.Occurred) : null;
+    if (at == null || isNaN(at)) return;
+    if (cutoff != null && at < cutoff) return;
+
+    (cd.Differences || []).forEach((d, dIndex) => {
+      const path = String(d.path || '');
+      const envMatch = /^\/Environments\/(\d+)$/.exec(path);
+      if (envMatch) {
+        const idx = Number(envMatch[1]);
+        const after = d.value || null;
+        const before = (ctx.Environments || [])[idx] || null;
+        const envId = (after && after.DeploymentEnvironmentId)
+          || (before && before.DeploymentEnvironmentId) || null;
+        // Only environments the grid is showing; an override for an environment
+        // this project never deploys to has no column to sit in.
+        if (!envId || !(envId in envName)) return;
+        changes.push({
+          id: ev.Id + ':' + dIndex, flagName: name, scope: 'environment',
+          envId: envId, envName: envName[envId], occurred: at,
+          before: before ? flagEnvState(before) : null,
+          after: after ? flagEnvState(after) : null,
+          username: ev.Username || ''
+        });
+        return;
+      }
+      if (path === '/DefaultIsEnabled') {
+        changes.push({
+          id: ev.Id + ':' + dIndex, flagName: name, scope: 'default',
+          envId: null, envName: '', occurred: at,
+          before: { key: ctx.DefaultIsEnabled ? 'on' : 'off', percent: null },
+          after: { key: d.value ? 'on' : 'off', percent: null },
+          username: ev.Username || ''
+        });
+      }
+    });
+  });
+
+  return changes.sort((a, b) => b.occurred - a.occurred);
+}
+
+/** "Off → 10%" — the arrow the whole audit reconstruction exists to produce. */
+function flagChangeLabel(change) {
+  const side = st => {
+    if (!st) return 'no override';
+    if (st.key === 'off') return 'Off';
+    if (st.key === 'partial') return st.percent + '%';
+    if (st.key === 'on') return st.percent != null && st.percent < 100 ? st.percent + '%' : 'On';
+    return 'default';
+  };
+  return side(change.before) + ' → ' + side(change.after);
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel,
   fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
   fetchProgression, progressionModel, HISTORY_WINDOWS,
-  fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight }; }
+  fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
+  fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -916,5 +1000,6 @@ if (typeof module !== 'undefined') {
     vkey, majorVersion, versionBand, deriveLatest, agentsModel,
     fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
     fetchProgression, progressionModel, HISTORY_WINDOWS,
-    fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight };
+    fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
+    fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS };
 }
