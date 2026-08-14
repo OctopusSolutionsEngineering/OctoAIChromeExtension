@@ -565,16 +565,10 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   width: 10px; height: 10px; }
 .ip-rel-labels { display: flex; flex-direction: column; align-items: center; gap: 2px;
   min-width: 0; text-align: center; position: relative; z-index: 2; }
-.ip-rel-entry { display: flex; flex-direction: column; align-items: stretch; gap: 2px;
-  width: 100%; min-width: 0; }
-.ip-rel-entry-head { display: flex; flex-wrap: wrap; justify-content: center;
+.ip-rel-entry { display: flex; flex-wrap: wrap; justify-content: center;
   align-items: baseline; gap: 5px; min-width: 0; }
-/* A cell carrying a tenant split needs its full column width for the bars, so
-   its labels stop centring as a block and stretch instead. */
+/* A cell carrying a tenant split stretches so each row can measure its share. */
 .ip-rel-cell.has-split .ip-rel-labels { align-items: stretch; width: 100%; }
-.ip-rel-cell.has-split .ip-rel-entry-head { justify-content: space-between; }
-.ip-rel-cell.has-split .ip-rel-ver { overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; word-break: normal; }
 .ip-rel-ver { font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 600;
   color: var(--color-navy-900); word-break: break-all; }
 .ip-rel-age, .ip-rel-tenants { font-size: 11px; color: var(--color-grey-600); }
@@ -653,15 +647,25 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   border-bottom: 1px solid var(--color-grey-200); }
 .dark .ip-nav-lead { border-bottom-color: var(--color-navy-700); }
 
-/* Tenant share bar: a slice of the environment's tenants, sitting with the
-   release it belongs to inside the environment's own column. */
-.ip-rel-tsbar { display: block; width: 100%; height: 5px; border-radius: 3px;
-  background: var(--color-grey-200); overflow: hidden; }
-.ip-rel-tsbar > span { display: block; height: 100%; background: var(--color-green-500); }
-.ip-rel-tscount { font-size: 10px; color: var(--color-grey-600);
-  font-variant-numeric: tabular-nums; }
-.ip-rel-tssum { font-size: 10px; font-weight: 600; color: var(--color-grey-700);
-  padding-bottom: 2px; }
-.dark .ip-rel-tsbar { background: var(--color-navy-700); }
-.dark .ip-rel-tscount { color: var(--color-grey-400); }
-.dark .ip-rel-tssum { color: var(--color-grey-300); }
+/* Tenant share: one line per release. The share is the row's own fill, so the
+   bar costs no extra height and a deep split stays compact — version on the
+   left, tenant count on the right, both reading over the fill. */
+.ip-rel-entry-share { display: flex; flex-wrap: nowrap; justify-content: space-between;
+  align-items: baseline; gap: 6px; width: 100%; min-width: 0;
+  padding: 1px 5px; border-radius: 3px;
+  background: linear-gradient(to right,
+    var(--ip-rel-share-fill) var(--ip-rel-share, 0%),
+    var(--color-grey-200) var(--ip-rel-share, 0%));
+}
+.ip-rel-groups { --ip-rel-share-fill: #B8E7D3; }
+.ip-rel-entry-share .ip-rel-ver { overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; word-break: normal; font-weight: 600; }
+.ip-rel-tscount { font-size: 10px; color: var(--color-navy-900);
+  font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.ip-rel-tssum { font-size: 10px; color: var(--color-grey-600); padding-bottom: 1px; }
+.dark .ip-rel-groups { --ip-rel-share-fill: #14603F; }
+.dark .ip-rel-entry-share { background: linear-gradient(to right,
+  var(--ip-rel-share-fill) var(--ip-rel-share, 0%),
+  var(--color-navy-700) var(--ip-rel-share, 0%)); }
+.dark .ip-rel-tscount { color: var(--color-grey-100); }
+.dark .ip-rel-tssum { color: var(--color-grey-400); }

@@ -1022,22 +1022,26 @@ const Views = (function () {
   // the detail lives with the environment it describes rather than in a
   // separate panel that repeats the column headings.
   function _relEntry(e, cell, withBar) {
+    const age = _relWhen(e.when);
+    const state = e.stateKey !== 'success'
+      ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">' + escHtml(e.stateLabel) + '</span>' : '';
+    if (!withBar) {
+      return '<span class="ip-rel-entry">'
+        + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
+        + '<span class="ip-rel-age">' + escHtml(age) + '</span>'
+        + (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml('· ' + e.tenantCount
+            + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : '')
+        + state + '</span>';
+    }
+    // One line per release: the share is the row's own fill rather than a
+    // separate bar, so a twelve-way split stays readable in a column.
     const share = cell.tenantTotal ? (e.tenantCount / cell.tenantTotal * 100) : 0;
-    return '<span class="ip-rel-entry">'
-      + '<span class="ip-rel-entry-head">'
-      +   '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
-      +   '<span class="ip-rel-age">' + escHtml(_relWhen(e.when)) + '</span>'
-      + '</span>'
-      + (withBar
-          ? '<span class="ip-rel-tsbar" title="' + escHtml(e.tenantCount.toLocaleString() + ' of '
-              + cell.tenantTotal.toLocaleString() + ' tenants')
-            + '"><span style="width:' + share.toFixed(1) + '%"></span></span>'
-            + '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString()
-            + (e.tenantCount === 1 ? ' tenant' : ' tenants') + '</span>'
-          : (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml('· ' + e.tenantCount
-              + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : ''))
-      + (e.stateKey !== 'success'
-          ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">' + escHtml(e.stateLabel) + '</span>' : '')
+    return '<span class="ip-rel-entry ip-rel-entry-share" style="--ip-rel-share:' + share.toFixed(1) + '%"'
+      + ' title="' + escHtml(e.version + ' — ' + e.tenantCount.toLocaleString() + ' of '
+          + cell.tenantTotal.toLocaleString() + ' tenants' + (age ? ', ' + age : '')) + '">'
+      + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
+      + state
+      + '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString() + '</span>'
       + '</span>';
   }
 
@@ -1062,7 +1066,7 @@ const Views = (function () {
     const hiddenTenants = cell.entries.slice(CAP).reduce((n, e) => n + e.tenantCount, 0);
 
     const labels = shown.map(e => _relEntry(e, cell, withBar)).join('');
-    const summary = withBar && expanded
+    const summary = withBar
       ? '<span class="ip-rel-tssum">' + cell.versionCount + ' releases · '
         + cell.tenantTotal.toLocaleString() + (cell.tenantTotal === 1 ? ' tenant' : ' tenants') + '</span>'
       : '';

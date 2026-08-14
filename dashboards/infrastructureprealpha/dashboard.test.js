@@ -1694,10 +1694,17 @@ describe('Projects — tenant split lives in the environment cell', () => {
     expect(cell.entries.map(e => e.tenantCount).sort((a, b) => a - b)).toEqual([3, 6, 11]);
   });
 
-  test('the contracted row carries a share bar per release', () => {
+  test('the contracted row carries each release share as its own fill', () => {
     const html = render(false);
-    expect(html).toContain('ip-rel-tsbar');
-    expect(html).toContain('width:55.0%');   // 11 of 20
+    expect(html).toContain('ip-rel-entry-share');
+    expect(html).toContain('--ip-rel-share:55.0%');   // 11 of 20
+  });
+
+  test('a share row is one line: version, then the tenant count', () => {
+    const html = render(false);
+    // No separate bar element, so the share costs no extra height.
+    expect(html).not.toContain('ip-rel-tsbar');
+    expect(html).not.toContain('ip-rel-entry-head');
   });
 
   test('there is no separate tenant panel above the history', () => {
@@ -1716,8 +1723,8 @@ describe('Projects — tenant split lives in the environment cell', () => {
     const open = Views.renderProjects({ projectOpen: { P1: true },
       projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: [] } } },
       releases: { status: 'ready', model: m2 } });
-    expect((shut.match(/ip-rel-entry"/g) || []).length).toBe(3);
-    expect((open.match(/ip-rel-entry"/g) || []).length).toBe(20);
+    expect((shut.match(/ip-rel-entry-share/g) || []).length).toBe(3);
+    expect((open.match(/ip-rel-entry-share/g) || []).length).toBe(20);
     expect(shut).toContain('+17 more releases on 17 tenants');
   });
 
@@ -1726,6 +1733,6 @@ describe('Projects — tenant split lives in the environment cell', () => {
       Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success', TenantId: 'T0' }]
     });
     const html = Views.renderProjects({ projectOpen: {}, releases: { status: 'ready', model: data.releasesModel(single) } });
-    expect(html).not.toContain('ip-rel-tsbar');
+    expect(html).not.toContain('ip-rel-entry-share');
   });
 });
