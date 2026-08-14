@@ -1388,6 +1388,7 @@ const Views = (function () {
     }
 
     const notes = [];
+    if (IP.spaceError) notes.push('Infrastructure cannot be read in this space, so the other sections are unavailable. Projects reads the project dashboard, which you do have access to.');
     if (m.truncated.capped) notes.push('Showing ' + m.truncated.shown + ' projects — the server caps the dashboard at ' + m.truncated.projectLimit + '. Projects beyond the cap are missing from this view.');
     if (m.truncated.isFiltered) notes.push('The dashboard is filtered on this instance, so this is a subset of its projects.');
     const note = notes.length ? '<div class="ip-rel-note">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '';

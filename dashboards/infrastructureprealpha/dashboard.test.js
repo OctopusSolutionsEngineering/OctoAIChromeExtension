@@ -2271,3 +2271,44 @@ describe('An empty release window still shows what changed', () => {
     expect(html).toContain('30s → 60s');
   });
 });
+
+describe('A space we cannot read infrastructure in still has Projects', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const fs = require('fs');
+  const path = require('path');
+
+  test('only Projects is exempt from needing the estate', () => {
+    expect(data.viewNeedsEstate('projects')).toBe(false);
+    ['overview', 'targets', 'environments', 'workers', 'argocd', 'machinepolicies', 'agents']
+      .forEach(v => expect(data.viewNeedsEstate(v)).toBe(true));
+  });
+
+  test('the router gates the error view on that, not on spaceError alone', () => {
+    const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
+    expect(router).toContain('IP.spaceError && needsEstate');
+    // The old unconditional guard must be gone.
+    expect(router).not.toContain('if (IP.spaceError) {');
+  });
+
+  test('cold start cannot intercept Projects either', () => {
+    const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
+    expect(router).toContain('needsEstate && typeof Data !== \'undefined\' && Data.coldStartApplies');
+  });
+
+  test('the Projects view explains why the other sections are missing', () => {
+    const grid = [{ id: 'E1', name: 'Dev' }];
+    const model = {
+      environments: grid,
+      groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+        projects: [{ id: 'P1', name: 'Portal',
+          cells: [{ envId: 'E1', envName: 'Dev', entries: [], versionCount: 0, tenantTotal: 0 }], links: [null] }] }],
+      projects: [{ id: 'P1' }], truncated: {}
+    };
+    const html = Views.renderProjects({ spaceError: 'Machines could not be read.',
+      releases: { status: 'ready', model } });
+    expect(html).toContain('Infrastructure cannot be read in this space');
+    // And it still renders the grid rather than an error.
+    expect(html).toContain('Portal');
+  });
+});

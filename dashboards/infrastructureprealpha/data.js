@@ -1081,6 +1081,17 @@ function variableChangeLabel(change) {
   return before + ' → ' + after;
 }
 
+
+// Which views depend on the infrastructure estate. Projects reads the project
+// dashboard directly, so a space whose machines we are not permitted to read
+// still has a working Projects tab — /machines/all can 403 while /dashboard
+// returns 200, which is exactly the case on Cloud Platform.
+const ESTATE_FREE_VIEWS = ['projects'];
+
+function viewNeedsEstate(view) {
+  return ESTATE_FREE_VIEWS.indexOf(view) === -1;
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
@@ -1089,7 +1100,8 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   fetchProgression, progressionModel, HISTORY_WINDOWS,
   fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
   fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
-  fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable }; }
+  fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable,
+  viewNeedsEstate }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1101,5 +1113,6 @@ if (typeof module !== 'undefined') {
     fetchProgression, progressionModel, HISTORY_WINDOWS,
     fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
     fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
-    fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue };
+    fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue,
+    viewNeedsEstate };
 }

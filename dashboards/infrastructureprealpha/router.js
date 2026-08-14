@@ -9,15 +9,19 @@ const Router = (function () {
   }
   function render() {
     const el = document.getElementById('main-content');
-    // A space that failed to hydrate has no estate to route over, and rendering views
-    // against it would show zeros as though the space were empty.
-    if (IP.spaceError) { el.innerHTML = Views.stateView('error', IP.spaceError); return; }
     const hash = (window.location.hash || '#overview').slice(1);
+    // A space that failed to hydrate has no estate to route over, and rendering
+    // infrastructure views against it would show zeros as though the space were
+    // empty. Projects is not one of those views: it reads the project dashboard
+    // directly, so being unable to read machines does not cost you the projects.
+    const needsEstate = typeof Data !== 'undefined' && Data.viewNeedsEstate
+      ? Data.viewNeedsEstate(hash) : true;
+    if (IP.spaceError && needsEstate) { el.innerHTML = Views.stateView('error', IP.spaceError); return; }
     // Cold-start greets you on the landing view when there's no infrastructure; it never
     // intercepts an explicit nav click. Every other view renders itself and shows its own
     // empty state, so a space with no targets can still reach its environments, its
     // machine policies, and the add-target walkthrough.
-    if (typeof Data !== 'undefined' && Data.coldStartApplies && Data.coldStartApplies(hash, IP.estate)) {
+    if (needsEstate && typeof Data !== 'undefined' && Data.coldStartApplies && Data.coldStartApplies(hash, IP.estate)) {
       Onboarding.renderFirstRun(IP);
       return;
     }
