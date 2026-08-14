@@ -576,3 +576,64 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-nav-lead { border-bottom-color: var(--color-navy-700); }
 .ip-rel-more { font-size: 10px; color: var(--color-grey-600); }
 .dark .ip-rel-more { color: var(--color-grey-400); }
+
+/* Project groups: each is its own grid, because each carries its own columns. */
+.ip-rel-group { margin: 0 0 22px; }
+.ip-rel-group-name { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px;
+  font-size: 13px; font-weight: 600; color: var(--color-navy-900); }
+.ip-rel-group-count { font-size: 11px; font-weight: 400; color: var(--color-grey-600); }
+.ip-rel-hidden { margin: 6px 0 0; font-size: 11px; color: var(--color-grey-600); }
+
+/* Expandable row */
+.ip-rel-row[data-project] { cursor: pointer; }
+.ip-rel-row[data-project]:hover { background: var(--color-grey-100); }
+.ip-rel-row[data-project]:focus-visible { outline: 2px solid var(--color-blue-500); outline-offset: -2px; }
+.ip-rel-proj { align-items: flex-start; }
+.ip-rel-caret { width: 0; height: 0; margin-top: 4px; flex: 0 0 auto;
+  border-left: 5px solid var(--color-grey-600); border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent; transition: transform .12s ease; }
+.ip-rel-row .ip-rel-proj { flex-direction: row; gap: 8px; align-items: center; }
+.ip-rel-proj-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ip-rel-row.expanded .ip-rel-caret { transform: rotate(90deg); }
+
+/* History panel */
+.ip-rel-history { display: flex; align-items: stretch; background: var(--color-grey-100);
+  border-top: 1px solid var(--color-grey-200); }
+.ip-rel-history-side { display: flex; flex-direction: column; gap: 2px; padding-top: 14px; }
+.ip-rel-history-title { font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--color-grey-700); }
+.ip-rel-history-count { font-size: 11px; color: var(--color-grey-600); }
+.ip-rel-history-body { flex: 1 1 auto; padding: 10px 0 12px; min-width: 0; }
+.ip-rel-loading { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  font-size: 12px; color: var(--color-grey-600); }
+.ip-rel-err { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--color-red-700); }
+.ip-rel-hrow { display: flex; align-items: center; min-height: 30px; }
+.ip-rel-hrow.undeployed { opacity: .72; }
+.ip-rel-hmeta { width: 210px; flex: 0 0 210px; padding: 0 12px; display: flex;
+  flex-wrap: wrap; align-items: baseline; gap: 5px; }
+.ip-rel-hver { font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 600;
+  color: var(--color-navy-900); word-break: break-all; }
+.ip-rel-hchan { font-size: 10px; padding: 0 4px; border-radius: 3px;
+  background: var(--color-grey-200); color: var(--color-grey-700); }
+.ip-rel-hage { font-size: 10px; color: var(--color-grey-600); }
+.ip-rel-hlag { font-size: 10px; color: var(--color-grey-600); }
+.ip-rel-hnever { font-size: 10px; color: var(--color-grey-500); font-style: italic; }
+.ip-rel-hcell { position: relative; display: flex; flex-direction: column; align-items: center;
+  gap: 1px; padding: 3px 4px; min-width: 0; }
+.ip-rel-hcell .ip-rel-seg { top: 9px; height: 2px; }
+.ip-rel-hnode { position: relative; z-index: 1; width: 11px; height: 11px; border-radius: 50%; display: block; }
+.ip-rel-hnote { margin: 8px 0 0; padding: 0 12px; }
+.ip-rel-hnote p { margin: 2px 0; font-size: 11px; color: var(--color-grey-600); }
+
+.dark .ip-rel-group-name { color: var(--color-grey-100); }
+.dark .ip-rel-group-count, .dark .ip-rel-hidden { color: var(--color-grey-400); }
+.dark .ip-rel-row[data-project]:hover { background: var(--color-navy-800); }
+.dark .ip-rel-caret { border-left-color: var(--color-grey-400); }
+.dark .ip-rel-history { background: var(--color-navy-800); border-top-color: var(--color-navy-700); }
+.dark .ip-rel-history-title { color: var(--color-grey-300); }
+.dark .ip-rel-history-count, .dark .ip-rel-hage, .dark .ip-rel-hlag,
+.dark .ip-rel-hnote p, .dark .ip-rel-loading { color: var(--color-grey-400); }
+.dark .ip-rel-hver { color: var(--color-grey-100); }
+.dark .ip-rel-hchan { background: rgba(255,255,255,.10); color: var(--color-grey-300); }
+.dark .ip-rel-hnever { color: var(--color-grey-500); }
+.dark .ip-rel-err { color: var(--color-red-200); }

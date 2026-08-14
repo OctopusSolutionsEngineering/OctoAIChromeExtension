@@ -625,18 +625,17 @@ function releasesModel(dash) {
     if (item.TenantId) agg.tenants.push(item.TenantId);
   });
 
-  // An environment nothing has ever been deployed to costs a column and tells
-  // you nothing. Dropped from the grid and named underneath instead, so the
-  // remaining columns get the width — and so a space with a dormant environment
-  // doesn't read as though the environment were missing.
-  const usedEnvIds = {};
-  Object.keys(byProject).forEach(pid => Object.keys(byProject[pid]).forEach(eid => { usedEnvIds[eid] = true; }));
-  const environments = allEnvironments.filter(e => usedEnvIds[e.id]);
-  const hiddenEnvironments = allEnvironments.filter(e => !usedEnvIds[e.id]);
+  // Projects are grouped the way the instance groups them, and each group gets
+  // its own columns. An environment is hidden per group rather than estate-wide,
+  // because a group that never touches Preprod shouldn't carry an empty column
+  // for it just because another group does. The cost is that two groups can show
+  // different columns, which is why each group renders its own header row.
+  const groupOf = {};
+  (d.ProjectGroups || []).forEach(g => { groupOf[g.Id] = g.Name; });
 
-  const projects = (d.Projects || []).map(p => {
+  const buildProject = (p, envList) => {
     const envMap = byProject[p.Id] || {};
-    const cells = environments.map(env => {
+    const cells = envList.map(env => {
       const vers = envMap[env.id] || {};
       const entries = Object.keys(vers).map(v => {
         const a = vers[v];
@@ -649,10 +648,6 @@ function releasesModel(dash) {
           tenantNames: a.tenants.map(id => tenantNames[id] || id)
         };
       }).sort((x, y) => String(y.when || '').localeCompare(String(x.when || '')));
-      // A tenanted project can have dozens of releases live in one environment at
-      // once — 41 in one cell on Cloud Platform. The cell reports the spread so
-      // the view can name the newest and summarise the rest instead of stacking
-      // forty labels into a column.
       const tenantTotal = entries.reduce((n, e) => n + e.tenantCount, 0);
       return {
         envId: env.id, envName: env.name, entries: entries,
@@ -661,13 +656,42 @@ function releasesModel(dash) {
     });
     const links = cells.map((c, i) =>
       i === 0 ? null : linkTone(cells[i - 1].entries.map(e => e.version), c.entries.map(e => e.version)));
-    const deployed = cells.reduce((n, c) => n + (c.entries.length ? 1 : 0), 0);
     return {
       id: p.Id, name: p.Name, slug: p.Slug,
-      groupId: p.ProjectGroupId, groupName: groupNames[p.ProjectGroupId] || '',
-      cells: cells, links: links, deployedCount: deployed
+      groupId: p.ProjectGroupId, groupName: groupOf[p.ProjectGroupId] || '',
+      cells: cells, links: links,
+      deployedCount: cells.reduce((n, c) => n + (c.entries.length ? 1 : 0), 0)
+    };
+  };
+
+  const byGroup = {};
+  (d.Projects || []).forEach(p => {
+    const gid = p.ProjectGroupId || '';
+    (byGroup[gid] || (byGroup[gid] = [])).push(p);
+  });
+
+  const groups = Object.keys(byGroup).map(gid => {
+    const members = byGroup[gid];
+    const used = {};
+    members.forEach(p => Object.keys(byProject[p.Id] || {}).forEach(eid => { used[eid] = true; }));
+    const envs = allEnvironments.filter(e => used[e.id]);
+    const hidden = allEnvironments.filter(e => !used[e.id]);
+    return {
+      id: gid,
+      name: groupOf[gid] || 'Ungrouped',
+      environments: envs,
+      hiddenEnvironments: hidden,
+      projects: members.map(p => buildProject(p, envs)).sort((a, b) => String(a.name).localeCompare(String(b.name)))
     };
   }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  // Kept flat as well, so callers that only want a count or a lookup don't have
+  // to walk the groups.
+  const projects = groups.reduce((all, g) => all.concat(g.projects), []);
+  const usedEnvIds = {};
+  Object.keys(byProject).forEach(pid => Object.keys(byProject[pid]).forEach(eid => { usedEnvIds[eid] = true; }));
+  const environments = allEnvironments.filter(e => usedEnvIds[e.id]);
+  const hiddenEnvironments = allEnvironments.filter(e => !usedEnvIds[e.id]);
 
   // The server caps how many projects the dashboard returns. Reporting the cap
   // matters more here than elsewhere: a capped list looks exactly like a small
@@ -675,6 +699,7 @@ function releasesModel(dash) {
   return {
     environments: environments,
     hiddenEnvironments: hiddenEnvironments,
+    groups: groups,
     projects: projects,
     truncated: {
       projectLimit: typeof d.ProjectLimit === 'number' ? d.ProjectLimit : null,
@@ -685,11 +710,97 @@ function releasesModel(dash) {
   };
 }
 
+
+// ─── Project history (expanded row) ──────────────────────────────────────────
+// /progression returns the recent releases for one project, newest first, with
+// a Deployments map keyed by environment. Two things about it shape the model:
+//
+//   Releases from every channel arrive in one list. Lag is therefore counted
+//   within a channel — a Main release is not "two behind" because two
+//   Pre-Release builds were cut after it.
+//
+//   Plenty of releases were never deployed anywhere. They are kept, because a
+//   release that got created and went nowhere is a fact about the project, and
+//   dropping it would make the history look tidier than the project is.
+//
+// releaseHistoryCount is capped at 100 by the server and counts per channel.
+
+const PROGRESSION_HISTORY = 30;
+
+async function fetchProgression(spaceId, projectId) {
+  return fetchJson('/api/' + spaceId + '/progression/' + encodeURIComponent(projectId)
+    + '?releaseHistoryCount=' + PROGRESSION_HISTORY);
+}
+
+function progressionModel(prog, gridEnvironments) {
+  const p = prog || {};
+  // Columns come from the grid, not from this payload, so an expanded row lines
+  // up with the collapsed one above it.
+  const envs = (gridEnvironments || []).map(e => ({ id: e.id, name: e.name }));
+  const seenPerChannel = {};
+
+  const releases = (p.Releases || []).map(entry => {
+    const rel = entry.Release || {};
+    const channelName = (entry.Channel && entry.Channel.Name) || '';
+    const channelId = rel.ChannelId || (entry.Channel && entry.Channel.Id) || '';
+    // The list is newest first, so the count already seen in this channel is
+    // how many newer releases sit in front of this one.
+    const lag = seenPerChannel[channelId] || 0;
+    seenPerChannel[channelId] = lag + 1;
+
+    const deployments = entry.Deployments || {};
+    const cells = envs.map(env => {
+      const items = deployments[env.id] || [];
+      let stateKey = null, when = null, tenants = 0;
+      items.forEach(it => {
+        const at = it.CompletedTime || it.StartTime || it.QueueTime || it.Created || null;
+        if (!when || (at && at > when)) { when = at; stateKey = releaseStateKey(it.State); }
+        if (it.TenantId) tenants++;
+      });
+      return {
+        envId: env.id, envName: env.name,
+        deployed: items.length > 0,
+        stateKey: stateKey || null,
+        stateLabel: stateKey ? releaseStateLabel(stateKey) : '',
+        when: when, tenantCount: tenants, count: items.length
+      };
+    });
+
+    const reachedIdx = cells.reduce((last, c, i) => (c.deployed ? i : last), -1);
+    return {
+      version: rel.Version,
+      releaseId: rel.Id,
+      channelId: channelId,
+      channelName: channelName,
+      assembled: rel.Assembled || null,
+      lag: lag,
+      cells: cells,
+      frontier: reachedIdx,
+      everDeployed: reachedIdx >= 0
+    };
+  });
+
+  const channels = [];
+  releases.forEach(r => { if (r.channelName && channels.indexOf(r.channelName) === -1) channels.push(r.channelName); });
+
+  return {
+    environments: envs,
+    releases: releases,
+    channels: channels,
+    neverDeployedCount: releases.filter(r => !r.everDeployed).length,
+    // The server caps history. Say when we are probably looking at a window
+    // rather than the whole story.
+    windowed: releases.length >= PROGRESSION_HISTORY,
+    historyCount: PROGRESSION_HISTORY
+  };
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel,
-  fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone }; }
+  fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
+  fetchProgression, progressionModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -697,5 +808,6 @@ if (typeof module !== 'undefined') {
     machineToTarget, buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel,
-    fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone };
+    fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
+    fetchProgression, progressionModel };
 }

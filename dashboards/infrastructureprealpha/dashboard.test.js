@@ -1344,12 +1344,13 @@ describe('Releases — model', () => {
     expect(m.projects[0].links).toEqual([null, 'pale', 'strong']);
   });
 
-  test('an environment nothing has reached is dropped from the grid, and named', () => {
+  test('an environment nothing has reached is dropped from the group, and named', () => {
     const m = data.releasesModel(withItems([
       { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }
     ]));
-    expect(m.environments.map(e => e.name)).toEqual(['Dev']);
-    expect(m.hiddenEnvironments.map(e => e.name)).toEqual(['Test', 'Prod']);
+    const g = m.groups[0];
+    expect(g.environments.map(e => e.name)).toEqual(['Dev']);
+    expect(g.hiddenEnvironments.map(e => e.name)).toEqual(['Test', 'Prod']);
   });
 
   test('a gap for one project still shows while another project uses that environment', () => {
@@ -1373,7 +1374,7 @@ describe('Releases — model', () => {
       { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }
     ]));
     const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
-    expect(html).toContain('nothing has been deployed to them');
+    expect(html).toContain('this group has never deployed to them');
     expect(html).toContain('Test, Prod');
   });
 
@@ -1430,5 +1431,116 @@ describe('Releases — many releases live in one environment', () => {
     const one = Object.assign({}, many, { Items: many.Items.slice(0, 1) });
     const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(one) } });
     expect(html).not.toContain('ip-rel-more');
+  });
+});
+
+describe('Releases — project groups', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const payload = {
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Preprod' }, { Id: 'E3', Name: 'Prod' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }, { Id: 'G2', Name: 'Tools' }],
+    Projects: [
+      { Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' },
+      { Id: 'P2', Name: 'Hub', ProjectGroupId: 'G1' },
+      { Id: 'P3', Name: 'Script', ProjectGroupId: 'G2' }
+    ],
+    Items: [
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E3', ReleaseVersion: '4.1', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P3', EnvironmentId: 'E1', ReleaseVersion: '1.0', State: 'Success' }
+    ]
+  };
+
+  test('projects are grouped, groups and members ordered by name', () => {
+    const m = data.releasesModel(payload);
+    expect(m.groups.map(g => g.name)).toEqual(['Cloud', 'Tools']);
+    expect(m.groups[0].projects.map(p => p.name)).toEqual(['Hub', 'Portal']);
+  });
+
+  test('each group hides the environments it has never deployed to', () => {
+    const m = data.releasesModel(payload);
+    expect(m.groups[0].environments.map(e => e.name)).toEqual(['Dev', 'Prod']);
+    expect(m.groups[0].hiddenEnvironments.map(e => e.name)).toEqual(['Preprod']);
+    // Tools only ever touched Dev, so it carries one column, not Cloud's two.
+    expect(m.groups[1].environments.map(e => e.name)).toEqual(['Dev']);
+  });
+
+  test('a project keeps a gap for an environment its group uses but it does not', () => {
+    const m = data.releasesModel(payload);
+    const hub = m.groups[0].projects.find(p => p.name === 'Hub');
+    expect(hub.cells.map(c => c.envName)).toEqual(['Dev', 'Prod']);
+    expect(hub.cells[0].entries).toEqual([]);
+  });
+
+  test('a project with no group falls under Ungrouped rather than vanishing', () => {
+    const orphan = Object.assign({}, payload, {
+      Projects: [{ Id: 'P9', Name: 'Loose' }],
+      Items: [{ IsCurrent: true, ProjectId: 'P9', EnvironmentId: 'E1', ReleaseVersion: '1.0', State: 'Success' }]
+    });
+    const m = data.releasesModel(orphan);
+    expect(m.groups.map(g => g.name)).toEqual(['Ungrouped']);
+    expect(m.projects.map(p => p.name)).toEqual(['Loose']);
+  });
+
+  test('the view renders a grid per group and names each hidden environment', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
+    expect((html.match(/ip-rel-grid/g) || []).length).toBe(2);
+    expect(html).toContain('Cloud');
+    expect(html).toContain('this group has never deployed to them: Preprod');
+  });
+});
+
+describe('Project history — progression model', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Prod' }];
+  const prog = {
+    Releases: [
+      { Release: { Id: 'R4', Version: '2.4', ChannelId: 'C1', Assembled: '2026-08-14T00:00:00Z' },
+        Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} },
+      { Release: { Id: 'R3', Version: '9.9-pre', ChannelId: 'C2', Assembled: '2026-08-13T00:00:00Z' },
+        Channel: { Id: 'C2', Name: 'Pre-Release' }, Deployments: {
+          E1: [{ State: 'Success', CompletedTime: '2026-08-13T01:00:00Z' }] } },
+      { Release: { Id: 'R2', Version: '2.3', ChannelId: 'C1', Assembled: '2026-08-12T00:00:00Z' },
+        Channel: { Id: 'C1', Name: 'Main' }, Deployments: {
+          E1: [{ State: 'Success', CompletedTime: '2026-08-12T01:00:00Z' }],
+          E2: [{ State: 'Failed', CompletedTime: '2026-08-12T02:00:00Z' }] } }
+    ]
+  };
+
+  test('lag counts within a channel, not across the whole list', () => {
+    const m = data.progressionModel(prog, grid);
+    const byVer = Object.fromEntries(m.releases.map(r => [r.version, r]));
+    expect(byVer['2.4'].lag).toBe(0);          // newest in Main
+    expect(byVer['9.9-pre'].lag).toBe(0);      // newest in Pre-Release, not "1 behind"
+    expect(byVer['2.3'].lag).toBe(1);          // one Main release ahead of it
+  });
+
+  test('cells follow the grid columns so an expanded row lines up', () => {
+    const m = data.progressionModel(prog, grid);
+    expect(m.releases[0].cells.map(c => c.envName)).toEqual(['Dev', 'Prod']);
+  });
+
+  test('a release created and never deployed is kept and marked', () => {
+    const m = data.progressionModel(prog, grid);
+    const never = m.releases.find(r => r.version === '2.4');
+    expect(never.everDeployed).toBe(false);
+    expect(never.frontier).toBe(-1);
+    expect(m.neverDeployedCount).toBe(1);
+  });
+
+  test('the furthest environment reached becomes the frontier', () => {
+    const m = data.progressionModel(prog, grid);
+    const full = m.releases.find(r => r.version === '2.3');
+    expect(full.frontier).toBe(1);
+    expect(full.cells[1].stateKey).toBe('failed');
+  });
+
+  test('channels present are listed', () => {
+    expect(data.progressionModel(prog, grid).channels.sort()).toEqual(['Main', 'Pre-Release']);
+  });
+
+  test('an empty payload yields no releases and does not throw', () => {
+    expect(data.progressionModel({}, grid).releases).toEqual([]);
   });
 });

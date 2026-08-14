@@ -67,8 +67,36 @@ const Router = (function () {
       // space. Keyed on spaceId so a switch can't leave the previous space's
       // releases on screen.
       const needed = !IP.releases || IP.releases.spaceId !== IP.spaceId;
-      if (needed) IP.releases = { status: 'loading', spaceId: IP.spaceId };
+      if (needed) { IP.releases = { status: 'loading', spaceId: IP.spaceId }; IP.projectHistory = {}; IP.projectOpen = {}; }
       el.innerHTML = Views.renderProjects(IP);
+      Views.bindProjects && Views.bindProjects(IP);
+      // Expanding a project fetches its release history once and keeps it for
+      // the session. Re-render is driven from here so the view stays a pure
+      // string builder.
+      IP.loadProjectHistory = function (projectId) {
+        IP.projectHistory = IP.projectHistory || {};
+        if (IP.projectHistory[projectId]) return;
+        IP.projectHistory[projectId] = { status: 'loading' };
+        const wantedSpace = IP.spaceId;
+        Data.fetchProgression(wantedSpace, projectId)
+          .then(prog => {
+            if (IP.spaceId !== wantedSpace) return;
+            // Align the history to the columns of the group this project sits
+            // in, not the estate-wide set, or an expanded row would not line up
+            // with the grid it opened from.
+            const model = IP.releases && IP.releases.model;
+            const group = model && (model.groups || []).find(g => g.projects.some(p => p.id === projectId));
+            const grid = group ? group.environments : (model ? model.environments : []);
+            IP.projectHistory[projectId] = { status: 'ready', model: Data.progressionModel(prog, grid) };
+            render();
+          })
+          .catch(e => {
+            if (IP.spaceId !== wantedSpace) return;
+            IP.projectHistory[projectId] = { status: 'error',
+              error: e && e.auth ? 'Your session isn\'t authenticated.' : (e && e.code) || 'The release history request failed.' };
+            render();
+          });
+      };
       if (needed && Data.fetchDashboard) {
         const wanted = IP.spaceId;
         Data.fetchDashboard(wanted)

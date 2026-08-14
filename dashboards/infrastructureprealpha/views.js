@@ -1041,15 +1041,100 @@ const Views = (function () {
     return '<div class="ip-rel-cell">' + seg + node + '<div class="ip-rel-labels">' + labels + more + '</div></div>';
   }
 
-  function _relRow(proj, envCount) {
+  function _relRow(proj, envCount, expanded, history) {
     const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i])).join('');
-    return '<div class="ip-rel-row">'
+    const row = '<div class="ip-rel-row' + (expanded ? ' expanded' : '') + '" role="button" tabindex="0"'
+      + ' aria-expanded="' + (expanded ? 'true' : 'false') + '"'
+      + ' data-project="' + escHtml(proj.id) + '">'
       + '<div class="ip-rel-proj">'
-      +   '<span class="ip-rel-proj-name">' + escHtml(proj.name) + '</span>'
-      +   (proj.groupName ? '<span class="ip-rel-proj-group">' + escHtml(proj.groupName) + '</span>' : '')
+      +   '<span class="ip-rel-caret" aria-hidden="true"></span>'
+      +   '<span class="ip-rel-proj-text">'
+      +     '<span class="ip-rel-proj-name">' + escHtml(proj.name) + '</span>'
+      +     (proj.groupName ? '<span class="ip-rel-proj-group">' + escHtml(proj.groupName) + '</span>' : '')
+      +   '</span>'
       + '</div>'
       + '<div class="ip-rel-track" style="grid-template-columns:repeat(' + envCount + ',minmax(0,1fr))">' + cells + '</div>'
       + '</div>';
+    return row + (expanded ? _relHistory(proj, envCount, history) : '');
+  }
+
+  // ─── Expanded history ──────────────────────────────────────────────────────
+  // Same columns as the row above, one line per release, so a release's journey
+  // reads across and the environment it stopped at is where the line stops.
+  function _relHistory(proj, envCount, history) {
+    const st = history || { status: 'loading' };
+    const wrap = inner => '<div class="ip-rel-history"><div class="ip-rel-proj ip-rel-history-side">' + inner.side
+      + '</div><div class="ip-rel-history-body">' + inner.body + '</div></div>';
+
+    if (st.status === 'loading' || !st.status) {
+      return wrap({ side: '<span class="ip-rel-history-title">History</span>',
+        body: '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading releases…</span></div>' });
+    }
+    if (st.status === 'error') {
+      return wrap({ side: '<span class="ip-rel-history-title">History</span>',
+        body: '<p class="ip-rel-err">' + escHtml(st.error || 'Could not load this project\'s releases.') + '</p>' });
+    }
+    const m = st.model;
+    if (!m.releases.length) {
+      return wrap({ side: '<span class="ip-rel-history-title">History</span>',
+        body: '<p class="ip-rel-none">No releases have been created for this project.</p>' });
+    }
+
+    const multiChannel = m.channels.length > 1;
+    const rows = m.releases.map(r => {
+      const cells = r.cells.map((c, i) => {
+        const seg = (i > 0 && i <= r.frontier)
+          ? '<span class="ip-rel-seg ip-rel-seg-' + (i === r.frontier ? 'strong' : 'pale') + '"></span>' : '';
+        if (!c.deployed) return '<div class="ip-rel-hcell">' + seg + '</div>';
+        const tone = REL_STATE_TONE[c.stateKey] || 'disabled';
+        return '<div class="ip-rel-hcell">' + seg
+          + '<span class="ip-rel-hnode ip-rel-node-' + escHtml(tone) + '" title="'
+          + escHtml(c.stateLabel + ' in ' + c.envName) + '"></span>'
+          + '<span class="ip-rel-hage">' + escHtml(_relWhen(c.when)) + '</span></div>';
+      }).join('');
+      const meta = '<span class="ip-rel-hver">' + escHtml(r.version) + '</span>'
+        + (multiChannel && r.channelName ? '<span class="ip-rel-hchan">' + escHtml(r.channelName) + '</span>' : '')
+        + '<span class="ip-rel-hage">' + escHtml(_relWhen(r.assembled)) + '</span>'
+        + (r.lag > 0 ? '<span class="ip-rel-hlag">' + r.lag + ' behind'
+            + (multiChannel ? ' in ' + escHtml(r.channelName) : '') + '</span>' : '')
+        + (!r.everDeployed ? '<span class="ip-rel-hnever">created, never deployed</span>' : '');
+      return '<div class="ip-rel-hrow' + (r.everDeployed ? '' : ' undeployed') + '">'
+        + '<div class="ip-rel-hmeta">' + meta + '</div>'
+        + '<div class="ip-rel-track" style="grid-template-columns:repeat(' + envCount + ',minmax(0,1fr))">' + cells + '</div>'
+        + '</div>';
+    }).join('');
+
+    const notes = [];
+    if (m.windowed) notes.push('The most recent ' + m.historyCount + ' releases per channel. Older releases are not shown.');
+    if (m.neverDeployedCount) notes.push(m.neverDeployedCount + ' of these were created and never deployed anywhere.');
+
+    return wrap({
+      side: '<span class="ip-rel-history-title">History</span>'
+        + '<span class="ip-rel-history-count">' + m.releases.length
+        + (m.releases.length === 1 ? ' release' : ' releases') + '</span>'
+        + (multiChannel ? '<span class="ip-rel-history-count">' + m.channels.length + ' channels</span>' : ''),
+      body: rows + (notes.length ? '<div class="ip-rel-hnote">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '')
+    });
+  }
+
+  function bindProjects(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    const toggle = el => {
+      const id = el.getAttribute('data-project');
+      if (!id) return;
+      IP.projectOpen = IP.projectOpen || {};
+      if (IP.projectOpen[id]) delete IP.projectOpen[id]; else IP.projectOpen[id] = true;
+      root.innerHTML = renderProjects(IP);
+      bindProjects(IP);
+      if (IP.projectOpen[id] && IP.loadProjectHistory) IP.loadProjectHistory(id);
+    };
+    root.querySelectorAll('.ip-rel-row[data-project]').forEach(el => {
+      el.addEventListener('click', () => toggle(el));
+      el.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(el); }
+      });
+    });
   }
 
   function renderProjects(IP) {
@@ -1079,15 +1164,40 @@ const Views = (function () {
     const notes = [];
     if (m.truncated.capped) notes.push('Showing ' + m.truncated.shown + ' projects — the server caps the dashboard at ' + m.truncated.projectLimit + '. Projects beyond the cap are missing from this view.');
     if (m.truncated.isFiltered) notes.push('The dashboard is filtered on this instance, so this is a subset of its projects.');
-    const hidden = m.hiddenEnvironments || [];
-    if (hidden.length) notes.push('Not shown, because nothing has been deployed to them: '
-      + hidden.map(e => e.name).join(', ') + '.');
     const note = notes.length
       ? '<div class="ip-rel-note">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '';
 
-    const cols = m.environments.length;
-    const heads = m.environments.map(e => '<div class="ip-rel-envhead">' + escHtml(e.name) + '</div>').join('');
-    const rows = m.projects.map(p => _relRow(p, cols)).join('');
+    const open = IP.projectOpen || {};
+    const hist = IP.projectHistory || {};
+
+    // One grid per project group. Each carries its own columns, because an
+    // environment is hidden where the group never deploys to it — a group that
+    // has nothing to do with Preprod shouldn't hold a column open for it.
+    const blocks = (m.groups || []).map(g => {
+      const cols = g.environments.length;
+      if (!cols) {
+        return '<section class="ip-rel-group">'
+          + '<h3 class="ip-rel-group-name">' + escHtml(g.name) + '</h3>'
+          + '<p class="ip-rel-none">Nothing in this group has been deployed yet.</p></section>';
+      }
+      const heads = g.environments.map(e => '<div class="ip-rel-envhead">' + escHtml(e.name) + '</div>').join('');
+      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id])).join('');
+      const hiddenNote = g.hiddenEnvironments.length
+        ? '<p class="ip-rel-hidden">Not shown, because this group has never deployed to them: '
+          + escHtml(g.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>'
+        : '';
+      return '<section class="ip-rel-group">'
+        + '<h3 class="ip-rel-group-name">' + escHtml(g.name)
+        +   '<span class="ip-rel-group-count">' + g.projects.length
+        +   (g.projects.length === 1 ? ' project' : ' projects') + '</span></h3>'
+        + '<div class="ip-rel-grid">'
+        +   '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>'
+        +     '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols + ',minmax(0,1fr))">' + heads + '</div></div>'
+        +   rows
+        + '</div>'
+        + hiddenNote
+        + '</section>';
+    }).join('');
 
     return head + note
       + '<div class="ip-rel-legend">'
@@ -1098,13 +1208,8 @@ const Views = (function () {
       +   '<span><i class="ip-rel-key ip-rel-key-strong"></i>Same release both sides</span>'
       +   '<span><i class="ip-rel-key ip-rel-key-pale"></i>Drifted</span>'
       + '</div>'
-      + '<div class="ip-rel-grid">'
-      +   '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>'
-      +     '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols + ',minmax(0,1fr))">' + heads + '</div></div>'
-      +   rows
-      + '</div>';
+      + blocks;
   }
-
   function renderThemeToggle(IP) {
     const dark = IP.theme === 'dark';
     const icon = dark ? _sunSvg : _moonSvg;
@@ -1155,7 +1260,7 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderProjects, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderProjects, bindProjects, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,
