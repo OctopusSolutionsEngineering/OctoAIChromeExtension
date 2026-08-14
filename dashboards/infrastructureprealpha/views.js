@@ -1080,7 +1080,7 @@ const Views = (function () {
       + '<div class="ip-rel-labels">' + summary + labels + more + '</div></div>';
   }
 
-  function _relRow(proj, cols, expanded, history, windowLabel, envOff) {
+  function _relRow(proj, cols, expanded, history, windowLabel, envOff, flags) {
     const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i], expanded)).join('');
     const row = '<div class="ip-rel-row' + (expanded ? ' expanded' : '') + '" role="button" tabindex="0"'
       + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
@@ -1090,7 +1090,7 @@ const Views = (function () {
       + '</div>'
       + _relTrack(cells, cols)
       + '</div>';
-    return row + (expanded ? _relHistory(proj, cols, history, windowLabel, envOff || {}) : '');
+    return row + (expanded ? _relHistory(proj, cols, history, windowLabel, envOff || {}, flags) : '');
   }
 
   // The version rides the line at the furthest environment the release reached.
@@ -1132,13 +1132,86 @@ const Views = (function () {
     return '<div class="ip-rel-hrow' + (r.everDeployed ? '' : ' undeployed') + '">' + _relTrack(cells, cols) + '</div>';
   }
 
-  function _relHistory(proj, cols, history, windowLabel, envOff) {
+  // ─── Feature flags ─────────────────────────────────────────────────────────
+  // Flags travel across environments the way a release does, so they get the
+  // same line in the same columns — in purple, because a flag is not a
+  // deployment and must not borrow the deployment palette. Only flags mid-
+  // journey get a row; a flag on everywhere is not news, and there are 146 of
+  // those on Octopus Server alone.
+  function _relFlagRow(flag, cols, envOff) {
+    const off = envOff || {};
+    let frontier = -1;
+    flag.cells.forEach((c, i) => { if ((c.state === 'on' || c.state === 'partial') && !off[c.envId]) frontier = i; });
+    const first = flag.cells.reduce((f, c, i) =>
+      (f === -1 && (c.state === 'on' || c.state === 'partial') && !off[c.envId] ? i : f), -1);
+
+    const label = '<span class="ip-rel-hlabel">'
+      + '<span class="ip-rel-flagname">' + escHtml(flag.name) + '</span>'
+      + (frontier >= 0 && flag.cells[frontier].state === 'partial'
+          ? '<span class="ip-rel-flagpct">' + flag.cells[frontier].percent + '%</span>' : '')
+      + '</span>';
+
+    const cells = flag.cells.map((c, i) => {
+      if (off[c.envId]) return '<div class="ip-rel-hcell is-off"></div>';
+      const within = first >= 0 && i > first && i <= frontier;
+      const seg = within ? '<span class="ip-rel-seg ip-rel-seg-flag"></span>' : '';
+      let node = '';
+      if (c.state === 'on') node = '<span class="ip-rel-fnode is-on" title="' + escHtml('On in ' + c.envName) + '"></span>';
+      else if (c.state === 'partial') node = '<span class="ip-rel-fnode is-partial" title="'
+        + escHtml(c.percent + '% in ' + c.envName) + '"></span>';
+      else if (c.state === 'off') node = '<span class="ip-rel-fnode is-off-state" title="' + escHtml('Off in ' + c.envName) + '"></span>';
+      // A percentage gets a bar, the same instrument the tenant split uses.
+      const bar = c.state === 'partial'
+        ? '<span class="ip-rel-fbar" title="' + escHtml(c.percent + '% in ' + c.envName)
+          + '"><span style="width:' + c.percent + '%"></span></span>' : '';
+      return '<div class="ip-rel-hcell ip-rel-fcell">' + seg + node + bar + (i === frontier ? label : '') + '</div>';
+    }).join('');
+
+    return '<div class="ip-rel-hrow ip-rel-frow">' + _relTrack(cells, cols) + '</div>';
+  }
+
+  function _relFlags(proj, cols, flags, envOff) {
+    const st = flags || { status: 'loading' };
+    if (st.status === 'loading' || !st.status) {
+      return '<div class="ip-rel-band"><p class="ip-rel-bandhead">Feature flags</p>'
+        + '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading flags…</span></div></div>';
+    }
+    if (st.status === 'error') {
+      return '<div class="ip-rel-band"><p class="ip-rel-bandhead">Feature flags</p>'
+        + '<p class="ip-rel-hempty">' + escHtml(st.error) + '</p></div>';
+    }
+    const m = st.model;
+    if (!m.total) return '';
+    const settled = m.settled || {};
+    const quiet = [];
+    if (settled.onEverywhere) quiet.push(settled.onEverywhere + ' on everywhere');
+    if (settled.offEverywhere) quiet.push(settled.offEverywhere + ' off everywhere');
+    if (settled.noOverrides) quiet.push(settled.noOverrides + ' on their default');
+    const note = quiet.length
+      ? '<p class="ip-rel-hnote-inline">Not shown: ' + escHtml(quiet.join(', ')) + '.</p>' : '';
+    const truncated = m.truncated
+      ? '<p class="ip-rel-hnote-inline">More than ' + m.total + ' flags — this reads the first few pages only.</p>' : '';
+
+    if (!m.flags.length) {
+      return '<div class="ip-rel-band"><p class="ip-rel-bandhead">Feature flags</p>'
+        + '<p class="ip-rel-hempty">All ' + m.total + ' flags are settled — none is part-way through a rollout.</p>'
+        + note + '</div>';
+    }
+    return '<div class="ip-rel-band">'
+      + '<p class="ip-rel-bandhead">Feature flags in flight'
+      +   '<span class="ip-rel-bandcount">' + m.flags.length + ' of ' + m.total + '</span></p>'
+      + m.flags.map(f => _relFlagRow(f, cols, envOff)).join('')
+      + note + truncated
+      + '</div>';
+  }
+
+  function _relHistory(proj, cols, history, windowLabel, envOff, flags) {
     const st = history || { status: 'loading' };
     // Mirrors the row structure — a label-width gutter, then the track — so an
     // expanded row starts on exactly the same x as the row it opened from.
     const wrap = body => '<div class="ip-rel-history">'
       + '<div class="ip-rel-proj ip-rel-history-gutter" aria-hidden="true"></div>'
-      + '<div class="ip-rel-history-body">' + body + '</div></div>';
+      + '<div class="ip-rel-history-body">' + body + _relFlags(proj, cols, flags, envOff) + '</div></div>';
 
     if (st.status === 'loading' || !st.status) {
       return wrap('<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading releases…</span></div>');
@@ -1231,7 +1304,8 @@ const Views = (function () {
           +   '<span class="ip-rel-envtoggle-track"><span class="ip-rel-envtoggle-knob"></span></span>'
           + '</button></div>';
       }).join('');
-      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id], active, off)).join('');
+      const flg = IP.projectFlags || {};
+      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id], active, off, flg[p.id])).join('');
       const hiddenNote = g.hiddenEnvironments.length
         ? '<p class="ip-rel-hidden">Not shown, because this group has never deployed to them: '
           + escHtml(g.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
@@ -1266,7 +1340,10 @@ const Views = (function () {
       IP.projectOpen = IP.projectOpen || {};
       if (IP.projectOpen[id]) delete IP.projectOpen[id]; else IP.projectOpen[id] = true;
       redraw();
-      if (IP.projectOpen[id] && IP.loadProjectHistory) IP.loadProjectHistory(id);
+      if (IP.projectOpen[id]) {
+        if (IP.loadProjectHistory) IP.loadProjectHistory(id);
+        if (IP.loadProjectFlags) IP.loadProjectFlags(id);
+      }
     };
     root.querySelectorAll('.ip-rel-row[data-project]').forEach(el => {
       el.addEventListener('click', () => toggle(el));

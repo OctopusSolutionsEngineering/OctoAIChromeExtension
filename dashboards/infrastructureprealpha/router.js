@@ -67,7 +67,7 @@ const Router = (function () {
       // space. Keyed on spaceId so a switch can't leave the previous space's
       // releases on screen.
       const needed = !IP.releases || IP.releases.spaceId !== IP.spaceId;
-      if (needed) { IP.releases = { status: 'loading', spaceId: IP.spaceId }; IP.projectHistory = {}; IP.progressionRaw = {}; IP.projectOpen = {}; }
+      if (needed) { IP.releases = { status: 'loading', spaceId: IP.spaceId }; IP.projectHistory = {}; IP.progressionRaw = {}; IP.projectFlags = {}; IP.projectOpen = {}; }
       el.innerHTML = Views.renderProjects(IP);
       Views.bindProjects && Views.bindProjects(IP);
       // Expanding a project fetches its release history once and keeps it for
@@ -94,6 +94,32 @@ const Router = (function () {
           IP.projectHistory[pid] = { status: 'ready',
             model: Data.progressionModel(IP.progressionRaw[pid], gridFor(pid), windowHours()) };
         });
+      };
+      // Flags are a second, independent request on expand. It failing must not
+      // take the release history with it, so they are tracked separately.
+      IP.loadProjectFlags = function (projectId) {
+        IP.projectFlags = IP.projectFlags || {};
+        if (IP.projectFlags[projectId]) return;
+        IP.projectFlags[projectId] = { status: 'loading' };
+        const wantedSpace = IP.spaceId;
+        Data.fetchFeatureToggles(wantedSpace, projectId)
+          .then(payload => {
+            if (IP.spaceId !== wantedSpace) return;
+            IP.projectFlags[projectId] = { status: 'ready',
+              model: Data.featureFlagModel(payload, gridFor(projectId)) };
+            render();
+          })
+          .catch(e => {
+            if (IP.spaceId !== wantedSpace) return;
+            // A space without the feature-flag preview simply has no endpoint;
+            // that is a blank section, not an error worth shouting about.
+            const missing = e && (e.code === '404 Not Found' || String(e.code || '').indexOf('404') === 0);
+            IP.projectFlags[projectId] = missing
+              ? { status: 'ready', model: { flags: [], total: 0, settled: {}, truncated: false } }
+              : { status: 'error', error: e && e.auth ? 'Your session isn\'t authenticated.'
+                  : 'Feature flags could not be read for this project.' };
+            render();
+          });
       };
       IP.loadProjectHistory = function (projectId) {
         IP.projectHistory = IP.projectHistory || {};

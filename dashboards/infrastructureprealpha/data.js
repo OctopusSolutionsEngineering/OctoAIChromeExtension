@@ -815,12 +815,98 @@ function progressionModel(prog, gridEnvironments, windowHours, now) {
   };
 }
 
+
+// ─── Feature flags ───────────────────────────────────────────────────────────
+// Flags are project-scoped, so they join the expanded row alongside its release
+// history. skip and take are REQUIRED — the endpoint 400s without them — and
+// the list is long: Octopus Server carries 191 flags.
+//
+// Almost none of them are news. Of those 191, 146 are on in every environment
+// they are set in and 24 have no environment override at all. What is worth a
+// row is a flag mid-journey: partially rolled out, or on in some environments
+// and off in others. The rest are counted, not drawn.
+
+const FLAG_PAGE = 100;
+const FLAG_MAX_PAGES = 4;
+
+async function fetchFeatureToggles(spaceId, projectId) {
+  const base = '/api/' + spaceId + '/projects/' + encodeURIComponent(projectId) + '/featuretoggles';
+  let items = [], total = null, page = 0;
+  // Bounded: four pages, then we stop and say so. An unbounded loop over a
+  // paged endpoint is exactly what the dashboard guidelines warn against.
+  while (page < FLAG_MAX_PAGES) {
+    const res = await fetchJson(base + '?skip=' + (page * FLAG_PAGE) + '&take=' + FLAG_PAGE);
+    const batch = (res && res.Items) || [];
+    if (total == null) total = res && typeof res.TotalResults === 'number' ? res.TotalResults : batch.length;
+    items = items.concat(batch);
+    if (!batch.length || items.length >= total) break;
+    page++;
+  }
+  return { items: items, total: total == null ? items.length : total, truncated: items.length < (total || 0) };
+}
+
+function flagEnvState(env) {
+  if (!env) return { key: 'inherit', percent: null };
+  if (!env.IsEnabled) return { key: 'off', percent: null };
+  const pct = env.RolloutPercentage != null ? env.RolloutPercentage : env.ClientRolloutPercentage;
+  if (pct != null && pct > 0 && pct < 100) return { key: 'partial', percent: pct };
+  return { key: 'on', percent: pct == null ? 100 : pct };
+}
+
+/** A flag is in flight when it is part-way somewhere: a percentage between 0
+ *  and 100, or on in one environment and off in another. */
+function flagIsInFlight(flag) {
+  const envs = flag.Environments || [];
+  if (!envs.length) return false;
+  if (envs.some(e => flagEnvState(e).key === 'partial')) return true;
+  const states = {};
+  envs.forEach(e => { states[flagEnvState(e).key] = true; });
+  return !!(states.on && states.off);
+}
+
+function featureFlagModel(payload, gridEnvironments) {
+  const src = payload || {};
+  const all = src.items || [];
+  const envs = (gridEnvironments || []).map(e => ({ id: e.id, name: e.name }));
+
+  const inFlight = all.filter(flagIsInFlight).map(f => {
+    const byEnv = {};
+    (f.Environments || []).forEach(e => { byEnv[e.DeploymentEnvironmentId] = e; });
+    const cells = envs.map(env => {
+      const e = byEnv[env.id];
+      const st = flagEnvState(e);
+      const tenantCount = e ? ((e.TenantIds || []).length + (e.TenantTags || []).length) : 0;
+      return { envId: env.id, envName: env.name, state: st.key, percent: st.percent, tenantCount: tenantCount };
+    });
+    return {
+      id: f.Id, name: f.Name, slug: f.Slug,
+      defaultOn: !!f.DefaultIsEnabled,
+      cells: cells,
+      // Furthest environment it is live in at all, so the label can ride the
+      // line the way a release does.
+      frontier: cells.reduce((last, c, i) => (c.state === 'on' || c.state === 'partial' ? i : last), -1)
+    };
+  }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  const settled = { onEverywhere: 0, offEverywhere: 0, noOverrides: 0 };
+  all.forEach(f => {
+    if (flagIsInFlight(f)) return;
+    const envs2 = f.Environments || [];
+    if (!envs2.length) settled.noOverrides++;
+    else if (envs2.every(e => e.IsEnabled)) settled.onEverywhere++;
+    else settled.offEverywhere++;
+  });
+
+  return { flags: inFlight, total: src.total || all.length, settled: settled, truncated: !!src.truncated };
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
   vkey, majorVersion, versionBand, deriveLatest, agentsModel,
   fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
-  fetchProgression, progressionModel, HISTORY_WINDOWS }; }
+  fetchProgression, progressionModel, HISTORY_WINDOWS,
+  fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -829,5 +915,6 @@ if (typeof module !== 'undefined') {
     workersModel, workerFacets, applyWorkerFilters,
     vkey, majorVersion, versionBand, deriveLatest, agentsModel,
     fetchDashboard, releasesModel, releaseStateKey, releaseStateLabel, linkTone,
-    fetchProgression, progressionModel, HISTORY_WINDOWS };
+    fetchProgression, progressionModel, HISTORY_WINDOWS,
+    fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight };
 }

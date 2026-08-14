@@ -1804,3 +1804,123 @@ describe('Projects — muting an environment', () => {
     expect(html).toContain('only reached environments you have muted');
   });
 });
+
+describe('Feature flags — model', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Test' }, { id: 'E3', name: 'Prod' }];
+  const payload = { total: 5, truncated: false, items: [
+    { Id: 'F1', Name: 'on-everywhere', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 100 }] },
+    { Id: 'F2', Name: 'partial', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 }] },
+    { Id: 'F3', Name: 'mixed', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: false }] },
+    { Id: 'F4', Name: 'no-overrides', Environments: [] },
+    { Id: 'F5', Name: 'off-everywhere', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: false }] }
+  ] };
+
+  test('only flags mid-journey get a row', () => {
+    const m = data.featureFlagModel(payload, grid);
+    expect(m.flags.map(f => f.name)).toEqual(['mixed', 'partial']);
+  });
+
+  test('the settled majority is counted, not drawn', () => {
+    const m = data.featureFlagModel(payload, grid);
+    expect(m.settled).toEqual({ onEverywhere: 1, offEverywhere: 1, noOverrides: 1 });
+    expect(m.total).toBe(5);
+  });
+
+  test('a percentage between 0 and 100 is a partial rollout, 100 is not', () => {
+    expect(data.flagEnvState({ IsEnabled: true, RolloutPercentage: 10 }).key).toBe('partial');
+    expect(data.flagEnvState({ IsEnabled: true, RolloutPercentage: 100 }).key).toBe('on');
+    expect(data.flagEnvState({ IsEnabled: false }).key).toBe('off');
+    expect(data.flagEnvState(undefined).key).toBe('inherit');
+  });
+
+  test('an environment with no override inherits rather than reading as off', () => {
+    const m = data.featureFlagModel(payload, grid);
+    const partial = m.flags.find(f => f.name === 'partial');
+    expect(partial.cells.map(c => c.state)).toEqual(['on', 'inherit', 'partial']);
+  });
+
+  test('cells follow the grid columns so a flag row lines up with the releases', () => {
+    const m = data.featureFlagModel(payload, grid);
+    expect(m.flags[0].cells.map(c => c.envName)).toEqual(['Dev', 'Test', 'Prod']);
+  });
+
+  test('an empty payload yields nothing and does not throw', () => {
+    expect(data.featureFlagModel(undefined, grid).flags).toEqual([]);
+  });
+});
+
+describe('Feature flags — view', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: grid.map(e => ({ envId: e.id, envName: e.name, entries: [], versionCount: 0, tenantTotal: 0 })),
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  const flagPayload = { total: 3, truncated: false, items: [
+    { Id: 'F2', Name: 'new-checkout', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 }] },
+    { Id: 'F1', Name: 'settled', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 }] },
+    { Id: 'F3', Name: 'also-settled', Environments: [] }
+  ] };
+  const render = (flags, envOff) => Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: grid } } },
+    projectFlags: { P1: flags },
+    envOff: envOff,
+    releases: { status: 'ready', model }
+  });
+
+  test('an in-flight flag draws a row with its percentage', () => {
+    const html = render({ status: 'ready', model: data.featureFlagModel(flagPayload, grid) });
+    expect(html).toContain('Feature flags in flight');
+    expect(html).toContain('new-checkout');
+    expect(html).toContain('10%');
+    expect(html).toContain('1 of 3');
+  });
+
+  test('the settled majority is reported as a count', () => {
+    const html = render({ status: 'ready', model: data.featureFlagModel(flagPayload, grid) });
+    expect(html).toContain('Not shown:');
+    expect(html).toContain('1 on everywhere');
+    expect(html).toContain('1 on their default');
+  });
+
+  test('flags do not borrow the deployment palette', () => {
+    const html = render({ status: 'ready', model: data.featureFlagModel(flagPayload, grid) });
+    const band = /<div class="ip-rel-band">[\s\S]*$/.exec(html)[0];
+    expect(band).toContain('ip-rel-fnode');
+    expect(band).not.toContain('ip-rel-node-healthy');
+  });
+
+  test('a project with no flags at all renders no band', () => {
+    const html = render({ status: 'ready', model: { flags: [], total: 0, settled: {}, truncated: false } });
+    expect(html).not.toContain('ip-rel-band');
+  });
+
+  test('muting an environment hides that column for flags too', () => {
+    const html = render({ status: 'ready', model: data.featureFlagModel(flagPayload, grid) }, { G1: { E3: true } });
+    const band = /<div class="ip-rel-band">[\s\S]*$/.exec(html)[0];
+    expect(band).toContain('ip-rel-hcell is-off');
+  });
+
+  test('a flag read failure does not take the release history with it', () => {
+    const html = render({ status: 'error', error: 'Feature flags could not be read for this project.' });
+    expect(html).toContain('Feature flags could not be read');
+    expect(html).toContain('ip-rel-history');
+  });
+});
