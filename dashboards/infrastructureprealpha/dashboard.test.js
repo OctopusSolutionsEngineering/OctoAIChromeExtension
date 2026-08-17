@@ -3392,7 +3392,7 @@ describe('Project map', () => {
     tenants: { TotalResults: 0 }
   };
   const model = data.projectMapModel(payload);
-  const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
+  const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model } });
 
   test('inputs name the feed behind each package, not the feed id', () => {
     expect(model.inputs).toEqual([{ feed: 'Docker Hub', feedType: 'Docker', packages: ['infra'] }]);
@@ -3432,7 +3432,7 @@ describe('Project map', () => {
 
   test('an unreadable process does not cost the rest of the map', () => {
     const broken = data.projectMapModel(Object.assign({}, payload, { process: null, processError: new Error('x') }));
-    const out = Views.renderProjectMap({ projectMap: { status: 'ready', model: broken } });
+    const out = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: broken } });
     expect(out).toContain('deployment process could not be read');
     expect(out).toContain('Destinations');
     expect(out).toContain('Channels');
@@ -3442,7 +3442,7 @@ describe('Project map', () => {
     const tenanted = data.projectMapModel(Object.assign({}, payload, {
       project: Object.assign({}, payload.project, { TenantedDeploymentMode: 'Tenanted' }),
       tenants: { TotalResults: 48 } }));
-    expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: tenanted } }))
+    expect(Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: tenanted } }))
       .toContain('48 tenants connected');
   });
 
@@ -3461,7 +3461,7 @@ describe('Project map', () => {
 describe('The project map columns hold what belongs together', () => {
   const data = require('./data');
   const Views = require('./views');
-  const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: data.projectMapModel({
+  const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: data.projectMapModel({
     project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
     process: { Steps: [{ Name: 'Deploy', Actions: [{ ActionType: 'Octopus.Script' }] }] },
     channels: { Items: [] }, triggers: { Items: [{ Name: 'Nightly', Filter: { FilterType: 'OnceDailySchedule' } }] },
@@ -3530,7 +3530,7 @@ describe('Project map — lifecycles', () => {
     process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
     environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Production' }], tenants: { TotalResults: 0 }
   });
-  const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
+  const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model } });
 
   test('every lifecycle the project ships through is modelled, not just the default', () => {
     expect(model.lifecycles.map(l => l.name)).toEqual(['Standard', 'Hotfix path']);
@@ -3584,7 +3584,7 @@ describe('Project map — lifecycles', () => {
       lifecycles: [{ Id: 'L1', Name: 'Standard', Phases: [] }],
       process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
       environments: [], tenants: { TotalResults: 0 } });
-    const orphanHtml = Views.renderProjectMap({ projectMap: { status: 'ready', model: orphan } });
+    const orphanHtml = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: orphan } });
     // No phases at all, so there are no columns and nothing to tabulate.
     expect(orphanHtml).toContain('no lifecycle phases');
   });
@@ -3628,7 +3628,7 @@ describe('Lifecycle columns are ordered and shared', () => {
   });
 
   test('an automatic phase is marked, an optional one is not', () => {
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model } });
     // Only Standard's Prod phase is automatic, across all three lifecycles.
     expect((html.match(/ip-pm-node is-auto/g) || []).length).toBe(1);
   });
@@ -3644,7 +3644,7 @@ describe('Lifecycle columns are ordered and shared', () => {
   });
 
   test('a blank cell is explained rather than left ambiguous', () => {
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model } });
     expect(html).toContain('never reaches that environment');
   });
 });
@@ -3703,26 +3703,26 @@ describe('Destinations: selection, targets and their shape', () => {
   test('a project with no roles says so rather than reporting zero targets', () => {
     const m = build('');
     expect(m.targets.selectsByRole).toBe(false);
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: m } });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m } });
     expect(html).toContain('run on the server or on workers');
     expect(html).not.toContain('Deployments would have nowhere to run');
   });
 
   test('roles that match nothing is a warning, and a different one', () => {
     const m = build('ghost');
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: m } });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m } });
     expect(html).toContain('Deployments would have nowhere to run');
   });
 
   test('unreadable machines leave the selection visible', () => {
     const m = build('web', { machines: null, machinesError: new Error('403') });
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: m } });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m } });
     expect(html).toContain('Deployment targets cannot be read');
     expect(html).toContain('Selected by');       // how it chooses is still known
   });
 
   test('the selection mechanism is stated whatever the targets say', () => {
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: build('web,db') } });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: build('web,db') } });
     expect(html).toContain('Selected by');
     expect(html).toContain('Within');
     expect(html).toContain('12 tenants connected');
@@ -3764,7 +3764,7 @@ describe('Project feature flags across the lifecycle environments', () => {
         Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true }] }
     ]);
     expect(m.between.map(f => f.name)).toEqual(['drifting']);
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: Object.assign(
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: Object.assign(
       data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
         process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
         lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
@@ -3784,7 +3784,7 @@ describe('Project feature flags across the lifecycle environments', () => {
       process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
       lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
       tenants: { TotalResults: 0 } });
-    const render = flags => Views.renderProjectMap({ projectMap: { status: 'ready',
+    const render = flags => Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready',
       model: Object.assign({}, base, { flags: flags }) } });
     expect(render(data.projectFlagModel({ items: [], total: 0 }, envs, names)))
       .toContain('no feature flags');
@@ -3798,7 +3798,7 @@ describe('Project feature flags across the lifecycle environments', () => {
       process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
       lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
       tenants: { TotalResults: 0 }, flagsError: err });
-    expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: m } }))
+    expect(Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m } }))
       .toContain('Feature flags are not available on this instance');
     // Anything else is a read failure, not an absent capability.
     const other = new Error('500 Server Error'); other.code = '500 Server Error';
@@ -3806,7 +3806,7 @@ describe('Project feature flags across the lifecycle environments', () => {
       process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
       lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
       tenants: { TotalResults: 0 }, flagsError: other });
-    expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: m2 } }))
+    expect(Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m2 } }))
       .toContain('could not be read for this project');
   });
 });
@@ -3824,7 +3824,7 @@ describe('The lifecycle panel opens on the default only', () => {
   }, extra));
 
   test('one lifecycle needs no disclosure at all', () => {
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: build({
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: build({
       channels: { Items: [] }, lifecycle: lc('L1', 'Std', ['E1', 'E2']), lifecycles: [lc('L1', 'Std', ['E1', 'E2'])]
     }) } });
     expect(html).toContain('Std');
@@ -3837,7 +3837,7 @@ describe('The lifecycle panel opens on the default only', () => {
       lifecycle: lc('L1', 'Std', ['E1', 'E2']),
       lifecycles: [lc('L1', 'Std', ['E1', 'E2']), lc('L2', 'Hotfix', ['E2'])]
     });
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: model } });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: model } });
     const details = html.slice(html.indexOf('<details class="ip-pm-lcmore">'));
     expect(html).toContain('<details class="ip-pm-lcmore">');
     expect(html).toContain('1 other lifecycle</summary>');
@@ -3849,7 +3849,7 @@ describe('The lifecycle panel opens on the default only', () => {
   });
 
   test('the plural is right for more than one', () => {
-    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: build({
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: build({
       channels: { Items: [] }, lifecycle: lc('L1', 'Std', ['E1']),
       lifecycles: [lc('L1', 'Std', ['E1']), lc('L2', 'A', ['E1']), lc('L3', 'B', ['E2'])]
     }) } });
@@ -3867,7 +3867,7 @@ describe('Flags name their environments once, not once per flag', () => {
       process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
       lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
       tenants: { TotalResults: 0 } });
-    return Views.renderProjectMap({ projectMap: { status: 'ready',
+    return Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready',
       model: Object.assign({}, base, { flags: fm }) } });
   };
   const twoFlags = [
@@ -3929,5 +3929,115 @@ describe('Render blocks are defined once, in the view that uses them', () => {
     expect(body('renderProjectMap')).toContain('const flagPanel = (function');
     expect(body('renderTenantDetail')).not.toContain('const flagPanel = (function');
     expect((src.match(/const lcRow = lc =>/g) || []).length).toBe(1);
+  });
+});
+
+describe('A project page opens on Status and keeps Overview a click away', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const dash = {
+    Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'PG1' },
+               { Id: 'P2', Name: 'Other', ProjectGroupId: 'PG1' }],
+    ProjectGroups: [{ Id: 'PG1', Name: 'Web' }],
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }],
+    Tenants: [],
+    Items: [
+      { ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '2.0', State: 'Success', IsCurrent: true, CompletedTime: '2026-08-13T09:00:00Z' },
+      { ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '1.9', State: 'Success', IsCurrent: true, CompletedTime: '2026-08-12T09:00:00Z' },
+      { ProjectId: 'P2', EnvironmentId: 'E1', ReleaseVersion: '5.0', State: 'Success', IsCurrent: true, CompletedTime: '2026-08-13T09:00:00Z' }
+    ]
+  };
+  const mapModel = data.projectMapModel({
+    project: { Id: 'P1', Name: 'Portal', LifecycleId: 'L1' },
+    process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+    lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] },
+    environments: [], tenants: { TotalResults: 0 }
+  });
+  const IP = extra => Object.assign({
+    projectMap: { status: 'ready', projectId: 'P1', model: mapModel },
+    releases: { status: 'ready', spaceId: 'S1', model: data.releasesModel(dash) },
+    projectOpen: { P1: true }
+  }, extra || {});
+
+  test('both tabs are offered, and Status is where it lands', () => {
+    const html = Views.renderProjectMap(IP());
+    expect(html).toContain('data-projecttab="Status"');
+    expect(html).toContain('data-projecttab="Overview"');
+    expect(html).toContain('ip-tab-active" data-projecttab="Status"');
+  });
+
+  test('Status draws this project only, not the whole dashboard', () => {
+    const html = Views.renderProjectMap(IP());
+    expect(html).toContain('data-project="P1"');
+    expect(html).toContain('Portal');
+    expect(html).not.toContain('data-project="P2"');
+    expect(html).not.toContain('>Other<');
+  });
+
+  test('Status carries the same environment columns and controls as the list', () => {
+    const html = Views.renderProjectMap(IP());
+    expect(html).toContain('data-envtoggle="PG1|E1"');
+    expect(html).toContain('data-envtoggle="PG1|E2"');
+    expect(html).toContain('data-window=');
+    expect(html).toContain('data-grouping=');
+    // Same column count the group would give it, so the row lines up.
+    expect(html).toContain('--ip-rel-cols:2');
+  });
+
+  test('the row opens expanded, because the page is about this project', () => {
+    expect(Views.renderProjectMap(IP())).toContain('ip-rel-card is-open');
+    expect(Views.renderProjectMap(IP({ projectOpen: {} }))).not.toContain('ip-rel-card is-open');
+  });
+
+  test('Overview is the map, and carries none of the Status furniture', () => {
+    const html = Views.renderProjectMap(IP({ projectTab: 'Overview' }));
+    expect(html).toContain('>Destinations');
+    expect(html).toContain('>Lifecycles');
+    expect(html).not.toContain('data-envtoggle=');
+    expect(html).toContain('ip-tab-active" data-projecttab="Overview"');
+  });
+
+  test('a project the dashboard never returned says which of the two reasons', () => {
+    const empty = data.releasesModel({ Projects: [], ProjectGroups: [], Environments: [], Tenants: [], Items: [] });
+    expect(Views.renderProjectMap(IP({ releases: { status: 'ready', model: empty } })))
+      .toContain('no releases on the dashboard yet');
+    const capped = data.releasesModel(Object.assign({}, dash,
+      { Projects: [], Items: [], IsFiltered: false, ProjectLimit: 20 }));
+    const html = Views.renderProjectMap(IP({ releases: { status: 'ready', model: capped } }));
+    if (capped.truncated.capped) expect(html).toContain('beyond the 20');
+  });
+
+  test('a dashboard that has not landed yet does not look like an empty project', () => {
+    const html = Views.renderProjectMap(IP({ releases: { status: 'loading' } }));
+    expect(html).toContain('Loading the project dashboard');
+    expect(html).not.toContain('no releases on the dashboard yet');
+  });
+
+  test('a dashboard that failed says so on Status and leaves Overview intact', () => {
+    const failed = { releases: { status: 'error', error: 'The dashboard request failed.' } };
+    expect(Views.renderProjectMap(IP(failed))).toContain('The dashboard request failed.');
+    expect(Views.renderProjectMap(IP(Object.assign({ projectTab: 'Overview' }, failed))))
+      .toContain('>Destinations');
+  });
+});
+
+describe('The list and the project page draw the row from one source', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'views.js'), 'utf8');
+  const count = str => src.split(str).length - 1;
+
+  test('the controls, legend and environment heads are built in one place each', () => {
+    ['_relControls', '_relLegend', '_relEnvHeads'].forEach(fn => {
+      expect(count('function ' + fn + '(')).toBe(1);
+      // One definition plus at least two call sites: the list and the project page.
+      expect(count(fn + '(')).toBeGreaterThan(2);
+    });
+  });
+
+  test('row interactions are bound once and shared', () => {
+    expect(count('function _bindRelRows(')).toBe(1);
+    // The definition plus both binders.
+    expect(count('_bindRelRows(IP, root')).toBe(3);
   });
 });

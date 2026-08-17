@@ -1373,8 +1373,9 @@ const Views = (function () {
       + changeBand + varBand);
   }
 
-  function renderProjects(IP) {
-    const st = IP.releases || { status: 'idle' };
+  // The window/grouping controls, the legend and the environment header are the
+  // same on the projects list and on one project's Status tab. One copy each.
+  function _relControls(IP) {
     const windows = (typeof Data !== 'undefined' && Data.HISTORY_WINDOWS) || [{ label: '24 hours' }, { label: '7 days' }, { label: 'All' }];
     const active = IP.historyWindow || windows[0].label;
     const segs = windows.map(w => '<button class="ip-seg' + (w.label === active ? ' active' : '')
@@ -1383,12 +1384,49 @@ const Views = (function () {
     const grouping = IP.grouping || groupings[0];
     const gsegs = groupings.map(gname => '<button class="ip-seg' + (gname === grouping ? ' active' : '')
       + '" data-grouping="' + escHtml(gname) + '">' + escHtml(gname) + '</button>').join('');
+    return '<div class="ip-rel-controls">'
+      + '<div class="ip-rel-window"><span class="ip-caption">History</span><div class="ip-segs">' + segs + '</div></div>'
+      + '<div class="ip-rel-window"><span class="ip-caption">Group by</span><div class="ip-segs">' + gsegs + '</div></div>'
+      + '</div>';
+  }
+
+  function _relWindowLabel(IP) {
+    const windows = (typeof Data !== 'undefined' && Data.HISTORY_WINDOWS) || [{ label: '24 hours' }];
+    return IP.historyWindow || windows[0].label;
+  }
+
+  function _relLegend() {
+    return '<div class="ip-rel-legend">'
+      + '<span><i class="ip-rel-key ip-rel-key-healthy"></i>Deployed</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-running"></i>In progress</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-unhealthy"></i>Failed or timed out</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-split"></i>Split across tenants</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-strong"></i>Same release both sides</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-pale"></i>Drifted</span>'
+      + '</div>';
+  }
+
+  function _relEnvHeads(groupId, environments, off) {
+    return environments.map(e => {
+      const isOff = !!(off || {})[e.id];
+      return '<div class="ip-rel-envhead' + (isOff ? ' is-off' : '') + '">'
+        + '<span class="ip-rel-envname">' + escHtml(e.name) + '</span>'
+        + '<button type="button" class="ip-rel-envtoggle" role="switch"'
+        +   ' aria-checked="' + (isOff ? 'false' : 'true') + '"'
+        +   ' data-envtoggle="' + escHtml(groupId) + '|' + escHtml(e.id) + '"'
+        +   ' title="' + escHtml((isOff ? 'Show ' : 'Hide ') + e.name + ' in expanded history') + '">'
+        +   '<span class="ip-rel-envtoggle-track"><span class="ip-rel-envtoggle-knob"></span></span>'
+        + '</button></div>';
+    }).join('');
+  }
+
+  function renderProjects(IP) {
+    const st = IP.releases || { status: 'idle' };
+    const active = _relWindowLabel(IP);
+    const grouping = IP.grouping || ((typeof Data !== 'undefined' && Data.GROUPINGS) || ['Time'])[0];
     const head = '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Projects</h2>'
       + '<p class="ip-sub">What each project is running in each environment, and where a release has stopped moving.</p></div>'
-      + '<div class="ip-rel-controls">'
-      +   '<div class="ip-rel-window"><span class="ip-caption">History</span><div class="ip-segs">' + segs + '</div></div>'
-      +   '<div class="ip-rel-window"><span class="ip-caption">Group by</span><div class="ip-segs">' + gsegs + '</div></div>'
-      + '</div></header>';
+      + _relControls(IP) + '</header>';
 
     if (st.status === 'loading' || st.status === 'idle') {
       return head + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading the project dashboard…</p></div>';
@@ -1423,17 +1461,7 @@ const Views = (function () {
           + '<p class="ip-rel-hempty">Nothing in this group has been deployed yet.</p></section>';
       }
       const off = (IP.envOff && IP.envOff[g.id]) || {};
-      const heads = g.environments.map(e => {
-        const isOff = !!off[e.id];
-        return '<div class="ip-rel-envhead' + (isOff ? ' is-off' : '') + '">'
-          + '<span class="ip-rel-envname">' + escHtml(e.name) + '</span>'
-          + '<button type="button" class="ip-rel-envtoggle" role="switch"'
-          +   ' aria-checked="' + (isOff ? 'false' : 'true') + '"'
-          +   ' data-envtoggle="' + escHtml(g.id) + '|' + escHtml(e.id) + '"'
-          +   ' title="' + escHtml((isOff ? 'Show ' : 'Hide ') + e.name + ' in expanded history') + '">'
-          +   '<span class="ip-rel-envtoggle-track"><span class="ip-rel-envtoggle-knob"></span></span>'
-          + '</button></div>';
-      }).join('');
+      const heads = _relEnvHeads(g.id, g.environments, off);
       const flg = IP.projectFlags || {};
       const rows = g.projects.map(p =>
         '<div class="ip-rel-card' + (open[p.id] ? ' is-open' : '') + '">'
@@ -1451,22 +1479,19 @@ const Views = (function () {
         + '</div>' + hiddenNote + '</section>';
     }).join('');
 
-    return head + note
-      + '<div class="ip-rel-legend">'
-      +   '<span><i class="ip-rel-key ip-rel-key-healthy"></i>Deployed</span>'
-      +   '<span><i class="ip-rel-key ip-rel-key-running"></i>In progress</span>'
-      +   '<span><i class="ip-rel-key ip-rel-key-unhealthy"></i>Failed or timed out</span>'
-      +   '<span><i class="ip-rel-key ip-rel-key-split"></i>Split across tenants</span>'
-      +   '<span><i class="ip-rel-key ip-rel-key-strong"></i>Same release both sides</span>'
-      +   '<span><i class="ip-rel-key ip-rel-key-pale"></i>Drifted</span>'
-      + '</div>'
+    return head + note + _relLegend()
       + '<div class="ip-rel-groups" style="--ip-rel-cols:' + maxCols + '">' + blocks + '</div>';
   }
 
   function bindProjects(IP) {
     const root = document.getElementById('main-content');
     if (!root) return;
-    const redraw = () => { root.innerHTML = renderProjects(IP); bindProjects(IP); };
+    _bindRelRows(IP, root, () => { root.innerHTML = renderProjects(IP); bindProjects(IP); });
+  }
+
+  // Expanding a row, hiding an environment, changing the window or the grouping
+  // behave the same wherever the row is drawn, so only the redraw differs.
+  function _bindRelRows(IP, root, redraw) {
     const toggle = el => {
       const id = el.getAttribute('data-project');
       if (!id) return;
@@ -2053,6 +2078,72 @@ const Views = (function () {
   // What goes in, what starts it, what it does, where it lands. Panels rather
   // than a flow diagram: the same facts, without asking anyone to trust a
   // layout before they trust the data.
+  // The projects list draws one row per project; a project's own page draws that
+  // same row for one project. Same builders, same interactions — the only
+  // difference is that this one opens expanded, because a page about one project
+  // should not make you click to see it.
+  function _projectStatus(IP, projectId) {
+    const st = IP.releases || { status: 'idle' };
+    if (st.status === 'loading' || st.status === 'idle') {
+      return '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading the project dashboard…</span></div>';
+    }
+    if (st.status === 'error') {
+      return '<p class="ip-tn-muted">' + escHtml(st.error || 'The project dashboard could not be read.') + '</p>';
+    }
+    const m = st.model;
+    const group = (m.groups || []).find(g => g.projects.some(pr => pr.id === projectId));
+    const proj = group && group.projects.find(pr => pr.id === projectId);
+    if (!proj) {
+      // Two different reasons, and the dashboard cap is the one worth naming.
+      return '<p class="ip-tn-muted">'
+        + (m.truncated && m.truncated.capped
+            ? 'This project is beyond the ' + m.truncated.projectLimit + ' the dashboard returns, so its releases are not on it.'
+            : 'This project has no releases on the dashboard yet.')
+        + '</p>';
+    }
+    const cols = group.environments.length;
+    if (!cols) return '<p class="ip-tn-muted">Nothing in this project group has been deployed yet.</p>';
+
+    const off = (IP.envOff && IP.envOff[group.id]) || {};
+    const open = !!(IP.projectOpen || {})[projectId];
+    const grouping = IP.grouping || ((typeof Data !== 'undefined' && Data.GROUPINGS) || ['Time'])[0];
+    const card = '<div class="ip-rel-card' + (open ? ' is-open' : '') + '">'
+      + _relRow(proj, cols, open, (IP.projectHistory || {})[projectId], _relWindowLabel(IP), off,
+          (IP.projectFlags || {})[projectId], grouping)
+      + '</div>';
+    const hidden = group.hiddenEnvironments.length
+      ? '<p class="ip-rel-hidden">Not shown, because this project group has never deployed to them: '
+        + escHtml(group.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
+    return _relControls(IP) + _relLegend()
+      + '<div class="ip-rel-groups" style="--ip-rel-cols:' + cols + '">'
+      +   '<section class="ip-rel-group"><div class="ip-rel-grid">'
+      +     '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>'
+      +       _relTrack(_relEnvHeads(group.id, group.environments, off), cols) + '</div>'
+      +     '<div class="ip-rel-cards">' + card + '</div>'
+      +   '</div>' + hidden + '</section>'
+      + '</div>';
+  }
+
+  function bindProjectMap(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    const redraw = () => { root.innerHTML = renderProjectMap(IP); bindProjectMap(IP); };
+    root.querySelectorAll('[data-projecttab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        IP.projectTab = btn.getAttribute('data-projecttab');
+        redraw();
+        // Opening Status for the first time is when its history is first wanted.
+        const id = IP.projectMap && IP.projectMap.projectId;
+        if (IP.projectTab === 'Status' && id && (IP.projectOpen || {})[id]
+            && IP.releases && IP.releases.status === 'ready') {
+          if (IP.loadProjectHistory) IP.loadProjectHistory(id);
+          if (IP.loadProjectFlags) IP.loadProjectFlags(id);
+        }
+      });
+    });
+    _bindRelRows(IP, root, redraw);
+  }
+
   function renderProjectMap(IP) {
     const st = IP.projectMap || { status: 'loading' };
     const back = '<p class="ip-tn-back"><a href="#projects">← All projects</a></p>';
@@ -2287,12 +2378,26 @@ const Views = (function () {
         + '<p class="ip-tn-legend">' + notes.map(escHtml).join(' ') + '</p>';
     })();
 
-    return back
+    // Two questions about one project: what is running right now, and how the
+    // project is put together. They are different enough to be different tabs.
+    const tab = IP.projectTab === 'Overview' ? 'Overview' : 'Status';
+    const tabs = '<nav class="ip-tabs ip-section-tabs" aria-label="Project sections">'
+      + [{ key: 'Status', label: 'Status' }, { key: 'Overview', label: 'Overview' }].map(d =>
+          '<button type="button" class="ip-tab ip-section-tab' + (d.key === tab ? ' ip-tab-active' : '')
+          + '" data-projecttab="' + escHtml(d.key) + '"'
+          + (d.key === tab ? ' aria-current="page"' : '') + '>' + escHtml(d.label) + '</button>').join('')
+      + '</nav>';
+
+    const header = back
       + '<header class="ip-head"><h2>' + escHtml(m.name)
       +   (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
       +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
       +   _tnDescription(m.description)
-      + '</header>'
+      + '</header>' + tabs;
+
+    if (tab === 'Status') return header + _projectStatus(IP, m.id);
+
+    return header
       + panel('Lifecycles', m.lifecycles && m.lifecycles.length > 1
           ? m.lifecycles.length + ' in use' : m.lifecycle, lifecycles)
       + '<div class="ip-pm-grid">'
@@ -2362,7 +2467,7 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderProjectMap, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderProjectMap, bindProjectMap, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,
