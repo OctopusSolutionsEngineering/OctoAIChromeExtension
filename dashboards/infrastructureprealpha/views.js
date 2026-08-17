@@ -2109,29 +2109,29 @@ const Views = (function () {
               + '</li>').join('') + '</ol>'
           : none('This project has no deployment steps.'));
 
-    const lifecycles = (m.lifecycles && m.lifecycles.length)
-      ? '<div class="ip-pm-lifecycles">' + m.lifecycles.map(lc =>
-          '<div class="ip-pm-lifecycle">'
-          + '<div class="ip-pm-lchead">'
-          +   '<span class="ip-tn-tname">' + escHtml(lc.name) + '</span>'
-          +   (lc.isDefault ? '<span class="ip-chipx ip-chipx-tag">project default</span>' : '')
-          +   (lc.channels.length
-                ? '<span class="ip-tn-age">' + escHtml(lc.channels.join(', ')) + '</span>'
-                : '<span class="ip-tn-age">no channel uses this</span>')
-          + '</div>'
-          + (lc.phases.length
-              ? '<ol class="ip-pm-flow">' + lc.phases.map(ph =>
-                  '<li class="ip-pm-phasebox">'
-                  + '<span class="ip-pm-phasename">' + escHtml(ph.name) + '</span>'
-                  + '<span class="ip-pm-envs">'
-                  +   ph.automatic.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e)
-                        + '<span class="ip-pm-auto" title="Deploys automatically">auto</span></span>').join('')
-                  +   ph.optional.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e) + '</span>').join('')
-                  + '</span></li>').join('')
-                + '</ol>'
-              : '<p class="ip-tn-muted">No phases.</p>')
-          + '</div>').join('')
-        + '</div>'
+    // Environments are named once, across the top, and each lifecycle is a row
+    // across them — the same grammar the rest of the dashboard uses. Repeating
+    // the environments per lifecycle made two routes to production look like
+    // two different productions.
+    const cols = m.lifecycleEnvironments || [];
+    const lifecycles = (m.lifecycles && m.lifecycles.length && cols.length)
+      ? '<table class="ip-table ip-pm-lctable"><thead><tr><th>Lifecycle</th>'
+        + cols.map(e => '<th>' + escHtml(e) + '</th>').join('') + '</tr></thead><tbody>'
+        + m.lifecycles.map(lc =>
+            '<tr><td class="ip-pm-lcname">'
+            + '<span class="ip-tn-tname">' + escHtml(lc.name) + '</span>'
+            + (lc.isDefault ? '<span class="ip-chipx ip-chipx-tag">default</span>' : '')
+            + '<span class="ip-tn-age">' + escHtml(lc.channels.length
+                ? lc.channels.join(', ') : 'no channel uses this') + '</span>'
+            + '</td>'
+            + lc.cells.map(c => c.reached
+                ? '<td class="ip-pm-lccell"><span class="ip-pm-phasename">' + escHtml(c.phase) + '</span>'
+                  + (c.automatic ? '<span class="ip-pm-auto">auto</span>' : '') + '</td>'
+                : '<td class="ip-pm-lccell is-absent"></td>').join('')
+            + '</tr>').join('')
+        + '</tbody></table>'
+        + '<p class="ip-tn-legend">A blank cell means that lifecycle never reaches that environment. '
+        + '<em>auto</em> marks a phase that deploys without being asked.</p>'
       : none('This project has no lifecycle phases.');
 
     // Destinations keeps what the lifecycle panel does not say: how targets are

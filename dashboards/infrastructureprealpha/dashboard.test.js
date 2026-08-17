@@ -3538,9 +3538,21 @@ describe('Project map — lifecycles', () => {
     expect(model.lifecycles[1].channels).toEqual(['Hotfix']);
   });
 
-  test('phases render in order with their environments', () => {
+  test('environments are named once, as columns', () => {
+    expect(model.lifecycleEnvironments).toEqual(['Dev', 'Production']);
+    // Each environment heading appears once in the table head, not once per lifecycle.
+    const head = html.slice(html.indexOf('<thead>'), html.indexOf('</thead>'));
+    expect((head.match(/Production/g) || []).length).toBe(1);
+  });
+
+  test('each lifecycle is a row across those columns', () => {
+    expect(model.lifecycles[0].cells.map(c => c.reached)).toEqual([true, true]);
+    expect(model.lifecycles[1].cells.map(c => c.reached)).toEqual([false, true]);
     expect(html).toContain('Straight to prod');
-    expect((html.match(/ip-pm-phasebox/g) || []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  test('a lifecycle that never reaches an environment leaves the cell blank', () => {
+    expect(html).toContain('ip-pm-lccell is-absent');
   });
 
   test('an automatic environment is marked as such', () => {
@@ -3560,7 +3572,57 @@ describe('Project map — lifecycles', () => {
       lifecycles: [{ Id: 'L1', Name: 'Standard', Phases: [] }],
       process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
       environments: [], tenants: { TotalResults: 0 } });
-    expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: orphan } }))
-      .toContain('no channel uses this');
+    const orphanHtml = Views.renderProjectMap({ projectMap: { status: 'ready', model: orphan } });
+    // No phases at all, so there are no columns and nothing to tabulate.
+    expect(orphanHtml).toContain('no lifecycle phases');
+  });
+});
+
+describe('Lifecycle columns are ordered and shared', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const model = data.projectMapModel({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+    channels: { Items: [{ Name: 'Full', LifecycleId: 'L1' }, { Name: 'Hotfix', LifecycleId: 'L2' }] },
+    lifecycle: { Id: 'L1', Name: 'Standard', Phases: [
+      { Name: 'Dev', OptionalDeploymentTargets: ['E1'] },
+      { Name: 'Test', OptionalDeploymentTargets: ['E2'] },
+      { Name: 'Prod', AutomaticDeploymentTargets: ['E3'] } ] },
+    lifecycles: [
+      { Id: 'L1', Name: 'Standard', Phases: [
+        { Name: 'Dev', OptionalDeploymentTargets: ['E1'] },
+        { Name: 'Test', OptionalDeploymentTargets: ['E2'] },
+        { Name: 'Prod', AutomaticDeploymentTargets: ['E3'] } ] },
+      { Id: 'L2', Name: 'Hotfix path', Phases: [{ Name: 'Straight to prod', OptionalDeploymentTargets: ['E3'] }] },
+      { Id: 'L3', Name: 'Lab only', Phases: [{ Name: 'Lab', OptionalDeploymentTargets: ['E9'] }] } ],
+    process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Test' },
+                   { Id: 'E3', Name: 'Production' }, { Id: 'E9', Name: 'Lab' }],
+    tenants: { TotalResults: 0 }
+  });
+
+  test('columns follow the default lifecycle, then anything only others reach', () => {
+    expect(model.lifecycleEnvironments).toEqual(['Dev', 'Test', 'Production', 'Lab']);
+  });
+
+  test('two routes to production land in the same column', () => {
+    const prod = model.lifecycleEnvironments.indexOf('Production');
+    expect(model.lifecycles[0].cells[prod]).toMatchObject({ reached: true, phase: 'Prod', automatic: true });
+    expect(model.lifecycles[1].cells[prod]).toMatchObject({ reached: true, phase: 'Straight to prod' });
+  });
+
+  test('every row has a cell per column, reached or not', () => {
+    model.lifecycles.forEach(lc => expect(lc.cells).toHaveLength(model.lifecycleEnvironments.length));
+  });
+
+  test('an automatic phase is marked, an optional one is not', () => {
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
+    expect(html).toContain('ip-pm-auto');
+    expect((html.match(/ip-pm-auto/g) || []).length).toBe(1);
+  });
+
+  test('a blank cell is explained rather than left ambiguous', () => {
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
+    expect(html).toContain('never reaches that environment');
   });
 });

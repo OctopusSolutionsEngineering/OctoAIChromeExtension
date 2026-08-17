@@ -986,6 +986,11 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-pm-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .ip-pm-col > .ip-tn-panel { margin: 0; }
 
+/* Inputs and triggers stack in one grid cell: both answer "what feeds this
+   project", and both are short enough that a cell each left holes beside them. */
+.ip-pm-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ip-pm-col > .ip-tn-panel { margin: 0; }
+
 /* Lifecycles run full width at the top: a phase order is the one thing on this
    page that is genuinely a sequence, and it deserves to be read left to right
    rather than folded into a column. */
@@ -1008,3 +1013,17 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-pm-phasebox { border-color: var(--color-navy-600); }
 .dark .ip-pm-phasename { color: var(--color-grey-100); }
 .dark .ip-pm-phasebox + .ip-pm-phasebox::before { background: var(--color-navy-500); }
+
+/* Lifecycles: environments named once across the top, each lifecycle a row.
+   Repeating the environments per lifecycle made two routes to the same
+   production look like two different productions. */
+.ip-pm-lctable { width: 100%; }
+.ip-pm-lctable th, .ip-pm-lctable td { vertical-align: top; }
+.ip-pm-lcname { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
+.ip-pm-lccell.is-absent { background: repeating-linear-gradient(45deg, transparent, transparent 5px,
+  rgba(127,127,127,.06) 5px, rgba(127,127,127,.06) 10px); }
+.ip-pm-phasename { font-size: 12px; font-weight: 600; color: var(--color-navy-900); }
+.ip-pm-auto { margin-left: 6px; font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
+  padding: 0 4px; border-radius: 3px; background: var(--color-green-100); color: var(--color-green-700); }
+.dark .ip-pm-phasename { color: var(--color-grey-100); }
+.dark .ip-pm-auto { background: rgba(0,135,77,.24); color: var(--color-green-300); }

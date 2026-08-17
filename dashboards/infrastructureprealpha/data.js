@@ -1783,7 +1783,7 @@ function projectMapModel(payload) {
   const phases = phasesOf(src.lifecycle || {});
 
   const channelItems = ((src.channels || {}).Items) || [];
-  const lifecycles = (src.lifecycles || []).map(lc => ({
+  const rawLifecycles = (src.lifecycles || []).map(lc => ({
     id: lc.Id, name: lc.Name,
     isDefault: lc.Id === project.LifecycleId,
     // Which channels ship through it. A channel with no lifecycle of its own
@@ -1793,6 +1793,34 @@ function projectMapModel(payload) {
       .map(c => c.Name),
     phases: phasesOf(lc)
   }));
+
+  // The environments are the columns, named once, and the lifecycles are rows
+  // across them. Order follows the default lifecycle's phases first, so the
+  // columns read as a progression rather than as whatever order the API
+  // happened to return; anything only another lifecycle reaches is appended.
+  const columns = [];
+  const addEnv = name => { if (name && columns.indexOf(name) === -1) columns.push(name); };
+  const ordered = rawLifecycles.slice().sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
+  ordered.forEach(lc => lc.phases.forEach(ph => {
+    ph.automatic.forEach(addEnv);
+    ph.optional.forEach(addEnv);
+  }));
+
+  const lifecycles = rawLifecycles.map(lc => {
+    const where = {};
+    lc.phases.forEach((ph, i) => {
+      ph.automatic.forEach(e => { where[e] = { phase: ph.name, index: i, automatic: true }; });
+      ph.optional.forEach(e => { if (!where[e]) where[e] = { phase: ph.name, index: i, automatic: false }; });
+    });
+    return Object.assign({}, lc, {
+      cells: columns.map(envNameCol => {
+        const hit = where[envNameCol];
+        return hit
+          ? { environment: envNameCol, reached: true, phase: hit.phase, phaseIndex: hit.index, automatic: hit.automatic }
+          : { environment: envNameCol, reached: false };
+      })
+    });
+  });
 
   const triggers = (((src.triggers || {}).Items) || []).map(t => {
     const l = triggerLabel(t);
@@ -1817,6 +1845,7 @@ function projectMapModel(payload) {
     processError: src.processError ? 'The deployment process could not be read.' : null,
     lifecycle: (src.lifecycle || {}).Name || '',
     lifecycles: lifecycles,
+    lifecycleEnvironments: columns,
     phases: phases,
     channels: (((src.channels || {}).Items) || []).map(c => ({
       name: c.Name, isDefault: !!c.IsDefault,
