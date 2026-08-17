@@ -17,9 +17,9 @@ const DEFAULT_OPEN_THRESHOLD = 8;
 const HISTORY_PAGE_SIZE = 30;
 const RELEASE_LOOKUP_SIZE = 100;
 const MI_INSTRUCTIONS_CHAR_LIMIT = 400;
-// Requests are spaced to stay well under 200/minute, and 429 responses are
-// retried after the server-suggested delay.
-const MIN_REQUEST_SPACING_MS = 320;
+// API access is rate limited to 200 requests/minute via pThrottle (bundled in
+// ../api.js), and 429 responses are retried after the server-suggested delay.
+const RATE_LIMIT_PER_MINUTE = 200;
 const RATE_LIMIT_RETRIES = 3;
 const RATE_LIMIT_BASE_DELAY_MS = 2000;
 
@@ -756,20 +756,17 @@ class ApiError extends Error {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// All API calls run through a single chain so consecutive requests are spaced
-// at least MIN_REQUEST_SPACING_MS apart (well under 200 requests per minute).
-let lastRequestAt = 0;
-let requestChain = Promise.resolve();
+// All API calls go through pThrottle (from ../api.js), capping this dashboard
+// at 200 requests per minute. Created lazily so the module also loads outside
+// the browser (unit tests).
+let throttledOctoGetOnce = null;
 
-function paced(fn) {
-    const run = requestChain.then(async () => {
-        const wait = lastRequestAt + MIN_REQUEST_SPACING_MS - Date.now();
-        if (wait > 0) await sleep(wait);
-        lastRequestAt = Date.now();
-        return fn();
-    });
-    requestChain = run.catch(() => { /* pacing must survive failed requests */ });
-    return run;
+function getThrottledOctoGetOnce() {
+    if (!throttledOctoGetOnce) {
+        const throttle = pThrottle({ limit: RATE_LIMIT_PER_MINUTE, interval: 60000 });
+        throttledOctoGetOnce = throttle(octoGetOnce);
+    }
+    return throttledOctoGetOnce;
 }
 
 async function octoGetOnce(serverUrl, path) {
@@ -810,7 +807,7 @@ async function octoGetOnce(serverUrl, path) {
 async function octoGet(serverUrl, path) {
     for (let attempt = 0; ; attempt++) {
         try {
-            return await paced(() => octoGetOnce(serverUrl, path));
+            return await getThrottledOctoGetOnce()(serverUrl, path);
         } catch (error) {
             if (error instanceof ApiError && error.status === 429 && attempt < RATE_LIMIT_RETRIES) {
                 await sleep(error.retryAfterMs || RATE_LIMIT_BASE_DELAY_MS * (attempt + 1));
