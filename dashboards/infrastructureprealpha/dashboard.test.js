@@ -3309,3 +3309,63 @@ describe('One card treatment across the dashboard', () => {
     });
   });
 });
+
+describe('Tenant description: one line, and never trusted', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const model = desc => data.tenantDetailModel({
+    tenant: { Id: 'T1', Name: 'Acme', TenantTags: [], Description: desc, ProjectEnvironments: {} },
+    dashboard: { Projects: [], Environments: [], Items: [] } });
+  const desc = d => {
+    const m = /<p class="ip-tn-desc"[\s\S]*?<\/p>/.exec(
+      Views.renderTenantDetail({ spaceId: 'S', tenantDetail: { status: 'ready', model: model(d) } }));
+    return m ? m[0] : '';
+  };
+  const tags = h => [...new Set([...h.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)].map(m => m[1].toLowerCase()))];
+  const hrefs = h => [...h.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
+
+  test('a markdown link becomes a real link', () => {
+    const out = desc('[License Details](https://octofront.com/cloud-subscriptions/1)');
+    expect(hrefs(out)).toEqual(['https://octofront.com/cloud-subscriptions/1']);
+    expect(out).toContain('>License Details<');
+  });
+
+  test('it is one line, whatever the field contains', () => {
+    const out = desc('[A](https://a.com)\r\n[B](https://b.com)\r\nplain');
+    // The title keeps the original text, newlines and all; the visible body is
+    // what has to be a single line.
+    const body = out.replace(/ title="[\s\S]*?"/, '');
+    expect(body).not.toMatch(/[\r\n]/);
+    expect(body).toContain(' · ');
+    expect(hrefs(out)).toHaveLength(2);
+  });
+
+  test('only http and https reach an href', () => {
+    expect(hrefs(desc('[x](javascript:alert(1))'))).toEqual([]);
+    expect(hrefs(desc('[x](data:text/html,<script>alert(1)</script>)'))).toEqual([]);
+  });
+
+  test('the field can never produce a tag other than the paragraph and its links', () => {
+    ['<img src=x onerror=alert(1)>', '<script>alert(1)</script>',
+     '[x](https://a.com" onmouseover="alert(1))', '" onmouseover="alert(1)'
+    ].forEach(input => {
+      expect(tags(desc(input)).every(t => t === 'p' || t === 'a')).toBe(true);
+    });
+  });
+
+  test('a label containing markup is escaped, not rendered', () => {
+    const out = desc('[<b>bold</b>](https://a.com)');
+    expect(tags(out).every(t => t === 'p' || t === 'a')).toBe(true);
+    expect(out).toContain('&lt;b&gt;');
+  });
+
+  test('no description renders nothing at all', () => {
+    expect(desc('')).toBe('');
+    expect(desc('   ')).toBe('');
+  });
+
+  test('it no longer uses the page subtitle styling', () => {
+    expect(desc('plain text')).toContain('ip-tn-desc');
+    expect(desc('plain text')).not.toContain('ip-sub');
+  });
+});

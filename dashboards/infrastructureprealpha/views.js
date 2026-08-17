@@ -1774,6 +1774,32 @@ const Views = (function () {
       : (t.health === 'Healthy' || t.health === 'HealthyWithWarnings' ? 'healthy' : 'unhealthy')) : 'healthy';
   }
 
+  // A tenant's description is free text the instance owns, and on Octopus Cloud
+  // it is licence boilerplate — a markdown link to a subscription page on every
+  // one of thousands of tenants. Printed raw under the title it read as broken
+  // markup and buried the tenant's own name.
+  //
+  // Markdown links are turned into real links, and nothing else about the field
+  // is trusted: both halves are escaped, and only http and https are allowed
+  // through, so the field cannot inject markup or a javascript: URL.
+  function _tnDescription(text) {
+    const raw = String(text == null ? '' : text).trim();
+    if (!raw) return '';
+    const oneLine = raw.replace(/\s*[\r\n]+\s*/g, ' · ');
+    const linked = oneLine.replace(/\[([^\]\n]{1,120})\]\((https?:\/\/[^\s)]{1,300})\)/g,
+      (whole, label, url) => '<a href="' + escHtml(url) + '" target="_blank" rel="noopener">'
+        + escHtml(label) + '</a>');
+    // Anything that was not a link is escaped by the split, so the only markup
+    // here is the anchors built above.
+    const safe = linked === oneLine ? escHtml(oneLine)
+      : oneLine.split(/(\[[^\]\n]{1,120}\]\(https?:\/\/[^\s)]{1,300}\))/g).map(part => {
+          const m = /^\[([^\]\n]{1,120})\]\((https?:\/\/[^\s)]{1,300})\)$/.exec(part);
+          return m ? '<a href="' + escHtml(m[2]) + '" target="_blank" rel="noopener">'
+            + escHtml(m[1]) + '</a>' : escHtml(part);
+        }).join('');
+    return '<p class="ip-tn-desc" title="' + escHtml(raw) + '">' + safe + '</p>';
+  }
+
   function bindTenantDetail(IP) {
     const root = document.getElementById('main-content');
     if (!root) return;
@@ -2005,7 +2031,7 @@ const Views = (function () {
     return back
       + '<header class="ip-head"><h2>' + escHtml(m.name) + (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
       +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
-      +   (m.description ? '<p class="ip-sub">' + escHtml(m.description) + '</p>' : '')
+      +   _tnDescription(m.description)
       +   (tagGroups ? '<div class="ip-tn-taggroups">' + tagGroups + '</div>' : '')
       + '</header>'
       + '<div class="ip-tn-cards">' + connCard + readyCard + outcomeCard + '</div>'
