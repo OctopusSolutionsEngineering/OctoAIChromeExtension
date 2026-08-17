@@ -1231,9 +1231,9 @@ describe('sidebar composition', () => {
   const items = [...html.matchAll(/class="ip-nav-item" data-view="([^"]+)">([^<]+)</g)]
     .map(m => ({ view:m[1], label:m[2] }));
 
-  test('Projects leads, then Paul\'s five in his order', () => {
+  test('Projects leads, then Paul\'s five in his order, then Tenants', () => {
     expect(items.map(i => i.view)).toEqual(
-      ['projects','overview','targets','environments','workers','argocd']);
+      ['projects','overview','targets','environments','workers','argocd','tenants']);
   });
   test('Projects sits above the Infrastructure heading', () => {
     expect(html.indexOf('data-view="projects"')).toBeLessThan(html.indexOf('ip-sidebar-title'));
@@ -2373,5 +2373,131 @@ describe('A release is named where it stops, not everywhere it went', () => {
     ]);
     const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
     expect((html.match(/9\.3</g) || []).length).toBe(1);
+  });
+});
+
+describe('Tenants — the four independent facts', () => {
+  const data = require('./data');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const ago = d => new Date(NOW - d * 86400000).toISOString();
+  const payload = {
+    now: NOW,
+    tenants: { total: 4, truncated: false, items: [
+      { Id: 'T1', Name: 'Mercy Polyclinic', TenantTags: ['Hosted/Reef', 'Ring/Stable'], ProjectEnvironments: { P1: ['E1'] } },
+      { Id: 'T2', Name: 'Riverside General', TenantTags: ['Hosted/Cluster'], ProjectEnvironments: { P1: ['E1'], P2: ['E1'] } },
+      { Id: 'T3', Name: 'Never Ran', TenantTags: [], ProjectEnvironments: { P1: ['E1'] } },
+      { Id: 'T4', Name: 'Unwired', TenantTags: [], ProjectEnvironments: {} }
+    ] },
+    dashboard: {
+      Projects: [{ Id: 'P1', Name: 'Patient Records' }, { Id: 'P2', Name: 'Billing' }],
+      Environments: [{ Id: 'E1', Name: 'Production' }],
+      Items: [
+        { IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E1', State: 'Failed', CompletedTime: ago(2) },
+        { IsCurrent: true, TenantId: 'T2', ProjectId: 'P1', EnvironmentId: 'E1', State: 'Success', CompletedTime: ago(1) }
+      ]
+    },
+    tagSets: [{ Name: 'Hosted', Tags: [{ Name: 'Reef' }, { Name: 'Cluster' }] }]
+  };
+  const m = data.tenantsModel(payload);
+  const by = name => m.tenants.find(t => t.name === name);
+
+  test('connection, last outcome, never-deployed and not-connected stay separate', () => {
+    expect(by('Mercy Polyclinic').needsAttention).toBe(true);
+    expect(by('Never Ran').neverDeployed).toBe(true);
+    expect(by('Never Ran').needsAttention).toBe(false);
+    expect(by('Unwired').notConnected).toBe(true);
+    expect(by('Unwired').neverDeployed).toBe(false);
+  });
+
+  test('a task running past a week is stuck, not in progress', () => {
+    expect(data.tenantOutcomeKey('Executing', NOW - 8 * 86400000, NOW)).toBe('stuck');
+    expect(data.tenantOutcomeKey('Executing', NOW - 3600000, NOW)).toBe('running');
+  });
+
+  test('tags are split into their set and value', () => {
+    expect(data.parseTenantTag('Hosted/Reef')).toEqual({ set: 'Hosted', name: 'Reef', raw: 'Hosted/Reef' });
+    expect(data.parseTenantTag('Loose').set).toBe('');
+  });
+
+  test('the default sort is actionability, not alphabet', () => {
+    expect(data.sortTenants(m.tenants, 'Actionability').map(t => t.name))
+      .toEqual(['Mercy Polyclinic', 'Never Ran', 'Unwired', 'Riverside General']);
+    expect(data.sortTenants(m.tenants, 'Name').map(t => t.name)[0]).toBe('Mercy Polyclinic');
+  });
+
+  test('filters combine, and a tag filter needs every selected tag', () => {
+    expect(data.filterTenants(m.tenants, '', { tags: { 'Hosted/Reef': true } }).map(t => t.name)).toEqual(['Mercy Polyclinic']);
+    expect(data.filterTenants(m.tenants, '', { tags: { 'Hosted/Reef': true, 'Ring/Stable': true } })).toHaveLength(1);
+    expect(data.filterTenants(m.tenants, '', { tags: { 'Hosted/Reef': true, 'Hosted/Cluster': true } })).toHaveLength(0);
+  });
+
+  test('search matches name or id', () => {
+    expect(data.filterTenants(m.tenants, 'riverside', {})).toHaveLength(1);
+    expect(data.filterTenants(m.tenants, 'T4', {})).toHaveLength(1);
+  });
+
+  test('state filters use the independent facts', () => {
+    expect(data.filterTenants(m.tenants, '', { state: { 'needs-attention': true } }).map(t => t.name)).toEqual(['Mercy Polyclinic']);
+    expect(data.filterTenants(m.tenants, '', { state: { 'not-connected': true } }).map(t => t.name)).toEqual(['Unwired']);
+  });
+
+  test('facet counts are computed against the other active filters', () => {
+    const facets = data.tenantFacets(m.tenants, '', { state: { 'needs-attention': true } });
+    // Only Mercy needs attention, and it is the only Reef tenant.
+    expect(facets.count('tags', 'Hosted/Reef')).toBe(1);
+    expect(facets.count('tags', 'Hosted/Cluster')).toBe(0);
+  });
+
+  test('counts report the three list-scale facts', () => {
+    expect(m.counts).toEqual({ needsAttention: 1, neverDeployed: 1, notConnected: 1 });
+  });
+
+  test('an empty payload yields nothing and does not throw', () => {
+    expect(data.tenantsModel({}).tenants).toEqual([]);
+    expect(data.tenantsModel(undefined).tenants).toEqual([]);
+  });
+});
+
+describe('Tenants — view', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const model = data.tenantsModel({
+    now: NOW,
+    tenants: { total: 2, truncated: false, items: [
+      { Id: 'T1', Name: 'Mercy Polyclinic', TenantTags: ['Hosted/Reef'], ProjectEnvironments: { P1: ['E1'] } },
+      { Id: 'T2', Name: 'Unwired', TenantTags: [], ProjectEnvironments: {} }
+    ] },
+    dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E1', Name: 'Production' }],
+      Items: [{ IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E1', State: 'Failed',
+        CompletedTime: new Date(NOW - 2 * 86400000).toISOString() }] },
+    tagSets: [{ Name: 'Hosted', Tags: [{ Name: 'Reef' }] }]
+  });
+  const html = Views.renderTenants({ tenants: { status: 'ready', model } });
+
+  test('a tenant links to its own page', () => {
+    expect(html).toContain('href="#tenants/T1"');
+  });
+
+  test('the unscoped currency prompt is shown rather than a faked figure', () => {
+    expect(html).toContain('Pick a release scope to see currency');
+  });
+
+  test('readiness says where it lives rather than pretending to be absent', () => {
+    expect(html).toContain('Readiness needs a request per tenant');
+  });
+
+  test('a not-connected tenant says so instead of showing a zero', () => {
+    expect(html).toContain('Not connected');
+  });
+
+  test('facet groups come from the instance tag sets', () => {
+    expect(html).toContain('Hosted');
+    expect(html).toContain('Reef');
+  });
+
+  test('an empty space explains what a tenant is', () => {
+    const empty = Views.renderTenants({ tenants: { status: 'ready', model: data.tenantsModel({}) } });
+    expect(empty).toContain('No tenants in this space');
   });
 });

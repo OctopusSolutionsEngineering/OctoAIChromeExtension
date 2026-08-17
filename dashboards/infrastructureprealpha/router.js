@@ -1,6 +1,6 @@
 'use strict';
 const Router = (function () {
-  const VIEWS = ['overview','targets','environments','machinepolicies','workers','agents','argocd','projects'];
+  const VIEWS = ['overview','targets','environments','machinepolicies','workers','agents','argocd','projects','tenants'];
   // Views that render inside the Deployment Targets section shell.
   const IP_TARGET_SECTION_VIEWS = ['targets','agents','machinepolicies'];
   function setActive(view) {
@@ -65,6 +65,36 @@ const Router = (function () {
     else if (view === 'workers') { el.innerHTML = Views.renderWorkers(IP); Views.bindWorkers && Views.bindWorkers(IP); }
     else if (view === 'agents') { el.innerHTML = Views.renderAgents(IP); Views.bindAgents && Views.bindAgents(IP); }
     else if (view === 'argocd') { el.innerHTML = Views.renderArgo(IP); }
+    else if (view === 'tenants') {
+      // Three requests regardless of tenant count: the tenant pages, one
+      // dashboard (which already carries every tenant's current deployments)
+      // and the tag sets that drive the facet groups.
+      const needed = !IP.tenants || IP.tenants.spaceId !== IP.spaceId;
+      if (needed) { IP.tenants = { status: 'loading', spaceId: IP.spaceId }; IP.tenantSel = {}; IP.tenantPage = 0; }
+      el.innerHTML = Views.renderTenants(IP);
+      Views.bindTenants && Views.bindTenants(IP);
+      if (needed && Data.fetchTenants) {
+        const wanted = IP.spaceId;
+        Promise.all([
+          Data.fetchTenants(wanted),
+          Data.fetchDashboard(wanted),
+          Data.fetchTagSets(wanted).catch(() => [])
+        ])
+          .then(res => {
+            if (IP.spaceId !== wanted) return;
+            IP.tenants = { status: 'ready', spaceId: wanted,
+              model: Data.tenantsModel({ tenants: res[0], dashboard: res[1], tagSets: res[2] }) };
+            render();
+          })
+          .catch(e => {
+            if (IP.spaceId !== wanted) return;
+            IP.tenants = { status: 'error', spaceId: wanted,
+              error: e && e.auth ? 'Your session isn\'t authenticated. Sign in to Octopus and reopen this dashboard.'
+                : (e && e.code) || 'The tenant request failed.' };
+            render();
+          });
+      }
+    }
     else if (view === 'projects') {
       // The project dashboard isn't in the boot payload — it's one request, made
       // the first time someone opens this section, and re-made when they switch

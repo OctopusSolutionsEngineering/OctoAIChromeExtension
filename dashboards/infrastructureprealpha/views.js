@@ -1497,6 +1497,182 @@ const Views = (function () {
     });
   }
 
+  // ─── Tenants ───────────────────────────────────────────────────────────────
+  // A tenant has no health of its own, so the row reports four independent
+  // facts side by side and never merges them into a score.
+  const TENANT_PAGE_SIZE = 100;
+
+  function _tenantWhen(at) {
+    if (!at) return '';
+    return _relWhen(new Date(at).toISOString());
+  }
+
+  function _tenantOutcomeCell(t) {
+    if (!t.connected) return '<span class="ip-tn-muted">Not connected</span>';
+    if (!t.deployed) return '<span class="ip-tn-muted">Never deployed</span>';
+    const tone = t.outcome === 'success' ? 'healthy'
+      : (t.outcome === 'running' ? 'running' : (t.outcome === 'cancelled' ? 'disabled' : 'unhealthy'));
+    return '<span class="ip-tn-outcome">'
+      + '<span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+      + '<span>' + escHtml(t.outcomeLabel) + '</span>'
+      + '<span class="ip-tn-age">' + escHtml(_tenantWhen(t.outcomeAt)) + '</span>'
+      + (t.outcomeProject ? '<span class="ip-tn-age">· ' + escHtml(t.outcomeProject) + '</span>' : '')
+      + '</span>';
+  }
+
+  function _tenantFacetGroup(title, entries, key, selected) {
+    if (!entries.length) return '';
+    const sel = (selected && selected[key]) || {};
+    const rows = entries.map(e =>
+      '<label class="ip-tn-facet' + (sel[e.value] ? ' is-on' : '') + '">'
+      + '<input type="checkbox" data-facet="' + escHtml(key) + '" data-value="' + escHtml(e.value) + '"'
+      +   (sel[e.value] ? ' checked' : '') + '>'
+      + '<span class="ip-tn-facet-name">' + escHtml(e.label) + '</span>'
+      + '<span class="ip-tn-facet-count">' + e.count + '</span></label>').join('');
+    return '<div class="ip-tn-facetgroup"><p class="ip-tn-facettitle">' + escHtml(title) + '</p>' + rows + '</div>';
+  }
+
+  function renderTenants(IP) {
+    const st = IP.tenants || { status: 'idle' };
+    const head = '<header class="ip-head"><h2>Tenants</h2>'
+      + '<p class="ip-sub">Customers, sites and regions deployed through one shared process. '
+      + 'State is four independent facts — connection, last outcome, currency and readiness — never one score.</p></header>';
+
+    if (st.status === 'loading' || st.status === 'idle') {
+      return head + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading tenants…</p></div>';
+    }
+    if (st.status === 'error') {
+      return head + '<div class="ip-state"><h3>Couldn\'t load tenants</h3><p>' + escHtml(st.error || 'Unknown error') + '</p></div>';
+    }
+    const m = st.model;
+    if (!m.tenants.length) {
+      return head + '<div class="ip-empty"><h3>No tenants in this space</h3>'
+        + '<p>A tenant is a customer, site or region that a project deploys to separately, through one shared process.</p></div>';
+    }
+
+    IP.tenantQuery = IP.tenantQuery || '';
+    IP.tenantSort = IP.tenantSort || 'Actionability';
+    IP.tenantSel = IP.tenantSel || {};
+    IP.tenantPage = IP.tenantPage || 0;
+
+    const filtered = Data.filterTenants(m.tenants, IP.tenantQuery, IP.tenantSel);
+    const sorted = Data.sortTenants(filtered, IP.tenantSort);
+    const pages = Math.max(1, Math.ceil(sorted.length / TENANT_PAGE_SIZE));
+    const page = Math.min(IP.tenantPage, pages - 1);
+    const slice = sorted.slice(page * TENANT_PAGE_SIZE, (page + 1) * TENANT_PAGE_SIZE);
+
+    const facets = Data.tenantFacets(m.tenants, IP.tenantQuery, IP.tenantSel);
+    // Tag sets come from the instance, not from a fixed list — an instance with
+    // no tag sets simply has no tag facets.
+    const tagGroups = m.tagSets.map(ts => _tenantFacetGroup(ts.name,
+      ts.tags.map(tag => ({ label: tag.name, value: ts.name + '/' + tag.name,
+        count: facets.count('tags', ts.name + '/' + tag.name) }))
+        .filter(e => e.count > 0), 'tags', IP.tenantSel)).join('');
+
+    const envGroup = _tenantFacetGroup('Environment',
+      m.environments.map(e => ({ label: e.name, value: e.name, count: facets.count('environments', e.name) }))
+        .filter(e => e.count > 0), 'environments', IP.tenantSel);
+
+    const stateGroup = _tenantFacetGroup('State', [
+      { label: 'Needs attention', value: 'needs-attention', count: facets.count('state', 'needs-attention') },
+      { label: 'Never deployed', value: 'never-deployed', count: facets.count('state', 'never-deployed') },
+      { label: 'Not connected', value: 'not-connected', count: facets.count('state', 'not-connected') }
+    ].filter(e => e.count > 0), 'state', IP.tenantSel);
+
+    const projGroup = _tenantFacetGroup('Connected project',
+      m.projects.map(p => ({ label: p.name, value: p.id, count: facets.count('projects', p.id) }))
+        .filter(e => e.count > 0), 'projects', IP.tenantSel);
+
+    const sorts = Data.TENANT_SORTS.map(x => '<option' + (x === IP.tenantSort ? ' selected' : '') + '>'
+      + escHtml(x) + '</option>').join('');
+
+    const rows = slice.map(t =>
+      '<tr class="ip-tn-row">'
+      + '<td><a class="ip-tn-name" href="#tenants/' + escHtml(t.id) + '">' + escHtml(t.name) + '</a>'
+      +   '<span class="ip-tn-id">' + escHtml(t.id) + '</span></td>'
+      + '<td>' + (t.tags.length
+          ? t.tags.slice(0, 3).map(tag => '<span class="ip-chipx ip-chipx-tag">' + escHtml(tag.name) + '</span>').join('')
+            + (t.tags.length > 3 ? '<span class="ip-tn-age">+' + (t.tags.length - 3) + '</span>' : '')
+          : '<span class="ip-tn-muted">—</span>') + '</td>'
+      + '<td>' + t.connectedProjectIds.length + '</td>'
+      + '<td>' + (t.environmentsOn.length ? escHtml(t.environmentsOn.slice(0, 2).join(', '))
+          + (t.environmentsOn.length > 2 ? ' +' + (t.environmentsOn.length - 2) : '')
+          : '<span class="ip-tn-muted">—</span>') + '</td>'
+      + '<td>' + _tenantOutcomeCell(t) + '</td>'
+      + '</tr>').join('');
+
+    const activeChips = [];
+    Object.keys(IP.tenantSel).forEach(k => Object.keys(IP.tenantSel[k] || {}).forEach(v => {
+      if (IP.tenantSel[k][v]) activeChips.push('<button class="ip-tn-chip" data-clear="' + escHtml(k) + '|' + escHtml(v) + '">'
+        + escHtml(v) + ' ×</button>');
+    }));
+
+    return head
+      + '<div class="ip-tn-toolbar">'
+      +   '<input class="ip-search ip-tn-search" type="search" placeholder="Search tenants…" value="' + escHtml(IP.tenantQuery) + '">'
+      +   '<label class="ip-tn-sort"><span class="ip-caption">Sort</span><select class="ip-tn-sortsel">' + sorts + '</select></label>'
+      +   '<span class="ip-count">' + sorted.length.toLocaleString()
+      +     (sorted.length === m.tenants.length ? '' : ' of ' + m.tenants.length.toLocaleString())
+      +     (sorted.length === 1 ? ' tenant' : ' tenants') + '</span>'
+      + '</div>'
+      + (activeChips.length ? '<div class="ip-tn-chips">' + activeChips.join('')
+          + '<button class="ip-tn-chip is-clear" data-clear="all">Clear all</button></div>' : '')
+      + '<p class="ip-rel-hnote-inline">Pick a release scope to see currency. Versions from different projects don\'t add up, '
+      +   'so there is no cross-project figure to show. Readiness needs a request per tenant, so it lives on the tenant page.</p>'
+      + '<div class="ip-tn-body">'
+      +   '<aside class="ip-tn-facets"><p class="ip-tn-facethead">Filters</p>'
+      +     tagGroups + envGroup + stateGroup + projGroup + '</aside>'
+      +   '<div class="ip-tn-table-wrap">'
+      +     (slice.length
+          ? '<table class="ip-table ip-tn-table"><thead><tr>'
+            + '<th>Tenant</th><th>Tags</th><th>Projects</th><th>Environments</th><th>Last outcome</th>'
+            + '</tr></thead><tbody>' + rows + '</tbody></table>'
+          : '<div class="ip-empty"><h3>No tenants match these filters</h3>'
+            + '<p>Clear a filter or search for a different name.</p></div>')
+      +     (pages > 1 ? '<div class="ip-tn-pager">'
+            + '<button class="ip-btn ip-btn-secondary" data-page="' + (page - 1) + '"' + (page === 0 ? ' disabled' : '') + '>Previous</button>'
+            + '<span class="ip-tn-age">Page ' + (page + 1) + ' of ' + pages + '</span>'
+            + '<button class="ip-btn ip-btn-secondary" data-page="' + (page + 1) + '"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>'
+            + '</div>' : '')
+      +   '</div>'
+      + '</div>'
+      + (m.truncated ? '<p class="ip-rel-hnote-inline">More than ' + m.total + ' tenants — this reads the first pages only.</p>' : '');
+  }
+
+  function bindTenants(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    const redraw = () => { root.innerHTML = renderTenants(IP); bindTenants(IP); };
+    const search = root.querySelector('.ip-tn-search');
+    if (search) search.addEventListener('input', () => {
+      IP.tenantQuery = search.value; IP.tenantPage = 0;
+      redraw();
+      const again = root.querySelector('.ip-tn-search');
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+    const sort = root.querySelector('.ip-tn-sortsel');
+    if (sort) sort.addEventListener('change', () => { IP.tenantSort = sort.value; redraw(); });
+    root.querySelectorAll('[data-facet]').forEach(box => {
+      box.addEventListener('change', () => {
+        const key = box.getAttribute('data-facet'), value = box.getAttribute('data-value');
+        IP.tenantSel[key] = IP.tenantSel[key] || {};
+        if (IP.tenantSel[key][value]) delete IP.tenantSel[key][value]; else IP.tenantSel[key][value] = true;
+        IP.tenantPage = 0; redraw();
+      });
+    });
+    root.querySelectorAll('[data-clear]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const spec = btn.getAttribute('data-clear');
+        if (spec === 'all') IP.tenantSel = {};
+        else { const parts = spec.split('|'); if (IP.tenantSel[parts[0]]) delete IP.tenantSel[parts[0]][parts[1]]; }
+        IP.tenantPage = 0; redraw();
+      });
+    });
+    root.querySelectorAll('[data-page]').forEach(btn => {
+      btn.addEventListener('click', () => { IP.tenantPage = Number(btn.getAttribute('data-page')); redraw(); });
+    });
+  }
+
   function renderThemeToggle(IP) {
     const dark = IP.theme === 'dark';
     const icon = dark ? _sunSvg : _moonSvg;
@@ -1547,7 +1723,7 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderProjects, bindProjects, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,

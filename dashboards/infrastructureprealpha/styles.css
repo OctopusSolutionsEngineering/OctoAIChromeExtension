@@ -773,3 +773,43 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-rel-vrow { box-shadow: inset 3px 0 0 var(--color-orange-700); }
 .dark .ip-rel-varname { color: var(--color-grey-100); }
 .dark .ip-rel-vardelta { color: var(--color-orange-200); }
+
+/* ── Tenants ─────────────────────────────────────────────────────────────────
+   A tenant has no health status of its own, so the row reports four
+   independent facts side by side. Nothing here rolls them into a score. */
+.ip-tn-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 10px; }
+.ip-tn-search { flex: 1 1 260px; max-width: 380px; }
+.ip-tn-sort { display: flex; align-items: center; gap: 6px; }
+.ip-tn-sortsel { font-size: 12px; padding: 4px 6px; border-radius: 4px;
+  border: 1px solid var(--color-grey-300); background: #fff; color: var(--color-navy-900); }
+.ip-tn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.ip-tn-chip { font-size: 11px; padding: 2px 8px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--color-blue-400); background: var(--color-blue-100); color: var(--color-blue-700); }
+.ip-tn-chip.is-clear { border-color: var(--color-grey-400); background: transparent; color: var(--color-grey-700); }
+.ip-tn-body { display: flex; align-items: flex-start; gap: 16px; }
+.ip-tn-facets { width: 220px; flex: 0 0 220px; border: 1px solid var(--color-grey-300);
+  border-radius: 6px; padding: 10px 12px; max-height: 70vh; overflow-y: auto; }
+.ip-tn-facethead { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--color-navy-900); }
+.ip-tn-facetgroup { margin: 0 0 12px; }
+.ip-tn-facettitle { margin: 0 0 4px; font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--color-grey-600); }
+.ip-tn-facet { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; cursor: pointer; }
+.ip-tn-facet.is-on { font-weight: 600; }
+.ip-tn-facet-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-tn-facet-count { font-size: 11px; color: var(--color-grey-600); font-variant-numeric: tabular-nums; }
+.ip-tn-table-wrap { flex: 1 1 auto; min-width: 0; }
+.ip-tn-table { width: 100%; }
+.ip-tn-name { font-weight: 600; display: block; }
+.ip-tn-id { display: block; font-size: 10px; color: var(--color-grey-600); font-family: var(--font-mono, monospace); }
+.ip-tn-muted { color: var(--color-grey-500); font-size: 12px; }
+.ip-tn-outcome { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ip-tn-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.ip-tn-age { font-size: 11px; color: var(--color-grey-600); }
+.ip-tn-pager { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.dark .ip-tn-sortsel { background: var(--color-navy-800); border-color: var(--color-navy-600); color: var(--color-grey-100); }
+.dark .ip-tn-facets { border-color: var(--color-navy-600); }
+.dark .ip-tn-facethead { color: var(--color-grey-100); }
+.dark .ip-tn-facettitle, .dark .ip-tn-facet-count, .dark .ip-tn-age, .dark .ip-tn-id { color: var(--color-grey-400); }
+.dark .ip-tn-muted { color: var(--color-grey-500); }
+.dark .ip-tn-chip { background: rgba(26,119,202,.18); color: var(--color-blue-200); }
+.dark .ip-tn-chip.is-clear { color: var(--color-grey-300); border-color: var(--color-navy-600); }

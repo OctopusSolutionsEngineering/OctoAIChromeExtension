@@ -1093,10 +1093,190 @@ function variableChangeLabel(change) {
 // dashboard directly, so a space whose machines we are not permitted to read
 // still has a working Projects tab — /machines/all can 403 while /dashboard
 // returns 200, which is exactly the case on Cloud Platform.
-const ESTATE_FREE_VIEWS = ['projects'];
+const ESTATE_FREE_VIEWS = ['projects', 'tenants'];
 
 function viewNeedsEstate(view) {
   return ESTATE_FREE_VIEWS.indexOf(view) === -1;
+}
+
+
+// ─── Tenants ─────────────────────────────────────────────────────────────────
+// A tenant has no health status of its own, so its state has to be composed
+// from facts that are independent of each other and must stay that way:
+//
+//   Connection    can it be deployed to at all
+//   Last outcome  did the last attempt work
+//   Currency      is what runs on it current (needs a project scope — see below)
+//   Readiness     would a deployment succeed on config
+//
+// Merging those into one badge would hide which of four different problems a
+// tenant has. Readiness is absent here on purpose: it needs a request per
+// tenant, which is fine on a detail page and impossible across a list.
+//
+// The list costs three requests regardless of tenant count — the tenant pages,
+// one dashboard, and the tag sets — because the dashboard already carries every
+// tenant's current deployments.
+
+const TENANT_PAGE = 100;
+const TENANT_MAX_PAGES = 20;
+const STUCK_DAYS = 7;
+
+async function fetchTenants(spaceId) {
+  let items = [], total = null, page = 0;
+  while (page < TENANT_MAX_PAGES) {
+    const res = await fetchJson('/api/' + spaceId + '/tenants?skip=' + (page * TENANT_PAGE) + '&take=' + TENANT_PAGE);
+    const batch = (res && res.Items) || [];
+    if (total == null) total = res && typeof res.TotalResults === 'number' ? res.TotalResults : batch.length;
+    items = items.concat(batch);
+    if (!batch.length || items.length >= total) break;
+    page++;
+  }
+  return { items: items, total: total == null ? items.length : total, truncated: items.length < (total || 0) };
+}
+
+async function fetchTagSets(spaceId) {
+  return fetchJson('/api/' + spaceId + '/tagsets/all');
+}
+
+/** Tenant tags arrive as "SetName/TagName". The sets are whatever the instance
+ *  defines, so the facet groups are read from the data rather than assumed. */
+function parseTenantTag(raw) {
+  const str = String(raw || '');
+  const slash = str.indexOf('/');
+  if (slash === -1) return { set: '', name: str, raw: str };
+  return { set: str.slice(0, slash), name: str.slice(slash + 1), raw: str };
+}
+
+function tenantOutcomeKey(state, at, now) {
+  const key = releaseStateKey(state);
+  // A task still running after a week is not "in progress" in any useful sense.
+  if (key === 'running' && at && ((now || Date.now()) - at) > STUCK_DAYS * 86400000) return 'stuck';
+  return key;
+}
+
+function tenantsModel(payload) {
+  const src = payload || {};
+  const tenants = (src.tenants && src.tenants.items) || [];
+  const dash = src.dashboard || {};
+  const now = src.now || Date.now();
+
+  const projectName = {};
+  (dash.Projects || []).forEach(p => { projectName[p.Id] = p.Name; });
+  const envName = {};
+  (dash.Environments || []).forEach(e => { envName[e.Id] = e.Name; });
+
+  // One pass over the dashboard: every tenant's current deployments.
+  const byTenant = {};
+  (dash.Items || []).forEach(i => {
+    if (!i || !i.TenantId || !i.IsCurrent) return;
+    (byTenant[i.TenantId] || (byTenant[i.TenantId] = [])).push(i);
+  });
+
+  const rows = tenants.map(t => {
+    const items = byTenant[t.Id] || [];
+    const pairs = t.ProjectEnvironments || {};
+    const connectedProjects = Object.keys(pairs);
+    const pairCount = connectedProjects.reduce((n, pid) => n + ((pairs[pid] || []).length), 0);
+
+    let last = null;
+    items.forEach(i => {
+      const at = Date.parse(i.CompletedTime || i.StartTime || i.QueueTime || i.Created || 0) || 0;
+      if (!last || at > last.at) last = { at: at, state: i.State, projectId: i.ProjectId };
+    });
+
+    const projectsOn = {}; const envsOn = {};
+    items.forEach(i => { projectsOn[i.ProjectId] = true; envsOn[i.EnvironmentId] = true; });
+
+    const outcome = last ? tenantOutcomeKey(last.state, last.at, now) : null;
+    return {
+      id: t.Id, name: t.Name, slug: t.Slug, disabled: !!t.IsDisabled,
+      description: t.Description || '',
+      tags: (t.TenantTags || []).map(parseTenantTag),
+      connected: pairCount > 0,
+      pairCount: pairCount,
+      connectedProjectIds: connectedProjects,
+      projectsOn: Object.keys(projectsOn),
+      environmentsOn: Object.keys(envsOn).map(id => envName[id] || id),
+      deployed: items.length > 0,
+      outcome: outcome,
+      outcomeLabel: outcome ? (outcome === 'stuck' ? 'Stuck' : releaseStateLabel(outcome)) : '',
+      outcomeAt: last ? last.at : null,
+      outcomeProject: last ? (projectName[last.projectId] || '') : '',
+      // Four independent facts, never merged into one score.
+      needsAttention: outcome === 'failed' || outcome === 'timedout' || outcome === 'stuck',
+      neverDeployed: pairCount > 0 && items.length === 0,
+      notConnected: pairCount === 0
+    };
+  });
+
+  return {
+    tenants: rows,
+    total: (src.tenants && src.tenants.total) || rows.length,
+    truncated: !!(src.tenants && src.tenants.truncated),
+    tagSets: (src.tagSets || []).map(ts => ({
+      name: ts.Name,
+      tags: (ts.Tags || []).map(tag => ({ name: tag.Name, colour: tag.Color || '' }))
+    })),
+    projects: (dash.Projects || []).map(p => ({ id: p.Id, name: p.Name })),
+    environments: (dash.Environments || []).map(e => ({ id: e.Id, name: e.Name })),
+    counts: {
+      needsAttention: rows.filter(r => r.needsAttention).length,
+      neverDeployed: rows.filter(r => r.neverDeployed).length,
+      notConnected: rows.filter(r => r.notConnected).length
+    }
+  };
+}
+
+/** Actionability, not alphabet: what is broken, then what has never run, then
+ *  what is not wired up, then name. Sorting 1,228 tenants by name puts the ones
+ *  that need someone on page nine. */
+const TENANT_SORTS = ['Actionability', 'Name', 'Last activity'];
+
+function sortTenants(rows, sort) {
+  const copy = rows.slice();
+  if (sort === 'Name') return copy.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  if (sort === 'Last activity') return copy.sort((a, b) => (b.outcomeAt || 0) - (a.outcomeAt || 0));
+  const rank = r => r.needsAttention ? 0 : (r.neverDeployed ? 1 : (r.notConnected ? 2 : 3));
+  return copy.sort((a, b) => (rank(a) - rank(b))
+    || ((b.outcomeAt || 0) - (a.outcomeAt || 0))
+    || String(a.name).localeCompare(String(b.name)));
+}
+
+function filterTenants(rows, query, selected) {
+  const q = String(query || '').trim().toLowerCase();
+  const sel = selected || {};
+  const tagsWanted = Object.keys(sel.tags || {}).filter(k => sel.tags[k]);
+  const envsWanted = Object.keys(sel.environments || {}).filter(k => sel.environments[k]);
+  const projWanted = Object.keys(sel.projects || {}).filter(k => sel.projects[k]);
+  const stateWanted = Object.keys(sel.state || {}).filter(k => sel.state[k]);
+
+  return rows.filter(r => {
+    if (q && String(r.name).toLowerCase().indexOf(q) === -1
+        && String(r.id).toLowerCase().indexOf(q) === -1) return false;
+    if (tagsWanted.length && !tagsWanted.every(t => r.tags.some(x => x.raw === t))) return false;
+    if (envsWanted.length && !envsWanted.some(e => r.environmentsOn.indexOf(e) !== -1)) return false;
+    if (projWanted.length && !projWanted.some(p => r.connectedProjectIds.indexOf(p) !== -1)) return false;
+    if (stateWanted.length) {
+      const has = stateWanted.some(st =>
+        (st === 'needs-attention' && r.needsAttention) ||
+        (st === 'never-deployed' && r.neverDeployed) ||
+        (st === 'not-connected' && r.notConnected));
+      if (!has) return false;
+    }
+    return true;
+  });
+}
+
+/** Facet counts are computed against everything else that is selected, so a
+ *  count never promises rows that clicking it would not produce. */
+function tenantFacets(rows, query, selected) {
+  const count = (key, value) => {
+    const probe = JSON.parse(JSON.stringify(selected || {}));
+    probe[key] = probe[key] || {};
+    probe[key][value] = true;
+    return filterTenants(rows, query, probe).length;
+  };
+  return { count: count };
 }
 
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1108,7 +1288,9 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
   fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
   fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable,
-  viewNeedsEstate }; }
+  viewNeedsEstate,
+  fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
+  parseTenantTag, tenantOutcomeKey, TENANT_SORTS }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1121,5 +1303,7 @@ if (typeof module !== 'undefined') {
     fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
     fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
     fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue,
-    viewNeedsEstate };
+    viewNeedsEstate,
+    fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
+    parseTenantTag, tenantOutcomeKey, TENANT_SORTS };
 }
