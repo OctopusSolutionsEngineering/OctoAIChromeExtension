@@ -1300,6 +1300,182 @@ function tenantFacets(rows, query, selected) {
   return { count: count };
 }
 
+
+// ─── Tenant detail ───────────────────────────────────────────────────────────
+// The four facts again, one tenant deep. Two of them cost a request each and
+// are worth it here in a way they are not across a list.
+//
+// Readiness: /tenants/{id}/variables returns Templates (what a project requires
+// of its tenants) beside Variables, keyed by environment and then by template
+// id. A template is satisfied by a value for that environment or by its own
+// DefaultValue; anything else is missing, and a deployment would fail on it.
+//
+// Infrastructure: a target is DEDICATED when it names the tenant in TenantIds
+// and SHARED when one of its TenantTags matches one of the tenant's. Machines
+// can 403 — Cloud Platform does — so the panel degrades rather than blocking
+// the page.
+
+const TENANT_MACHINE_PAGE = 100;
+const TENANT_MACHINE_MAX_PAGES = 10;
+
+async function fetchTenant(spaceId, tenantId) {
+  return fetchJson('/api/' + spaceId + '/tenants/' + encodeURIComponent(tenantId));
+}
+
+async function fetchTenantVariables(spaceId, tenantId) {
+  return fetchJson('/api/' + spaceId + '/tenants/' + encodeURIComponent(tenantId) + '/variables');
+}
+
+async function fetchTenantMachines(spaceId) {
+  let items = [], total = null, page = 0;
+  while (page < TENANT_MACHINE_MAX_PAGES) {
+    const res = await fetchJson('/api/' + spaceId + '/machines?skip=' + (page * TENANT_MACHINE_PAGE)
+      + '&take=' + TENANT_MACHINE_PAGE);
+    const batch = (res && res.Items) || [];
+    if (total == null) total = res && typeof res.TotalResults === 'number' ? res.TotalResults : batch.length;
+    items = items.concat(batch);
+    if (!batch.length || items.length >= total) break;
+    page++;
+  }
+  return { items: items, total: total == null ? items.length : total, truncated: items.length < (total || 0) };
+}
+
+function tenantReadiness(variables, connectedEnvIdsByProject, envName) {
+  const v = variables || {};
+  const missing = [];
+  let templates = 0;
+  const blocks = [];
+  Object.keys(v.ProjectVariables || {}).forEach(pid => blocks.push({ scope: 'project', id: pid, block: v.ProjectVariables[pid] }));
+  Object.keys(v.LibraryVariables || {}).forEach(lid => blocks.push({ scope: 'library', id: lid, block: v.LibraryVariables[lid] }));
+
+  blocks.forEach(entry => {
+    const b = entry.block || {};
+    const tmpl = b.Templates || [];
+    if (!tmpl.length) return;
+    // Only environments this tenant is actually connected to can be missing a
+    // value; asking for one it never deploys to would invent a problem.
+    const envs = entry.scope === 'project'
+      ? ((connectedEnvIdsByProject || {})[entry.ProjectId || b.ProjectId || entry.id] || [])
+      : Object.keys(b.Variables || {});
+    const scopeName = b.ProjectName || b.LibraryVariableSetName || '';
+    envs.forEach(envId => {
+      const values = (b.Variables || {})[envId] || {};
+      tmpl.forEach(t => {
+        templates++;
+        const supplied = values[t.Id];
+        const hasValue = !(supplied === undefined || supplied === null || supplied === '');
+        const hasDefault = !(t.DefaultValue === undefined || t.DefaultValue === null || t.DefaultValue === '');
+        if (!hasValue && !hasDefault) {
+          missing.push({ scope: scopeName, environment: (envName || {})[envId] || envId,
+            name: t.Label || t.Name || t.Id });
+        }
+      });
+    });
+  });
+
+  return { missing: missing, count: missing.length, templates: templates, ready: missing.length === 0 };
+}
+
+function matchTenantTargets(machines, tenant) {
+  const list = (machines && machines.items) || [];
+  const wantedTags = (tenant && tenant.TenantTags) || [];
+  const dedicated = [], shared = [];
+  list.forEach(m => {
+    if ((m.TenantIds || []).indexOf(tenant.Id) !== -1) {
+      dedicated.push({ id: m.Id, name: m.Name, health: m.HealthStatus, disabled: !!m.IsDisabled,
+        environmentIds: m.EnvironmentIds || [], via: null });
+      return;
+    }
+    const hit = (m.TenantTags || []).find(tag => wantedTags.indexOf(tag) !== -1);
+    if (hit) shared.push({ id: m.Id, name: m.Name, health: m.HealthStatus, disabled: !!m.IsDisabled,
+      environmentIds: m.EnvironmentIds || [], via: hit });
+  });
+  const all = dedicated.concat(shared);
+  return {
+    dedicated: dedicated, shared: shared, total: all.length,
+    healthy: all.filter(t => healthKey(t.health, t.disabled) === 'healthy').length,
+    // A tenant with no matching target has deployments that resolve to nothing.
+    orphaned: all.length === 0
+  };
+}
+
+function tenantDetailModel(payload) {
+  const src = payload || {};
+  const tenant = src.tenant || {};
+  const dash = src.dashboard || {};
+  const now = src.now || Date.now();
+
+  const projectName = {}; (dash.Projects || []).forEach(p => { projectName[p.Id] = p.Name; });
+  const envName = {}; (dash.Environments || []).forEach(e => { envName[e.Id] = e.Name; });
+
+  const pairs = tenant.ProjectEnvironments || {};
+  const projectIds = Object.keys(pairs);
+  const pairCount = projectIds.reduce((n, pid) => n + ((pairs[pid] || []).length), 0);
+
+  const items = (dash.Items || []).filter(i => i && i.TenantId === tenant.Id && i.IsCurrent);
+  const byKey = {};
+  items.forEach(i => { byKey[i.ProjectId + '|' + i.EnvironmentId] = i; });
+
+  // Columns are the environments this tenant is connected to anywhere, so the
+  // matrix has no column that is blank for every row.
+  const envIds = [];
+  projectIds.forEach(pid => (pairs[pid] || []).forEach(eid => { if (envIds.indexOf(eid) === -1) envIds.push(eid); }));
+  const orderedEnvIds = (dash.Environments || []).map(e => e.Id).filter(id => envIds.indexOf(id) !== -1)
+    .concat(envIds.filter(id => !(dash.Environments || []).some(e => e.Id === id)));
+
+  const matrix = projectIds.map(pid => ({
+    projectId: pid,
+    projectName: projectName[pid] || pid,
+    cells: orderedEnvIds.map(eid => {
+      const connected = (pairs[pid] || []).indexOf(eid) !== -1;
+      const item = byKey[pid + '|' + eid];
+      if (!connected) return { envId: eid, envName: envName[eid] || eid, connected: false, deployed: false };
+      if (!item) return { envId: eid, envName: envName[eid] || eid, connected: true, deployed: false };
+      const at = Date.parse(item.CompletedTime || item.StartTime || item.QueueTime || item.Created || 0) || null;
+      const key = tenantOutcomeKey(item.State, at, now);
+      return { envId: eid, envName: envName[eid] || eid, connected: true, deployed: true,
+        version: item.ReleaseVersion, stateKey: key,
+        stateLabel: key === 'stuck' ? 'Stuck' : releaseStateLabel(key), when: at };
+    })
+  })).sort((a, b) => String(a.projectName).localeCompare(String(b.projectName)));
+
+  let last = null;
+  items.forEach(i => {
+    const at = Date.parse(i.CompletedTime || i.StartTime || i.QueueTime || i.Created || 0) || 0;
+    if (!last || at > last.at) last = { at: at, state: i.State, projectId: i.ProjectId };
+  });
+  const lastKey = last ? tenantOutcomeKey(last.state, last.at, now) : null;
+
+  const connectedEnvIdsByProject = {};
+  projectIds.forEach(pid => { connectedEnvIdsByProject[pid] = pairs[pid] || []; });
+
+  const activity = items.slice().sort((a, b) =>
+    (Date.parse(b.CompletedTime || b.StartTime || 0) || 0) - (Date.parse(a.CompletedTime || a.StartTime || 0) || 0))
+    .slice(0, 8).map(i => {
+      const at = Date.parse(i.CompletedTime || i.StartTime || i.QueueTime || 0) || null;
+      const key = tenantOutcomeKey(i.State, at, now);
+      return { projectName: projectName[i.ProjectId] || i.ProjectId, envName: envName[i.EnvironmentId] || i.EnvironmentId,
+        version: i.ReleaseVersion, stateKey: key, stateLabel: key === 'stuck' ? 'Stuck' : releaseStateLabel(key),
+        when: at, taskId: i.TaskId || '' };
+    });
+
+  return {
+    id: tenant.Id, name: tenant.Name || '', description: tenant.Description || '',
+    disabled: !!tenant.IsDisabled,
+    tags: (tenant.TenantTags || []).map(parseTenantTag),
+    connection: { connected: pairCount > 0, pairCount: pairCount, projectCount: projectIds.length },
+    lastOutcome: last ? { key: lastKey, label: lastKey === 'stuck' ? 'Stuck' : releaseStateLabel(lastKey),
+      when: last.at, projectName: projectName[last.projectId] || '' } : null,
+    readiness: src.variables ? tenantReadiness(src.variables, connectedEnvIdsByProject, envName) : null,
+    readinessError: src.variablesError || null,
+    environments: orderedEnvIds.map(id => ({ id: id, name: envName[id] || id })),
+    matrix: matrix,
+    infrastructure: src.machines ? matchTenantTargets(src.machines, tenant) : null,
+    infrastructureError: src.machinesError || null,
+    activity: activity
+  };
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
@@ -1311,7 +1487,8 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable,
   viewNeedsEstate,
   fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
-  parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir }; }
+  parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
+  fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1326,5 +1503,6 @@ if (typeof module !== 'undefined') {
     fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue,
     viewNeedsEstate,
     fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
-    parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir };
+    parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
+    fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets };
 }

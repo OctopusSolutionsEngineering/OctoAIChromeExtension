@@ -52,6 +52,47 @@ const Router = (function () {
       }
       return;
     }
+    if (hash.indexOf('tenants/') === 0) {
+      setActive('tenants');
+      let raw = hash.slice('tenants/'.length);
+      let tenantId; try { tenantId = decodeURIComponent(raw); } catch (e) { tenantId = raw; }
+      const stale = !IP.tenantDetail || IP.tenantDetail.tenantId !== tenantId || IP.tenantDetail.spaceId !== IP.spaceId;
+      if (stale) IP.tenantDetail = { status: 'loading', tenantId: tenantId, spaceId: IP.spaceId };
+      el.innerHTML = Views.renderTenantDetail(IP);
+      if (stale) {
+        const wantedSpace = IP.spaceId;
+        const stillWanted = () => IP.spaceId === wantedSpace
+          && IP.tenantDetail && IP.tenantDetail.tenantId === tenantId;
+        // The tenant page reuses the dashboard the list already fetched when it
+        // is there, and asks for one when it is not. Variables and machines are
+        // separate: either can fail without costing the page.
+        const dashboard = (IP.tenants && IP.tenants.status === 'ready' && IP.tenants.raw)
+          ? Promise.resolve(IP.tenants.raw) : Data.fetchDashboard(wantedSpace);
+        Promise.all([
+          Data.fetchTenant(wantedSpace, tenantId),
+          dashboard,
+          Data.fetchTenantVariables(wantedSpace, tenantId).then(v => ({ v: v }))
+            .catch(() => ({ err: 'Tenant variables could not be read, so readiness is unknown.' })),
+          Data.fetchTenantMachines(wantedSpace).then(mach => ({ mach: mach }))
+            .catch(() => ({ err: 'Deployment targets cannot be read in this space, so the targets behind this tenant are unknown.' }))
+        ])
+          .then(res => {
+            if (!stillWanted()) return;
+            IP.tenantDetail = { status: 'ready', tenantId: tenantId, spaceId: wantedSpace,
+              model: Data.tenantDetailModel({ tenant: res[0], dashboard: res[1],
+                variables: res[2].v, variablesError: res[2].err,
+                machines: res[3].mach, machinesError: res[3].err }) };
+            render();
+          })
+          .catch(e => {
+            if (!stillWanted()) return;
+            IP.tenantDetail = { status: 'error', tenantId: tenantId, spaceId: wantedSpace,
+              error: e && e.auth ? 'Your session isn\'t authenticated.' : (e && e.code) || 'The tenant request failed.' };
+            render();
+          });
+      }
+      return;
+    }
     const view = VIEWS.includes(hash) ? hash : 'overview';
     // Agents and machine policies are tabs inside the Deployment Targets section rather than
     // nav items of their own, so the sidebar highlights the section they live in. Their
@@ -82,7 +123,7 @@ const Router = (function () {
         ])
           .then(res => {
             if (IP.spaceId !== wanted) return;
-            IP.tenants = { status: 'ready', spaceId: wanted,
+            IP.tenants = { status: 'ready', spaceId: wanted, raw: res[1],
               model: Data.tenantsModel({ tenants: res[0], dashboard: res[1], tagSets: res[2] }) };
             render();
           })

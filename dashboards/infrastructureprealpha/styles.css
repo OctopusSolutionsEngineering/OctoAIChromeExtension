@@ -825,3 +825,46 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-tn-th.is-sorted .ip-tn-sortbtn { font-weight: 700; }
 .ip-tn-sortbtn:hover .ip-tn-arrow { opacity: .8; }
 .dark .ip-tn-th.is-sorted .ip-tn-arrow { color: var(--color-blue-300); }
+
+/* Tenant detail: four independent facts across the top, then what is on it,
+   then what it deploys to. Nothing here merges the facts into a score. */
+.ip-tn-back { margin: 0 0 8px; font-size: 12px; }
+.ip-tn-taggroups { display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0 0; }
+.ip-tn-taggroup { display: inline-flex; align-items: center; gap: 6px; }
+.ip-tn-tagset { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--color-grey-600); }
+.ip-tn-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }
+.ip-tn-card { flex: 1 1 240px; min-width: 0; border: 1px solid var(--color-grey-300);
+  border-radius: 6px; padding: 12px 14px; }
+.ip-tn-cardtitle { margin: 0 0 6px; font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--color-grey-600); }
+.ip-tn-cardhead { margin: 0; display: flex; align-items: center; gap: 7px;
+  font-size: 15px; font-weight: 600; color: var(--color-navy-900); }
+.ip-tn-carddetail { margin: 4px 0 0; font-size: 12px; color: var(--color-grey-700); }
+.ip-tn-cardlink { margin: 6px 0 0; font-size: 12px; }
+.ip-tn-panel { border: 1px solid var(--color-grey-300); border-radius: 6px;
+  padding: 12px 14px; margin: 0 0 14px; }
+.ip-tn-panel h3 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; font-size: 13px; }
+.ip-tn-split { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.ip-tn-split > .ip-tn-panel { flex: 1 1 320px; min-width: 0; }
+.ip-tn-matrix td, .ip-tn-matrix th { vertical-align: top; }
+.ip-tn-mproj { font-weight: 600; }
+.ip-tn-mcell.is-absent { background: repeating-linear-gradient(45deg, transparent, transparent 5px,
+  rgba(127,127,127,.06) 5px, rgba(127,127,127,.06) 10px); }
+.ip-tn-mver { display: block; font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 600; }
+.ip-tn-mmeta { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--color-grey-700); }
+.ip-tn-legend { margin: 8px 0 0; font-size: 11px; color: var(--color-grey-600); }
+.ip-tn-warn { margin: 0; font-size: 12px; color: var(--color-red-700); }
+.ip-tn-targetgroup { margin: 0 0 12px; }
+.ip-tn-targethead { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--color-grey-600); }
+.ip-tn-targets { list-style: none; margin: 0; padding: 0; }
+.ip-tn-target { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+.ip-tn-tname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-tn-activity { list-style: none; margin: 0; padding: 0; }
+.ip-tn-activity li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+.ip-tn-actmain { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dark .ip-tn-card, .dark .ip-tn-panel { border-color: var(--color-navy-600); }
+.dark .ip-tn-cardhead { color: var(--color-grey-100); }
+.dark .ip-tn-cardtitle, .dark .ip-tn-carddetail, .dark .ip-tn-tagset,
+.dark .ip-tn-mmeta, .dark .ip-tn-legend, .dark .ip-tn-targethead { color: var(--color-grey-400); }
+.dark .ip-tn-warn { color: var(--color-red-200); }

@@ -1705,6 +1705,161 @@ const Views = (function () {
     });
   }
 
+  // ─── Tenant detail ─────────────────────────────────────────────────────────
+  // Four independent facts across the top, then the matrix that answers "what
+  // is on it", then what it deploys to and what it has been doing. The four
+  // cards are never combined into one badge: a tenant that is disconnected and
+  // a tenant whose last deployment failed are different problems.
+  function _tnCard(title, tone, headline, detail, link) {
+    return '<div class="ip-tn-card">'
+      + '<p class="ip-tn-cardtitle">' + escHtml(title) + '</p>'
+      + '<p class="ip-tn-cardhead"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+      +   escHtml(headline) + '</p>'
+      + (detail ? '<p class="ip-tn-carddetail">' + escHtml(detail) + '</p>' : '')
+      + (link ? '<p class="ip-tn-cardlink">' + link + '</p>' : '')
+      + '</div>';
+  }
+
+  function _tnMatrixCell(c) {
+    // Three different absences, drawn three different ways. Not connected is
+    // structural, never deployed is a fact about history, and neither is a
+    // failure.
+    if (!c.connected) return '<td class="ip-tn-mcell is-absent"><span class="ip-tn-muted">not connected</span></td>';
+    if (!c.deployed) return '<td class="ip-tn-mcell"><span class="ip-tn-muted">never deployed</span></td>';
+    const tone = c.stateKey === 'success' ? 'healthy'
+      : (c.stateKey === 'running' ? 'running' : (c.stateKey === 'cancelled' ? 'disabled' : 'unhealthy'));
+    return '<td class="ip-tn-mcell">'
+      + '<span class="ip-tn-mver">' + escHtml(c.version) + '</span>'
+      + '<span class="ip-tn-mmeta"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+      +   escHtml(c.stateLabel) + '<span class="ip-tn-age">' + escHtml(_tenantWhen(c.when)) + '</span></span>'
+      + '</td>';
+  }
+
+  function _tnTargets(list, kind, caption) {
+    if (!list.length) return '';
+    const rows = list.slice(0, 20).map(t => {
+      const key = Data.healthKeyLabel ? Data.healthKeyLabel(_tnHealthKey(t)) : '';
+      return '<li class="ip-tn-target">'
+        + '<span class="ip-tn-tname">' + escHtml(t.name) + '</span>'
+        + (t.via ? '<span class="ip-tn-age">via ' + escHtml(t.via) + '</span>' : '')
+        + '<span class="ip-pill ip-pill-' + escHtml(_tnHealthKey(t)) + '">' + escHtml(key) + '</span>'
+        + '</li>';
+    }).join('');
+    const rest = list.length - Math.min(list.length, 20);
+    return '<div class="ip-tn-targetgroup">'
+      + '<p class="ip-tn-targethead">' + escHtml(kind) + '<span class="ip-tn-age">' + escHtml(caption) + '</span>'
+      +   '<span class="ip-tn-age">' + list.length + (list.length === 1 ? ' target' : ' targets') + '</span></p>'
+      + '<ul class="ip-tn-targets">' + rows + '</ul>'
+      + (rest ? '<p class="ip-tn-age">+' + rest + ' more</p>' : '')
+      + '</div>';
+  }
+  function _tnHealthKey(t) {
+    return Data.healthKeyLabel ? (t.disabled ? 'disabled'
+      : (t.health === 'Healthy' || t.health === 'HealthyWithWarnings' ? 'healthy' : 'unhealthy')) : 'healthy';
+  }
+
+  function renderTenantDetail(IP) {
+    const st = IP.tenantDetail || { status: 'loading' };
+    const back = '<p class="ip-tn-back"><a href="#tenants">← All tenants</a></p>';
+    if (st.status === 'loading' || !st.status) {
+      return back + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading tenant…</p></div>';
+    }
+    if (st.status === 'error') {
+      return back + '<div class="ip-state"><h3>Couldn\'t load this tenant</h3><p>'
+        + escHtml(st.error || 'Unknown error') + '</p></div>';
+    }
+    const m = st.model;
+    const serverUrl = (IP.serverUrl || '').replace(/\/$/, '');
+    const link = (path, label) => serverUrl
+      ? '<a href="' + escHtml(serverUrl + path) + '" target="_blank" rel="noopener">' + escHtml(label) + ' ↗</a>' : '';
+
+    const tagsBySet = {};
+    m.tags.forEach(t => { (tagsBySet[t.set || 'Tags'] || (tagsBySet[t.set || 'Tags'] = [])).push(t.name); });
+    const tagGroups = Object.keys(tagsBySet).map(setName =>
+      '<span class="ip-tn-taggroup"><span class="ip-tn-tagset">' + escHtml(setName) + '</span>'
+      + tagsBySet[setName].map(n => '<span class="ip-chipx ip-chipx-tag">' + escHtml(n) + '</span>').join('')
+      + '</span>').join('');
+
+    const conn = m.connection;
+    const connCard = _tnCard('Connection', conn.connected ? 'healthy' : 'unhealthy',
+      conn.connected ? 'Connected' : 'Not connected',
+      conn.connected ? conn.pairCount + ' project-environment ' + (conn.pairCount === 1 ? 'pair' : 'pairs')
+        + ' across ' + conn.projectCount + (conn.projectCount === 1 ? ' project' : ' projects')
+        : 'No project is scoped to this tenant, so nothing can deploy to it.',
+      link('/app#/' + escHtml(IP.spaceId || '') + '/tenants/' + escHtml(m.id) + '/overview', 'Open connections'));
+
+    let readyCard;
+    if (m.readinessError) {
+      readyCard = _tnCard('Readiness', 'disabled', 'Unknown', m.readinessError, '');
+    } else if (!m.readiness) {
+      readyCard = _tnCard('Readiness', 'disabled', 'Loading…', '', '');
+    } else {
+      readyCard = _tnCard('Readiness', m.readiness.ready ? 'healthy' : 'unhealthy',
+        m.readiness.ready ? 'Ready' : m.readiness.count + ' missing ' + (m.readiness.count === 1 ? 'variable' : 'variables'),
+        m.readiness.ready ? 'Required variables have values'
+          : 'A deployment would fail on configuration',
+        link('/app#/' + escHtml(IP.spaceId || '') + '/tenants/' + escHtml(m.id) + '/variables', 'Open tenant variables'));
+    }
+
+    const lo = m.lastOutcome;
+    const loTone = !lo ? 'disabled'
+      : (lo.key === 'success' ? 'healthy' : (lo.key === 'running' ? 'running' : 'unhealthy'));
+    const outcomeCard = _tnCard('Last outcome', loTone,
+      lo ? lo.label : 'Never deployed',
+      lo ? _tenantWhen(lo.when) + (lo.projectName ? ' · ' + lo.projectName : '')
+        : 'Connected, but nothing has been deployed here yet', '');
+
+    const matrix = m.matrix.length
+      ? '<table class="ip-table ip-tn-matrix"><thead><tr><th>Project</th>'
+        + m.environments.map(e => '<th>' + escHtml(e.name) + '</th>').join('') + '</tr></thead><tbody>'
+        + m.matrix.map(row => '<tr><td class="ip-tn-mproj">' + escHtml(row.projectName) + '</td>'
+          + row.cells.map(_tnMatrixCell).join('') + '</tr>').join('')
+        + '</tbody></table>'
+        + '<p class="ip-tn-legend"><span class="ip-tn-muted">not connected</span> is structural — the pair does not exist. '
+        + '<span class="ip-tn-muted">never deployed</span> means it does, and nothing has gone to it. Neither is a failure.</p>'
+      : '<p class="ip-tn-muted">No project is scoped to this tenant.</p>';
+
+    let infra;
+    if (m.infrastructureError) {
+      infra = '<p class="ip-tn-muted">' + escHtml(m.infrastructureError) + '</p>';
+    } else if (!m.infrastructure) {
+      infra = '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading targets…</span></div>';
+    } else if (m.infrastructure.orphaned) {
+      infra = '<p class="ip-tn-warn">No deployment target matches this tenant. Its deployments resolve to nothing.</p>';
+    } else {
+      infra = _tnTargets(m.infrastructure.dedicated, 'Dedicated', 'targets that name this tenant directly')
+        + _tnTargets(m.infrastructure.shared, 'Shared', 'matched by tag');
+    }
+
+    const activity = m.activity.length
+      ? '<ul class="ip-tn-activity">' + m.activity.map(a => {
+          const tone = a.stateKey === 'success' ? 'healthy'
+            : (a.stateKey === 'running' ? 'running' : (a.stateKey === 'cancelled' ? 'disabled' : 'unhealthy'));
+          return '<li><span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+            + '<span class="ip-tn-actmain">' + escHtml(a.projectName + ' ' + a.version + ' → ' + a.envName) + '</span>'
+            + '<span class="ip-tn-age">' + escHtml(a.stateLabel) + ' · ' + escHtml(_tenantWhen(a.when)) + '</span></li>';
+        }).join('') + '</ul>'
+      : '<p class="ip-tn-muted">Nothing has been deployed to this tenant.</p>';
+
+    return back
+      + '<header class="ip-head"><h2>' + escHtml(m.name) + (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
+      +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
+      +   (m.description ? '<p class="ip-sub">' + escHtml(m.description) + '</p>' : '')
+      +   (tagGroups ? '<div class="ip-tn-taggroups">' + tagGroups + '</div>' : '')
+      + '</header>'
+      + '<div class="ip-tn-cards">' + connCard + readyCard + outcomeCard + '</div>'
+      + '<section class="ip-tn-panel"><h3>Deployment matrix</h3>' + matrix + '</section>'
+      + '<div class="ip-tn-split">'
+      +   '<section class="ip-tn-panel"><h3>Infrastructure'
+      +     (m.infrastructure && !m.infrastructure.orphaned
+            ? '<span class="ip-tn-age">' + m.infrastructure.healthy + ' of ' + m.infrastructure.total + ' healthy</span>' : '')
+      +     '</h3>' + infra + '</section>'
+      +   '<section class="ip-tn-panel"><h3>Activity</h3>' + activity + '</section>'
+      + '</div>'
+      + '<p class="ip-rel-hnote-inline">Currency against each project\'s latest release, and feature flags scoped to this '
+      +   'tenant, are not shown yet — both need a request per connected project.</p>';
+  }
+
   function renderThemeToggle(IP) {
     const dark = IP.theme === 'dark';
     const icon = dark ? _sunSvg : _moonSvg;
@@ -1755,7 +1910,7 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,

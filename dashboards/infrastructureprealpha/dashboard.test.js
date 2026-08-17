@@ -2566,3 +2566,166 @@ describe('Tenants — sortable column headers', () => {
     data.TENANT_SORTS.forEach(s => expect(html).toContain(s));
   });
 });
+
+describe('Tenant detail — model', () => {
+  const data = require('./data');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const ago = d => new Date(NOW - d * 86400000).toISOString();
+  const tenant = { Id: 'T1', Name: 'Mercy Polyclinic', TenantTags: ['Hosted/Reef', 'Ring/Stable'],
+    Description: 'A hospital group', ProjectEnvironments: { P1: ['E1', 'E2'], P2: ['E2'] } };
+  const dashboard = {
+    Projects: [{ Id: 'P1', Name: 'Patient Records' }, { Id: 'P2', Name: 'Billing' }],
+    Environments: [{ Id: 'E1', Name: 'Staging' }, { Id: 'E2', Name: 'Production' }, { Id: 'E3', Name: 'Unused' }],
+    Items: [
+      { IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '5.9.0',
+        State: 'Failed', CompletedTime: ago(2), TaskId: 'ServerTasks-1' },
+      { IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '5.10.0',
+        State: 'Success', CompletedTime: ago(8), TaskId: 'ServerTasks-2' },
+      { IsCurrent: true, TenantId: 'OTHER', ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '9.9', State: 'Success' }
+    ]
+  };
+  const build = extra => data.tenantDetailModel(Object.assign({ tenant, dashboard, now: NOW }, extra || {}));
+
+  test('the four facts are reported separately', () => {
+    const m = build();
+    expect(m.connection).toEqual({ connected: true, pairCount: 3, projectCount: 2 });
+    expect(m.lastOutcome.key).toBe('failed');
+    expect(m.readiness).toBeNull();          // not fetched in this call
+    expect(m.infrastructure).toBeNull();
+  });
+
+  test('columns are only the environments this tenant is connected to', () => {
+    expect(build().environments.map(e => e.name)).toEqual(['Staging', 'Production']);
+  });
+
+  test('another tenant\'s deployments are not counted', () => {
+    const m = build();
+    const prod = m.matrix.find(r => r.projectName === 'Patient Records').cells.find(c => c.envName === 'Production');
+    expect(prod.version).toBe('5.9.0');
+  });
+
+  test('not connected and never deployed are different cells', () => {
+    const m = build();
+    const billing = m.matrix.find(r => r.projectName === 'Billing');
+    const staging = billing.cells.find(c => c.envName === 'Staging');
+    const prod = billing.cells.find(c => c.envName === 'Production');
+    expect(staging.connected).toBe(false);   // structural: the pair does not exist
+    expect(prod.connected).toBe(true);
+    expect(prod.deployed).toBe(false);       // it does exist, nothing has gone to it
+  });
+
+  test('activity is newest first and only this tenant', () => {
+    const a = build().activity;
+    expect(a).toHaveLength(2);
+    expect(a[0].version).toBe('5.9.0');
+  });
+});
+
+describe('Tenant detail — readiness', () => {
+  const data = require('./data');
+  const envName = { E1: 'Staging', E2: 'Production' };
+  const vars = { ProjectVariables: { P1: { ProjectId: 'P1', ProjectName: 'Patient Records',
+    Templates: [{ Id: 'tpl-1', Name: 'ApiKey', Label: 'API key' }, { Id: 'tpl-2', Name: 'Region', DefaultValue: 'eu' }],
+    Variables: { E1: { 'tpl-1': 'abc' }, E2: {} } } } };
+
+  test('a template with no value and no default is missing', () => {
+    const r = data.tenantReadiness(vars, { P1: ['E1', 'E2'] }, envName);
+    expect(r.ready).toBe(false);
+    expect(r.count).toBe(1);
+    expect(r.missing[0]).toMatchObject({ name: 'API key', environment: 'Production' });
+  });
+
+  test('a default value satisfies a template', () => {
+    const r = data.tenantReadiness(vars, { P1: ['E1', 'E2'] }, envName);
+    expect(r.missing.some(x => x.name === 'Region')).toBe(false);
+  });
+
+  test('only connected environments can be missing anything', () => {
+    const r = data.tenantReadiness(vars, { P1: ['E1'] }, envName);
+    expect(r.ready).toBe(true);
+  });
+
+  test('an empty value counts as missing, not as supplied', () => {
+    const blank = { ProjectVariables: { P1: { ProjectId: 'P1', Templates: [{ Id: 't', Name: 'X' }],
+      Variables: { E1: { t: '' } } } } };
+    expect(data.tenantReadiness(blank, { P1: ['E1'] }, envName).count).toBe(1);
+  });
+});
+
+describe('Tenant detail — target matching', () => {
+  const data = require('./data');
+  const tenant = { Id: 'T1', TenantTags: ['Hosted/Reef'] };
+  const machines = { items: [
+    { Id: 'M1', Name: 'dedicated-01', TenantIds: ['T1'], TenantTags: [], HealthStatus: 'Healthy' },
+    { Id: 'M2', Name: 'shared-01', TenantIds: [], TenantTags: ['Hosted/Reef'], HealthStatus: 'Unhealthy' },
+    { Id: 'M3', Name: 'unrelated', TenantIds: ['T9'], TenantTags: ['Hosted/Other'], HealthStatus: 'Healthy' }
+  ] };
+
+  test('dedicated names the tenant, shared matches a tag', () => {
+    const r = data.matchTenantTargets(machines, tenant);
+    expect(r.dedicated.map(t => t.name)).toEqual(['dedicated-01']);
+    expect(r.shared.map(t => t.name)).toEqual(['shared-01']);
+    expect(r.shared[0].via).toBe('Hosted/Reef');
+  });
+
+  test('health rolls up as a count without hiding the unhealthy one', () => {
+    const r = data.matchTenantTargets(machines, tenant);
+    expect(r.total).toBe(2);
+    expect(r.healthy).toBe(1);
+  });
+
+  test('a tenant nothing matches is flagged, because its deployments resolve to nothing', () => {
+    expect(data.matchTenantTargets(machines, { Id: 'T404', TenantTags: [] }).orphaned).toBe(true);
+  });
+});
+
+describe('Tenant detail — view', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const base = {
+    tenant: { Id: 'T1', Name: 'Mercy Polyclinic', TenantTags: ['Hosted/Reef'], ProjectEnvironments: { P1: ['E1'] } },
+    dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E1', Name: 'Production' }],
+      Items: [{ IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '5.9.0',
+        State: 'Success', CompletedTime: new Date(NOW - 86400000).toISOString() }] },
+    now: NOW
+  };
+  const render = extra => Views.renderTenantDetail({ spaceId: 'Spaces-1', serverUrl: 'https://x.octopus.app/',
+    tenantDetail: { status: 'ready', model: data.tenantDetailModel(Object.assign({}, base, extra || {})) } });
+
+  test('the four facts are three separate cards, never one badge', () => {
+    const html = render();
+    expect(html).toContain('Connection');
+    expect(html).toContain('Readiness');
+    expect(html).toContain('Last outcome');
+  });
+
+  test('unreadable machines degrade to a sentence, not a broken page', () => {
+    const html = render({ machinesError: 'Deployment targets cannot be read in this space.' });
+    expect(html).toContain('Deployment targets cannot be read');
+    expect(html).toContain('Deployment matrix');
+  });
+
+  test('unreadable variables leave readiness unknown rather than claiming ready', () => {
+    const html = render({ variablesError: 'Tenant variables could not be read.' });
+    expect(html).toContain('Unknown');
+    expect(html).not.toContain('>Ready<');
+  });
+
+  test('a tenant with no matching target says its deployments resolve to nothing', () => {
+    const html = render({ machines: { items: [] } });
+    expect(html).toContain('resolve to nothing');
+  });
+
+  test('the matrix legend explains the two kinds of absence', () => {
+    expect(render()).toContain('is structural');
+  });
+
+  test('what is not built yet is named rather than silently missing', () => {
+    expect(render()).toContain('need a request per connected project');
+  });
+
+  test('it links back to the list', () => {
+    expect(render()).toContain('href="#tenants"');
+  });
+});
