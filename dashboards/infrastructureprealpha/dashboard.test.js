@@ -3122,3 +3122,48 @@ describe('Projects render as cards, not as a table', () => {
     expect(new Set(tracks).size).toBe(1);
   });
 });
+
+describe('Project cards: background, sticky header, inline toggle', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  const rule = re => (re.exec(css) || [''])[0];
+
+  test('the card sets its own surface as well as its background', () => {
+    // Both, or the version labels mask the line in the wrong colour.
+    const card = rule(/\.ip-rel-card \{[\s\S]*?\}/);
+    expect(card).toContain('--ip-rel-surface: var(--ip-rel-cardbg)');
+    expect(card).toContain('background: var(--ip-rel-surface)');
+  });
+
+  test('the card background is defined for both themes', () => {
+    expect(css).toContain('--ip-rel-cardbg: var(--color-grey-100)');
+    expect(css).toContain('--ip-rel-cardbg: var(--color-navy-800)');
+  });
+
+  test('the environment header sticks, with a background to sit on', () => {
+    const head = rule(/\.ip-rel-head \{ position: sticky[\s\S]*?\}/);
+    expect(head).toContain('position: sticky');
+    expect(head).toContain('top: 0');
+    expect(head).toContain('background: var(--background)');
+  });
+
+  test('a card cannot paint over the sticky header', () => {
+    const card = rule(/\.ip-rel-card \{[\s\S]*?\}/);
+    const head = rule(/\.ip-rel-head \{ position: sticky[\s\S]*?\}/);
+    const cardZ = Number(/z-index:\s*(\d+)/.exec(card)[1]);
+    const headZ = Number(/z-index:\s*(\d+)/.exec(head)[1]);
+    expect(/position:\s*relative/.test(card)).toBe(true);   // its own stacking context
+    expect(cardZ).toBeLessThan(headZ);
+  });
+
+  test('the environment name and its toggle share a line', () => {
+    // Two rules carry this selector; the direction is set in the later one, so
+    // check every block rather than whichever happens to come first.
+    const blocks = css.match(/\.ip-rel-envhead \{[\s\S]*?\}/g) || [];
+    expect(blocks.length).toBeGreaterThan(0);
+    const joined = blocks.join('\n');
+    expect(joined).toContain('flex-direction: row');
+    expect(joined).not.toContain('flex-direction: column');
+  });
+});
