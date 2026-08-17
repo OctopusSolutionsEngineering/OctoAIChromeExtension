@@ -3266,3 +3266,46 @@ describe('An open card looks like a card', () => {
     expect(html).toContain('ip-rel-card is-open');
   });
 });
+
+describe('One card treatment across the dashboard', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  const rule = name => (new RegExp('\\.' + name + ' \\{[\\s\\S]*?\\}').exec(css) || [''])[0];
+
+  // Every raised surface added for Projects and Tenants.
+  const surfaces = ['ip-tn-card', 'ip-tn-panel', 'ip-tn-facets', 'ip-rel-card'];
+
+  surfaces.forEach(name => {
+    test(name + ' uses the shared border, radius and shadow', () => {
+      const r = rule(name);
+      expect(r).toContain('var(--border)');
+      expect(r).toContain('var(--radius-lg)');
+      expect(r).toContain('var(--shadow-xs)');
+    });
+  });
+
+  test('every surface resolves its background to --card', () => {
+    // The project card reaches it through --ip-rel-cardbg, which is what lets
+    // the version labels mask the line in the card's own colour.
+    expect(rule('ip-tn-card')).toContain('var(--card)');
+    expect(rule('ip-tn-panel')).toContain('var(--card)');
+    expect(rule('ip-tn-facets')).toContain('var(--card)');
+    expect(rule('ip-rel-card')).toContain('var(--ip-rel-surface)');
+    expect(css).toContain('--ip-rel-cardbg: var(--card)');
+  });
+
+  test('no surface carries a hand-written dark border', () => {
+    // --card and --border already flip per theme; a second set would drift.
+    expect(/\.dark \.ip-tn-(card|panel|facets)[^{]*\{[^}]*border-color/.test(css)).toBe(false);
+    expect(/\.dark \.ip-rel-card \{[^}]*border-color/.test(css)).toBe(false);
+  });
+
+  test('none of them is a bare outline', () => {
+    surfaces.forEach(name => {
+      const r = rule(name);
+      expect(r).toMatch(/background:/);
+      expect(r).toMatch(/box-shadow:/);
+    });
+  });
+});
