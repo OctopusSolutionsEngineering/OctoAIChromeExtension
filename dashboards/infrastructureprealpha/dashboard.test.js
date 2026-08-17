@@ -3369,3 +3369,91 @@ describe('Tenant description: one line, and never trusted', () => {
     expect(desc('plain text')).not.toContain('ip-sub');
   });
 });
+
+describe('Project map', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const payload = {
+    project: { Id: 'P1', Name: 'Azure Front Door', ProjectGroupId: 'G1', LifecycleId: 'L1',
+      IsVersionControlled: true, TenantedDeploymentMode: 'Untenanted', AutoCreateRelease: false,
+      PersistenceSettings: { Url: 'https://github.com/acme/repo.git', DefaultBranch: 'main', BasePath: '.octopus' } },
+    branch: 'main',
+    process: { Steps: [
+      { Name: 'Apply Terraform', Properties: { 'Octopus.Action.TargetRoles': 'web,api' },
+        Actions: [{ ActionType: 'Octopus.TerraformApply', Packages: [{ PackageId: 'infra', FeedId: 'Feeds-201' }] }] },
+      { Name: 'Notify', Actions: [{ ActionType: 'Octopus.Script', IsDisabled: true }] } ] },
+    channels: { Items: [{ Name: 'Full', IsDefault: true, LifecycleId: 'L1', Rules: [{}] }] },
+    triggers: { Items: [{ Name: 'Nightly', Filter: { FilterType: 'OnceDailySchedule' } }] },
+    lifecycle: { Name: 'Std', Phases: [
+      { Name: 'Dev', OptionalDeploymentTargets: ['E1'], AutomaticDeploymentTargets: [] },
+      { Name: 'Prod', OptionalDeploymentTargets: [], AutomaticDeploymentTargets: ['E2'] } ] },
+    feeds: { Items: [{ Id: 'Feeds-201', Name: 'Docker Hub', FeedType: 'Docker' }] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Production' }],
+    tenants: { TotalResults: 0 }
+  };
+  const model = data.projectMapModel(payload);
+  const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
+
+  test('inputs name the feed behind each package, not the feed id', () => {
+    expect(model.inputs).toEqual([{ feed: 'Docker Hub', feedType: 'Docker', packages: ['infra'] }]);
+  });
+
+  test('a version-controlled project shows its repository and branch', () => {
+    expect(model.git).toMatchObject({ url: 'https://github.com/acme/repo.git', branch: 'main' });
+    expect(html).toContain('github.com/acme/repo.git');
+  });
+
+  test('action types read as steps rather than as machinery', () => {
+    expect(data.actionTypeLabel('Octopus.TerraformApply')).toBe('Terraform Apply');
+    expect(data.actionTypeLabel('')).toBe('Step');
+  });
+
+  test('a disabled step is kept and marked, not dropped', () => {
+    expect(model.process[1]).toMatchObject({ name: 'Notify', disabled: true });
+    expect(html).toContain('disabled');
+  });
+
+  test('target roles are surfaced, since they decide where a step lands', () => {
+    expect(model.roles).toEqual(['web', 'api']);
+  });
+
+  test('lifecycle phases come out in order with their environments', () => {
+    expect(model.phases.map(p => p.name)).toEqual(['Dev', 'Prod']);
+    expect(model.phases[1].automatic).toEqual(['Production']);
+  });
+
+  test('triggers are named by kind', () => {
+    expect(model.triggers[0]).toMatchObject({ name: 'Nightly', kind: 'Schedule' });
+  });
+
+  test('it says that CI-driven deployments are invisible here', () => {
+    expect(html).toContain('do not appear here');
+  });
+
+  test('an unreadable process does not cost the rest of the map', () => {
+    const broken = data.projectMapModel(Object.assign({}, payload, { process: null, processError: new Error('x') }));
+    const out = Views.renderProjectMap({ projectMap: { status: 'ready', model: broken } });
+    expect(out).toContain('deployment process could not be read');
+    expect(out).toContain('Destinations');
+    expect(out).toContain('Channels');
+  });
+
+  test('a tenanted project reports how many tenants are connected', () => {
+    const tenanted = data.projectMapModel(Object.assign({}, payload, {
+      project: Object.assign({}, payload.project, { TenantedDeploymentMode: 'Tenanted' }),
+      tenants: { TotalResults: 48 } }));
+    expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: tenanted } }))
+      .toContain('48 tenants are');
+  });
+
+  test('the project card links to the map without swallowing the expand', () => {
+    const rel = data.releasesModel({
+      Environments: [{ Id: 'E1', Name: 'Dev' }], ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+      Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' }],
+      Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '1', State: 'Success' }] });
+    const list = Views.renderProjects({ releases: { status: 'ready', model: rel } });
+    expect(list).toContain('href="#projects/P1"');
+    expect(list).toContain('data-projectlink');
+    expect(list).toContain('data-project="P1"');   // the row is still the toggle
+  });
+});

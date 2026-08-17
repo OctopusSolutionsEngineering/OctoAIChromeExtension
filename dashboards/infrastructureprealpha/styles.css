@@ -964,3 +964,20 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-tn-desc { margin: 4px 0 0; font-size: 12px; color: var(--color-grey-600);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 640px; }
 .dark .ip-tn-desc { color: var(--color-grey-400); }
+
+/* Project map: panels, so the same facts read without asking anyone to trust a
+   layout before they trust the data. */
+.ip-pm-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.ip-pm-git { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+.ip-pm-repo { font-family: var(--font-mono, monospace); font-size: 12px; word-break: break-all; }
+.ip-pm-steps, .ip-pm-phases { list-style: none; margin: 0; padding: 0; counter-reset: none; }
+.ip-pm-step, .ip-pm-phase { display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid var(--color-grey-200); font-size: 12px; }
+.ip-pm-step:last-child, .ip-pm-phase:last-child { border-bottom: 0; }
+.ip-pm-step.is-disabled { opacity: .55; }
+.ip-pm-num { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; display: grid;
+  place-items: center; font-size: 10px; background: var(--color-grey-200); color: var(--color-grey-700); }
+.ip-pm-stepmain { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.ip-pm-roles, .ip-pm-envs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.dark .ip-pm-step, .dark .ip-pm-phase { border-bottom-color: var(--color-navy-700); }
+.dark .ip-pm-num { background: var(--color-navy-700); color: var(--color-grey-300); }

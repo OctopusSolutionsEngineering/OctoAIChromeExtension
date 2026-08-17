@@ -1104,7 +1104,8 @@ const Views = (function () {
       + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
       + '<div class="ip-rel-proj">'
       +   '<span class="ip-rel-caret" aria-hidden="true"></span>'
-      +   '<span class="ip-rel-proj-name">' + escHtml(proj.name) + '</span>'
+      +   '<a class="ip-rel-proj-name" href="#projects/' + escHtml(proj.id) + '" data-projectlink="1">'
+      +     escHtml(proj.name) + '</a>'
       + '</div>'
       + _relTrack(cells, cols)
       + '</div>';
@@ -1477,6 +1478,9 @@ const Views = (function () {
         if (IP.loadProjectFlags) IP.loadProjectFlags(id);
       }
     };
+    root.querySelectorAll('[data-projectlink]').forEach(a => {
+      a.addEventListener('click', ev => ev.stopPropagation());
+    });
     root.querySelectorAll('.ip-rel-row[data-project]').forEach(el => {
       el.addEventListener('click', () => toggle(el));
       el.addEventListener('keydown', ev => {
@@ -2041,6 +2045,114 @@ const Views = (function () {
       +   'it needs a request per connected project.</p>';
   }
 
+  // ─── Project map ───────────────────────────────────────────────────────────
+  // What goes in, what starts it, what it does, where it lands. Panels rather
+  // than a flow diagram: the same facts, without asking anyone to trust a
+  // layout before they trust the data.
+  function renderProjectMap(IP) {
+    const st = IP.projectMap || { status: 'loading' };
+    const back = '<p class="ip-tn-back"><a href="#projects">← All projects</a></p>';
+    if (st.status === 'loading' || !st.status) {
+      return back + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading project…</p></div>';
+    }
+    if (st.status === 'error') {
+      return back + '<div class="ip-state"><h3>Couldn\'t load this project</h3><p>'
+        + escHtml(st.error || 'Unknown error') + '</p></div>';
+    }
+    const m = st.model;
+    const panel = (title, meta, body) => '<section class="ip-tn-panel"><h3>' + escHtml(title)
+      + (meta ? '<span class="ip-tn-age">' + escHtml(meta) + '</span>' : '') + '</h3>' + body + '</section>';
+    const none = text => '<p class="ip-tn-muted">' + escHtml(text) + '</p>';
+
+    // Inputs: what the process consumes.
+    const inputs = (m.git
+        ? '<div class="ip-pm-git"><span class="ip-tn-tagset">Repository</span>'
+          + '<span class="ip-pm-repo">' + escHtml(m.git.url || 'version controlled') + '</span>'
+          + (m.git.branch ? '<span class="ip-chipx ip-chipx-tag">' + escHtml(m.git.branch) + '</span>' : '')
+          + (m.git.basePath ? '<span class="ip-tn-age">' + escHtml(m.git.basePath) + '</span>' : '')
+          + '</div>' : '')
+      + (m.inputs.length
+          ? '<ul class="ip-tn-targets">' + m.inputs.map(f =>
+              '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(f.feed) + '</span>'
+              + (f.feedType ? '<span class="ip-chipx ip-chipx-tag">' + escHtml(f.feedType) + '</span>' : '')
+              + '<span class="ip-tn-age">' + escHtml(f.packages.join(', ')) + '</span></li>').join('') + '</ul>'
+          : (m.git ? '' : none('No packages are consumed by this process.')));
+
+    // Triggers: what starts a deployment. Anything driven from outside Octopus
+    // is invisible here, and saying so is better than implying nothing does.
+    const triggers = (m.triggers.length
+        ? '<ul class="ip-tn-targets">' + m.triggers.map(t =>
+            '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(t.name) + '</span>'
+            + '<span class="ip-chipx ip-chipx-tag">' + escHtml(t.kind) + '</span>'
+            + '<span class="ip-tn-age">' + escHtml(t.detail) + '</span>'
+            + (t.disabled ? '<span class="ip-pill ip-pill-disabled">disabled</span>' : '') + '</li>').join('') + '</ul>'
+        : none('No triggers are configured.'))
+      + (m.autoCreateRelease ? '<p class="ip-tn-legend">A release is created automatically when a new package arrives.</p>' : '')
+      + '<p class="ip-tn-legend">Deployments started from CI or the API do not appear here — only what Octopus itself triggers.</p>';
+
+    // Process: what it does, in order. Names, types and packages — the detail
+    // lives in Octopus and this is a map, not a second editor.
+    const process = m.processError ? none(m.processError)
+      : (m.process.length
+          ? '<ol class="ip-pm-steps">' + m.process.map(stp =>
+              '<li class="ip-pm-step' + (stp.disabled ? ' is-disabled' : '') + '">'
+              + '<span class="ip-pm-num">' + stp.number + '</span>'
+              + '<span class="ip-pm-stepmain">'
+              +   '<span class="ip-tn-tname">' + escHtml(stp.name) + '</span>'
+              +   '<span class="ip-tn-age">' + escHtml(stp.type) + '</span>'
+              + '</span>'
+              + (stp.roles.length ? '<span class="ip-pm-roles">' + stp.roles.map(r =>
+                  '<span class="ip-chipx ip-chipx-tag">' + escHtml(r) + '</span>').join('') + '</span>' : '')
+              + (stp.packages.length ? '<span class="ip-tn-age">'
+                  + escHtml(stp.packages.map(pk => pk.packageId).join(', ')) + '</span>' : '')
+              + (stp.disabled ? '<span class="ip-pill ip-pill-disabled">disabled</span>' : '')
+              + '</li>').join('') + '</ol>'
+          : none('This project has no deployment steps.'));
+
+    // Destinations: where it lands, in lifecycle order.
+    const destinations = (m.phases.length
+        ? '<ol class="ip-pm-phases">' + m.phases.map(ph =>
+            '<li class="ip-pm-phase"><span class="ip-tn-tname">' + escHtml(ph.name) + '</span>'
+            + '<span class="ip-pm-envs">'
+            +   ph.automatic.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e) + '</span>').join('')
+            +   ph.optional.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e) + '</span>').join('')
+            + '</span>'
+            + (ph.automatic.length ? '<span class="ip-tn-age">automatic</span>' : '')
+            + '</li>').join('') + '</ol>'
+        : none('This project has no lifecycle phases.'))
+      + (m.roles.length
+          ? '<p class="ip-tn-legend">Targets are selected by role: '
+            + m.roles.map(r => escHtml(r)).join(', ') + '.</p>' : '')
+      + (m.tenantedMode === 'Untenanted'
+          ? '<p class="ip-tn-legend">Untenanted — it deploys to environments directly.</p>'
+          : '<p class="ip-tn-legend">' + escHtml(m.tenantedMode) + ' — '
+            + m.tenantCount.toLocaleString() + (m.tenantCount === 1 ? ' tenant is' : ' tenants are')
+            + ' connected to this project.</p>');
+
+    const channels = m.channels.length
+      ? '<ul class="ip-tn-targets">' + m.channels.map(c =>
+          '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(c.name) + '</span>'
+          + (c.isDefault ? '<span class="ip-chipx ip-chipx-tag">default</span>' : '')
+          + '<span class="ip-tn-age">' + (c.rules ? c.rules + (c.rules === 1 ? ' version rule' : ' version rules')
+              : 'no version rules') + '</span></li>').join('') + '</ul>'
+      : none('This project has one implicit channel.');
+
+    return back
+      + '<header class="ip-head"><h2>' + escHtml(m.name)
+      +   (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
+      +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
+      +   _tnDescription(m.description)
+      + '</header>'
+      + '<div class="ip-pm-grid">'
+      +   panel('Inputs', m.git ? 'version controlled' : '', inputs)
+      +   panel('Triggers', m.triggers.length ? m.triggers.length + ' configured' : '', triggers)
+      +   panel('Process', m.process.length ? m.process.length + (m.process.length === 1 ? ' step' : ' steps') : '', process)
+      +   panel('Destinations', m.lifecycle, destinations)
+      +   panel('Channels', '', channels)
+      + '</div>'
+      + '<p class="ip-rel-hnote-inline">The activity timeline and the project\'s variables are not on this page yet.</p>';
+  }
+
   function renderThemeToggle(IP) {
     const dark = IP.theme === 'dark';
     const icon = dark ? _sunSvg : _moonSvg;
@@ -2091,7 +2203,7 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderProjectMap, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,

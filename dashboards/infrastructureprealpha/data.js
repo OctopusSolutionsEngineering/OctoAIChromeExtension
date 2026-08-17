@@ -1670,6 +1670,132 @@ function tenantFlagModel(payload, tenant, connectedEnvIdsByProject, envName, pro
   };
 }
 
+
+// ─── Project map ─────────────────────────────────────────────────────────────
+// What someone new to a project needs to know, in one place: what goes in, what
+// starts a deployment, what it does, and where it lands.
+//
+// One thing to know about the sources. A version-controlled project keeps its
+// variables in Git, so the ordinary variable set comes back empty — the real
+// ones are at /projects/{id}/{branch}/variables. Reading only the variable set
+// would show "no variables" on every VCS project and look perfectly correct.
+
+async function fetchProjectMap(spaceId, projectId) {
+  const project = await fetchJson('/api/' + spaceId + '/projects/' + encodeURIComponent(projectId));
+  const branch = ((project.PersistenceSettings || {}).DefaultBranch) || null;
+  const soft = pr => pr.then(v => ({ v: v })).catch(e => ({ err: e }));
+
+  const processPath = project.IsVersionControlled && branch
+    ? '/api/' + spaceId + '/projects/' + encodeURIComponent(projectId) + '/'
+      + encodeURIComponent(branch) + '/deploymentprocesses'
+    : '/api/' + spaceId + '/deploymentprocesses/' + encodeURIComponent(project.DeploymentProcessId);
+
+  const parts = await Promise.all([
+    soft(fetchJson(processPath)),
+    soft(fetchJson('/api/' + spaceId + '/projects/' + encodeURIComponent(projectId) + '/channels')),
+    soft(fetchJson('/api/' + spaceId + '/projects/' + encodeURIComponent(projectId) + '/triggers')),
+    soft(fetchJson('/api/' + spaceId + '/lifecycles/' + encodeURIComponent(project.LifecycleId))),
+    soft(fetchJson('/api/' + spaceId + '/feeds?take=100')),
+    soft(fetchJson('/api/' + spaceId + '/environments/all')),
+    soft(fetchJson('/api/' + spaceId + '/tenants?projectId=' + encodeURIComponent(projectId) + '&take=1'))
+  ]);
+  return {
+    project: project, branch: branch,
+    process: parts[0].v, processError: parts[0].err,
+    channels: parts[1].v, channelsError: parts[1].err,
+    triggers: parts[2].v, triggersError: parts[2].err,
+    lifecycle: parts[3].v, lifecycleError: parts[3].err,
+    feeds: parts[4].v, environments: parts[5].v,
+    tenants: parts[6].v, tenantsError: parts[6].err
+  };
+}
+
+/** "Octopus.TerraformApply" reads as machinery; "Terraform apply" reads as a step. */
+function actionTypeLabel(type) {
+  const raw = String(type || '').replace(/^Octopus\./, '');
+  if (!raw) return 'Step';
+  return raw.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
+}
+
+function triggerLabel(trigger) {
+  const filter = trigger.Filter || {};
+  const kind = String(filter.FilterType || '');
+  if (/Schedule/i.test(kind)) return { kind: 'Schedule', detail: actionTypeLabel(kind) };
+  if (/Machine/i.test(kind)) return { kind: 'Target', detail: 'When a deployment target changes' };
+  if (/Feed|Package/i.test(kind)) return { kind: 'Package', detail: 'When a new package is pushed' };
+  if (/Git/i.test(kind)) return { kind: 'Git', detail: 'On a change in the repository' };
+  return { kind: 'Trigger', detail: actionTypeLabel(kind) };
+}
+
+function projectMapModel(payload) {
+  const src = payload || {};
+  const project = src.project || {};
+  const feedName = {}; ((src.feeds || {}).Items || []).forEach(f => { feedName[f.Id] = { name: f.Name, type: f.FeedType }; });
+  const envName = {}; (src.environments || []).forEach(e => { envName[e.Id] = e.Name; });
+
+  const steps = ((src.process || {}).Steps) || [];
+  const process = steps.map((st, i) => {
+    const actions = st.Actions || [];
+    const roles = String((st.Properties || {})['Octopus.Action.TargetRoles'] || '')
+      .split(',').map(r => r.trim()).filter(Boolean);
+    const packages = actions.flatMap(a => (a.Packages || []).map(pk => ({
+      packageId: pk.PackageId, feedId: pk.FeedId,
+      feed: (feedName[pk.FeedId] || {}).name || pk.FeedId,
+      feedType: (feedName[pk.FeedId] || {}).type || '' })));
+    return {
+      number: i + 1, name: st.Name,
+      type: actionTypeLabel((actions[0] || {}).ActionType),
+      disabled: actions.every(a => a.IsDisabled),
+      roles: roles, packages: packages
+    };
+  });
+
+  // Inputs are what the process consumes: packages by feed, plus the repository
+  // when the project is version-controlled.
+  const byFeed = {};
+  process.forEach(st => st.packages.forEach(pk => {
+    const key = pk.feed + '|' + pk.feedType;
+    (byFeed[key] || (byFeed[key] = { feed: pk.feed, feedType: pk.feedType, packages: [] }));
+    if (byFeed[key].packages.indexOf(pk.packageId) === -1) byFeed[key].packages.push(pk.packageId);
+  }));
+
+  const persistence = project.PersistenceSettings || {};
+  const phases = ((src.lifecycle || {}).Phases || []).map(ph => ({
+    name: ph.Name,
+    optional: (ph.OptionalDeploymentTargets || []).map(id => envName[id] || id),
+    automatic: (ph.AutomaticDeploymentTargets || []).map(id => envName[id] || id)
+  }));
+
+  const triggers = (((src.triggers || {}).Items) || []).map(t => {
+    const l = triggerLabel(t);
+    return { name: t.Name, kind: l.kind, detail: l.detail, disabled: !!t.IsDisabled };
+  });
+
+  return {
+    id: project.Id, name: project.Name || '', slug: project.Slug,
+    description: project.Description || '',
+    groupId: project.ProjectGroupId,
+    disabled: !!project.IsDisabled,
+    tenantedMode: project.TenantedDeploymentMode || 'Untenanted',
+    tenantCount: (src.tenants || {}).TotalResults || 0,
+    versionControlled: !!project.IsVersionControlled,
+    git: project.IsVersionControlled
+      ? { url: persistence.Url || '', branch: src.branch || persistence.DefaultBranch || '', basePath: persistence.BasePath || '' }
+      : null,
+    autoCreateRelease: !!project.AutoCreateRelease,
+    inputs: Object.keys(byFeed).map(k => byFeed[k]),
+    triggers: triggers,
+    process: process,
+    processError: src.processError ? 'The deployment process could not be read.' : null,
+    lifecycle: (src.lifecycle || {}).Name || '',
+    phases: phases,
+    channels: (((src.channels || {}).Items) || []).map(c => ({
+      name: c.Name, isDefault: !!c.IsDefault,
+      lifecycleId: c.LifecycleId, rules: (c.Rules || []).length })),
+    roles: [...new Set(process.flatMap(st => st.roles))]
+  };
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
@@ -1683,7 +1809,8 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
   parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
   fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
-  fetchTenantFlags, tenantFlagModel, flagStateForTenant }; }
+  fetchTenantFlags, tenantFlagModel, flagStateForTenant,
+  fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1700,5 +1827,6 @@ if (typeof module !== 'undefined') {
     fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
     parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
     fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
-    fetchTenantFlags, tenantFlagModel, flagStateForTenant };
+    fetchTenantFlags, tenantFlagModel, flagStateForTenant,
+    fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel };
 }

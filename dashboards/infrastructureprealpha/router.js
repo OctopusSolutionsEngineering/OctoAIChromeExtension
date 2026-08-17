@@ -52,6 +52,32 @@ const Router = (function () {
       }
       return;
     }
+    if (hash.indexOf('projects/') === 0) {
+      setActive('projects');
+      let rawP = hash.slice('projects/'.length);
+      let projectId; try { projectId = decodeURIComponent(rawP); } catch (e) { projectId = rawP; }
+      const staleP = !IP.projectMap || IP.projectMap.projectId !== projectId
+        || IP.projectMap.spaceId !== IP.spaceId;
+      if (staleP) IP.projectMap = { status: 'loading', projectId: projectId, spaceId: IP.spaceId };
+      el.innerHTML = Views.renderProjectMap(IP);
+      if (staleP) {
+        const wantedSpace = IP.spaceId;
+        Data.fetchProjectMap(wantedSpace, projectId)
+          .then(payload => {
+            if (IP.spaceId !== wantedSpace || !IP.projectMap || IP.projectMap.projectId !== projectId) return;
+            IP.projectMap = { status: 'ready', projectId: projectId, spaceId: wantedSpace,
+              model: Data.projectMapModel(payload) };
+            render();
+          })
+          .catch(e => {
+            if (IP.spaceId !== wantedSpace || !IP.projectMap || IP.projectMap.projectId !== projectId) return;
+            IP.projectMap = { status: 'error', projectId: projectId, spaceId: wantedSpace,
+              error: e && e.auth ? 'Your session isn\'t authenticated.' : (e && e.code) || 'The project request failed.' };
+            render();
+          });
+      }
+      return;
+    }
     if (hash.indexOf('tenants/') === 0) {
       setActive('tenants');
       let raw = hash.slice('tenants/'.length);
