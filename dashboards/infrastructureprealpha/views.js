@@ -1434,7 +1434,10 @@ const Views = (function () {
           + '</button></div>';
       }).join('');
       const flg = IP.projectFlags || {};
-      const rows = g.projects.map(p => _relRow(p, cols, !!open[p.id], hist[p.id], active, off, flg[p.id], grouping)).join('');
+      const rows = g.projects.map(p =>
+        '<div class="ip-rel-card' + (open[p.id] ? ' is-open' : '') + '">'
+        + _relRow(p, cols, !!open[p.id], hist[p.id], active, off, flg[p.id], grouping)
+        + '</div>').join('');
       const hiddenNote = g.hiddenEnvironments.length
         ? '<p class="ip-rel-hidden">Not shown, because this group has never deployed to them: '
           + escHtml(g.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
@@ -1443,7 +1446,7 @@ const Views = (function () {
         +   '<span class="ip-rel-group-count">' + g.projects.length + (g.projects.length === 1 ? ' project' : ' projects') + '</span></h3>'
         + '<div class="ip-rel-grid">'
         +   '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>' + _relTrack(heads, cols) + '</div>'
-        +   rows
+        +   '<div class="ip-rel-cards">' + rows + '</div>'
         + '</div>' + hiddenNote + '</section>';
     }).join('');
 

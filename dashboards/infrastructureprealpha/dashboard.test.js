@@ -3082,3 +3082,43 @@ describe('A space where targets are forbidden is not a space that failed', () =>
     expect(html).not.toContain('No deployment targets');
   });
 });
+
+describe('Projects render as cards, not as a table', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const model = data.releasesModel({
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+    Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' },
+               { Id: 'P2', Name: 'Hub', ProjectGroupId: 'G1' }],
+    Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+            { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E2', ReleaseVersion: '4.1', State: 'Success' }]
+  });
+
+  test('every project gets its own card', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model } });
+    expect((html.match(/ip-rel-card"/g) || []).length).toBe(2);
+  });
+
+  test('the environment header still stands above them', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model } });
+    expect(html).toContain('ip-rel-head');
+    expect(html.indexOf('ip-rel-head')).toBeLessThan(html.indexOf('ip-rel-cards'));
+  });
+
+  test('an open project is marked, and its history sits inside its own card', () => {
+    const html = Views.renderProjects({ projectOpen: { P1: true },
+      projectHistory: { P1: { status: 'loading' } }, releases: { status: 'ready', model } });
+    expect(html).toContain('ip-rel-card is-open');
+    expect(/ip-rel-card is-open[\s\S]*?ip-rel-history/.test(html)).toBe(true);
+  });
+
+  test('the columns still line up between the header and the cards', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model } });
+    // Header and rows use the same track template, which is what keeps the
+    // nodes under their environment names once the shared box is gone.
+    const tracks = html.match(/grid-template-columns:repeat\(2,[^"]+/g) || [];
+    expect(tracks.length).toBeGreaterThan(1);
+    expect(new Set(tracks).size).toBe(1);
+  });
+});
