@@ -2501,3 +2501,68 @@ describe('Tenants — view', () => {
     expect(empty).toContain('No tenants in this space');
   });
 });
+
+describe('Tenants — sortable column headers', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const model = data.tenantsModel({
+    now: NOW,
+    tenants: { total: 3, truncated: false, items: [
+      { Id: 'T1', Name: 'Alpha', TenantTags: [], ProjectEnvironments: { P1: ['E1'] } },
+      { Id: 'T2', Name: 'Bravo', TenantTags: [], ProjectEnvironments: { P1: ['E1'], P2: ['E1'], P3: ['E1'] } },
+      { Id: 'T3', Name: 'Charlie', TenantTags: [], ProjectEnvironments: { P1: ['E1'], P2: ['E1'] } }
+    ] },
+    dashboard: { Projects: [{ Id: 'P1', Name: 'One' }], Environments: [{ Id: 'E1', Name: 'Production' }], Items: [] },
+    tagSets: []
+  });
+  const render = (sort, dir) => Views.renderTenants({
+    tenants: { status: 'ready', model }, tenantSort: sort, tenantDir: dir });
+
+  test('every sortable column offers a control; Tags does not', () => {
+    const html = render();
+    ['Name', 'Projects', 'Environments', 'Last outcome'].forEach(k =>
+      expect(html).toContain('data-sort="' + k + '"'));
+    expect(html).not.toContain('data-sort="Tags"');
+  });
+
+  test('the active column reports its direction to assistive tech', () => {
+    const asc = render('Name', 'asc');
+    expect(asc).toContain('aria-sort="ascending"');
+    expect(render('Name', 'desc')).toContain('aria-sort="descending"');
+    // Only one column is ever the sorted one.
+    expect((asc.match(/aria-sort="(ascending|descending)"/g) || []).length).toBe(1);
+  });
+
+  test('each sort has a natural first direction', () => {
+    expect(data.tenantSortDir('Name')).toBe('asc');
+    expect(data.tenantSortDir('Projects')).toBe('desc');
+    expect(data.tenantSortDir('Last outcome')).toBe('desc');
+  });
+
+  test('sorting by a column orders by that column', () => {
+    expect(data.sortTenants(model.tenants, 'Projects').map(t => t.name)).toEqual(['Bravo', 'Charlie', 'Alpha']);
+    expect(data.sortTenants(model.tenants, 'Name').map(t => t.name)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  });
+
+  test('reversing a column reverses it', () => {
+    expect(data.sortTenants(model.tenants, 'Projects', 'asc').map(t => t.name)).toEqual(['Alpha', 'Charlie', 'Bravo']);
+  });
+
+  test('ties fall back to name so the order is stable', () => {
+    const tied = data.tenantsModel({
+      now: NOW,
+      tenants: { total: 2, items: [
+        { Id: 'B', Name: 'Beta', TenantTags: [], ProjectEnvironments: { P1: ['E1'] } },
+        { Id: 'A', Name: 'Aardvark', TenantTags: [], ProjectEnvironments: { P1: ['E1'] } }
+      ] },
+      dashboard: { Projects: [], Environments: [], Items: [] }, tagSets: []
+    });
+    expect(data.sortTenants(tied.tenants, 'Projects').map(t => t.name)).toEqual(['Aardvark', 'Beta']);
+  });
+
+  test('the dropdown and the headers offer the same set', () => {
+    const html = render();
+    data.TENANT_SORTS.forEach(s => expect(html).toContain(s));
+  });
+});

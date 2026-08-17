@@ -1230,16 +1230,37 @@ function tenantsModel(payload) {
 /** Actionability, not alphabet: what is broken, then what has never run, then
  *  what is not wired up, then name. Sorting 1,228 tenants by name puts the ones
  *  that need someone on page nine. */
-const TENANT_SORTS = ['Actionability', 'Name', 'Last activity'];
+const TENANT_SORTS = ['Actionability', 'Name', 'Projects', 'Environments', 'Last outcome'];
 
-function sortTenants(rows, sort) {
+/** Every sort has a natural first direction: names read A–Z, counts and dates
+ *  read biggest and newest first. Clicking a header a second time reverses it. */
+const TENANT_SORT_DEFAULT_DIR = {
+  Actionability: 'asc', Name: 'asc', Projects: 'desc', Environments: 'desc', 'Last outcome': 'desc'
+};
+
+function tenantSortDir(sort) {
+  return TENANT_SORT_DEFAULT_DIR[sort] || 'asc';
+}
+
+function sortTenants(rows, sort, dir) {
   const copy = rows.slice();
-  if (sort === 'Name') return copy.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  if (sort === 'Last activity') return copy.sort((a, b) => (b.outcomeAt || 0) - (a.outcomeAt || 0));
-  const rank = r => r.needsAttention ? 0 : (r.neverDeployed ? 1 : (r.notConnected ? 2 : 3));
-  return copy.sort((a, b) => (rank(a) - rank(b))
-    || ((b.outcomeAt || 0) - (a.outcomeAt || 0))
-    || String(a.name).localeCompare(String(b.name)));
+  const direction = dir === 'asc' || dir === 'desc' ? dir : tenantSortDir(sort);
+  const flip = direction === (TENANT_SORT_DEFAULT_DIR[sort] || 'asc') ? 1 : -1;
+  const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+
+  let cmp;
+  if (sort === 'Name') cmp = byName;
+  else if (sort === 'Projects') cmp = (a, b) => (b.connectedProjectIds.length - a.connectedProjectIds.length) || byName(a, b);
+  else if (sort === 'Environments') cmp = (a, b) => (b.environmentsOn.length - a.environmentsOn.length) || byName(a, b);
+  else if (sort === 'Last outcome') cmp = (a, b) => ((b.outcomeAt || 0) - (a.outcomeAt || 0)) || byName(a, b);
+  else {
+    // Actionability: what is broken, then what has never run, then what is not
+    // wired up, then name. Sorting 1,228 tenants alphabetically puts the ones
+    // that need someone on page nine.
+    const rank = r => r.needsAttention ? 0 : (r.neverDeployed ? 1 : (r.notConnected ? 2 : 3));
+    cmp = (a, b) => (rank(a) - rank(b)) || ((b.outcomeAt || 0) - (a.outcomeAt || 0)) || byName(a, b);
+  }
+  return copy.sort((a, b) => flip * cmp(a, b));
 }
 
 function filterTenants(rows, query, selected) {
@@ -1290,7 +1311,7 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable,
   viewNeedsEstate,
   fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
-  parseTenantTag, tenantOutcomeKey, TENANT_SORTS }; }
+  parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1305,5 +1326,5 @@ if (typeof module !== 'undefined') {
     fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue,
     viewNeedsEstate,
     fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
-    parseTenantTag, tenantOutcomeKey, TENANT_SORTS };
+    parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir };
 }

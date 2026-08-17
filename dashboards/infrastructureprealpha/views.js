@@ -1556,7 +1556,7 @@ const Views = (function () {
     IP.tenantPage = IP.tenantPage || 0;
 
     const filtered = Data.filterTenants(m.tenants, IP.tenantQuery, IP.tenantSel);
-    const sorted = Data.sortTenants(filtered, IP.tenantSort);
+    const sorted = Data.sortTenants(filtered, IP.tenantSort, IP.tenantDir);
     const pages = Math.max(1, Math.ceil(sorted.length / TENANT_PAGE_SIZE));
     const page = Math.min(IP.tenantPage, pages - 1);
     const slice = sorted.slice(page * TENANT_PAGE_SIZE, (page + 1) * TENANT_PAGE_SIZE);
@@ -1583,8 +1583,24 @@ const Views = (function () {
       m.projects.map(p => ({ label: p.name, value: p.id, count: facets.count('projects', p.id) }))
         .filter(e => e.count > 0), 'projects', IP.tenantSel);
 
+    IP.tenantDir = IP.tenantDir || Data.tenantSortDir(IP.tenantSort);
     const sorts = Data.TENANT_SORTS.map(x => '<option' + (x === IP.tenantSort ? ' selected' : '') + '>'
       + escHtml(x) + '</option>').join('');
+
+    // Headers and the dropdown drive one piece of state, so a column arrow and
+    // the dropdown can never contradict each other. Tags is not sortable —
+    // ordering by a list of labels answers no question anyone has.
+    const th = (label, key) => {
+      if (!key) return '<th>' + escHtml(label) + '</th>';
+      const active = IP.tenantSort === key;
+      const dir = active ? IP.tenantDir : null;
+      const aria = active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none';
+      return '<th aria-sort="' + aria + '" class="ip-tn-th' + (active ? ' is-sorted' : '') + '">'
+        + '<button type="button" class="ip-tn-sortbtn" data-sort="' + escHtml(key) + '">'
+        +   escHtml(label)
+        +   '<span class="ip-tn-arrow" aria-hidden="true">' + (active ? (dir === 'asc' ? '↑' : '↓') : '↕') + '</span>'
+        + '</button></th>';
+    };
 
     const rows = slice.map(t =>
       '<tr class="ip-tn-row">'
@@ -1625,7 +1641,8 @@ const Views = (function () {
       +   '<div class="ip-tn-table-wrap">'
       +     (slice.length
           ? '<table class="ip-table ip-tn-table"><thead><tr>'
-            + '<th>Tenant</th><th>Tags</th><th>Projects</th><th>Environments</th><th>Last outcome</th>'
+            + th('Tenant', 'Name') + th('Tags', null) + th('Projects', 'Projects')
+            + th('Environments', 'Environments') + th('Last outcome', 'Last outcome')
             + '</tr></thead><tbody>' + rows + '</tbody></table>'
           : '<div class="ip-empty"><h3>No tenants match these filters</h3>'
             + '<p>Clear a filter or search for a different name.</p></div>')
@@ -1651,7 +1668,22 @@ const Views = (function () {
       if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
     });
     const sort = root.querySelector('.ip-tn-sortsel');
-    if (sort) sort.addEventListener('change', () => { IP.tenantSort = sort.value; redraw(); });
+    if (sort) sort.addEventListener('change', () => {
+      IP.tenantSort = sort.value;
+      IP.tenantDir = Data.tenantSortDir(sort.value);
+      redraw();
+    });
+    root.querySelectorAll('[data-sort]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-sort');
+        // Same column again reverses; a new column starts in its natural
+        // direction rather than inheriting the last one's.
+        if (IP.tenantSort === key) IP.tenantDir = IP.tenantDir === 'asc' ? 'desc' : 'asc';
+        else { IP.tenantSort = key; IP.tenantDir = Data.tenantSortDir(key); }
+        IP.tenantPage = 0;
+        redraw();
+      });
+    });
     root.querySelectorAll('[data-facet]').forEach(box => {
       box.addEventListener('change', () => {
         const key = box.getAttribute('data-facet'), value = box.getAttribute('data-value');

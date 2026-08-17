@@ -813,3 +813,15 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-tn-muted { color: var(--color-grey-500); }
 .dark .ip-tn-chip { background: rgba(26,119,202,.18); color: var(--color-blue-200); }
 .dark .ip-tn-chip.is-clear { color: var(--color-grey-300); border-color: var(--color-navy-600); }
+/* Sortable headers. The arrow shows the direction on the active column and an
+   idle glyph elsewhere, so a column that can be sorted looks like one before
+   it is clicked. */
+.ip-tn-sortbtn { display: inline-flex; align-items: center; gap: 5px; width: 100%;
+  border: 0; padding: 0; background: none; cursor: pointer; font: inherit;
+  color: inherit; text-align: left; }
+.ip-tn-sortbtn:focus-visible { outline: 2px solid var(--color-blue-500); outline-offset: 2px; border-radius: 3px; }
+.ip-tn-arrow { font-size: 10px; opacity: .35; }
+.ip-tn-th.is-sorted .ip-tn-arrow { opacity: 1; color: var(--color-blue-600); }
+.ip-tn-th.is-sorted .ip-tn-sortbtn { font-weight: 700; }
+.ip-tn-sortbtn:hover .ip-tn-arrow { opacity: .8; }
+.dark .ip-tn-th.is-sorted .ip-tn-arrow { color: var(--color-blue-300); }
