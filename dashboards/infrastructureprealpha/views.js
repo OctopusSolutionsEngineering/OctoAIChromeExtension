@@ -1758,6 +1758,18 @@ const Views = (function () {
       : (t.health === 'Healthy' || t.health === 'HealthyWithWarnings' ? 'healthy' : 'unhealthy')) : 'healthy';
   }
 
+  function bindTenantDetail(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    root.querySelectorAll('[data-tenanttab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        IP.tenantTab = btn.getAttribute('data-tenanttab');
+        root.innerHTML = renderTenantDetail(IP);
+        bindTenantDetail(IP);
+      });
+    });
+  }
+
   function renderTenantDetail(IP) {
     const st = IP.tenantDetail || { status: 'loading' };
     const back = '<p class="ip-tn-back"><a href="#tenants">← All tenants</a></p>';
@@ -1797,7 +1809,7 @@ const Views = (function () {
       const rd = m.readiness;
       // Three states, not two. A template with no value is a question, and what
       // answers it is whether anything has actually deployed without it.
-      const tone = rd.ready ? 'healthy' : (rd.proven ? 'disabled' : 'unhealthy');
+      const tone = rd.ready ? 'healthy' : (rd.proven ? 'disabled' : 'warning');
       const headline = rd.ready ? 'Ready'
         : rd.count + ' unset ' + (rd.count === 1 ? 'variable' : 'variables');
       const detail = rd.ready ? 'Every template the projects ask for has a value'
@@ -1848,6 +1860,46 @@ const Views = (function () {
         }).join('') + '</ul>'
       : '<p class="ip-tn-muted">Nothing has been deployed to this tenant.</p>';
 
+    // The unset variables sit behind a tab rather than in the flow: they are a
+    // thing to go and look at, not part of the answer to "what is on this
+    // tenant right now".
+    const unsetCount = m.readiness ? m.readiness.count : 0;
+    const tab = (unsetCount && IP.tenantTab === 'Variables') ? 'Variables' : 'Overview';
+    const tabDefs = [{ key: 'Overview', label: 'Overview' }];
+    if (unsetCount) tabDefs.push({ key: 'Variables', label: 'Unset variables', count: unsetCount });
+    const tabs = tabDefs.length > 1
+      ? '<nav class="ip-tabs ip-section-tabs" aria-label="Tenant sections">'
+        + tabDefs.map(d => '<button type="button" class="ip-tab ip-section-tab'
+          + (d.key === tab ? ' ip-tab-active' : '') + '" data-tenanttab="' + escHtml(d.key) + '"'
+          + (d.key === tab ? ' aria-current="page"' : '') + '>' + escHtml(d.label)
+          + (d.count ? '<span class="ip-tn-tabcount">' + d.count + '</span>' : '') + '</button>').join('')
+        + '</nav>'
+      : '';
+
+    const overviewTab = '<section class="ip-tn-panel"><h3>Deployment matrix</h3>' + matrix + '</section>'
+      + '<div class="ip-tn-split">'
+      +   '<section class="ip-tn-panel"><h3>Infrastructure'
+      +     (m.infrastructure && !m.infrastructure.orphaned
+            ? '<span class="ip-tn-age">' + m.infrastructure.healthy + ' of ' + m.infrastructure.total + ' healthy</span>' : '')
+      +     '</h3>' + infra + '</section>'
+      +   '<section class="ip-tn-panel"><h3>Activity</h3>' + activity + '</section>'
+      + '</div>';
+
+    const variablesTab = m.readiness && m.readiness.missing.length
+      ? '<section class="ip-tn-panel"><h3>Unset variables'
+        + '<span class="ip-tn-age">' + m.readiness.count + ' of the templates these projects ask for</span></h3>'
+        + '<ul class="ip-tn-targets">' + m.readiness.missing.map(v =>
+            '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(v.name) + '</span>'
+            + '<span class="ip-tn-age">' + escHtml(v.scope) + '</span>'
+            + '<span class="ip-tn-age">' + escHtml(v.environments.join(', ')) + '</span>'
+            + (v.proven ? '<span class="ip-pill ip-pill-disabled">deployed without it</span>'
+                        : '<span class="ip-pill ip-pill-warning">unproven</span>') + '</li>').join('')
+        + '</ul>'
+        + '<p class="ip-tn-legend">A template is a request for a value, not a guarantee the process uses one. '
+        + 'Where a deployment has already succeeded with the value unset, that is recorded rather than called a failure.</p>'
+        + '</section>'
+      : '';
+
     return back
       + '<header class="ip-head"><h2>' + escHtml(m.name) + (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
       +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
@@ -1855,28 +1907,8 @@ const Views = (function () {
       +   (tagGroups ? '<div class="ip-tn-taggroups">' + tagGroups + '</div>' : '')
       + '</header>'
       + '<div class="ip-tn-cards">' + connCard + readyCard + outcomeCard + '</div>'
-      + (m.readiness && m.readiness.missing.length
-          ? '<section class="ip-tn-panel"><h3>Unset variables'
-            + '<span class="ip-tn-age">' + m.readiness.count + ' of the templates these projects ask for</span></h3>'
-            + '<ul class="ip-tn-targets">' + m.readiness.missing.map(v =>
-                '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(v.name) + '</span>'
-                + '<span class="ip-tn-age">' + escHtml(v.scope) + '</span>'
-                + '<span class="ip-tn-age">' + escHtml(v.environments.join(', ')) + '</span>'
-                + (v.proven ? '<span class="ip-pill ip-pill-disabled">deployed without it</span>'
-                            : '<span class="ip-pill ip-pill-unhealthy">unproven</span>') + '</li>').join('')
-            + '</ul>'
-            + '<p class="ip-tn-legend">A template is a request for a value, not a guarantee the process uses one. '
-            + 'Where a deployment has already succeeded with the value unset, that is recorded rather than called a failure.</p>'
-            + '</section>'
-          : '')
-      + '<section class="ip-tn-panel"><h3>Deployment matrix</h3>' + matrix + '</section>'
-      + '<div class="ip-tn-split">'
-      +   '<section class="ip-tn-panel"><h3>Infrastructure'
-      +     (m.infrastructure && !m.infrastructure.orphaned
-            ? '<span class="ip-tn-age">' + m.infrastructure.healthy + ' of ' + m.infrastructure.total + ' healthy</span>' : '')
-      +     '</h3>' + infra + '</section>'
-      +   '<section class="ip-tn-panel"><h3>Activity</h3>' + activity + '</section>'
-      + '</div>'
+      + tabs
+      + (tab === 'Variables' ? variablesTab : overviewTab)
       + '<p class="ip-rel-hnote-inline">Currency against each project\'s latest release, and feature flags scoped to this '
       +   'tenant, are not shown yet — both need a request per connected project.</p>';
   }
@@ -1931,7 +1963,7 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
     pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,

@@ -2811,10 +2811,69 @@ describe('Readiness is triangulated against what has deployed', () => {
         Templates: [{ Id: 't1', Name: 'ApiKey' }], Variables: { E3: {} } } } },
       now: NOW
     });
-    const html = Views.renderTenantDetail({ spaceId: 'S', tenantDetail: { status: 'ready', model } });
+    const overview = Views.renderTenantDetail({ spaceId: 'S', tenantDetail: { status: 'ready', model } });
     // It deployed three days ago with the value unset, so the page says so.
-    expect(html).not.toContain('would fail on configuration');
-    expect(html).toContain('Deployments have succeeded with these unset');
-    expect(html).toContain('deployed without it');
+    expect(overview).not.toContain('would fail on configuration');
+    expect(overview).toContain('Deployments have succeeded with these unset');
+    // The detail sits behind a tab rather than in the flow.
+    expect(overview).not.toContain('deployed without it');
+    const variables = Views.renderTenantDetail({ spaceId: 'S', tenantTab: 'Variables',
+      tenantDetail: { status: 'ready', model } });
+    expect(variables).toContain('deployed without it');
+  });
+});
+
+describe('Unset variables live behind a tab, in amber', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const NOW = Date.now();
+  const build = (items, templates) => data.tenantDetailModel({
+    tenant: { Id: 'T1', Name: 'T', TenantTags: [], ProjectEnvironments: { P1: ['E3'] } },
+    dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E3', Name: 'Production' }],
+      Items: items },
+    variables: { ProjectVariables: { P1: { ProjectId: 'P1', ProjectName: 'Patient Records',
+      Templates: templates, Variables: { E3: {} } } } },
+    now: NOW
+  });
+  const deployed = [{ IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E3',
+    ReleaseVersion: '1.0', State: 'Success', CompletedTime: new Date(NOW - 3 * 86400000).toISOString() }];
+  const render = (model, tab) => Views.renderTenantDetail({ spaceId: 'S', tenantTab: tab,
+    tenantDetail: { status: 'ready', model } });
+
+  test('a tab appears only when something is unset', () => {
+    const none = build(deployed, [{ Id: 't1', Name: 'ApiKey', DefaultValue: 'x' }]);
+    expect(render(none)).not.toContain('data-tenanttab');
+    const some = build(deployed, [{ Id: 't1', Name: 'ApiKey' }]);
+    expect(render(some)).toContain('data-tenanttab="Variables"');
+  });
+
+  test('the tab carries the count', () => {
+    const html = render(build(deployed, [{ Id: 't1', Name: 'ApiKey' }, { Id: 't2', Name: 'Secret' }]));
+    expect(html).toContain('ip-tn-tabcount');
+    expect(html).toContain('Unset variables');
+  });
+
+  test('the overview keeps the matrix rather than the variable list', () => {
+    const html = render(build(deployed, [{ Id: 't1', Name: 'ApiKey' }]));
+    expect(html).toContain('Deployment matrix');
+    expect(html).not.toContain('ip-tn-legend">A template is a request');
+  });
+
+  test('the variables tab shows the list and not the matrix', () => {
+    const html = render(build(deployed, [{ Id: 't1', Name: 'ApiKey' }]), 'Variables');
+    expect(html).toContain('A template is a request for a value');
+    expect(html).not.toContain('Deployment matrix');
+  });
+
+  test('unproven reads amber, never red', () => {
+    // Nothing has deployed, so the template is unproven — the strongest case.
+    const html = render(build([], [{ Id: 't1', Name: 'ApiKey' }]), 'Variables');
+    expect(html).toContain('ip-pill-warning');
+    expect(html).not.toContain('ip-pill-unhealthy');
+  });
+
+  test('the readiness card is amber too, not the failure tone', () => {
+    const html = render(build([], [{ Id: 't1', Name: 'ApiKey' }]));
+    expect(html).toContain('ip-rel-node-warning');
   });
 });

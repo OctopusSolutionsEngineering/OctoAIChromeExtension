@@ -59,6 +59,8 @@ const Router = (function () {
       const stale = !IP.tenantDetail || IP.tenantDetail.tenantId !== tenantId || IP.tenantDetail.spaceId !== IP.spaceId;
       if (stale) IP.tenantDetail = { status: 'loading', tenantId: tenantId, spaceId: IP.spaceId };
       el.innerHTML = Views.renderTenantDetail(IP);
+      Views.bindTenantDetail && Views.bindTenantDetail(IP);
+      if (stale) { IP.tenantTab = 'Overview'; }
       if (stale) {
         const wantedSpace = IP.spaceId;
         const stillWanted = () => IP.spaceId === wantedSpace

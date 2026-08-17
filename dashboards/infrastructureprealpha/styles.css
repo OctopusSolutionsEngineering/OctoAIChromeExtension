@@ -868,3 +868,14 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-tn-cardtitle, .dark .ip-tn-carddetail, .dark .ip-tn-tagset,
 .dark .ip-tn-mmeta, .dark .ip-tn-legend, .dark .ip-tn-targethead { color: var(--color-grey-400); }
 .dark .ip-tn-warn { color: var(--color-red-200); }
+/* Amber, not red. An unset value the projects asked for is a question to
+   answer, not something broken — and live data showed tenants deploying
+   successfully with them unset. */
+.ip-rel-node-warning { background: var(--color-orange-500); }
+.ip-pill-warning { background: var(--color-orange-100); color: var(--color-orange-700);
+  border: 1px solid var(--color-orange-300); }
+.ip-tn-tabcount { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 8px;
+  font-size: 10px; background: var(--color-orange-100); color: var(--color-orange-700); }
+.dark .ip-pill-warning { background: rgba(196,83,23,.22); color: var(--color-orange-200);
+  border-color: transparent; }
+.dark .ip-tn-tabcount { background: rgba(196,83,23,.22); color: var(--color-orange-200); }
