@@ -36,6 +36,10 @@
           {
             "dashboardName": "Task Timeline",
             "dashboardFile": "tasktimeline/index.html"
+          },
+          {
+            "dashboardName": "Terraform Plan Viewer",
+            "dashboardFile": "terraformplan/index.html"
           }
         ]
       },
@@ -87,6 +91,10 @@
           {
             "dashboardName": "Task Timeline",
             "dashboardFile": "tasktimeline/index.html"
+          },
+          {
+            "dashboardName": "Terraform Plan Viewer",
+            "dashboardFile": "terraformplan/index.html"
           }
         ]
       },
@@ -280,12 +288,30 @@
   {
     "name":"Project.Runbooks.Runbook.Run",
     "prompts" : [
+      {
+        "name": "Community dashboards...",
+        "prompts": [
+          {
+            "dashboardName": "Terraform Plan Viewer",
+            "dashboardFile": "terraformplan/index.html"
+          }
+        ]
+      },
       "Why did the runbook run fail? If the runbook run didn't fail, say so. Provide suggestions for resolving the issue."
     ]
   },
   {
     "name":"Project.Deployment",
     "prompts" : [
+      {
+        "name": "Community dashboards...",
+        "prompts": [
+          {
+            "dashboardName": "Terraform Plan Viewer",
+            "dashboardFile": "terraformplan/index.html"
+          }
+        ]
+      },
       "Help me understand why the deployment failed. If the deployment didn't fail, say so. Provide suggestions for resolving the issue."
     ]
   },
