@@ -4108,3 +4108,121 @@ describe('Switching space lands on Projects', () => {
     expect(Views.spaceSwitchNav('')).toEqual({ hash: '#projects', rerender: true });
   });
 });
+
+describe('Incomplete reads say so where the zero used to be', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const err = msg => { const e = new Error(msg); e.code = msg; return e; };
+  const mapWith = extra => data.projectMapModel(Object.assign({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1', TenantedDeploymentMode: 'Tenanted' },
+    process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+    lifecycle: { Name: 'Std', Phases: [{ Name: 'All', OptionalDeploymentTargets: ['E1'] }] },
+    lifecycles: [{ Id: 'L1', Name: 'Std', Phases: [{ Name: 'All', OptionalDeploymentTargets: ['E1'] }] }],
+    feeds: { Items: [] }, environments: [{ Id: 'E1', Name: 'Dev' }], tenants: { TotalResults: 4 }
+  }, extra));
+  const render = m => Views.renderProjectMap({ projectTab: 'Overview',
+    projectMap: { status: 'ready', model: m } });
+
+  test('a forbidden read is not "none configured"', () => {
+    const html = render(mapWith({ channelsError: err('403'), triggersError: err('403'),
+      tenantsError: err('403'), lifecycleError: err('403'), lifecycle: null, lifecycles: [] }));
+    expect(html).toContain('Channels could not be read');
+    expect(html).toContain('Triggers could not be read');
+    expect(html).toContain('Lifecycles could not be read');
+    expect(html).toContain('Connected tenants could not be counted');
+    // None of the confident zeros survive.
+    expect(html).not.toContain('one implicit channel');
+    expect(html).not.toContain('No triggers are configured');
+    expect(html).not.toContain('no lifecycle phases');
+    expect(html).not.toContain('4 tenants connected');
+  });
+
+  test('a lifecycle with no phases does not silently mean every environment', () => {
+    const machines = { items: [
+      { Id: 'M1', Name: 'in-scope', Roles: ['web'], EnvironmentIds: ['E1'], HealthStatus: 'Healthy' },
+      { Id: 'M2', Name: 'far-away', Roles: ['web'], EnvironmentIds: ['E9'], HealthStatus: 'Healthy' }
+    ], total: 2 };
+    const m = data.projectMapModel({
+      project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [{ Name: 'D', Properties: { 'Octopus.Action.TargetRoles': 'web' },
+        Actions: [{ ActionType: 'Octopus.Script' }] }] },
+      channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Id: 'L1', Name: 'Default Lifecycle', Phases: [] },
+      lifecycles: [{ Id: 'L1', Name: 'Default Lifecycle', Phases: [] }],
+      feeds: { Items: [] }, environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E9', Name: 'Lab' }],
+      tenants: { TotalResults: 0 }, machines: machines });
+    expect(m.targets.scopeUnknown).toBe(true);
+    expect(m.targets.total).toBe(0);
+    const html = render(m);
+    expect(html).toContain('is not known');
+    expect(html).not.toContain('far-away');
+  });
+
+  test('a capped estate is not an empty one, on either page', () => {
+    const capped = { items: [{ Id: 'M1', Name: 'a', Roles: ['other'], EnvironmentIds: ['E1'] }],
+      total: 5000, truncated: true };
+    const html = render(mapWith({ machines: capped,
+      process: { Steps: [{ Name: 'D', Properties: { 'Octopus.Action.TargetRoles': 'web' },
+        Actions: [{ ActionType: 'Octopus.Script' }] }] } }));
+    expect(html).toContain('The rest were not read');
+    expect(html).not.toContain('nowhere to run');
+
+    const tenant = data.tenantDetailModel({
+      tenant: { Id: 'T1', Name: 'Acme', ProjectEnvironments: {} },
+      dashboard: { Projects: [], Environments: [], Items: [] },
+      machines: capped });
+    expect(tenant.infrastructure.orphaned).toBe(false);
+    expect(tenant.infrastructure.truncated).toBe(true);
+    const tHtml = Views.renderTenantDetail({ tenantDetail: { status: 'ready', model: tenant } });
+    expect(tHtml).toContain('The rest were not read');
+    expect(tHtml).not.toContain('resolve to nothing');
+  });
+
+  test('a fully read estate still says plainly when nothing matches', () => {
+    const whole = { items: [], total: 0, truncated: false };
+    const tenant = data.tenantDetailModel({
+      tenant: { Id: 'T1', Name: 'Acme', ProjectEnvironments: {} },
+      dashboard: { Projects: [], Environments: [], Items: [] }, machines: whole });
+    expect(tenant.infrastructure.orphaned).toBe(true);
+    expect(Views.renderTenantDetail({ tenantDetail: { status: 'ready', model: tenant } }))
+      .toContain('resolve to nothing');
+  });
+
+  test('the dashboard cap is disclosed on both tenant views', () => {
+    const dash = { Projects: [{ Id: 'P1', Name: 'One' }], ProjectGroups: [], Environments: [],
+      Tenants: [], Items: [], ProjectLimit: 1 };
+    const list = data.tenantsModel({ tenants: { items: [{ Id: 'T1', Name: 'Acme', ProjectEnvironments: { 'P9': ['E1'] } }], total: 1 },
+      dashboard: dash, tagSets: [] });
+    expect(list.dashboardCap.capped).toBe(true);
+    expect(Views.renderTenants({ tenants: { status: 'ready', model: list } }))
+      .toContain('reads as never deployed');
+
+    const detail = data.tenantDetailModel({ tenant: { Id: 'T1', Name: 'Acme', ProjectEnvironments: { 'P9': ['E1'] } },
+      dashboard: dash });
+    expect(detail.dashboardCap.capped).toBe(true);
+    expect(Views.renderTenantDetail({ tenantDetail: { status: 'ready', model: detail } }))
+      .toContain('reads here as never deployed');
+  });
+
+  test('an uncapped dashboard says nothing at all', () => {
+    const dash = { Projects: [{ Id: 'P1', Name: 'One' }], ProjectGroups: [], Environments: [],
+      Tenants: [], Items: [], ProjectLimit: 200 };
+    const list = data.tenantsModel({ tenants: { items: [{ Id: 'T1', Name: 'Acme', ProjectEnvironments: {} }], total: 1 },
+      dashboard: dash, tagSets: [] });
+    expect(list.dashboardCap.capped).toBe(false);
+    expect(Views.renderTenants({ tenants: { status: 'ready', model: list } }))
+      .not.toContain('reads as never deployed');
+  });
+
+  test('library variable sets are read by template, not by environment', () => {
+    const variables = { LibraryVariables: { 'LVS-1': {
+      LibraryVariableSetName: 'Standard',
+      Templates: [{ Id: 'tpl-region', Label: 'Region' }, { Id: 'tpl-tier', Label: 'Tier' }],
+      Variables: { 'tpl-region': 'eu-west' } } } };
+    const r = data.tenantReadiness(variables, { 'P1': ['E1', 'E2', 'E3'] },
+      { E1: 'Dev', E2: 'Test', E3: 'Prod' }, {});
+    // Region is supplied. Tier is not — once, not once per environment.
+    expect(r.missing.map(x => x.name)).toEqual(['Tier']);
+    expect(r.count).toBe(1);
+  });
+});

@@ -1705,7 +1705,13 @@ const Views = (function () {
             + '</div>' : '')
       +   '</div>'
       + '</div>'
-      + (m.truncated ? '<p class="ip-rel-hnote-inline">More than ' + m.total + ' tenants — this reads the first pages only.</p>' : '');
+      + (m.truncated ? '<p class="ip-rel-hnote-inline">More than ' + m.total + ' tenants — this reads the first pages only.</p>' : '')
+      + ((m.dashboardCap && m.dashboardCap.capped)
+          ? '<p class="ip-rel-hnote-inline">' + escHtml(m.dashboardCap.isFiltered
+              ? 'The project dashboard is filtered on this instance. Last outcome and Environments come from it, so a tenant deploying only to projects it leaves out reads as never deployed.'
+              : 'The project dashboard returns at most ' + m.dashboardCap.projectLimit
+                + ' projects. Last outcome and Environments come from it, so a tenant deploying only to projects beyond that reads as never deployed.')
+            + '</p>' : '');
   }
 
   function bindTenants(IP) {
@@ -1923,9 +1929,19 @@ const Views = (function () {
       infra = '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading targets…</span></div>';
     } else if (m.infrastructure.orphaned) {
       infra = '<p class="ip-tn-warn">No deployment target matches this tenant. Its deployments resolve to nothing.</p>';
+    } else if (!m.infrastructure.total && m.infrastructure.truncated) {
+      infra = '<p class="ip-tn-muted">Nothing among the first '
+        + m.infrastructure.estateRead.toLocaleString() + ' of '
+        + m.infrastructure.estateTotal.toLocaleString()
+        + ' deployment targets in this space matches this tenant. The rest were not read, '
+        + 'so whether it has targets is unknown.</p>';
     } else {
       infra = _tnTargets(m.infrastructure.dedicated, 'Dedicated', 'targets that name this tenant directly')
-        + _tnTargets(m.infrastructure.shared, 'Shared', 'matched by tag');
+        + _tnTargets(m.infrastructure.shared, 'Shared', 'matched by tag')
+        + (m.infrastructure.truncated ? '<p class="ip-tn-legend">Matched against the first '
+            + m.infrastructure.estateRead.toLocaleString() + ' of '
+            + m.infrastructure.estateTotal.toLocaleString()
+            + ' deployment targets in this space. There may be more.</p>' : '');
     }
 
     const activity = m.activity.length
@@ -1997,7 +2013,13 @@ const Views = (function () {
         + '</section>';
     })();
 
-    const overviewTab = '<div class="ip-tn-matrixrow">'
+    const capNote = (m.dashboardCap && m.dashboardCap.capped)
+      ? '<div class="ip-rel-note"><p>' + escHtml(m.dashboardCap.isFiltered
+          ? 'The project dashboard is filtered on this instance, so any project it leaves out reads here as never deployed.'
+          : 'The project dashboard returns at most ' + m.dashboardCap.projectLimit
+            + ' projects. Any of this tenant\'s projects beyond that reads here as never deployed.')
+        + '</p></div>' : '';
+    const overviewTab = capNote + '<div class="ip-tn-matrixrow">'
       +   '<section class="ip-tn-panel ip-tn-matrixpanel"><h3>Deployment matrix</h3>' + matrix + '</section>'
       +   flagSummary
       + '</div>'
@@ -2182,15 +2204,15 @@ const Views = (function () {
 
     // Triggers: what starts a deployment. Anything driven from outside Octopus
     // is invisible here, and saying so is better than implying nothing does.
-    const triggers = (m.triggers.length
+    const triggers = m.triggersError ? none(m.triggersError) : (m.triggers.length
         ? '<ul class="ip-tn-targets">' + m.triggers.map(t =>
             '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(t.name) + '</span>'
             + '<span class="ip-chipx ip-chipx-tag">' + escHtml(t.kind) + '</span>'
             + '<span class="ip-tn-age">' + escHtml(t.detail) + '</span>'
             + (t.disabled ? '<span class="ip-pill ip-pill-disabled">disabled</span>' : '') + '</li>').join('') + '</ul>'
         : none('No triggers are configured.'))
-      + (m.autoCreateRelease ? '<p class="ip-tn-legend">A release is created automatically when a new package arrives.</p>' : '')
-      + '<p class="ip-tn-legend">Deployments started from CI or the API do not appear here — only what Octopus itself triggers.</p>';
+      + (m.triggersError ? '' : (m.autoCreateRelease ? '<p class="ip-tn-legend">A release is created automatically when a new package arrives.</p>' : '')
+      + '<p class="ip-tn-legend">Deployments started from CI or the API do not appear here — only what Octopus itself triggers.</p>');
 
     // Process: what it does, in order. Names, types and packages — the detail
     // lives in Octopus and this is a map, not a second editor.
@@ -2263,7 +2285,7 @@ const Views = (function () {
         + '<p class="ip-tn-legend">Numbers are lifecycle phases — environments sharing a number are in the '
         + 'same phase. A filled node deploys automatically. No node means that lifecycle never reaches '
         + 'that environment.</p>'
-      : none('This project has no lifecycle phases.');
+      : (m.lifecycleError ? none(m.lifecycleError) : none('This project has no lifecycle phases.'));
 
     // Destinations: how targets are chosen, what that resolves to, and what
     // shape it is in. The lifecycle panel says where releases may go; this says
@@ -2278,8 +2300,10 @@ const Views = (function () {
           : '<span class="ip-tn-muted">no environments</span>') + '</dd>'
       + '<dt>Tenants</dt><dd>' + (m.tenantedMode === 'Untenanted'
           ? '<span class="ip-tn-muted">Untenanted — deploys to environments directly</span>'
-          : escHtml(m.tenantedMode) + ' · ' + m.tenantCount.toLocaleString()
-            + (m.tenantCount === 1 ? ' tenant connected' : ' tenants connected')) + '</dd>'
+          : (m.tenantsError
+              ? escHtml(m.tenantedMode) + ' · <span class="ip-tn-muted">' + escHtml(m.tenantsError) + '</span>'
+              : escHtml(m.tenantedMode) + ' · ' + m.tenantCount.toLocaleString()
+                + (m.tenantCount === 1 ? ' tenant connected' : ' tenants connected'))) + '</dd>'
       + '</dl>';
 
     let targets;
@@ -2287,11 +2311,25 @@ const Views = (function () {
       targets = '<p class="ip-tn-muted">' + escHtml(m.targetsError) + '</p>';
     } else if (!tg) {
       targets = '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading targets…</span></div>';
+    } else if (tg.scopeUnknown) {
+      // No environments to scope to. Counting across the whole estate instead
+      // reported targets in environments this project cannot reach.
+      targets = '<p class="ip-tn-muted">Which environments this project reaches is not known'
+        + (m.lifecycleError ? ' — its lifecycles could not be read' : '')
+        + ', so its targets cannot be counted. It selects by '
+        + escHtml(m.roles.join(', ')) + '.</p>';
     } else if (!tg.selectsByRole) {
       // No roles is a fact about the project, not an empty estate. Showing
       // "0 targets" here would read as something missing.
       targets = '<p class="ip-tn-muted">No step selects targets by role, so this project has no deployment '
         + 'targets to report. Its steps run on the server or on workers.</p>';
+    } else if (!tg.total && tg.truncated) {
+      // Nothing matched, but the estate was only partly read. "Nowhere to run"
+      // would be an assertion this read cannot support.
+      targets = '<p class="ip-tn-muted">Nothing among the first '
+        + tg.estateRead.toLocaleString() + ' of ' + tg.estateTotal.toLocaleString()
+        + ' deployment targets matches ' + escHtml(m.roles.join(', '))
+        + ' in these environments. The rest were not read.</p>';
     } else if (!tg.total) {
       targets = '<p class="ip-tn-warn">Nothing matches ' + escHtml(m.roles.join(', '))
         + ' in these environments. Deployments would have nowhere to run.</p>';
@@ -2316,6 +2354,9 @@ const Views = (function () {
             '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(r.role) + '</span>'
             + '<span class="ip-tn-age">' + r.count + (r.count === 1 ? ' target' : ' targets') + '</span></li>').join('')
           + '</ul>' : '')
+        + (tg.truncated ? '<p class="ip-tn-legend">Counted over the first '
+            + tg.estateRead.toLocaleString() + ' of ' + tg.estateTotal.toLocaleString()
+            + ' deployment targets in this space. There may be more.</p>' : '')
         + (tg.byEnvironment.length ? '<p class="ip-tn-legend">By environment: '
             + tg.byEnvironment.map(e => escHtml(e.environment) + ' ' + e.count).join(' · ') + '.</p>' : '')
         + (tg.tenanted
@@ -2335,7 +2376,7 @@ const Views = (function () {
           + (c.isDefault ? '<span class="ip-chipx ip-chipx-tag">default</span>' : '')
           + '<span class="ip-tn-age">' + (c.rules ? c.rules + (c.rules === 1 ? ' version rule' : ' version rules')
               : 'no version rules') + '</span></li>').join('') + '</ul>'
-      : none('This project has one implicit channel.');
+      : (m.channelsError ? none(m.channelsError) : none('This project has one implicit channel.'));
 
     // Feature flags, on the same terms as the tenant page: on and off are
     // counts, and the ones in between are named, because "4 in between" is not
