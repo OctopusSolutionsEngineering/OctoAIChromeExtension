@@ -1697,7 +1697,8 @@ async function fetchProjectMap(spaceId, projectId) {
     soft(fetchJson('/api/' + spaceId + '/lifecycles/' + encodeURIComponent(project.LifecycleId))),
     soft(fetchJson('/api/' + spaceId + '/feeds?take=100')),
     soft(fetchJson('/api/' + spaceId + '/environments/all')),
-    soft(fetchJson('/api/' + spaceId + '/tenants?projectId=' + encodeURIComponent(projectId) + '&take=1'))
+    soft(fetchJson('/api/' + spaceId + '/tenants?projectId=' + encodeURIComponent(projectId) + '&take=1')),
+    soft(fetchTenantMachines(spaceId))
   ]);
   const channels = ((parts[1].v || {}).Items) || [];
   const defaultLifecycle = parts[3].v;
@@ -1721,7 +1722,8 @@ async function fetchProjectMap(spaceId, projectId) {
     lifecycle: defaultLifecycle, lifecycleError: parts[3].err,
     lifecycles: lifecycles,
     feeds: parts[4].v, environments: parts[5].v,
-    tenants: parts[6].v, tenantsError: parts[6].err
+    tenants: parts[6].v, tenantsError: parts[6].err,
+    machines: parts[7].v, machinesError: parts[7].err
   };
 }
 
@@ -1740,6 +1742,62 @@ function triggerLabel(trigger) {
   if (/Feed|Package/i.test(kind)) return { kind: 'Package', detail: 'When a new package is pushed' };
   if (/Git/i.test(kind)) return { kind: 'Git', detail: 'On a change in the repository' };
   return { kind: 'Trigger', detail: actionTypeLabel(kind) };
+}
+
+
+/** What a project deploys to, and what shape that estate is in.
+ *
+ *  Octopus picks targets by role, within the environments the lifecycle allows.
+ *  A project with no roles on any step — a Terraform or script project, which is
+ *  common — selects no targets at all, and that is a fact about the project
+ *  rather than an empty estate. The two must not look the same.
+ */
+function projectTargets(machines, roles, environmentIds, tenantedMode) {
+  if (!machines) return null;
+  const list = (machines.items) || [];
+  const wantRoles = roles || [];
+  const wantEnvs = environmentIds || [];
+  if (!wantRoles.length) {
+    return { selectsByRole: false, matched: [], total: 0,
+      healthy: 0, unhealthy: 0, disabled: 0, byRole: [], byEnvironment: [], tenanted: null };
+  }
+  const matched = list.filter(m =>
+    (m.Roles || []).some(r => wantRoles.indexOf(r) !== -1)
+    && (!wantEnvs.length || (m.EnvironmentIds || []).some(e => wantEnvs.indexOf(e) !== -1)));
+
+  const counts = { healthy: 0, unhealthy: 0, disabled: 0 };
+  matched.forEach(m => { counts[healthKey(m.HealthStatus, m.IsDisabled)]++; });
+
+  const byRole = wantRoles.map(r => ({ role: r,
+    count: matched.filter(m => (m.Roles || []).indexOf(r) !== -1).length })).filter(x => x.count);
+
+  const byEnvironment = {};
+  matched.forEach(m => (m.EnvironmentIds || []).forEach(e => {
+    if (wantEnvs.length && wantEnvs.indexOf(e) === -1) return;
+    byEnvironment[e] = (byEnvironment[e] || 0) + 1;
+  }));
+
+  // How the matched targets take part in tenanted deployments — the answer to
+  // "will this actually reach my tenants" is here rather than in the count.
+  const participation = {};
+  matched.forEach(m => {
+    const p = m.TenantedDeploymentParticipation || 'Untenanted';
+    participation[p] = (participation[p] || 0) + 1;
+  });
+  const dedicated = matched.filter(m => (m.TenantIds || []).length).length;
+  const byTag = matched.filter(m => (m.TenantTags || []).length).length;
+
+  return {
+    selectsByRole: true,
+    matched: matched.map(m => ({ id: m.Id, name: m.Name, health: m.HealthStatus,
+      disabled: !!m.IsDisabled, roles: m.Roles || [] })),
+    total: matched.length,
+    healthy: counts.healthy, unhealthy: counts.unhealthy, disabled: counts.disabled,
+    byRole: byRole,
+    byEnvironment: byEnvironment,
+    tenanted: tenantedMode === 'Untenanted' ? null
+      : { participation: participation, dedicated: dedicated, byTag: byTag }
+  };
 }
 
 function projectMapModel(payload) {
@@ -1775,6 +1833,8 @@ function projectMapModel(payload) {
   }));
 
   const persistence = project.PersistenceSettings || {};
+  const envIdsOf = lc => (lc.Phases || []).reduce((all, ph) =>
+    all.concat(ph.AutomaticDeploymentTargets || [], ph.OptionalDeploymentTargets || []), []);
   const phasesOf = lc => (lc.Phases || []).map(ph => ({
     name: ph.Name,
     optional: (ph.OptionalDeploymentTargets || []).map(id => envName[id] || id),
@@ -1822,6 +1882,9 @@ function projectMapModel(payload) {
     });
   });
 
+  const allRoles = [...new Set(process.flatMap(st => st.roles))];
+  const lifecycleEnvIds = [...new Set((src.lifecycles || []).reduce((all, lc) => all.concat(envIdsOf(lc)), []))];
+
   const triggers = (((src.triggers || {}).Items) || []).map(t => {
     const l = triggerLabel(t);
     return { name: t.Name, kind: l.kind, detail: l.detail, disabled: !!t.IsDisabled };
@@ -1850,7 +1913,18 @@ function projectMapModel(payload) {
     channels: (((src.channels || {}).Items) || []).map(c => ({
       name: c.Name, isDefault: !!c.IsDefault,
       lifecycleId: c.LifecycleId, rules: (c.Rules || []).length })),
-    roles: [...new Set(process.flatMap(st => st.roles))]
+    roles: allRoles,
+    lifecycleEnvironmentIds: lifecycleEnvIds,
+    targets: (function () {
+      const t = projectTargets(src.machines, allRoles, lifecycleEnvIds, project.TenantedDeploymentMode || 'Untenanted');
+      if (!t) return null;
+      return Object.assign({}, t, {
+        byEnvironment: Object.keys(t.byEnvironment).map(id => ({ environment: envName[id] || id, count: t.byEnvironment[id] }))
+          .sort((a, b) => b.count - a.count)
+      });
+    })(),
+    targetsError: src.machinesError
+      ? 'Deployment targets cannot be read in this space, so what this project deploys to is unknown.' : null
   };
 }
 
@@ -1868,7 +1942,7 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
   fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
   fetchTenantFlags, tenantFlagModel, flagStateForTenant,
-  fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel }; }
+  fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1886,5 +1960,5 @@ if (typeof module !== 'undefined') {
     parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
     fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
     fetchTenantFlags, tenantFlagModel, flagStateForTenant,
-    fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel };
+    fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets };
 }

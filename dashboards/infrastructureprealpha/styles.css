@@ -1092,3 +1092,11 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-pm-seg { background: var(--color-navy-600); }
 .dark .ip-pm-node { color: var(--color-grey-100); box-shadow: inset 0 0 0 2px var(--color-navy-500); }
 .dark .ip-pm-node.is-auto { background: var(--color-green-500); color: #fff; box-shadow: none; }
+/* Destinations: how targets are chosen, then what that resolves to. */
+.ip-pm-sel { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 12px; font-size: 12px; }
+.ip-pm-sel dt { font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--color-grey-600); padding-top: 3px; }
+.ip-pm-sel dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ip-pm-tstats { display: flex; flex-wrap: wrap; gap: 20px; margin: 0 0 8px; }
+.ip-pm-health { margin: 0 0 10px; }
+.dark .ip-pm-sel dt { color: var(--color-grey-400); }

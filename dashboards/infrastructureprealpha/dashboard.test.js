@@ -3443,7 +3443,7 @@ describe('Project map', () => {
       project: Object.assign({}, payload.project, { TenantedDeploymentMode: 'Tenanted' }),
       tenants: { TotalResults: 48 } }));
     expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: tenanted } }))
-      .toContain('48 tenants are');
+      .toContain('48 tenants connected');
   });
 
   test('the project card links to the map without swallowing the expand', () => {
@@ -3642,5 +3642,85 @@ describe('Lifecycle columns are ordered and shared', () => {
   test('a blank cell is explained rather than left ambiguous', () => {
     const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
     expect(html).toContain('never reaches that environment');
+  });
+});
+
+describe('Destinations: selection, targets and their shape', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const machines = { items: [
+    { Id: 'M1', Name: 'web-01', Roles: ['web'], EnvironmentIds: ['E1'], HealthStatus: 'Healthy', IsDisabled: false, TenantedDeploymentParticipation: 'Untenanted' },
+    { Id: 'M2', Name: 'web-02', Roles: ['web'], EnvironmentIds: ['E2'], HealthStatus: 'Unhealthy', IsDisabled: false, TenantedDeploymentParticipation: 'Tenanted', TenantIds: ['T1'] },
+    { Id: 'M3', Name: 'db-01', Roles: ['db'], EnvironmentIds: ['E1'], HealthStatus: 'Healthy', IsDisabled: true },
+    { Id: 'M4', Name: 'other', Roles: ['unrelated'], EnvironmentIds: ['E1'], HealthStatus: 'Healthy' },
+    { Id: 'M5', Name: 'wrong-env', Roles: ['web'], EnvironmentIds: ['E9'], HealthStatus: 'Healthy' }
+  ] };
+  const build = (roles, extra) => data.projectMapModel(Object.assign({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1', TenantedDeploymentMode: 'Tenanted' },
+    channels: { Items: [] },
+    lifecycle: { Id: 'L1', Name: 'Std', Phases: [{ Name: 'All', OptionalDeploymentTargets: ['E1', 'E2'] }] },
+    lifecycles: [{ Id: 'L1', Name: 'Std', Phases: [{ Name: 'All', OptionalDeploymentTargets: ['E1', 'E2'] }] }],
+    process: { Steps: [{ Name: 'Deploy', Properties: { 'Octopus.Action.TargetRoles': roles },
+      Actions: [{ ActionType: 'Octopus.Script' }] }] },
+    triggers: { Items: [] }, feeds: { Items: [] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }, { Id: 'E9', Name: 'Lab' }],
+    tenants: { TotalResults: 12 }, machines: machines
+  }, extra || {}));
+
+  test('targets are matched by role and environment together', () => {
+    const t = build('web,db').targets;
+    expect(t.total).toBe(3);                       // M4 wrong role, M5 wrong environment
+    expect(t.matched.map(x => x.name).sort()).toEqual(['db-01', 'web-01', 'web-02']);
+  });
+
+  test('health aggregates, disabled counted separately from unhealthy', () => {
+    const t = build('web,db').targets;
+    expect({ healthy: t.healthy, unhealthy: t.unhealthy, disabled: t.disabled })
+      .toEqual({ healthy: 1, unhealthy: 1, disabled: 1 });
+  });
+
+  test('it breaks down by role and by environment', () => {
+    const t = build('web,db').targets;
+    expect(t.byRole).toEqual([{ role: 'web', count: 2 }, { role: 'db', count: 1 }]);
+    expect(t.byEnvironment).toEqual([{ environment: 'Dev', count: 2 }, { environment: 'Prod', count: 1 }]);
+  });
+
+  test('tenant participation is aggregated for a tenanted project', () => {
+    const t = build('web,db').targets;
+    expect(t.tenanted.dedicated).toBe(1);
+    expect(t.tenanted.participation).toEqual({ Untenanted: 2, Tenanted: 1 });
+  });
+
+  test('an untenanted project reports no tenant aggregate at all', () => {
+    const m = build('web', { project: { Id: 'P1', Name: 'X', LifecycleId: 'L1', TenantedDeploymentMode: 'Untenanted' } });
+    expect(m.targets.tenanted).toBeNull();
+  });
+
+  test('a project with no roles says so rather than reporting zero targets', () => {
+    const m = build('');
+    expect(m.targets.selectsByRole).toBe(false);
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: m } });
+    expect(html).toContain('run on the server or on workers');
+    expect(html).not.toContain('Deployments would have nowhere to run');
+  });
+
+  test('roles that match nothing is a warning, and a different one', () => {
+    const m = build('ghost');
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: m } });
+    expect(html).toContain('Deployments would have nowhere to run');
+  });
+
+  test('unreadable machines leave the selection visible', () => {
+    const m = build('web', { machines: null, machinesError: new Error('403') });
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: m } });
+    expect(html).toContain('Deployment targets cannot be read');
+    expect(html).toContain('Selected by');       // how it chooses is still known
+  });
+
+  test('the selection mechanism is stated whatever the targets say', () => {
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: build('web,db') } });
+    expect(html).toContain('Selected by');
+    expect(html).toContain('Within');
+    expect(html).toContain('12 tenants connected');
   });
 });

@@ -2150,17 +2150,69 @@ const Views = (function () {
         + 'that environment.</p>'
       : none('This project has no lifecycle phases.');
 
-    // Destinations keeps what the lifecycle panel does not say: how targets are
-    // chosen, and whether tenants are involved.
-    const destinations = ''
-      + (m.roles.length
-          ? '<p class="ip-tn-legend">Targets are selected by role: '
-            + m.roles.map(r => escHtml(r)).join(', ') + '.</p>' : '')
-      + (m.tenantedMode === 'Untenanted'
-          ? '<p class="ip-tn-legend">Untenanted — it deploys to environments directly.</p>'
-          : '<p class="ip-tn-legend">' + escHtml(m.tenantedMode) + ' — '
-            + m.tenantCount.toLocaleString() + (m.tenantCount === 1 ? ' tenant is' : ' tenants are')
-            + ' connected to this project.</p>');
+    // Destinations: how targets are chosen, what that resolves to, and what
+    // shape it is in. The lifecycle panel says where releases may go; this says
+    // what is actually there to receive them.
+    const tg = m.targets;
+    const selection = '<dl class="ip-pm-sel">'
+      + '<dt>Selected by</dt><dd>' + (m.roles.length
+          ? m.roles.map(r => '<span class="ip-chipx ip-chipx-tag">' + escHtml(r) + '</span>').join('')
+          : '<span class="ip-tn-muted">No target roles — this project runs without deployment targets</span>') + '</dd>'
+      + '<dt>Within</dt><dd>' + (m.lifecycleEnvironments.length
+          ? m.lifecycleEnvironments.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e) + '</span>').join('')
+          : '<span class="ip-tn-muted">no environments</span>') + '</dd>'
+      + '<dt>Tenants</dt><dd>' + (m.tenantedMode === 'Untenanted'
+          ? '<span class="ip-tn-muted">Untenanted — deploys to environments directly</span>'
+          : escHtml(m.tenantedMode) + ' · ' + m.tenantCount.toLocaleString()
+            + (m.tenantCount === 1 ? ' tenant connected' : ' tenants connected')) + '</dd>'
+      + '</dl>';
+
+    let targets;
+    if (m.targetsError) {
+      targets = '<p class="ip-tn-muted">' + escHtml(m.targetsError) + '</p>';
+    } else if (!tg) {
+      targets = '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading targets…</span></div>';
+    } else if (!tg.selectsByRole) {
+      // No roles is a fact about the project, not an empty estate. Showing
+      // "0 targets" here would read as something missing.
+      targets = '<p class="ip-tn-muted">No step selects targets by role, so this project has no deployment '
+        + 'targets to report. Its steps run on the server or on workers.</p>';
+    } else if (!tg.total) {
+      targets = '<p class="ip-tn-warn">Nothing matches ' + escHtml(m.roles.join(', '))
+        + ' in these environments. Deployments would have nowhere to run.</p>';
+    } else {
+      const pct = n => tg.total ? Math.round(n / tg.total * 100) : 0;
+      targets = '<div class="ip-pm-tstats">'
+        + '<span class="ip-tn-stat"><span class="ip-tn-statnum">' + tg.total + '</span>'
+        +   '<span class="ip-tn-statlabel">' + (tg.total === 1 ? 'target' : 'targets') + '</span></span>'
+        + '<span class="ip-tn-stat"><span class="ip-tn-statnum ip-tn-stat-healthy">' + tg.healthy + '</span>'
+        +   '<span class="ip-tn-statlabel">healthy</span></span>'
+        + (tg.unhealthy ? '<span class="ip-tn-stat"><span class="ip-tn-statnum ip-tn-stat-warning">'
+            + tg.unhealthy + '</span><span class="ip-tn-statlabel">unhealthy</span></span>' : '')
+        + (tg.disabled ? '<span class="ip-tn-stat"><span class="ip-tn-statnum ip-tn-stat-disabled">'
+            + tg.disabled + '</span><span class="ip-tn-statlabel">disabled</span></span>' : '')
+        + '</div>'
+        + '<div class="ip-bar ip-pm-health">'
+        +   '<span style="width:' + pct(tg.healthy) + '%;background:var(--color-green-500)"></span>'
+        +   '<span style="width:' + pct(tg.unhealthy) + '%;background:var(--color-red-500)"></span>'
+        +   '<span style="width:' + pct(tg.disabled) + '%;background:var(--color-slate-300)"></span>'
+        + '</div>'
+        + (tg.byRole.length ? '<ul class="ip-tn-targets">' + tg.byRole.map(r =>
+            '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(r.role) + '</span>'
+            + '<span class="ip-tn-age">' + r.count + (r.count === 1 ? ' target' : ' targets') + '</span></li>').join('')
+          + '</ul>' : '')
+        + (tg.byEnvironment.length ? '<p class="ip-tn-legend">By environment: '
+            + tg.byEnvironment.map(e => escHtml(e.environment) + ' ' + e.count).join(' · ') + '.</p>' : '')
+        + (tg.tenanted
+            ? '<p class="ip-tn-legend">'
+              + (tg.tenanted.dedicated ? tg.tenanted.dedicated + ' name a tenant directly. ' : '')
+              + (tg.tenanted.byTag ? tg.tenanted.byTag + ' are matched by tenant tag. ' : '')
+              + Object.keys(tg.tenanted.participation).map(k =>
+                  tg.tenanted.participation[k] + ' ' + escHtml(k)).join(', ')
+              + '.</p>'
+            : '');
+    }
+    const destinations = selection + targets;
 
     const channels = m.channels.length
       ? '<ul class="ip-tn-targets">' + m.channels.map(c =>
