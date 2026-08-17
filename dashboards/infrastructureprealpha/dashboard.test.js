@@ -3136,9 +3136,17 @@ describe('Project cards: background, sticky header, inline toggle', () => {
     expect(card).toContain('background: var(--ip-rel-surface)');
   });
 
-  test('the card background is defined for both themes', () => {
-    expect(css).toContain('--ip-rel-cardbg: var(--color-grey-100)');
-    expect(css).toContain('--ip-rel-cardbg: var(--color-navy-800)');
+  test('the card uses the same treatment as the overview cards', () => {
+    // One card style across the dashboard, and --card already flips per theme.
+    expect(css).toContain('--ip-rel-cardbg: var(--card)');
+    const card = rule(/\.ip-rel-card \{[\s\S]*?\}/);
+    expect(card).toContain('border: 1px solid var(--border)');
+    expect(card).toContain('border-radius: var(--radius-lg)');
+    expect(card).toContain('box-shadow: var(--shadow-xs)');
+  });
+
+  test('the header draws no rule under itself', () => {
+    expect(css).not.toContain('.ip-rel-head::after');
   });
 
   test('the environment header sticks, with a background to sit on', () => {

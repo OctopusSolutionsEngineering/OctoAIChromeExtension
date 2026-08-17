@@ -496,7 +496,7 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
    Colour is backed by node shape and a written state: a green/red pair alone
    failed a deuteranopia check earlier in this series. */
 .ip-rel-groups { --ip-rel-label: 220px; --ip-rel-endgutter: 180px; --ip-rel-surface: #fff;
-  --ip-rel-cardbg: var(--color-grey-100); }
+  --ip-rel-cardbg: var(--card); }
 /* The stylesheet has no global box-sizing, so a declared width here would
    otherwise exclude padding and border — which is exactly how the expanded
    gutter ended up 28px narrower than the project cell it had to match. */
@@ -620,7 +620,7 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-rel-note { background: rgba(26,119,202,.14); }
 .dark .ip-rel-note p { color: var(--color-grey-200); }
 .dark .ip-rel-groups { --ip-rel-surface: var(--color-navy-900);
-  --ip-rel-cardbg: var(--color-navy-800); }
+ }
 .dark .ip-rel-grid { background: transparent; }
 .dark .ip-rel-head { background: transparent; }
 .dark .ip-rel-row, .dark .ip-rel-history { border-bottom-color: var(--color-navy-700); }
@@ -920,14 +920,13 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
      mask the lines behind them — cannot paint over the sticky header as the
      card scrolls under it. */
   position: relative; z-index: 1;
-  border: 1px solid var(--color-grey-300); border-radius: 8px;
-  background: var(--ip-rel-surface); overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--ip-rel-surface); box-shadow: var(--shadow-xs); overflow: hidden;
   transition: border-color .12s ease, box-shadow .12s ease; }
-.ip-rel-card:hover { border-color: var(--color-grey-400); }
+.ip-rel-card:hover { border-color: var(--color-grey-400); box-shadow: var(--shadow-sm, var(--shadow-xs)); }
 .ip-rel-card.is-open { border-color: var(--color-blue-400);
   box-shadow: 0 1px 3px rgba(16,24,40,.06); }
 .ip-rel-card .ip-rel-history { border-bottom: 0; border-top: 1px solid var(--color-grey-200); }
-.dark .ip-rel-card { border-color: var(--color-navy-600); }
 .dark .ip-rel-card:hover { border-color: var(--color-navy-500); }
 .dark .ip-rel-card.is-open { border-color: var(--color-blue-600); box-shadow: none; }
 .dark .ip-rel-card .ip-rel-history { border-top-color: var(--color-navy-700); }
@@ -937,9 +936,6 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
    over another's — the header is only true for the group it belongs to. */
 .ip-rel-head { position: sticky; top: 0; z-index: 6;
   background: var(--background); padding-top: 6px; }
-.ip-rel-head::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0;
-  height: 1px; background: var(--color-grey-200); }
-.dark .ip-rel-head::after { background: var(--color-navy-700); }
 /* Row hover has to sit on the card's own colour now, not a page-level grey. */
 .ip-rel-row:hover { background: rgba(127,127,127,.06); }
 .dark .ip-rel-row:hover { background: rgba(255,255,255,.04); }
