@@ -3167,3 +3167,31 @@ describe('Project cards: background, sticky header, inline toggle', () => {
     expect(joined).not.toContain('flex-direction: column');
   });
 });
+
+describe('The project divider is the height of its text', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+
+  test('the divider is a short segment, not a full-height border', () => {
+    const seg = /\.ip-rel-proj::after \{[\s\S]*?\}/.exec(css)[0];
+    expect(seg).toContain('height: 16px');
+    expect(seg).toContain('top: 12px');   // lines up with the project name
+  });
+
+  test('the border stays in the box so the columns do not shift', () => {
+    // Removing it outright would narrow the label column by a pixel and pull
+    // every environment column left of its heading.
+    expect(css).toContain('border-right-color: transparent');
+    expect(css).not.toContain('.ip-rel-proj { border-right: 0');
+  });
+
+  test('the header divider centres on its own text', () => {
+    const head = /\.ip-rel-head \.ip-rel-proj::after \{[\s\S]*?\}/.exec(css)[0];
+    expect(head).toContain('top: 50%');
+  });
+
+  test('the expanded gutter has no divider, having no text to divide', () => {
+    expect(css).toContain('.ip-rel-history-gutter::after { display: none; }');
+  });
+});

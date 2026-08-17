@@ -943,3 +943,17 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 /* Row hover has to sit on the card's own colour now, not a page-level grey. */
 .ip-rel-row:hover { background: rgba(127,127,127,.06); }
 .dark .ip-rel-row:hover { background: rgba(255,255,255,.04); }
+
+/* The divider between the project and the first environment ran the full height
+   of the cell, which on a row carrying several releases is a long line for a
+   separator. It is drawn as a short segment beside the text it divides instead.
+
+   The border stays in the box as transparent rather than being removed, so the
+   track keeps its exact width and the columns do not shift by the border. */
+.ip-rel-proj { position: relative; border-right-color: transparent; }
+.ip-rel-proj::after { content: ''; position: absolute; right: -1px; width: 1px;
+  top: 12px; height: 16px; background: var(--color-grey-200); }
+.ip-rel-head .ip-rel-proj::after { top: 50%; height: 14px; margin-top: -7px; }
+/* No text in the expanded gutter, so nothing to divide. */
+.ip-rel-history-gutter::after { display: none; }
+.dark .ip-rel-proj::after { background: var(--color-navy-700); }
