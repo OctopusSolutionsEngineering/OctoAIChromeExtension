@@ -1699,12 +1699,27 @@ async function fetchProjectMap(spaceId, projectId) {
     soft(fetchJson('/api/' + spaceId + '/environments/all')),
     soft(fetchJson('/api/' + spaceId + '/tenants?projectId=' + encodeURIComponent(projectId) + '&take=1'))
   ]);
+  const channels = ((parts[1].v || {}).Items) || [];
+  const defaultLifecycle = parts[3].v;
+  const extraIds = [];
+  channels.forEach(c => {
+    if (c.LifecycleId && c.LifecycleId !== project.LifecycleId && extraIds.indexOf(c.LifecycleId) === -1) {
+      extraIds.push(c.LifecycleId);
+    }
+  });
+  const extras = await Promise.all(extraIds.slice(0, 6).map(id =>
+    soft(fetchJson('/api/' + spaceId + '/lifecycles/' + encodeURIComponent(id)))));
+  const lifecycles = [];
+  if (defaultLifecycle) lifecycles.push(defaultLifecycle);
+  extras.forEach(r => { if (r.v) lifecycles.push(r.v); });
+
   return {
     project: project, branch: branch,
     process: parts[0].v, processError: parts[0].err,
     channels: parts[1].v, channelsError: parts[1].err,
     triggers: parts[2].v, triggersError: parts[2].err,
-    lifecycle: parts[3].v, lifecycleError: parts[3].err,
+    lifecycle: defaultLifecycle, lifecycleError: parts[3].err,
+    lifecycles: lifecycles,
     feeds: parts[4].v, environments: parts[5].v,
     tenants: parts[6].v, tenantsError: parts[6].err
   };
@@ -1760,10 +1775,23 @@ function projectMapModel(payload) {
   }));
 
   const persistence = project.PersistenceSettings || {};
-  const phases = ((src.lifecycle || {}).Phases || []).map(ph => ({
+  const phasesOf = lc => (lc.Phases || []).map(ph => ({
     name: ph.Name,
     optional: (ph.OptionalDeploymentTargets || []).map(id => envName[id] || id),
     automatic: (ph.AutomaticDeploymentTargets || []).map(id => envName[id] || id)
+  }));
+  const phases = phasesOf(src.lifecycle || {});
+
+  const channelItems = ((src.channels || {}).Items) || [];
+  const lifecycles = (src.lifecycles || []).map(lc => ({
+    id: lc.Id, name: lc.Name,
+    isDefault: lc.Id === project.LifecycleId,
+    // Which channels ship through it. A channel with no lifecycle of its own
+    // uses the project's, so it belongs to the default.
+    channels: channelItems
+      .filter(c => (c.LifecycleId || project.LifecycleId) === lc.Id)
+      .map(c => c.Name),
+    phases: phasesOf(lc)
   }));
 
   const triggers = (((src.triggers || {}).Items) || []).map(t => {
@@ -1788,6 +1816,7 @@ function projectMapModel(payload) {
     process: process,
     processError: src.processError ? 'The deployment process could not be read.' : null,
     lifecycle: (src.lifecycle || {}).Name || '',
+    lifecycles: lifecycles,
     phases: phases,
     channels: (((src.channels || {}).Items) || []).map(c => ({
       name: c.Name, isDefault: !!c.IsDefault,

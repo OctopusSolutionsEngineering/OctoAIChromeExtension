@@ -2109,17 +2109,34 @@ const Views = (function () {
               + '</li>').join('') + '</ol>'
           : none('This project has no deployment steps.'));
 
-    // Destinations: where it lands, in lifecycle order.
-    const destinations = (m.phases.length
-        ? '<ol class="ip-pm-phases">' + m.phases.map(ph =>
-            '<li class="ip-pm-phase"><span class="ip-tn-tname">' + escHtml(ph.name) + '</span>'
-            + '<span class="ip-pm-envs">'
-            +   ph.automatic.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e) + '</span>').join('')
-            +   ph.optional.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e) + '</span>').join('')
-            + '</span>'
-            + (ph.automatic.length ? '<span class="ip-tn-age">automatic</span>' : '')
-            + '</li>').join('') + '</ol>'
-        : none('This project has no lifecycle phases.'))
+    const lifecycles = (m.lifecycles && m.lifecycles.length)
+      ? '<div class="ip-pm-lifecycles">' + m.lifecycles.map(lc =>
+          '<div class="ip-pm-lifecycle">'
+          + '<div class="ip-pm-lchead">'
+          +   '<span class="ip-tn-tname">' + escHtml(lc.name) + '</span>'
+          +   (lc.isDefault ? '<span class="ip-chipx ip-chipx-tag">project default</span>' : '')
+          +   (lc.channels.length
+                ? '<span class="ip-tn-age">' + escHtml(lc.channels.join(', ')) + '</span>'
+                : '<span class="ip-tn-age">no channel uses this</span>')
+          + '</div>'
+          + (lc.phases.length
+              ? '<ol class="ip-pm-flow">' + lc.phases.map(ph =>
+                  '<li class="ip-pm-phasebox">'
+                  + '<span class="ip-pm-phasename">' + escHtml(ph.name) + '</span>'
+                  + '<span class="ip-pm-envs">'
+                  +   ph.automatic.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e)
+                        + '<span class="ip-pm-auto" title="Deploys automatically">auto</span></span>').join('')
+                  +   ph.optional.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e) + '</span>').join('')
+                  + '</span></li>').join('')
+                + '</ol>'
+              : '<p class="ip-tn-muted">No phases.</p>')
+          + '</div>').join('')
+        + '</div>'
+      : none('This project has no lifecycle phases.');
+
+    // Destinations keeps what the lifecycle panel does not say: how targets are
+    // chosen, and whether tenants are involved.
+    const destinations = ''
       + (m.roles.length
           ? '<p class="ip-tn-legend">Targets are selected by role: '
             + m.roles.map(r => escHtml(r)).join(', ') + '.</p>' : '')
@@ -2143,16 +2160,18 @@ const Views = (function () {
       +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
       +   _tnDescription(m.description)
       + '</header>'
+      + panel('Lifecycles', m.lifecycles && m.lifecycles.length > 1
+          ? m.lifecycles.length + ' in use' : m.lifecycle, lifecycles)
       + '<div class="ip-pm-grid">'
-      // What feeds the project and what starts it are the same question asked
-      // twice, so they share a column and read together.
+      // What feeds the project, what starts it, and what it ships through are
+      // the same question asked three ways, so they share a column.
       +   '<div class="ip-pm-col">'
       +     panel('Inputs', m.git ? 'version controlled' : '', inputs)
       +     panel('Triggers', m.triggers.length ? m.triggers.length + ' configured' : '', triggers)
+      +     panel('Channels', m.channels.length ? String(m.channels.length) : '', channels)
       +   '</div>'
       +   panel('Process', m.process.length ? m.process.length + (m.process.length === 1 ? ' step' : ' steps') : '', process)
-      +   panel('Destinations', m.lifecycle, destinations)
-      +   panel('Channels', '', channels)
+      +   panel('Destinations', '', destinations)
       + '</div>'
       + '<p class="ip-rel-hnote-inline">The activity timeline and the project\'s variables are not on this page yet.</p>';
   }

@@ -3458,7 +3458,7 @@ describe('Project map', () => {
   });
 });
 
-describe('Inputs and triggers share a column', () => {
+describe('Inputs, triggers and channels share a column', () => {
   const data = require('./data');
   const Views = require('./views');
   const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: data.projectMapModel({
@@ -3487,16 +3487,80 @@ describe('Inputs and triggers share a column', () => {
     expect(column).not.toBeNull();
   });
 
-  test('it holds exactly the two panels, in order', () => {
-    expect((column.match(/<section/g) || []).length).toBe(2);
+  test('it holds exactly the three panels, in order', () => {
+    expect((column.match(/<section/g) || []).length).toBe(3);
     const headings = (column.match(/<h3>([^<]*)/g) || []).map(h => h.replace('<h3>', ''));
-    expect(headings).toEqual(['Inputs', 'Triggers']);
+    expect(headings).toEqual(['Inputs', 'Triggers', 'Channels']);
   });
 
-  test('process, destinations and channels stay outside it', () => {
-    ['>Process', '>Destinations', '>Channels'].forEach(h => {
+  test('process and destinations stay outside it', () => {
+    ['>Process', '>Destinations'].forEach(h => {
       expect(column.indexOf(h)).toBe(-1);
       expect(html.indexOf(h)).toBeGreaterThan(-1);
     });
+  });
+
+  test('lifecycles sit above the grid, full width', () => {
+    expect(html.indexOf('>Lifecycles')).toBeGreaterThan(-1);
+    expect(html.indexOf('>Lifecycles')).toBeLessThan(html.indexOf('ip-pm-grid'));
+  });
+});
+
+describe('Project map — lifecycles', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const model = data.projectMapModel({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+    channels: { Items: [
+      { Name: 'Full', IsDefault: true, LifecycleId: 'L1', Rules: [] },
+      { Name: 'Hotfix', LifecycleId: 'L2', Rules: [] },
+      { Name: 'Beta', Rules: [] } ] },
+    lifecycle: { Id: 'L1', Name: 'Standard', Phases: [
+      { Name: 'Dev', OptionalDeploymentTargets: ['E1'] },
+      { Name: 'Prod', AutomaticDeploymentTargets: ['E2'] } ] },
+    lifecycles: [
+      { Id: 'L1', Name: 'Standard', Phases: [
+        { Name: 'Dev', OptionalDeploymentTargets: ['E1'] },
+        { Name: 'Prod', AutomaticDeploymentTargets: ['E2'] } ] },
+      { Id: 'L2', Name: 'Hotfix path', Phases: [{ Name: 'Straight to prod', OptionalDeploymentTargets: ['E2'] }] } ],
+    process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Production' }], tenants: { TotalResults: 0 }
+  });
+  const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
+
+  test('every lifecycle the project ships through is modelled, not just the default', () => {
+    expect(model.lifecycles.map(l => l.name)).toEqual(['Standard', 'Hotfix path']);
+    expect(model.lifecycles[0].isDefault).toBe(true);
+  });
+
+  test('a channel with no lifecycle of its own belongs to the default', () => {
+    expect(model.lifecycles[0].channels).toEqual(['Full', 'Beta']);
+    expect(model.lifecycles[1].channels).toEqual(['Hotfix']);
+  });
+
+  test('phases render in order with their environments', () => {
+    expect(html).toContain('Straight to prod');
+    expect((html.match(/ip-pm-phasebox/g) || []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  test('an automatic environment is marked as such', () => {
+    expect(html).toContain('ip-pm-auto');
+  });
+
+  test('destinations no longer repeats the phases', () => {
+    const dest = html.slice(html.indexOf('>Destinations'));
+    expect(dest).not.toContain('ip-pm-phasebox');
+  });
+
+  test('a lifecycle nothing routes through is still shown, and said to be unused', () => {
+    const orphan = data.projectMapModel({
+      project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      channels: { Items: [] },
+      lifecycle: { Id: 'L1', Name: 'Standard', Phases: [] },
+      lifecycles: [{ Id: 'L1', Name: 'Standard', Phases: [] }],
+      process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+      environments: [], tenants: { TotalResults: 0 } });
+    expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: orphan } }))
+      .toContain('no channel uses this');
   });
 });

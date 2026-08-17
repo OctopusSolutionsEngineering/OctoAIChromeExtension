@@ -985,3 +985,26 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
    project", and both are short enough that a cell each left holes beside them. */
 .ip-pm-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .ip-pm-col > .ip-tn-panel { margin: 0; }
+
+/* Lifecycles run full width at the top: a phase order is the one thing on this
+   page that is genuinely a sequence, and it deserves to be read left to right
+   rather than folded into a column. */
+.ip-pm-lifecycles { display: flex; flex-direction: column; gap: 14px; }
+.ip-pm-lifecycle + .ip-pm-lifecycle { padding-top: 12px; border-top: 1px solid var(--color-grey-200); }
+.ip-pm-lchead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0 0 8px; }
+.ip-pm-flow { list-style: none; display: flex; flex-wrap: wrap; align-items: stretch;
+  gap: 8px; margin: 0; padding: 0; }
+.ip-pm-phasebox { position: relative; display: flex; flex-direction: column; gap: 5px;
+  padding: 8px 12px; min-width: 140px; border: 1px solid var(--color-grey-300);
+  border-radius: var(--radius-lg); background: var(--card); }
+/* The arrow is drawn between boxes rather than as a character, so it survives
+   the row wrapping. */
+.ip-pm-phasebox + .ip-pm-phasebox::before { content: ''; position: absolute; left: -8px; top: 50%;
+  width: 8px; height: 1px; background: var(--color-grey-400); }
+.ip-pm-phasename { font-size: 12px; font-weight: 600; color: var(--color-navy-900); }
+.ip-pm-auto { margin-left: 5px; font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
+  opacity: .75; }
+.dark .ip-pm-lifecycle + .ip-pm-lifecycle { border-top-color: var(--color-navy-700); }
+.dark .ip-pm-phasebox { border-color: var(--color-navy-600); }
+.dark .ip-pm-phasename { color: var(--color-grey-100); }
+.dark .ip-pm-phasebox + .ip-pm-phasebox::before { background: var(--color-navy-500); }
