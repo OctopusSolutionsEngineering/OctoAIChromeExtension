@@ -90,6 +90,13 @@ const Views = (function () {
     return String(base).replace(/\/$/, '') + '/app#/infrastructure/machines';
   }
   function renderOverview(ov, estate) {
+    // Every number below is derived from deployment targets. If they could not
+    // be read, say so above them rather than presenting zeros as findings.
+    const blind = estate && estate.failed && estate.failed.machines
+      ? '<div class="ip-rel-note"><p>Deployment targets can\'t be read in this space, so every '
+        + 'target-derived figure below is missing rather than zero. Environments, worker pools and '
+        + 'tenants are unaffected.</p></div>'
+      : '';
     const ab = (ov.agents && ov.agents.behind) || 0;
     const agentsPillText = ab === 0 ? 'all up to date' : ab + ' behind';
     const typeRows = ov.byType.map(r =>
@@ -110,7 +117,7 @@ const Views = (function () {
       + '<td>' + r.disabled + '</td></tr>').join('');
     const pools = ov.workers.pools.map(p =>
       '<li><span>' + escHtml(p.name) + '</span><b>' + p.count + '</b></li>').join('');
-    return ''
+    return blind + ''
       + '<header class="ip-head ip-head-actions">'
       +   '<div class="ip-head-text"><h2>Infrastructure overview</h2>'
       +     '<p class="ip-sub">A diagnostic snapshot of your deployment estate.</p></div>'
@@ -218,6 +225,12 @@ const Views = (function () {
       + '<td>' + escHtml(t.version) + '</td></tr>';
   }
   function renderTargets(IP) {
+    // A space where targets cannot be read must not render as a space with no
+    // targets — the zero would be a claim we cannot make.
+    if (IP.estate && IP.estate.failed && IP.estate.failed.machines) {
+      return '<header class="ip-head"><h2>Deployment targets</h2></header>'
+        + _unreadable('deployment targets');
+    }
     const all = IP.estate.targets;
     // Nothing to filter, so the facet rail and toolbar would be furniture around a void.
     if (!all.length) return renderTargetsZero(IP);

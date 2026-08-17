@@ -3029,3 +3029,56 @@ describe('Feature flag posture on the tenant overview', () => {
     expect(html).not.toContain('ip-tn-statlabel');
   });
 });
+
+describe('A space where targets are forbidden is not a space that failed', () => {
+  const d = require('./data');
+  const page = items => ({ status: 200, ok: true, json: async () => items });
+  const deny = { status: 403, ok: false, statusText: 'Forbidden' };
+
+  test('403 on machines keeps the space, and records what could not be read', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all') ? deny : page([{ Id: 'X' }]);
+    const hydrated = await d.hydrateSpace({ Id: 'Spaces-842', Name: 'Build Platform' });
+    expect(hydrated).not.toBeNull();
+    expect(hydrated.failed).toContain('machines');
+    // The resources that did come back are still there.
+    expect(hydrated.envs).toHaveLength(1);
+    expect(hydrated.workerpools).toHaveLength(1);
+  });
+
+  test('500 on machines still yields null — a broken read is a broken space', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all')
+      ? { status: 500, ok: false, statusText: 'Server Error' } : page([]);
+    expect(await d.hydrateSpace({ Id: 'Spaces-1', Name: 'One' })).toBe(null);
+  });
+
+  test('everything forbidden is still a space you cannot read', async () => {
+    global.fetch = async () => deny;
+    expect(await d.hydrateSpace({ Id: 'Spaces-1', Name: 'One' })).toBe(null);
+  });
+
+  test('the estate records the gap so views can avoid claiming zero', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all') ? deny : page([]);
+    const hydrated = await d.hydrateSpace({ Id: 'Spaces-842', Name: 'Build Platform' });
+    const estate = d.buildEstate([hydrated]);
+    expect(estate.failed.machines).toBe(true);
+    expect(estate.targets).toEqual([]);
+  });
+
+  test('cold start does not offer to add infrastructure you simply cannot see', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all') ? deny : page([]);
+    const blind = d.buildEstate([await d.hydrateSpace({ Id: 'Spaces-842', Name: 'Build Platform' })]);
+    expect(d.coldStartApplies('overview', blind)).toBe(false);
+    // A genuinely empty estate still gets the walkthrough.
+    global.fetch = async () => page([]);
+    const empty = d.buildEstate([await d.hydrateSpace({ Id: 'Spaces-622', Name: 'Octopus Server' })]);
+    expect(d.coldStartApplies('overview', empty)).toBe(true);
+  });
+
+  test('the targets view says unreadable rather than showing none', () => {
+    const Views = require('./views');
+    const html = Views.renderTargets({ estate: { failed: { machines: true }, targets: [], workers: [],
+      environments: [], policies: [] } });
+    expect(html).toContain('your account can\'t read them here');
+    expect(html).not.toContain('No deployment targets');
+  });
+});

@@ -94,14 +94,33 @@ async function hydrateSpace(sp) {
     return [];
   });
   try {
+    // Machines are the one resource the rest of the estate is derived from, so
+    // how they fail decides whether the space is usable at all:
+    //
+    //   403 or 401 — a permissions boundary inside the space. The environments,
+    //     worker pools and tenants that did come back are worth showing, and
+    //     claiming the space is unreadable hides them for no reason.
+    //   anything else — a genuinely failed read. The space is unreliable and
+    //     saying so is better than rendering half of it, which is the original
+    //     decision here and still the right one.
+    let machinesError = null;
+    const machineFetch = fetchJson('/api/' + sp.Id + '/machines/all').catch(e => {
+      machinesError = e || new Error('machines');
+      failed.push('machines');
+      if (e && e.auth) auth = true;
+      return [];
+    });
     const [envs, policies, tenants, machines, workerpools, workers] = await Promise.all([
       soft('environments', '/api/' + sp.Id + '/environments/all'),
       soft('policies',     '/api/' + sp.Id + '/machinepolicies/all'),
       soft('tenants',      '/api/' + sp.Id + '/tenants/all'),
-      fetchJson('/api/' + sp.Id + '/machines/all'),
+      machineFetch,
       soft('workerpools',  '/api/' + sp.Id + '/workerpools/all'),
       soft('workers',      '/api/' + sp.Id + '/workers/all')
     ]);
+    if (machinesError && !machinesError.auth) return null;
+    // Nothing at all came back: a space you cannot read, worth saying plainly.
+    if (failed.length === 6) return null;
     return { sp, envs, policies, tenants, machines, workerpools, workers, failed, auth };
   } catch (e) { return null; }
 }
@@ -240,6 +259,9 @@ function filterEnvRows(rows, query, mode) {
 // were already on is a dead end, and a space with no targets can still hold environments,
 // machine policies and a route out via the add-target walkthrough.
 function coldStartApplies(view, estate) {
+  // Being unable to read targets is not the same as having none, and inviting
+  // someone to add infrastructure they simply cannot see would be wrong.
+  if (estate && estate.failed && estate.failed.machines) return false;
   return view === 'overview' && isEmptyEstate(estate);
 }
 
@@ -340,7 +362,7 @@ function buildEstate(perSpace) {
   });
   // Which resources couldn't be read for the spaces in scope. A view consults this before
   // telling the user a collection is empty.
-  const failed = { environments:false, policies:false, tenants:false, workerpools:false, workers:false };
+  const failed = { environments:false, policies:false, tenants:false, workerpools:false, workers:false, machines:false };
   perSpace.forEach(s => (s.failed || []).forEach(k => { if (k in failed) failed[k] = true; }));
   return { targets, workers, environments, policies, failed,
     overview: overviewModel(targets, workers) };
