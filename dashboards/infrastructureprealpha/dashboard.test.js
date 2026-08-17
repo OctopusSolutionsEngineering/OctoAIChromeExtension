@@ -2729,3 +2729,35 @@ describe('Tenant detail — view', () => {
     expect(render()).toContain('href="#tenants"');
   });
 });
+
+describe('A tenant page is still the tenants view', () => {
+  const data = require('./data');
+  const fs = require('fs');
+  const path = require('path');
+
+  test('a detail route is matched by its base, not the whole hash', () => {
+    expect(data.viewNeedsEstate('tenants/Tenants-1')).toBe(false);
+    expect(data.viewNeedsEstate('tenants')).toBe(false);
+    expect(data.viewNeedsEstate('projects')).toBe(false);
+  });
+
+  test('an infrastructure detail route still needs the estate', () => {
+    // Target detail reads IP.estate.targets, so it must stay gated.
+    expect(data.viewNeedsEstate('targets/Machines-1')).toBe(true);
+    expect(data.viewNeedsEstate('overview')).toBe(true);
+  });
+
+  test('the tenant route is checked before the view falls back to overview', () => {
+    const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
+    const detail = router.indexOf("hash.indexOf('tenants/') === 0");
+    const fallback = router.indexOf("const view = VIEWS.includes(hash)");
+    expect(detail).toBeGreaterThan(-1);
+    expect(detail).toBeLessThan(fallback);
+  });
+
+  test('cold start cannot intercept a tenant page', () => {
+    const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
+    // Cold start is gated on needsEstate, which a tenant route now fails.
+    expect(router).toContain('needsEstate && typeof Data !== \'undefined\' && Data.coldStartApplies');
+  });
+});

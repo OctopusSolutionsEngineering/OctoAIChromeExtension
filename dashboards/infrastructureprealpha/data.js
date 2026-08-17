@@ -1096,7 +1096,11 @@ function variableChangeLabel(change) {
 const ESTATE_FREE_VIEWS = ['projects', 'tenants'];
 
 function viewNeedsEstate(view) {
-  return ESTATE_FREE_VIEWS.indexOf(view) === -1;
+  // Detail routes carry an id — "tenants/Tenants-1" is still the tenants view.
+  // Matching the whole hash meant a tenant page counted as an infrastructure
+  // view, so cold start intercepted it with the first-run screen.
+  const base = String(view || '').split('/')[0];
+  return ESTATE_FREE_VIEWS.indexOf(base) === -1;
 }
 
 
