@@ -2109,29 +2109,45 @@ const Views = (function () {
               + '</li>').join('') + '</ol>'
           : none('This project has no deployment steps.'));
 
-    // Environments are named once, across the top, and each lifecycle is a row
-    // across them — the same grammar the rest of the dashboard uses. Repeating
-    // the environments per lifecycle made two routes to production look like
-    // two different productions.
+    // Environments once across the top; each lifecycle is a line beneath them
+    // with a numbered node in every environment it reaches. The number is the
+    // phase, so two environments in one phase carry the same number and the
+    // grouping is visible without repeating any names.
     const cols = m.lifecycleEnvironments || [];
+    const lcTrack = lc => {
+      const reached = lc.cells.map((c, i) => c.reached ? i : -1).filter(i => i >= 0);
+      const first = reached.length ? reached[0] : -1;
+      const last = reached.length ? reached[reached.length - 1] : -1;
+      return lc.cells.map((c, i) => {
+        const within = first >= 0 && i > first && i <= last;
+        const seg = within ? '<span class="ip-pm-seg"></span>' : '';
+        if (!c.reached) return '<div class="ip-pm-cell">' + seg + '</div>';
+        return '<div class="ip-pm-cell">' + seg
+          + '<span class="ip-pm-node' + (c.automatic ? ' is-auto' : '') + '" title="'
+          + escHtml('Phase ' + (c.phaseIndex + 1) + ': ' + c.phase + (c.automatic ? ' — deploys automatically' : ''))
+          + '">' + (c.phaseIndex + 1) + '</span></div>';
+      }).join('');
+    };
+
     const lifecycles = (m.lifecycles && m.lifecycles.length && cols.length)
-      ? '<table class="ip-table ip-pm-lctable"><thead><tr><th>Lifecycle</th>'
-        + cols.map(e => '<th>' + escHtml(e) + '</th>').join('') + '</tr></thead><tbody>'
+      ? '<div class="ip-pm-lc" style="--ip-pm-cols:' + cols.length + '">'
+        + '<div class="ip-pm-lcrow ip-pm-lchead"><div class="ip-pm-lclabel"></div>'
+        +   '<div class="ip-pm-lctrack">' + cols.map(e =>
+              '<div class="ip-pm-colhead">' + escHtml(e) + '</div>').join('') + '</div></div>'
         + m.lifecycles.map(lc =>
-            '<tr><td class="ip-pm-lcname">'
-            + '<span class="ip-tn-tname">' + escHtml(lc.name) + '</span>'
-            + (lc.isDefault ? '<span class="ip-chipx ip-chipx-tag">default</span>' : '')
-            + '<span class="ip-tn-age">' + escHtml(lc.channels.length
-                ? lc.channels.join(', ') : 'no channel uses this') + '</span>'
-            + '</td>'
-            + lc.cells.map(c => c.reached
-                ? '<td class="ip-pm-lccell"><span class="ip-pm-phasename">' + escHtml(c.phase) + '</span>'
-                  + (c.automatic ? '<span class="ip-pm-auto">auto</span>' : '') + '</td>'
-                : '<td class="ip-pm-lccell is-absent"></td>').join('')
-            + '</tr>').join('')
-        + '</tbody></table>'
-        + '<p class="ip-tn-legend">A blank cell means that lifecycle never reaches that environment. '
-        + '<em>auto</em> marks a phase that deploys without being asked.</p>'
+            '<div class="ip-pm-lcrow">'
+            + '<div class="ip-pm-lclabel">'
+            +   '<span class="ip-tn-tname">' + escHtml(lc.name) + '</span>'
+            +   (lc.isDefault ? '<span class="ip-pm-def">default</span>' : '')
+            +   '<span class="ip-tn-age">' + escHtml(lc.channels.length
+                  ? lc.channels.join(', ') : 'unused') + '</span>'
+            + '</div>'
+            + '<div class="ip-pm-lctrack">' + lcTrack(lc) + '</div>'
+            + '</div>').join('')
+        + '</div>'
+        + '<p class="ip-tn-legend">Numbers are lifecycle phases — environments sharing a number are in the '
+        + 'same phase. A filled node deploys automatically. No node means that lifecycle never reaches '
+        + 'that environment.</p>'
       : none('This project has no lifecycle phases.');
 
     // Destinations keeps what the lifecycle panel does not say: how targets are

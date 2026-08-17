@@ -3540,9 +3540,8 @@ describe('Project map — lifecycles', () => {
 
   test('environments are named once, as columns', () => {
     expect(model.lifecycleEnvironments).toEqual(['Dev', 'Production']);
-    // Each environment heading appears once in the table head, not once per lifecycle.
-    const head = html.slice(html.indexOf('<thead>'), html.indexOf('</thead>'));
-    expect((head.match(/Production/g) || []).length).toBe(1);
+    // Once in the header, and nowhere else in the panel however many lifecycles.
+    expect((html.match(/ip-pm-colhead">Production/g) || []).length).toBe(1);
   });
 
   test('each lifecycle is a row across those columns', () => {
@@ -3551,12 +3550,21 @@ describe('Project map — lifecycles', () => {
     expect(html).toContain('Straight to prod');
   });
 
-  test('a lifecycle that never reaches an environment leaves the cell blank', () => {
-    expect(html).toContain('ip-pm-lccell is-absent');
+  test('a lifecycle that never reaches an environment gets no node there', () => {
+    // Hotfix reaches Production only, so its Dev cell carries no node.
+    const rows = html.split('ip-pm-lcrow').slice(2);       // skip the header row
+    const hotfix = rows.find(r => r.indexOf('Hotfix path') > -1);
+    expect((hotfix.match(/ip-pm-node/g) || []).length).toBe(1);
   });
 
-  test('an automatic environment is marked as such', () => {
-    expect(html).toContain('ip-pm-auto');
+  test('an automatic phase is drawn differently from an optional one', () => {
+    expect(html).toContain('ip-pm-node is-auto');
+  });
+
+  test('the phase number carries the grouping instead of repeated names', () => {
+    // Standard: Dev is phase 1, Prod is phase 2.
+    expect(html).toContain('>1</span>');
+    expect(html).toContain('>2</span>');
   });
 
   test('destinations no longer repeats the phases', () => {
@@ -3617,8 +3625,18 @@ describe('Lifecycle columns are ordered and shared', () => {
 
   test('an automatic phase is marked, an optional one is not', () => {
     const html = Views.renderProjectMap({ projectMap: { status: 'ready', model } });
-    expect(html).toContain('ip-pm-auto');
-    expect((html.match(/ip-pm-auto/g) || []).length).toBe(1);
+    // Only Standard's Prod phase is automatic, across all three lifecycles.
+    expect((html.match(/ip-pm-node is-auto/g) || []).length).toBe(1);
+  });
+
+  test('environments in the same phase share a number', () => {
+    const two = data.projectMapModel({
+      project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' }, channels: { Items: [] },
+      lifecycle: { Id: 'L1', Name: 'One', Phases: [{ Name: 'Both', OptionalDeploymentTargets: ['E1', 'E2'] }] },
+      lifecycles: [{ Id: 'L1', Name: 'One', Phases: [{ Name: 'Both', OptionalDeploymentTargets: ['E1', 'E2'] }] }],
+      process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+      environments: [{ Id: 'E1', Name: 'A' }, { Id: 'E2', Name: 'B' }], tenants: { TotalResults: 0 } });
+    expect(two.lifecycles[0].cells.map(c => c.phaseIndex)).toEqual([0, 0]);
   });
 
   test('a blank cell is explained rather than left ambiguous', () => {
