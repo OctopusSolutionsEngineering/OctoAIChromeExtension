@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terraform Plan Viewer - Octopus AI Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="../api.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <div class="tf-badge" aria-hidden="true">TF</div>
+            <div class="topbar-titles">
+                <h1>Terraform Plan Viewer</h1>
+                <p class="subtitle">Readable Terraform &amp; OpenTofu plans, streamed from Octopus task logs</p>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <span id="modeBadge" class="mode-badge" hidden></span>
+            <label class="server-label" for="serverSelect" hidden id="serverLabel">Server</label>
+            <select id="serverSelect" class="server-select" hidden></select>
+        </div>
+    </header>
+
+    <main class="container">
+        <nav class="tabs" id="sourceTabs" aria-label="Plan source">
+            <button class="tab" id="tabLive" data-tab="live">Live task</button>
+            <button class="tab" id="tabHistory" data-tab="history">History</button>
+            <button class="tab" id="tabPaste" data-tab="paste">Paste log</button>
+        </nav>
+
+        <section id="statusPanel" hidden></section>
+
+        <section id="historyPanel" class="card history-panel" hidden>
+            <div class="history-head">
+                <div>
+                    <h2 class="panel-title">Plan history</h2>
+                    <p class="panel-hint">Re-open the Terraform plan from any recent deployment - including ones approved days or weeks ago. Plans are read from the retained task logs, so history reaches as far back as your retention policy keeps deployments.</p>
+                </div>
+            </div>
+            <div class="history-filters">
+                <div class="history-filter">
+                    <label class="history-label" for="historySpace">Space</label>
+                    <select id="historySpace" class="history-select"></select>
+                </div>
+                <div class="history-filter">
+                    <label class="history-label" for="historyProject">Project</label>
+                    <select id="historyProject" class="history-select"></select>
+                </div>
+                <div class="history-filter">
+                    <label class="history-label" for="historyEnvironment">Environment</label>
+                    <select id="historyEnvironment" class="history-select"></select>
+                </div>
+                <div class="history-filter">
+                    <label class="history-label" for="historyFrom">From</label>
+                    <input id="historyFrom" class="history-date" type="date">
+                </div>
+                <div class="history-filter">
+                    <label class="history-label" for="historyTo">To</label>
+                    <input id="historyTo" class="history-date" type="date">
+                </div>
+                <div class="history-filter history-filter-action">
+                    <button id="historyRefreshBtn" class="btn btn-small">Refresh</button>
+                </div>
+            </div>
+            <div id="historyList" class="history-list"></div>
+            <div id="historyFooter" class="history-footer"></div>
+        </section>
+
+        <section id="taskPanel" class="card task-panel" hidden></section>
+
+        <section id="interventionBanner" class="banner banner-mi" hidden></section>
+
+        <section id="pastePanel" class="card paste-panel" hidden>
+            <h2 class="panel-title">Paste a Terraform or OpenTofu plan log</h2>
+            <p class="panel-hint">Paste the output of a Terraform plan step (the raw Octopus task log with timestamps is fine - prefixes are stripped automatically).</p>
+            <textarea id="pasteInput" spellcheck="false" placeholder="10:23:45   Info     |         Terraform will perform the following actions:&#10;..."></textarea>
+            <div class="paste-actions">
+                <button id="pasteRenderBtn" class="btn btn-primary">Render plan</button>
+                <button id="pasteClearBtn" class="btn">Clear</button>
+            </div>
+        </section>
+
+        <section id="planView" hidden>
+            <div id="noChangesBanner" class="banner banner-ok" hidden></div>
+            <div id="driftBanner" class="banner banner-warn" hidden></div>
+
+            <div id="summaryStrip" class="summary-strip"></div>
+
+            <div class="toolbar card">
+                <div class="toolbar-left">
+                    <div class="segmented" role="group" aria-label="View">
+                        <button id="viewPretty" class="seg-btn active">Pretty</button>
+                        <button id="viewRaw" class="seg-btn">Raw log</button>
+                    </div>
+                    <div id="filterChips" class="filter-chips"></div>
+                </div>
+                <div class="toolbar-right">
+                    <input id="searchInput" class="search-input" type="search" placeholder="Filter resources..." aria-label="Filter resources">
+                    <button id="expandAllBtn" class="btn btn-small">Expand all</button>
+                    <button id="collapseAllBtn" class="btn btn-small">Collapse all</button>
+                    <button id="aiBtn" class="btn btn-ai">&#10022; Summarize with AI</button>
+                </div>
+            </div>
+
+            <div id="aiPanel" class="card ai-panel" hidden></div>
+            <div id="warningsPanel" hidden></div>
+
+            <div id="prettyView">
+                <div id="resourceList" class="resource-list"></div>
+                <div id="outputsCard" class="card outputs-card" hidden></div>
+            </div>
+
+            <div id="rawView" class="card raw-card" hidden>
+                <pre id="rawLog"></pre>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Read-only: this dashboard only performs GET requests against your Octopus instance, using the same task-details, deployments, and interruptions endpoints the Octopus portal uses. Approving or rejecting a manual intervention always happens in the Octopus portal. Supports Terraform and OpenTofu plan output.</p>
+    </footer>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
