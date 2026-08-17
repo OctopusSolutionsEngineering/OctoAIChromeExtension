@@ -3457,3 +3457,46 @@ describe('Project map', () => {
     expect(list).toContain('data-project="P1"');   // the row is still the toggle
   });
 });
+
+describe('Inputs and triggers share a column', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: data.projectMapModel({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+    process: { Steps: [{ Name: 'Deploy', Actions: [{ ActionType: 'Octopus.Script' }] }] },
+    channels: { Items: [] }, triggers: { Items: [{ Name: 'Nightly', Filter: { FilterType: 'OnceDailySchedule' } }] },
+    lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [], tenants: { TotalResults: 0 }
+  }) } });
+
+  // Walk div depth to find where the column actually ends, rather than trusting
+  // a lazy regex to guess it.
+  const column = (() => {
+    const start = html.indexOf('<div class="ip-pm-col">');
+    if (start === -1) return null;
+    const rest = html.slice(start);
+    const tok = /<div\b|<\/div>/g;
+    let depth = 0, m;
+    while ((m = tok.exec(rest))) {
+      depth += m[0] === '</div>' ? -1 : 1;
+      if (depth === 0) return rest.slice(0, m.index + m[0].length);
+    }
+    return null;
+  })();
+
+  test('the column exists and closes cleanly', () => {
+    expect(column).not.toBeNull();
+  });
+
+  test('it holds exactly the two panels, in order', () => {
+    expect((column.match(/<section/g) || []).length).toBe(2);
+    const headings = (column.match(/<h3>([^<]*)/g) || []).map(h => h.replace('<h3>', ''));
+    expect(headings).toEqual(['Inputs', 'Triggers']);
+  });
+
+  test('process, destinations and channels stay outside it', () => {
+    ['>Process', '>Destinations', '>Channels'].forEach(h => {
+      expect(column.indexOf(h)).toBe(-1);
+      expect(html.indexOf(h)).toBeGreaterThan(-1);
+    });
+  });
+});

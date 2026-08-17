@@ -981,3 +981,7 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-pm-roles, .ip-pm-envs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .dark .ip-pm-step, .dark .ip-pm-phase { border-bottom-color: var(--color-navy-700); }
 .dark .ip-pm-num { background: var(--color-navy-700); color: var(--color-grey-300); }
+/* Inputs and triggers stack in one grid cell: both answer "what feeds this
+   project", and both are short enough that a cell each left holes beside them. */
+.ip-pm-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ip-pm-col > .ip-tn-panel { margin: 0; }

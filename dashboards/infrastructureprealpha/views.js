@@ -2144,8 +2144,12 @@ const Views = (function () {
       +   _tnDescription(m.description)
       + '</header>'
       + '<div class="ip-pm-grid">'
-      +   panel('Inputs', m.git ? 'version controlled' : '', inputs)
-      +   panel('Triggers', m.triggers.length ? m.triggers.length + ' configured' : '', triggers)
+      // What feeds the project and what starts it are the same question asked
+      // twice, so they share a column and read together.
+      +   '<div class="ip-pm-col">'
+      +     panel('Inputs', m.git ? 'version controlled' : '', inputs)
+      +     panel('Triggers', m.triggers.length ? m.triggers.length + ' configured' : '', triggers)
+      +   '</div>'
       +   panel('Process', m.process.length ? m.process.length + (m.process.length === 1 ? ' step' : ' steps') : '', process)
       +   panel('Destinations', m.lifecycle, destinations)
       +   panel('Channels', '', channels)
