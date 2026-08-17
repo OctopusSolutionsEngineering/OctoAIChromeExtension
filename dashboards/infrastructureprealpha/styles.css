@@ -518,8 +518,8 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-rel-key-pale { width: 22px; height: 2px; border-radius: 2px; background: var(--color-green-200); }
 
 .ip-rel-group { margin: 0 0 22px; }
-.ip-rel-group + .ip-rel-group { margin-top: 40px; }
-.ip-rel-group-name { display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px;
+.ip-rel-group + .ip-rel-group { margin-top: 56px; }
+.ip-rel-group-name { display: flex; align-items: baseline; gap: 10px; margin: 0 0 8px;
   font-size: 15px; font-weight: 600; color: var(--color-navy-900); }
 .ip-rel-group-count { font-size: 11px; font-weight: 400; color: var(--color-grey-600); }
 .ip-rel-hidden { margin: 6px 0 0; font-size: 11px; color: var(--color-grey-600); }
