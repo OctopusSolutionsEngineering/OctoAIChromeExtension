@@ -2443,6 +2443,16 @@ const Views = (function () {
     return '<label class="ip-space-lbl">Space</label>'
       + '<select id="ip-space-select" class="ip-space-select">' + opts.join('') + '</select>';
   }
+  // Switching space changes what every id on screen means, so staying put is
+  // rarely right: a target, tenant or project detail page belongs to the space
+  // you just left. Projects is where a space switch lands.
+  function spaceSwitchNav(currentHash) {
+    const target = '#projects';
+    const now = String(currentHash || '');
+    // An identical hash fires no hashchange, so that case has to re-render itself.
+    return { hash: target, rerender: now === target || now === '' };
+  }
+
   function bindSpaceSwitch(IP) {
     const el = document.getElementById('ip-space-select');
     if (!el) return;
@@ -2459,7 +2469,9 @@ const Views = (function () {
       el.disabled = true;
       try {
         if (typeof IP.rescope === 'function') await IP.rescope();
-        Router.render();
+        const nav = spaceSwitchNav(window.location.hash);
+        if (nav.rerender) Router.render();
+        else window.location.hash = nav.hash;
       } catch (err) {
         if (main) main.innerHTML = stateView('error', (err && err.message) || 'Could not load that space');
       } finally {
@@ -2470,7 +2482,7 @@ const Views = (function () {
   return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderProjectMap, bindProjectMap, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
-    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,
+    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch, spaceSwitchNav,
     renderThemeToggle, bindThemeToggle };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

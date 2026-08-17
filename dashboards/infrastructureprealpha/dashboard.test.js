@@ -4041,3 +4041,22 @@ describe('The list and the project page draw the row from one source', () => {
     expect(count('_bindRelRows(IP, root')).toBe(3);
   });
 });
+
+describe('Switching space lands on Projects', () => {
+  const Views = require('./views');
+
+  test('a detail page for the old space is not somewhere to stay', () => {
+    ['#tenants/Tenants-1', '#projects/Projects-9', '#targets/Machines-3', '#overview']
+      .forEach(from => {
+        const nav = Views.spaceSwitchNav(from);
+        expect(nav.hash).toBe('#projects');
+        expect(nav.rerender).toBe(false);   // the hash changes, so navigation renders
+      });
+  });
+
+  test('already on Projects, the switch has to redraw itself', () => {
+    // No hashchange fires when the hash does not change.
+    expect(Views.spaceSwitchNav('#projects')).toEqual({ hash: '#projects', rerender: true });
+    expect(Views.spaceSwitchNav('')).toEqual({ hash: '#projects', rerender: true });
+  });
+});
