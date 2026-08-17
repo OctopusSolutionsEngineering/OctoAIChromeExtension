@@ -1698,7 +1698,8 @@ async function fetchProjectMap(spaceId, projectId) {
     soft(fetchJson('/api/' + spaceId + '/feeds?take=100')),
     soft(fetchJson('/api/' + spaceId + '/environments/all')),
     soft(fetchJson('/api/' + spaceId + '/tenants?projectId=' + encodeURIComponent(projectId) + '&take=1')),
-    soft(fetchTenantMachines(spaceId))
+    soft(fetchTenantMachines(spaceId)),
+    soft(fetchFeatureToggles(spaceId, projectId))
   ]);
   const channels = ((parts[1].v || {}).Items) || [];
   const defaultLifecycle = parts[3].v;
@@ -1723,7 +1724,8 @@ async function fetchProjectMap(spaceId, projectId) {
     lifecycles: lifecycles,
     feeds: parts[4].v, environments: parts[5].v,
     tenants: parts[6].v, tenantsError: parts[6].err,
-    machines: parts[7].v, machinesError: parts[7].err
+    machines: parts[7].v, machinesError: parts[7].err,
+    flags: parts[8].v, flagsError: parts[8].err
   };
 }
 
@@ -1744,6 +1746,48 @@ function triggerLabel(trigger) {
   return { kind: 'Trigger', detail: actionTypeLabel(kind) };
 }
 
+
+/** Where a project's feature flags stand across the environments its lifecycles
+ *  reach.
+ *
+ *  A flag with no setting for an environment falls back to its default, so the
+ *  default has to be resolved before "fully on" means anything — otherwise a
+ *  flag on by default everywhere reads as having no state at all.
+ */
+function projectFlagModel(payload, environmentIds, envName) {
+  const src = payload || {};
+  const all = src.items || [];
+  const envs = environmentIds || [];
+  const names = envName || {};
+
+  const flags = all.map(f => {
+    const byEnv = {};
+    (f.Environments || []).forEach(e => { byEnv[e.DeploymentEnvironmentId] = e; });
+    const cells = envs.map(id => {
+      const e = byEnv[id];
+      const st = e ? flagEnvState(e) : { key: f.DefaultIsEnabled ? 'on' : 'off', percent: null };
+      return { envId: id, envName: names[id] || id, key: st.key, percent: st.percent,
+        viaDefault: !e, tenantCount: e ? ((e.TenantIds || []).length + (e.TenantTags || []).length) : 0 };
+    });
+    const allOn = cells.length > 0 && cells.every(c => c.key === 'on');
+    const allOff = cells.length > 0 && cells.every(c => c.key === 'off');
+    return { id: f.Id, name: f.Name, slug: f.Slug, defaultOn: !!f.DefaultIsEnabled,
+      cells: cells, settled: allOn ? 'on' : (allOff ? 'off' : 'between') };
+  }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  const between = flags.filter(f => f.settled === 'between');
+  return {
+    scoped: envs.length > 0,
+    environments: envs.map(id => names[id] || id),
+    flags: flags,
+    between: between,
+    fullyOn: flags.filter(f => f.settled === 'on').length,
+    fullyOff: flags.filter(f => f.settled === 'off').length,
+    betweenCount: between.length,
+    total: src.total || all.length,
+    truncated: !!src.truncated
+  };
+}
 
 /** What a project deploys to, and what shape that estate is in.
  *
@@ -1924,7 +1968,12 @@ function projectMapModel(payload) {
       });
     })(),
     targetsError: src.machinesError
-      ? 'Deployment targets cannot be read in this space, so what this project deploys to is unknown.' : null
+      ? 'Deployment targets cannot be read in this space, so what this project deploys to is unknown.' : null,
+    flags: src.flags ? projectFlagModel(src.flags, lifecycleEnvIds, envName) : null,
+    flagsError: src.flagsError
+      ? (/^(404|400)\b/.test(String(src.flagsError.code || ''))
+          ? 'Feature flags are not available on this instance.'
+          : 'Feature flags could not be read for this project.') : null
   };
 }
 
@@ -1942,7 +1991,7 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
   fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
   fetchTenantFlags, tenantFlagModel, flagStateForTenant,
-  fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets }; }
+  fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets, projectFlagModel }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1960,5 +2009,5 @@ if (typeof module !== 'undefined') {
     parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
     fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
     fetchTenantFlags, tenantFlagModel, flagStateForTenant,
-    fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets };
+    fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets, projectFlagModel };
 }

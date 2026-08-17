@@ -3458,7 +3458,7 @@ describe('Project map', () => {
   });
 });
 
-describe('Inputs, triggers and channels share a column', () => {
+describe('The project map columns hold what belongs together', () => {
   const data = require('./data');
   const Views = require('./views');
   const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: data.projectMapModel({
@@ -3468,10 +3468,11 @@ describe('Inputs, triggers and channels share a column', () => {
     lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [], tenants: { TotalResults: 0 }
   }) } });
 
-  // Walk div depth to find where the column actually ends, rather than trusting
+  // Walk div depth to find where a column actually ends, rather than trusting
   // a lazy regex to guess it.
-  const column = (() => {
-    const start = html.indexOf('<div class="ip-pm-col">');
+  const column = n => {
+    let start = -1;
+    for (let i = 0; i <= n; i++) start = html.indexOf('<div class="ip-pm-col">', start + 1);
     if (start === -1) return null;
     const rest = html.slice(start);
     const tok = /<div\b|<\/div>/g;
@@ -3481,23 +3482,26 @@ describe('Inputs, triggers and channels share a column', () => {
       if (depth === 0) return rest.slice(0, m.index + m[0].length);
     }
     return null;
-  })();
+  };
+  const headings = col => (col.match(/<h3>([^<]*)/g) || []).map(h => h.replace('<h3>', ''));
 
-  test('the column exists and closes cleanly', () => {
-    expect(column).not.toBeNull();
+  test('both columns exist and close cleanly', () => {
+    expect(column(0)).not.toBeNull();
+    expect(column(1)).not.toBeNull();
   });
 
-  test('it holds exactly the three panels, in order', () => {
-    expect((column.match(/<section/g) || []).length).toBe(3);
-    const headings = (column.match(/<h3>([^<]*)/g) || []).map(h => h.replace('<h3>', ''));
-    expect(headings).toEqual(['Inputs', 'Triggers', 'Channels']);
+  test('channels lead the left column, above what feeds the project', () => {
+    expect(headings(column(0))).toEqual(['Channels', 'Inputs', 'Triggers']);
   });
 
-  test('process and destinations stay outside it', () => {
-    ['>Process', '>Destinations'].forEach(h => {
-      expect(column.indexOf(h)).toBe(-1);
-      expect(html.indexOf(h)).toBeGreaterThan(-1);
-    });
+  test('flags sit under destinations in the right column', () => {
+    expect(headings(column(1))).toEqual(['Destinations', 'Feature flags']);
+  });
+
+  test('process stays outside both columns', () => {
+    expect(column(0).indexOf('>Process')).toBe(-1);
+    expect(column(1).indexOf('>Process')).toBe(-1);
+    expect(html.indexOf('>Process')).toBeGreaterThan(-1);
   });
 
   test('lifecycles sit above the grid, full width', () => {
@@ -3722,5 +3726,133 @@ describe('Destinations: selection, targets and their shape', () => {
     expect(html).toContain('Selected by');
     expect(html).toContain('Within');
     expect(html).toContain('12 tenants connected');
+  });
+});
+
+describe('Project feature flags across the lifecycle environments', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const envs = ['E1', 'E2'];
+  const names = { E1: 'Dev', E2: 'Prod' };
+  const model = items => data.projectFlagModel({ items: items, total: items.length }, envs, names);
+
+  test('a flag with no environment settings resolves against its default', () => {
+    const on = model([{ Id: 'F1', Name: 'a', DefaultIsEnabled: true }]);
+    expect(on.fullyOn).toBe(1);
+    expect(on.flags[0].cells.every(c => c.viaDefault)).toBe(true);
+    expect(model([{ Id: 'F2', Name: 'b', DefaultIsEnabled: false }]).fullyOff).toBe(1);
+  });
+
+  test('an environment setting beats the default for that environment only', () => {
+    const m = model([{ Id: 'F1', Name: 'a', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true }] }]);
+    expect(m.flags[0].cells.map(c => c.key)).toEqual(['on', 'off']);
+    expect(m.betweenCount).toBe(1);
+  });
+
+  test('a percentage rollout is in between wherever it lands', () => {
+    const m = model([{ Id: 'F1', Name: 'a', DefaultIsEnabled: true,
+      Environments: [{ DeploymentEnvironmentId: 'E2', IsEnabled: true, RolloutPercentage: 25 }] }]);
+    expect(m.flags[0].settled).toBe('between');
+    expect(m.flags[0].cells[1]).toMatchObject({ key: 'partial', percent: 25 });
+  });
+
+  test('the ones in between are named, not just counted', () => {
+    const m = model([
+      { Id: 'F1', Name: 'settled', DefaultIsEnabled: true },
+      { Id: 'F2', Name: 'drifting', DefaultIsEnabled: false,
+        Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true }] }
+    ]);
+    expect(m.between.map(f => f.name)).toEqual(['drifting']);
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: Object.assign(
+      data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+        process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+        lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+        tenants: { TotalResults: 0 } }), { flags: m }) } });
+    expect(html).toContain('drifting');
+    expect(html).not.toContain('>settled<');
+  });
+
+  test('environment targeting counts toward what the flag says it does', () => {
+    const m = model([{ Id: 'F1', Name: 'a', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true, TenantIds: ['T1', 'T2'], TenantTags: ['x/y'] }] }]);
+    expect(m.flags[0].cells[0].tenantCount).toBe(3);
+  });
+
+  test('no flags, and flags with nowhere to land, read differently', () => {
+    const base = data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+      tenants: { TotalResults: 0 } });
+    const render = flags => Views.renderProjectMap({ projectMap: { status: 'ready',
+      model: Object.assign({}, base, { flags: flags }) } });
+    expect(render(data.projectFlagModel({ items: [], total: 0 }, envs, names)))
+      .toContain('no feature flags');
+    expect(render(data.projectFlagModel({ items: [{ Id: 'F1', Name: 'a' }], total: 1 }, [], names)))
+      .toContain('no lifecycle environments to place them in');
+  });
+
+  test('an instance without the preview says so rather than showing zero', () => {
+    const err = new Error('404 Not Found'); err.code = '404 Not Found';
+    const m = data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+      tenants: { TotalResults: 0 }, flagsError: err });
+    expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: m } }))
+      .toContain('Feature flags are not available on this instance');
+    // Anything else is a read failure, not an absent capability.
+    const other = new Error('500 Server Error'); other.code = '500 Server Error';
+    const m2 = data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+      tenants: { TotalResults: 0 }, flagsError: other });
+    expect(Views.renderProjectMap({ projectMap: { status: 'ready', model: m2 } }))
+      .toContain('could not be read for this project');
+  });
+});
+
+describe('The lifecycle panel opens on the default only', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const lc = (id, name, envIds) => ({ Id: id, Name: name,
+    Phases: envIds.map((e, i) => ({ Name: 'P' + i, OptionalDeploymentTargets: [e] })) });
+  const build = extra => data.projectMapModel(Object.assign({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+    process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }],
+    tenants: { TotalResults: 0 }
+  }, extra));
+
+  test('one lifecycle needs no disclosure at all', () => {
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: build({
+      channels: { Items: [] }, lifecycle: lc('L1', 'Std', ['E1', 'E2']), lifecycles: [lc('L1', 'Std', ['E1', 'E2'])]
+    }) } });
+    expect(html).toContain('Std');
+    expect(html).not.toContain('ip-pm-lcmore');
+  });
+
+  test('the others fold away behind a count', () => {
+    const model = build({
+      channels: { Items: [{ Id: 'C1', Name: 'Hotfix', LifecycleId: 'L2' }] },
+      lifecycle: lc('L1', 'Std', ['E1', 'E2']),
+      lifecycles: [lc('L1', 'Std', ['E1', 'E2']), lc('L2', 'Hotfix', ['E2'])]
+    });
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: model } });
+    const details = html.slice(html.indexOf('<details class="ip-pm-lcmore">'));
+    expect(html).toContain('<details class="ip-pm-lcmore">');
+    expect(html).toContain('1 other lifecycle</summary>');
+    // The default is on the page before the disclosure; the other is inside it.
+    expect(html.indexOf('Std')).toBeLessThan(html.indexOf('<details'));
+    expect(details).toContain('Hotfix');
+    // Not open by default — that is the whole point.
+    expect(html).not.toContain('<details class="ip-pm-lcmore" open>');
+  });
+
+  test('the plural is right for more than one', () => {
+    const html = Views.renderProjectMap({ projectMap: { status: 'ready', model: build({
+      channels: { Items: [] }, lifecycle: lc('L1', 'Std', ['E1']),
+      lifecycles: [lc('L1', 'Std', ['E1']), lc('L2', 'A', ['E1']), lc('L3', 'B', ['E2'])]
+    }) } });
+    expect(html).toContain('2 other lifecycles</summary>');
   });
 });

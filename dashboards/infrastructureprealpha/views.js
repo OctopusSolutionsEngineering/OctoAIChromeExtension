@@ -2032,6 +2032,41 @@ const Views = (function () {
         + '</section>'
       : '';
 
+    // Feature flags, on the same terms as the tenant page: on and off are
+    // counts, and the ones in between are named, because "4 in between" is not
+    // something anyone can act on without knowing which four.
+    const flagPanel = (function () {
+      if (m.flagsError) return none(m.flagsError);
+      const fm = m.flags;
+      if (!fm) return '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading flags…</span></div>';
+      if (!fm.total) return none('This project has no feature flags.');
+      if (!fm.scoped) return none(fm.total + ' flags, but no lifecycle environments to place them in.');
+      const stat = (n, lbl, tone) => '<span class="ip-tn-stat">'
+        + '<span class="ip-tn-statnum ip-tn-stat-' + escHtml(tone) + '">' + n + '</span>'
+        + '<span class="ip-tn-statlabel">' + escHtml(lbl) + '</span></span>';
+      const tone = k => k === 'on' ? 'healthy' : (k === 'partial' ? 'warning' : 'disabled');
+      const text = c => c.key === 'partial' ? c.percent + '%'
+        : c.key === 'on' ? (c.tenantCount ? 'on · ' + c.tenantCount + ' targeted' : 'on')
+        : 'off';
+      const rows = fm.between.map(f =>
+        '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(f.name) + '</span>'
+        + '<span class="ip-tn-flagstates">' + f.cells.map(c =>
+            '<span class="ip-tn-flagstate"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone(c.key)) + '"></span>'
+            + escHtml(c.envName) + ' <span class="ip-tn-age">' + escHtml(text(c)) + '</span></span>').join('')
+        + '</span></li>').join('');
+      const notes = [];
+      notes.push('A flag with no setting for an environment falls back to its default, and is counted that way.');
+      if (fm.truncated) notes.push('Only the first ' + fm.flags.length + ' of ' + fm.total + ' flags were read.');
+      return '<div class="ip-tn-stats">'
+        +   stat(fm.fullyOn, 'on', 'healthy')
+        +   stat(fm.fullyOff, 'off', 'disabled')
+        +   stat(fm.betweenCount, 'rolling out', fm.betweenCount ? 'warning' : 'disabled')
+        + '</div>'
+        + (rows ? '<ul class="ip-tn-targets">' + rows + '</ul>'
+                : '<p class="ip-tn-muted">Every flag is on or off across all of these environments.</p>')
+        + '<p class="ip-tn-legend">' + notes.map(escHtml).join(' ') + '</p>';
+    })();
+
     return back
       + '<header class="ip-head"><h2>' + escHtml(m.name) + (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
       +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
@@ -2129,21 +2164,34 @@ const Views = (function () {
       }).join('');
     };
 
-    const lifecycles = (m.lifecycles && m.lifecycles.length && cols.length)
+    const lcRow = lc => '<div class="ip-pm-lcrow">'
+      + '<div class="ip-pm-lclabel">'
+      +   '<span class="ip-tn-tname">' + escHtml(lc.name) + '</span>'
+      +   (lc.isDefault ? '<span class="ip-pm-def">default</span>' : '')
+      +   '<span class="ip-tn-age">' + escHtml(lc.channels.length
+            ? lc.channels.join(', ') : 'unused') + '</span>'
+      + '</div>'
+      + '<div class="ip-pm-lctrack">' + lcTrack(lc) + '</div>'
+      + '</div>';
+    // Most projects have one route that matters. The others are shown on ask,
+    // so a project with six channel lifecycles does not open with six lines.
+    const lcAll = m.lifecycles || [];
+    const lcMain = lcAll.filter(lc => lc.isDefault);
+    const lcRest = lcAll.filter(lc => !lc.isDefault);
+    const lcLead = lcMain.length ? lcMain : lcAll.slice(0, 1);
+    const lcMore = lcMain.length ? lcRest : lcAll.slice(1);
+
+    const lifecycles = (lcAll.length && cols.length)
       ? '<div class="ip-pm-lc" style="--ip-pm-cols:' + cols.length + '">'
         + '<div class="ip-pm-lcrow ip-pm-lchead"><div class="ip-pm-lclabel"></div>'
         +   '<div class="ip-pm-lctrack">' + cols.map(e =>
               '<div class="ip-pm-colhead">' + escHtml(e) + '</div>').join('') + '</div></div>'
-        + m.lifecycles.map(lc =>
-            '<div class="ip-pm-lcrow">'
-            + '<div class="ip-pm-lclabel">'
-            +   '<span class="ip-tn-tname">' + escHtml(lc.name) + '</span>'
-            +   (lc.isDefault ? '<span class="ip-pm-def">default</span>' : '')
-            +   '<span class="ip-tn-age">' + escHtml(lc.channels.length
-                  ? lc.channels.join(', ') : 'unused') + '</span>'
-            + '</div>'
-            + '<div class="ip-pm-lctrack">' + lcTrack(lc) + '</div>'
-            + '</div>').join('')
+        + lcLead.map(lcRow).join('')
+        + (lcMore.length
+            ? '<details class="ip-pm-lcmore"><summary>' + lcMore.length
+              + (lcMore.length === 1 ? ' other lifecycle' : ' other lifecycles')
+              + '</summary>' + lcMore.map(lcRow).join('') + '</details>'
+            : '')
         + '</div>'
         + '<p class="ip-tn-legend">Numbers are lifecycle phases — environments sharing a number are in the '
         + 'same phase. A filled node deploys automatically. No node means that lifecycle never reaches '
@@ -2222,6 +2270,41 @@ const Views = (function () {
               : 'no version rules') + '</span></li>').join('') + '</ul>'
       : none('This project has one implicit channel.');
 
+    // Feature flags, on the same terms as the tenant page: on and off are
+    // counts, and the ones in between are named, because "4 in between" is not
+    // something anyone can act on without knowing which four.
+    const flagPanel = (function () {
+      if (m.flagsError) return none(m.flagsError);
+      const fm = m.flags;
+      if (!fm) return '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading flags…</span></div>';
+      if (!fm.total) return none('This project has no feature flags.');
+      if (!fm.scoped) return none(fm.total + ' flags, but no lifecycle environments to place them in.');
+      const stat = (n, lbl, tone) => '<span class="ip-tn-stat">'
+        + '<span class="ip-tn-statnum ip-tn-stat-' + escHtml(tone) + '">' + n + '</span>'
+        + '<span class="ip-tn-statlabel">' + escHtml(lbl) + '</span></span>';
+      const tone = k => k === 'on' ? 'healthy' : (k === 'partial' ? 'warning' : 'disabled');
+      const text = c => c.key === 'partial' ? c.percent + '%'
+        : c.key === 'on' ? (c.tenantCount ? 'on · ' + c.tenantCount + ' targeted' : 'on')
+        : 'off';
+      const rows = fm.between.map(f =>
+        '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(f.name) + '</span>'
+        + '<span class="ip-tn-flagstates">' + f.cells.map(c =>
+            '<span class="ip-tn-flagstate"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone(c.key)) + '"></span>'
+            + escHtml(c.envName) + ' <span class="ip-tn-age">' + escHtml(text(c)) + '</span></span>').join('')
+        + '</span></li>').join('');
+      const notes = [];
+      notes.push('A flag with no setting for an environment falls back to its default, and is counted that way.');
+      if (fm.truncated) notes.push('Only the first ' + fm.flags.length + ' of ' + fm.total + ' flags were read.');
+      return '<div class="ip-tn-stats">'
+        +   stat(fm.fullyOn, 'on', 'healthy')
+        +   stat(fm.fullyOff, 'off', 'disabled')
+        +   stat(fm.betweenCount, 'rolling out', fm.betweenCount ? 'warning' : 'disabled')
+        + '</div>'
+        + (rows ? '<ul class="ip-tn-targets">' + rows + '</ul>'
+                : '<p class="ip-tn-muted">Every flag is on or off across all of these environments.</p>')
+        + '<p class="ip-tn-legend">' + notes.map(escHtml).join(' ') + '</p>';
+    })();
+
     return back
       + '<header class="ip-head"><h2>' + escHtml(m.name)
       +   (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
@@ -2234,12 +2317,15 @@ const Views = (function () {
       // What feeds the project, what starts it, and what it ships through are
       // the same question asked three ways, so they share a column.
       +   '<div class="ip-pm-col">'
+      +     panel('Channels', m.channels.length ? String(m.channels.length) : '', channels)
       +     panel('Inputs', m.git ? 'version controlled' : '', inputs)
       +     panel('Triggers', m.triggers.length ? m.triggers.length + ' configured' : '', triggers)
-      +     panel('Channels', m.channels.length ? String(m.channels.length) : '', channels)
       +   '</div>'
       +   panel('Process', m.process.length ? m.process.length + (m.process.length === 1 ? ' step' : ' steps') : '', process)
-      +   panel('Destinations', '', destinations)
+      +   '<div class="ip-pm-col">'
+      +     panel('Destinations', '', destinations)
+      +     panel('Feature flags', m.flags && m.flags.total ? String(m.flags.total) : '', flagPanel)
+      +   '</div>'
       + '</div>'
       + '<p class="ip-rel-hnote-inline">The activity timeline and the project\'s variables are not on this page yet.</p>';
   }
