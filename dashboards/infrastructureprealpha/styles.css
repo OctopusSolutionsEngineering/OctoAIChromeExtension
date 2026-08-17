@@ -1052,3 +1052,9 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-pm-fdot { box-shadow: inset 0 0 0 1.5px var(--color-navy-500); }
 .dark .ip-pm-fdot.is-on { background: var(--color-green-500); }
 .dark .ip-pm-fpct { color: var(--color-orange-300); }
+/* The project page's tab row carries Status's controls on its right, so they
+   sit against the tabs the way they sit against the heading on the list. */
+.ip-pm-tabbar { display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.ip-pm-tabbar > .ip-tabs { margin-bottom: 0; border-bottom: 0; }
+.ip-pm-tabbar > .ip-rel-controls { padding-bottom: 8px; }

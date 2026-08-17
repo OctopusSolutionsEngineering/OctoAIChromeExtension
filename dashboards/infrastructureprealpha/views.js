@@ -2114,7 +2114,7 @@ const Views = (function () {
     const hidden = group.hiddenEnvironments.length
       ? '<p class="ip-rel-hidden">Not shown, because this project group has never deployed to them: '
         + escHtml(group.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
-    return _relControls(IP) + _relLegend()
+    return _relLegend()
       + '<div class="ip-rel-groups" style="--ip-rel-cols:' + cols + '">'
       +   '<section class="ip-rel-group"><div class="ip-rel-grid">'
       +     '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>'
@@ -2381,12 +2381,19 @@ const Views = (function () {
     // Two questions about one project: what is running right now, and how the
     // project is put together. They are different enough to be different tabs.
     const tab = IP.projectTab === 'Overview' ? 'Overview' : 'Status';
-    const tabs = '<nav class="ip-tabs ip-section-tabs" aria-label="Project sections">'
+    // Status's window and grouping controls ride the tab row, right-aligned, the
+    // way they sit against the heading on the projects list. Below the tabs they
+    // read as page content rather than as controls.
+    const ready = IP.releases && IP.releases.status === 'ready';
+    const tabs = '<div class="ip-pm-tabbar">'
+      + '<nav class="ip-tabs ip-section-tabs" aria-label="Project sections">'
       + [{ key: 'Status', label: 'Status' }, { key: 'Overview', label: 'Overview' }].map(d =>
           '<button type="button" class="ip-tab ip-section-tab' + (d.key === tab ? ' ip-tab-active' : '')
           + '" data-projecttab="' + escHtml(d.key) + '"'
           + (d.key === tab ? ' aria-current="page"' : '') + '>' + escHtml(d.label) + '</button>').join('')
-      + '</nav>';
+      + '</nav>'
+      + (tab === 'Status' && ready ? _relControls(IP) : '')
+      + '</div>';
 
     const header = back
       + '<header class="ip-head"><h2>' + escHtml(m.name)

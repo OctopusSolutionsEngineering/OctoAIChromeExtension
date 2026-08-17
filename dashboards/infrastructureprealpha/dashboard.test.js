@@ -3984,6 +3984,15 @@ describe('A project page opens on Status and keeps Overview a click away', () =>
     expect(html).toContain('--ip-rel-cols:2');
   });
 
+  test('the controls sit on the tab row, not above the content', () => {
+    const html = Views.renderProjectMap(IP());
+    const bar = html.slice(html.indexOf('<div class="ip-pm-tabbar">'), html.indexOf('</nav>') + 200);
+    expect(bar).toContain('ip-rel-controls');
+    // They belong to Status, and there is nothing to filter until the dashboard lands.
+    expect(Views.renderProjectMap(IP({ projectTab: 'Overview' }))).not.toContain('ip-rel-controls');
+    expect(Views.renderProjectMap(IP({ releases: { status: 'loading' } }))).not.toContain('ip-rel-controls');
+  });
+
   test('the row opens expanded, because the page is about this project', () => {
     expect(Views.renderProjectMap(IP())).toContain('ip-rel-card is-open');
     expect(Views.renderProjectMap(IP({ projectOpen: {} }))).not.toContain('ip-rel-card is-open');
