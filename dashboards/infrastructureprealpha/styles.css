@@ -924,11 +924,8 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   background: var(--ip-rel-surface); box-shadow: var(--shadow-xs); overflow: hidden;
   transition: border-color .12s ease, box-shadow .12s ease; }
 .ip-rel-card:hover { border-color: var(--color-grey-400); box-shadow: var(--shadow-sm, var(--shadow-xs)); }
-.ip-rel-card.is-open { border-color: var(--color-blue-400);
-  box-shadow: 0 1px 3px rgba(16,24,40,.06); }
 .ip-rel-card .ip-rel-history { border-bottom: 0; border-top: 1px solid var(--color-grey-200); }
 .dark .ip-rel-card:hover { border-color: var(--color-navy-500); }
-.dark .ip-rel-card.is-open { border-color: var(--color-blue-600); box-shadow: none; }
 .dark .ip-rel-card .ip-rel-history { border-top-color: var(--color-navy-700); }
 
 /* The environment header sticks while its own group is on screen. Each group

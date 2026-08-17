@@ -3234,3 +3234,35 @@ describe('The divider follows the card open and shut', () => {
       .toBeGreaterThan(css.indexOf('.ip-rel-history-gutter::after { display: none; }'));
   });
 });
+
+describe('An open card looks like a card', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+
+  test('opening does not restyle the card itself', () => {
+    // No blue border, no shadow change — the caret and the panel below already
+    // say it is open.
+    expect(css).not.toMatch(/\.ip-rel-card\.is-open \{/);
+    expect(css).not.toContain('.dark .ip-rel-card.is-open {');
+  });
+
+  test('the open class is still there for the divider to hang off', () => {
+    expect(css).toContain('.ip-rel-card.is-open .ip-rel-proj::after');
+    expect(css).toContain('.ip-rel-card.is-open .ip-rel-history-gutter::after');
+  });
+
+  test('the markup still marks an open card', () => {
+    const data = require('./data');
+    const Views = require('./views');
+    const model = data.releasesModel({
+      Environments: [{ Id: 'E1', Name: 'Dev' }],
+      ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+      Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' }],
+      Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }]
+    });
+    const html = Views.renderProjects({ projectOpen: { P1: true },
+      projectHistory: { P1: { status: 'loading' } }, releases: { status: 'ready', model } });
+    expect(html).toContain('ip-rel-card is-open');
+  });
+});
