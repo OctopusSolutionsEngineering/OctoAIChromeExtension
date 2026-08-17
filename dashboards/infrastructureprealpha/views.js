@@ -2035,37 +2035,6 @@ const Views = (function () {
     // Feature flags, on the same terms as the tenant page: on and off are
     // counts, and the ones in between are named, because "4 in between" is not
     // something anyone can act on without knowing which four.
-    const flagPanel = (function () {
-      if (m.flagsError) return none(m.flagsError);
-      const fm = m.flags;
-      if (!fm) return '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading flags…</span></div>';
-      if (!fm.total) return none('This project has no feature flags.');
-      if (!fm.scoped) return none(fm.total + ' flags, but no lifecycle environments to place them in.');
-      const stat = (n, lbl, tone) => '<span class="ip-tn-stat">'
-        + '<span class="ip-tn-statnum ip-tn-stat-' + escHtml(tone) + '">' + n + '</span>'
-        + '<span class="ip-tn-statlabel">' + escHtml(lbl) + '</span></span>';
-      const tone = k => k === 'on' ? 'healthy' : (k === 'partial' ? 'warning' : 'disabled');
-      const text = c => c.key === 'partial' ? c.percent + '%'
-        : c.key === 'on' ? (c.tenantCount ? 'on · ' + c.tenantCount + ' targeted' : 'on')
-        : 'off';
-      const rows = fm.between.map(f =>
-        '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(f.name) + '</span>'
-        + '<span class="ip-tn-flagstates">' + f.cells.map(c =>
-            '<span class="ip-tn-flagstate"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone(c.key)) + '"></span>'
-            + escHtml(c.envName) + ' <span class="ip-tn-age">' + escHtml(text(c)) + '</span></span>').join('')
-        + '</span></li>').join('');
-      const notes = [];
-      notes.push('A flag with no setting for an environment falls back to its default, and is counted that way.');
-      if (fm.truncated) notes.push('Only the first ' + fm.flags.length + ' of ' + fm.total + ' flags were read.');
-      return '<div class="ip-tn-stats">'
-        +   stat(fm.fullyOn, 'on', 'healthy')
-        +   stat(fm.fullyOff, 'off', 'disabled')
-        +   stat(fm.betweenCount, 'rolling out', fm.betweenCount ? 'warning' : 'disabled')
-        + '</div>'
-        + (rows ? '<ul class="ip-tn-targets">' + rows + '</ul>'
-                : '<p class="ip-tn-muted">Every flag is on or off across all of these environments.</p>')
-        + '<p class="ip-tn-legend">' + notes.map(escHtml).join(' ') + '</p>';
-    })();
 
     return back
       + '<header class="ip-head"><h2>' + escHtml(m.name) + (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
@@ -2282,16 +2251,30 @@ const Views = (function () {
       const stat = (n, lbl, tone) => '<span class="ip-tn-stat">'
         + '<span class="ip-tn-statnum ip-tn-stat-' + escHtml(tone) + '">' + n + '</span>'
         + '<span class="ip-tn-statlabel">' + escHtml(lbl) + '</span></span>';
-      const tone = k => k === 'on' ? 'healthy' : (k === 'partial' ? 'warning' : 'disabled');
-      const text = c => c.key === 'partial' ? c.percent + '%'
-        : c.key === 'on' ? (c.tenantCount ? 'on · ' + c.tenantCount + ' targeted' : 'on')
-        : 'off';
-      const rows = fm.between.map(f =>
-        '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(f.name) + '</span>'
-        + '<span class="ip-tn-flagstates">' + f.cells.map(c =>
-            '<span class="ip-tn-flagstate"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone(c.key)) + '"></span>'
-            + escHtml(c.envName) + ' <span class="ip-tn-age">' + escHtml(text(c)) + '</span></span>').join('')
-        + '</span></li>').join('');
+      // Environments named once across the top, the same way the lifecycle
+      // panel does it. Repeating them per flag cost more room than the states
+      // themselves.
+      const cell = c => {
+        const title = c.envName + ': ' + (c.key === 'partial' ? c.percent + '% rollout'
+          : c.key === 'on' ? (c.tenantCount ? 'on, ' + c.tenantCount + ' targeted' : 'on') : 'off')
+          + (c.viaDefault ? ' (by default)' : '');
+        const body = c.key === 'partial'
+          ? '<span class="ip-pm-fpct">' + c.percent + '</span>'
+          : '<span class="ip-pm-fdot is-' + escHtml(c.key) + (c.viaDefault ? ' is-default' : '') + '"></span>';
+        return '<div class="ip-pm-cell" title="' + escHtml(title) + '">' + body + '</div>';
+      };
+      const grid = fm.between.length
+        ? '<div class="ip-pm-lc ip-pm-fg" style="--ip-pm-cols:' + fm.environments.length + '">'
+          + '<div class="ip-pm-lcrow ip-pm-lchead"><div class="ip-pm-lclabel"></div>'
+          +   '<div class="ip-pm-lctrack">' + fm.environments.map(e =>
+                '<div class="ip-pm-colhead" title="' + escHtml(e) + '">' + escHtml(e) + '</div>').join('')
+          + '</div></div>'
+          + fm.between.map(f =>
+              '<div class="ip-pm-lcrow"><div class="ip-pm-lclabel">'
+              + '<span class="ip-tn-tname" title="' + escHtml(f.name) + '">' + escHtml(f.name) + '</span></div>'
+              + '<div class="ip-pm-lctrack">' + f.cells.map(cell).join('') + '</div></div>').join('')
+          + '</div>'
+        : '';
       const notes = [];
       notes.push('A flag with no setting for an environment falls back to its default, and is counted that way.');
       if (fm.truncated) notes.push('Only the first ' + fm.flags.length + ' of ' + fm.total + ' flags were read.');
@@ -2300,8 +2283,7 @@ const Views = (function () {
         +   stat(fm.fullyOff, 'off', 'disabled')
         +   stat(fm.betweenCount, 'rolling out', fm.betweenCount ? 'warning' : 'disabled')
         + '</div>'
-        + (rows ? '<ul class="ip-tn-targets">' + rows + '</ul>'
-                : '<p class="ip-tn-muted">Every flag is on or off across all of these environments.</p>')
+        + (grid || '<p class="ip-tn-muted">Every flag is on or off across all of these environments.</p>')
         + '<p class="ip-tn-legend">' + notes.map(escHtml).join(' ') + '</p>';
     })();
 

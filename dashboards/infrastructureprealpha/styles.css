@@ -1035,3 +1035,20 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .ip-pm-lcmore > .ip-pm-lcrow + .ip-pm-lcrow { margin-top: 2px; }
 .dark .ip-pm-lcmore > summary { color: var(--color-grey-400); }
 .dark .ip-pm-lcmore > summary:hover { color: var(--color-grey-100); }
+/* Flags reuse the lifecycle track so environments are named once, at the top.
+   The label takes what is left, because a flag name is longer than a
+   lifecycle name and the states are only a dot wide. */
+.ip-pm-fg { margin-top: 4px; }
+.ip-pm-fg .ip-pm-lclabel { width: auto; flex: 1 1 auto; padding: 4px 10px 4px 0; }
+.ip-pm-fg .ip-pm-lctrack { flex: 0 0 calc(var(--ip-pm-cols) * 38px); }
+.ip-pm-fg .ip-pm-cell { min-height: 24px; }
+.ip-pm-fdot { width: 10px; height: 10px; border-radius: 50%; background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--color-grey-400); }
+.ip-pm-fdot.is-on { background: var(--color-green-500); box-shadow: none; }
+/* A state inherited from the default is real but not configured here, so it
+   reads lighter than one somebody set. */
+.ip-pm-fdot.is-default { opacity: .45; }
+.ip-pm-fpct { font-size: 10px; font-weight: 600; color: var(--color-orange-700); }
+.dark .ip-pm-fdot { box-shadow: inset 0 0 0 1.5px var(--color-navy-500); }
+.dark .ip-pm-fdot.is-on { background: var(--color-green-500); }
+.dark .ip-pm-fpct { color: var(--color-orange-300); }

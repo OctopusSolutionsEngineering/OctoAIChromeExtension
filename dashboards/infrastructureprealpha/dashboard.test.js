@@ -3856,3 +3856,78 @@ describe('The lifecycle panel opens on the default only', () => {
     expect(html).toContain('2 other lifecycles</summary>');
   });
 });
+
+describe('Flags name their environments once, not once per flag', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const render = items => {
+    const fm = data.projectFlagModel({ items: items, total: items.length },
+      ['E1', 'E2', 'E3'], { E1: 'Dev', E2: 'Staging', E3: 'Production' });
+    const base = data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+      tenants: { TotalResults: 0 } });
+    return Views.renderProjectMap({ projectMap: { status: 'ready',
+      model: Object.assign({}, base, { flags: fm }) } });
+  };
+  const twoFlags = [
+    { Id: 'F1', Name: 'alpha', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true }] },
+    { Id: 'F2', Name: 'beta', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E2', IsEnabled: true, RolloutPercentage: 40 }] }
+  ];
+
+  test('each environment head appears once however many flags there are', () => {
+    const html = render(twoFlags);
+    const grid = html.slice(html.indexOf('ip-pm-fg'));
+    expect((grid.match(/ip-pm-colhead/g) || []).length).toBe(3);
+    expect((grid.match(/>Production</g) || []).length).toBe(1);
+  });
+
+  test('every flag gets a cell per environment, aligned to those heads', () => {
+    const grid = render(twoFlags);
+    const rows = grid.split('<div class="ip-pm-lcrow">').slice(1);
+    expect(rows.length).toBe(2);
+    rows.forEach(r => expect((r.match(/ip-pm-cell/g) || []).length).toBe(3));
+  });
+
+  test('a rollout shows its number; on and off differ by more than colour', () => {
+    const grid = render(twoFlags);
+    expect(grid).toContain('<span class="ip-pm-fpct">40</span>');
+    expect(grid).toContain('ip-pm-fdot is-on');
+    expect(grid).toContain('ip-pm-fdot is-off');
+  });
+
+  test('the environment a state belongs to survives in the cell title', () => {
+    expect(render(twoFlags)).toContain('title="Staging: 40% rollout"');
+  });
+
+  test('a state inherited from the default is marked as such', () => {
+    const html = render([{ Id: 'F1', Name: 'a', DefaultIsEnabled: true,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: false }] }]);
+    expect(html).toContain('is-on is-default');
+    expect(html).toContain('(by default)');
+  });
+});
+
+// String-replace edits have twice copied a render block into a second function
+// that happened to share an anchor. Neither copy is reachable from the wrong
+// view, so nothing failed — it just sat there. This catches the next one.
+describe('Render blocks are defined once, in the view that uses them', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'views.js'), 'utf8');
+  const body = name => {
+    const i = src.indexOf('function ' + name + '(IP)');
+    if (i === -1) return '';
+    const j = src.indexOf('\n  function ', i + 1);
+    return src.slice(i, j === -1 ? undefined : j);
+  };
+
+  test('the project map owns the flag panel and the lifecycle track', () => {
+    expect((src.match(/const flagPanel = \(function/g) || []).length).toBe(1);
+    expect(body('renderProjectMap')).toContain('const flagPanel = (function');
+    expect(body('renderTenantDetail')).not.toContain('const flagPanel = (function');
+    expect((src.match(/const lcRow = lc =>/g) || []).length).toBe(1);
+  });
+});
