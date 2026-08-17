@@ -953,3 +953,10 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 /* No text in the expanded gutter, so nothing to divide. */
 .ip-rel-history-gutter::after { display: none; }
 .dark .ip-rel-proj::after { background: var(--color-navy-700); }
+
+/* Collapsed, the divider is a short segment beside the name — a long rule for
+   one line of text reads as a table edge. Expanded, the history needs the
+   columns held apart, so the same divider runs from the name to the bottom of
+   the card, through the gutter, as one continuous line. */
+.ip-rel-card.is-open .ip-rel-proj::after { bottom: 0; height: auto; }
+.ip-rel-card.is-open .ip-rel-history-gutter::after { display: block; top: 0; bottom: 0; height: auto; }

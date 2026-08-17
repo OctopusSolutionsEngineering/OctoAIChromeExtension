@@ -3203,3 +3203,34 @@ describe('The project divider is the height of its text', () => {
     expect(css).toContain('.ip-rel-history-gutter::after { display: none; }');
   });
 });
+
+describe('The divider follows the card open and shut', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  const rule = re => (re.exec(css) || [''])[0];
+
+  test('shut, it is a short segment beside the project name', () => {
+    const base = rule(/\.ip-rel-proj::after \{[\s\S]*?\}/);
+    expect(base).toContain('height: 16px');
+    expect(css).toContain('.ip-rel-history-gutter::after { display: none; }');
+  });
+
+  test('open, it runs to the bottom of the row', () => {
+    const open = rule(/\.ip-rel-card\.is-open \.ip-rel-proj::after \{[\s\S]*?\}/);
+    expect(open).toContain('bottom: 0');
+    expect(open).toContain('height: auto');
+  });
+
+  test('open, it continues through the history gutter as one line', () => {
+    const gut = rule(/\.ip-rel-card\.is-open \.ip-rel-history-gutter::after \{[\s\S]*?\}/);
+    expect(gut).toContain('display: block');
+    expect(gut).toContain('top: 0');
+    expect(gut).toContain('bottom: 0');
+  });
+
+  test('the open rules come after the shut ones so they win', () => {
+    expect(css.indexOf('.ip-rel-card.is-open .ip-rel-proj::after'))
+      .toBeGreaterThan(css.indexOf('.ip-rel-history-gutter::after { display: none; }'));
+  });
+});
