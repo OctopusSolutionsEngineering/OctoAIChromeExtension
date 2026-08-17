@@ -1558,8 +1558,10 @@ async function fetchTenantFlags(spaceId, projectIds) {
     truncated: (projectIds || []).length > ids.length };
 }
 
-function flagStateForTenant(env, tenant) {
-  if (!env) return { key: 'inherit' };
+function flagStateForTenant(env, tenant, defaultOn) {
+  // No override for this environment means the flag's own default applies.
+  // Treating that as unknown left flags out of the count that are plainly on.
+  if (!env) return { key: defaultOn ? 'on' : 'off', via: 'default' };
   const tags = (tenant && tenant.TenantTags) || [];
   const id = tenant && tenant.Id;
   const has = (list, v) => (list || []).indexOf(v) !== -1;
@@ -1596,23 +1598,47 @@ function tenantFlagModel(payload, tenant, connectedEnvIdsByProject, envName, pro
       const byEnv = {};
       (f.Environments || []).forEach(e => { byEnv[e.DeploymentEnvironmentId] = e; });
       const cells = envs.map(eid => {
-        const st = flagStateForTenant(byEnv[eid], tenant);
+        const st = flagStateForTenant(byEnv[eid], tenant, !!f.DefaultIsEnabled);
         return { envId: eid, envName: (envName || {})[eid] || eid, key: st.key,
           percent: st.percent, via: st.via };
       });
       // A flag that is off or inherited everywhere for this tenant is not news
       // on a tenant page; the project page is where those live.
       const live = cells.some(c => c.key === 'on' || c.key === 'partial' || c.key === 'segment');
+      const undecided = cells.some(c => c.key === 'partial' || c.key === 'segment');
+      // Fully on, fully off, or somewhere in between. "In between" covers both
+      // a flag on in one environment and off in another, and one part-way
+      // through a rollout — either way it is not settled for this tenant.
+      const allOn = cells.length > 0 && cells.every(c => c.key === 'on');
+      const allOff = cells.length > 0 && cells.every(c => c.key === 'off' || c.key === 'excluded');
+      const settled = allOn ? 'on' : (allOff ? 'off' : 'between');
       flags.push({ id: f.Id, name: f.Name, projectId: pid, projectName: (projectName || {})[pid] || pid,
-        cells: cells, live: live,
-        undecided: cells.some(c => c.key === 'partial' || c.key === 'segment') });
+        cells: cells, live: live, undecided: undecided, settled: settled });
     });
   });
 
   flags.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const live = flags.filter(f => f.live);
+  const between = flags.filter(f => f.settled === 'between').map(f => ({
+    id: f.id, name: f.name, projectName: f.projectName, undecided: f.undecided,
+    // What it is doing, environment by environment, so "in between" is never
+    // just a bucket someone has to go and investigate.
+    states: f.cells.map(c => ({ envName: c.envName, key: c.key, percent: c.percent, via: c.via })),
+    // The clearest single number, where there is one.
+    percent: (function () {
+      const pct = f.cells.filter(c => c.percent != null).map(c => c.percent);
+      return pct.length ? Math.max.apply(null, pct) : null;
+    })()
+  }));
+
   return {
     flags: live,
+    summary: {
+      fullyOn: flags.filter(f => f.settled === 'on').length,
+      fullyOff: flags.filter(f => f.settled === 'off').length,
+      between: between,
+      betweenCount: between.length
+    },
     total: flags.length,
     liveCount: live.length,
     undecidedCount: live.filter(f => f.undecided).length,

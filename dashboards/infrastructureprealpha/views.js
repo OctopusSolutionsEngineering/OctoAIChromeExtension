@@ -1879,7 +1879,48 @@ const Views = (function () {
         + '</nav>'
       : '';
 
+    const fl = IP.flags;
+    // A summary of where this tenant's flags stand, on the tab you land on.
+    // Fully on and fully off are counts because that is all they are; the ones
+    // in between are named, because "3 in between" is not something you can act
+    // on without knowing which three.
+    const flagSummary = (function () {
+      if (!fl || fl.status !== 'ready') return '';
+      const sm = fl.model.summary;
+      if (!fl.model.total) return '';
+      const stat = (n, label, tone) => '<span class="ip-tn-stat">'
+        + '<span class="ip-tn-statnum ip-tn-stat-' + escHtml(tone) + '">' + n + '</span>'
+        + '<span class="ip-tn-statlabel">' + escHtml(label) + '</span></span>';
+      const rows = sm.between.map(b =>
+        '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(b.name) + '</span>'
+        + '<span class="ip-tn-age">' + escHtml(b.projectName) + '</span>'
+        + '<span class="ip-tn-flagstates">' + b.states.map(st => {
+            const tone = st.key === 'on' ? 'healthy' : (st.key === 'partial' || st.key === 'segment' ? 'warning' : 'disabled');
+            const text = st.key === 'partial' ? st.percent + '%'
+              : st.key === 'segment' ? 'segment'
+              : st.key === 'excluded' ? 'excluded' : st.key;
+            return '<span class="ip-tn-flagstate"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+              + escHtml(st.envName) + ' <span class="ip-tn-age">' + escHtml(text) + '</span></span>';
+          }).join('')
+        + '</span></li>').join('');
+      return '<section class="ip-tn-panel"><h3>Feature flags'
+        + '<span class="ip-tn-age">' + fl.model.total + ' across this tenant\'s projects</span></h3>'
+        + '<div class="ip-tn-stats">'
+        +   stat(sm.fullyOn, 'fully on', 'healthy')
+        +   stat(sm.fullyOff, 'fully off', 'disabled')
+        +   stat(sm.betweenCount, 'in between', sm.betweenCount ? 'warning' : 'disabled')
+        + '</div>'
+        + (rows
+            ? '<ul class="ip-tn-targets">' + rows + '</ul>'
+              + '<p class="ip-tn-legend">A flag is in between when it is on in one environment and not another, '
+              + 'or part-way through a rollout. A percentage is decided when the flag is evaluated, so the number '
+              + 'is the rollout, not a verdict for this tenant.</p>'
+            : '<p class="ip-tn-muted">Every flag is settled one way or the other for this tenant.</p>')
+        + '</section>';
+    })();
+
     const overviewTab = '<section class="ip-tn-panel"><h3>Deployment matrix</h3>' + matrix + '</section>'
+      + flagSummary
       + '<div class="ip-tn-split">'
       +   '<section class="ip-tn-panel"><h3>Infrastructure'
       +     (m.infrastructure && !m.infrastructure.orphaned
@@ -1888,7 +1929,6 @@ const Views = (function () {
       +   '<section class="ip-tn-panel"><h3>Activity</h3>' + activity + '</section>'
       + '</div>';
 
-    const fl = IP.flags;
     const flagsTab = (function () {
       if (!fl) return '';
       if (fl.status === 'loading') {

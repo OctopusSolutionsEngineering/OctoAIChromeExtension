@@ -2954,3 +2954,75 @@ describe('Feature flags for one tenant', () => {
     expect(withFlags).toContain('data-tenanttab="Flags"');
   });
 });
+
+describe('Feature flag posture on the tenant overview', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const tenant = { Id: 'T1', TenantTags: [], Name: 'Mercy', ProjectEnvironments: { P1: ['E1', 'E2'] } };
+  const e1 = o => Object.assign({ DeploymentEnvironmentId: 'E1', IsEnabled: true }, o);
+  const e2 = o => Object.assign({ DeploymentEnvironmentId: 'E2', IsEnabled: true }, o);
+  const payload = { projectsRead: 1, byProject: { P1: { total: 5, items: [
+    { Id: 'A', Name: 'fully-on', DefaultIsEnabled: true, Environments: [e1({ RolloutPercentage: 100 }), e2({ RolloutPercentage: 100 })] },
+    { Id: 'B', Name: 'fully-off', DefaultIsEnabled: false, Environments: [e1({ IsEnabled: false }), e2({ IsEnabled: false })] },
+    { Id: 'C', Name: 'half-rolled', DefaultIsEnabled: true, Environments: [e1({ RolloutPercentage: 100 }), e2({ RolloutPercentage: 25 })] },
+    { Id: 'D', Name: 'prod-only', DefaultIsEnabled: false, Environments: [e1({ IsEnabled: false }), e2({ RolloutPercentage: 100 })] },
+    { Id: 'E', Name: 'default-on', DefaultIsEnabled: true, Environments: [] }
+  ] } } };
+  const model = data.tenantFlagModel(payload, tenant, { P1: ['E1', 'E2'] },
+    { E1: 'Staging', E2: 'Production' }, { P1: 'Patient Records' });
+
+  test('flags split into fully on, fully off and in between', () => {
+    expect(model.summary.fullyOn).toBe(2);       // fully-on, default-on
+    expect(model.summary.fullyOff).toBe(1);
+    expect(model.summary.betweenCount).toBe(2);  // half-rolled, prod-only
+  });
+
+  test('an environment with no override falls back to the flag default', () => {
+    expect(data.flagStateForTenant(undefined, tenant, true).key).toBe('on');
+    expect(data.flagStateForTenant(undefined, tenant, false).key).toBe('off');
+  });
+
+  test('in-between flags are named with what they are doing per environment', () => {
+    const half = model.summary.between.find(b => b.name === 'half-rolled');
+    expect(half.percent).toBe(25);
+    expect(half.states.map(s => s.envName + ':' + s.key)).toEqual(['Staging:on', 'Production:partial']);
+  });
+
+  test('a flag on in one environment and off in another counts as in between', () => {
+    const split = model.summary.between.find(b => b.name === 'prod-only');
+    expect(split.percent).toBeNull();
+    expect(split.states.map(s => s.key)).toEqual(['off', 'on']);
+  });
+
+  test('the overview panel shows the counts and names the in-between ones', () => {
+    const detail = data.tenantDetailModel({ tenant: tenant,
+      dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }],
+        Environments: [{ Id: 'E1', Name: 'Staging' }, { Id: 'E2', Name: 'Production' }], Items: [] } });
+    const html = Views.renderTenantDetail({ spaceId: 'S',
+      flags: { status: 'ready', model: model }, tenantDetail: { status: 'ready', model: detail } });
+    expect(html).toContain('fully on');
+    expect(html).toContain('fully off');
+    expect(html).toContain('in between');
+    expect(html).toContain('half-rolled');
+    expect(html).toContain('25%');
+  });
+
+  test('a tenant whose flags are all settled says so rather than showing an empty list', () => {
+    const settled = data.tenantFlagModel({ projectsRead: 1, byProject: { P1: { total: 1, items: [
+      { Id: 'A', Name: 'on', DefaultIsEnabled: true, Environments: [e1({ RolloutPercentage: 100 })] }
+    ] } } }, tenant, { P1: ['E1'] }, { E1: 'Staging' }, { P1: 'P' });
+    const detail = data.tenantDetailModel({ tenant: tenant,
+      dashboard: { Projects: [], Environments: [{ Id: 'E1', Name: 'Staging' }], Items: [] } });
+    const html = Views.renderTenantDetail({ spaceId: 'S',
+      flags: { status: 'ready', model: settled }, tenantDetail: { status: 'ready', model: detail } });
+    expect(html).toContain('settled one way or the other');
+  });
+
+  test('no panel before the flags have loaded', () => {
+    const detail = data.tenantDetailModel({ tenant: tenant,
+      dashboard: { Projects: [], Environments: [], Items: [] } });
+    const html = Views.renderTenantDetail({ spaceId: 'S', flags: { status: 'loading' },
+      tenantDetail: { status: 'ready', model: detail } });
+    expect(html).not.toContain('fully on');
+  });
+});
