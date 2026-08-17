@@ -1529,6 +1529,99 @@ function tenantDetailModel(payload) {
   };
 }
 
+
+// ─── Feature flags for one tenant ────────────────────────────────────────────
+// Flags are project-scoped, so a tenant's flags are the flags of the projects
+// it is connected to — one request per project, which is affordable on a single
+// tenant page and was not across a list.
+//
+// Resolving a flag for a tenant follows the order Octopus applies:
+//   excluded by id or tag   → off for this tenant, whatever else the flag says
+//   named tenants present   → on only if this tenant is one of them
+//   tagged tenants present  → on only if one of its tags matches
+//   otherwise               → the flag's own enabled state and rollout
+//
+// Two things cannot be resolved from configuration and are reported as
+// undecided rather than guessed: a percentage rollout, which picks tenants at
+// evaluation time, and a segment, which is a rule about end users.
+
+const TENANT_FLAG_MAX_PROJECTS = 6;
+
+async function fetchTenantFlags(spaceId, projectIds) {
+  const ids = (projectIds || []).slice(0, TENANT_FLAG_MAX_PROJECTS);
+  const byProject = {};
+  for (let i = 0; i < ids.length; i++) {
+    try { byProject[ids[i]] = await fetchFeatureToggles(spaceId, ids[i]); }
+    catch (e) { byProject[ids[i]] = { items: [], total: 0, error: true }; }
+  }
+  return { byProject: byProject, projectsRead: ids.length,
+    truncated: (projectIds || []).length > ids.length };
+}
+
+function flagStateForTenant(env, tenant) {
+  if (!env) return { key: 'inherit' };
+  const tags = (tenant && tenant.TenantTags) || [];
+  const id = tenant && tenant.Id;
+  const has = (list, v) => (list || []).indexOf(v) !== -1;
+  const tagHit = list => (list || []).some(t => tags.indexOf(t) !== -1);
+
+  if (has(env.ExcludedTenantIds, id) || tagHit(env.ExcludedTenantTags)) return { key: 'excluded' };
+  if (!env.IsEnabled) return { key: 'off' };
+
+  const named = (env.TenantIds || []).length || (env.TenantTags || []).length;
+  if (named) {
+    const targeted = has(env.TenantIds, id) || tagHit(env.TenantTags);
+    // Named targeting is exact: a tenant on the list has it, one not on the
+    // list does not, regardless of the percentage beside it.
+    return targeted ? { key: 'on', via: 'targeted' } : { key: 'off', via: 'targeted-elsewhere' };
+  }
+  if ((env.Segments || []).length) return { key: 'segment' };
+
+  const pct = env.RolloutPercentage != null ? env.RolloutPercentage : env.ClientRolloutPercentage;
+  if (pct != null && pct > 0 && pct < 100) return { key: 'partial', percent: pct };
+  if (pct === 0) return { key: 'off' };
+  return { key: 'on' };
+}
+
+function tenantFlagModel(payload, tenant, connectedEnvIdsByProject, envName, projectName) {
+  const byProject = (payload && payload.byProject) || {};
+  const flags = [];
+  let unreadable = 0;
+
+  Object.keys(byProject).forEach(pid => {
+    const bucket = byProject[pid] || {};
+    if (bucket.error) { unreadable++; return; }
+    const envs = (connectedEnvIdsByProject || {})[pid] || [];
+    (bucket.items || []).forEach(f => {
+      const byEnv = {};
+      (f.Environments || []).forEach(e => { byEnv[e.DeploymentEnvironmentId] = e; });
+      const cells = envs.map(eid => {
+        const st = flagStateForTenant(byEnv[eid], tenant);
+        return { envId: eid, envName: (envName || {})[eid] || eid, key: st.key,
+          percent: st.percent, via: st.via };
+      });
+      // A flag that is off or inherited everywhere for this tenant is not news
+      // on a tenant page; the project page is where those live.
+      const live = cells.some(c => c.key === 'on' || c.key === 'partial' || c.key === 'segment');
+      flags.push({ id: f.Id, name: f.Name, projectId: pid, projectName: (projectName || {})[pid] || pid,
+        cells: cells, live: live,
+        undecided: cells.some(c => c.key === 'partial' || c.key === 'segment') });
+    });
+  });
+
+  flags.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const live = flags.filter(f => f.live);
+  return {
+    flags: live,
+    total: flags.length,
+    liveCount: live.length,
+    undecidedCount: live.filter(f => f.undecided).length,
+    unreadableProjects: unreadable,
+    truncated: !!(payload && payload.truncated),
+    projectsRead: (payload && payload.projectsRead) || 0
+  };
+}
+
 if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
   buildEstate, isEmptyEstate, coldStartApplies, filterEnvRows, emptyKind, taskKind, machineActivityModel, eventsModel, fetchMachineDetail, overviewModel, environmentsModel, policiesModel, buildFacets, applyFilters,
   workersModel, workerFacets, applyWorkerFilters, machineToTarget, typeGroup, healthKeyLabel, osVersionLabel,
@@ -1541,7 +1634,8 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   viewNeedsEstate,
   fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
   parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
-  fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets }; }
+  fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
+  fetchTenantFlags, tenantFlagModel, flagStateForTenant }; }
 
 if (typeof module !== 'undefined') {
   module.exports = { setServerUrl, apiUrl, fetchJson, readConfig, loadSpaces, hydrateSpace,
@@ -1557,5 +1651,6 @@ if (typeof module !== 'undefined') {
     viewNeedsEstate,
     fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
     parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
-    fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets };
+    fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
+    fetchTenantFlags, tenantFlagModel, flagStateForTenant };
 }

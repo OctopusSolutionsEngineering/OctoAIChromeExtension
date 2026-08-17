@@ -1864,9 +1864,12 @@ const Views = (function () {
     // thing to go and look at, not part of the answer to "what is on this
     // tenant right now".
     const unsetCount = m.readiness ? m.readiness.count : 0;
-    const tab = (unsetCount && IP.tenantTab === 'Variables') ? 'Variables' : 'Overview';
+    const flagCount = (IP.flags && IP.flags.status === 'ready') ? IP.flags.model.liveCount : null;
     const tabDefs = [{ key: 'Overview', label: 'Overview' }];
     if (unsetCount) tabDefs.push({ key: 'Variables', label: 'Unset variables', count: unsetCount });
+    if (IP.flags) tabDefs.push({ key: 'Flags', label: 'Feature flags', count: flagCount || 0 });
+    const wanted = IP.tenantTab || 'Overview';
+    const tab = tabDefs.some(d => d.key === wanted) ? wanted : 'Overview';
     const tabs = tabDefs.length > 1
       ? '<nav class="ip-tabs ip-section-tabs" aria-label="Tenant sections">'
         + tabDefs.map(d => '<button type="button" class="ip-tab ip-section-tab'
@@ -1884,6 +1887,47 @@ const Views = (function () {
       +     '</h3>' + infra + '</section>'
       +   '<section class="ip-tn-panel"><h3>Activity</h3>' + activity + '</section>'
       + '</div>';
+
+    const fl = IP.flags;
+    const flagsTab = (function () {
+      if (!fl) return '';
+      if (fl.status === 'loading') {
+        return '<section class="ip-tn-panel"><h3>Feature flags</h3>'
+          + '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading flags…</span></div></section>';
+      }
+      if (fl.status === 'error') {
+        return '<section class="ip-tn-panel"><h3>Feature flags</h3>'
+          + '<p class="ip-tn-muted">' + escHtml(fl.error) + '</p></section>';
+      }
+      const fm = fl.model;
+      if (!fm.flags.length) {
+        return '<section class="ip-tn-panel"><h3>Feature flags</h3>'
+          + '<p class="ip-tn-muted">None of the ' + fm.total + ' flags on this tenant\'s projects is on for it.</p></section>';
+      }
+      const tone = k => k === 'on' ? 'healthy' : (k === 'partial' || k === 'segment' ? 'warning' : 'disabled');
+      const label = c => c.key === 'on' ? (c.via === 'targeted' ? 'on · targeted' : 'on')
+        : c.key === 'partial' ? c.percent + '% rollout'
+        : c.key === 'segment' ? 'segment rule'
+        : c.key === 'excluded' ? 'excluded'
+        : c.key === 'off' ? (c.via === 'targeted-elsewhere' ? 'other tenants' : 'off') : '—';
+      const rows = fm.flags.map(f =>
+        '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(f.name) + '</span>'
+        + '<span class="ip-tn-age">' + escHtml(f.projectName) + '</span>'
+        + '<span class="ip-tn-flagstates">' + f.cells.map(c =>
+            '<span class="ip-tn-flagstate"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone(c.key)) + '"></span>'
+            + escHtml(c.envName) + ' <span class="ip-tn-age">' + escHtml(label(c)) + '</span></span>').join('')
+        + '</span></li>').join('');
+      const notes = [];
+      if (fm.undecidedCount) notes.push(fm.undecidedCount + ' of these depend on a percentage rollout or a segment rule, '
+        + 'which are decided when the flag is evaluated rather than in its configuration — this cannot say yes or no for a tenant.');
+      if (fm.unreadableProjects) notes.push(fm.unreadableProjects + ' of this tenant\'s projects could not be read for flags.');
+      if (fm.truncated) notes.push('Only the first ' + fm.projectsRead + ' projects were read.');
+      return '<section class="ip-tn-panel"><h3>Feature flags'
+        + '<span class="ip-tn-age">' + fm.liveCount + ' on for this tenant, of ' + fm.total + ' across its projects</span></h3>'
+        + '<ul class="ip-tn-targets">' + rows + '</ul>'
+        + (notes.length ? '<p class="ip-tn-legend">' + notes.map(escHtml).join(' ') + '</p>' : '')
+        + '</section>';
+    })();
 
     const variablesTab = m.readiness && m.readiness.missing.length
       ? '<section class="ip-tn-panel"><h3>Unset variables'
@@ -1908,9 +1952,9 @@ const Views = (function () {
       + '</header>'
       + '<div class="ip-tn-cards">' + connCard + readyCard + outcomeCard + '</div>'
       + tabs
-      + (tab === 'Variables' ? variablesTab : overviewTab)
-      + '<p class="ip-rel-hnote-inline">Currency against each project\'s latest release, and feature flags scoped to this '
-      +   'tenant, are not shown yet — both need a request per connected project.</p>';
+      + (tab === 'Variables' ? variablesTab : (tab === 'Flags' ? flagsTab : overviewTab))
+      + '<p class="ip-rel-hnote-inline">Currency against each project\'s latest release is not shown yet — '
+      +   'it needs a request per connected project.</p>';
   }
 
   function renderThemeToggle(IP) {

@@ -2722,7 +2722,7 @@ describe('Tenant detail — view', () => {
   });
 
   test('what is not built yet is named rather than silently missing', () => {
-    expect(render()).toContain('need a request per connected project');
+    expect(render()).toContain('needs a request per connected project');
   });
 
   test('it links back to the list', () => {
@@ -2875,5 +2875,82 @@ describe('Unset variables live behind a tab, in amber', () => {
   test('the readiness card is amber too, not the failure tone', () => {
     const html = render(build([], [{ Id: 't1', Name: 'ApiKey' }]));
     expect(html).toContain('ip-rel-node-warning');
+  });
+});
+
+describe('Feature flags for one tenant', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const tenant = { Id: 'T1', TenantTags: ['Hosted/Reef'], Name: 'Mercy', ProjectEnvironments: { P1: ['E1'] } };
+  const env = o => Object.assign({ DeploymentEnvironmentId: 'E1', IsEnabled: true }, o);
+
+  test('exclusion beats everything else', () => {
+    expect(data.flagStateForTenant(env({ ExcludedTenantIds: ['T1'], TenantIds: ['T1'] }), tenant).key).toBe('excluded');
+    expect(data.flagStateForTenant(env({ ExcludedTenantTags: ['Hosted/Reef'] }), tenant).key).toBe('excluded');
+  });
+
+  test('named targeting is exact, and beats the percentage beside it', () => {
+    // Named tenants have it even at 0% rollout — that is what naming means.
+    expect(data.flagStateForTenant(env({ TenantIds: ['T1'], RolloutPercentage: 0 }), tenant).key).toBe('on');
+    expect(data.flagStateForTenant(env({ TenantIds: ['T9'] }), tenant).key).toBe('off');
+    expect(data.flagStateForTenant(env({ TenantIds: ['T9'] }), tenant).via).toBe('targeted-elsewhere');
+  });
+
+  test('a matching tag targets the tenant', () => {
+    expect(data.flagStateForTenant(env({ TenantTags: ['Hosted/Reef'] }), tenant).key).toBe('on');
+    expect(data.flagStateForTenant(env({ TenantTags: ['Hosted/Other'] }), tenant).key).toBe('off');
+  });
+
+  test('what cannot be decided from configuration is not guessed', () => {
+    expect(data.flagStateForTenant(env({ Segments: [{ Key: 'plan', Value: 'pro' }] }), tenant).key).toBe('segment');
+    expect(data.flagStateForTenant(env({ RolloutPercentage: 10 }), tenant).key).toBe('partial');
+  });
+
+  test('a disabled flag is off however it is targeted', () => {
+    expect(data.flagStateForTenant(env({ IsEnabled: false, TenantIds: ['T1'] }), tenant).key).toBe('off');
+  });
+
+  test('only flags actually on for the tenant are listed', () => {
+    const payload = { projectsRead: 1, byProject: { P1: { items: [
+      { Id: 'F1', Name: 'on-for-us', Environments: [env({ TenantIds: ['T1'] })] },
+      { Id: 'F2', Name: 'for-others', Environments: [env({ TenantIds: ['T9'] })] },
+      { Id: 'F3', Name: 'rolling', Environments: [env({ RolloutPercentage: 25 })] }
+    ], total: 3 } } };
+    const m = data.tenantFlagModel(payload, tenant, { P1: ['E1'] }, { E1: 'Production' }, { P1: 'Patient Records' });
+    expect(m.flags.map(f => f.name)).toEqual(['on-for-us', 'rolling']);
+    expect(m.total).toBe(3);
+    expect(m.liveCount).toBe(2);
+    expect(m.undecidedCount).toBe(1);
+  });
+
+  test('an unreadable project is counted, not silently dropped', () => {
+    const payload = { projectsRead: 2, byProject: { P1: { items: [], total: 0 }, P2: { error: true } } };
+    const m = data.tenantFlagModel(payload, tenant, { P1: ['E1'] }, {}, {});
+    expect(m.unreadableProjects).toBe(1);
+  });
+
+  test('the tab says when a state cannot be decided', () => {
+    const model = data.tenantDetailModel({
+      tenant: tenant,
+      dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E1', Name: 'Production' }], Items: [] }
+    });
+    const flags = { status: 'ready', model: data.tenantFlagModel(
+      { projectsRead: 1, byProject: { P1: { items: [{ Id: 'F3', Name: 'rolling',
+        Environments: [env({ RolloutPercentage: 25 })] }], total: 1 } } },
+      tenant, { P1: ['E1'] }, { E1: 'Production' }, { P1: 'Patient Records' }) };
+    const html = Views.renderTenantDetail({ spaceId: 'S', tenantTab: 'Flags', flags: flags,
+      tenantDetail: { status: 'ready', model } });
+    expect(html).toContain('25% rollout');
+    expect(html).toContain('decided when the flag is evaluated');
+  });
+
+  test('the flags tab only exists once flags have been asked for', () => {
+    const model = data.tenantDetailModel({ tenant: tenant,
+      dashboard: { Projects: [], Environments: [], Items: [] } });
+    const without = Views.renderTenantDetail({ spaceId: 'S', tenantDetail: { status: 'ready', model } });
+    expect(without).not.toContain('data-tenanttab="Flags"');
+    const withFlags = Views.renderTenantDetail({ spaceId: 'S', flags: { status: 'loading' },
+      tenantDetail: { status: 'ready', model } });
+    expect(withFlags).toContain('data-tenanttab="Flags"');
   });
 });

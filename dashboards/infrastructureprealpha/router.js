@@ -60,7 +60,7 @@ const Router = (function () {
       if (stale) IP.tenantDetail = { status: 'loading', tenantId: tenantId, spaceId: IP.spaceId };
       el.innerHTML = Views.renderTenantDetail(IP);
       Views.bindTenantDetail && Views.bindTenantDetail(IP);
-      if (stale) { IP.tenantTab = 'Overview'; }
+      if (stale) { IP.tenantTab = 'Overview'; IP.flags = null; }
       if (stale) {
         const wantedSpace = IP.spaceId;
         const stillWanted = () => IP.spaceId === wantedSpace
@@ -85,6 +85,29 @@ const Router = (function () {
                 variables: res[2].v, variablesError: res[2].err,
                 machines: res[3].mach, machinesError: res[3].err }) };
             render();
+
+            // Flags are one request per connected project, so they follow the
+            // page rather than holding it up. Failing leaves the rest intact.
+            const tenantDoc = res[0] || {};
+            const projectIds = Object.keys(tenantDoc.ProjectEnvironments || {});
+            const envNames = {}; ((res[1] || {}).Environments || []).forEach(e => { envNames[e.Id] = e.Name; });
+            const projNames = {}; ((res[1] || {}).Projects || []).forEach(pr => { projNames[pr.Id] = pr.Name; });
+            const connected = {}; projectIds.forEach(pid => { connected[pid] = tenantDoc.ProjectEnvironments[pid] || []; });
+            if (projectIds.length) {
+              IP.flags = { status: 'loading' };
+              Data.fetchTenantFlags(wantedSpace, projectIds)
+                .then(payload => {
+                  if (!stillWanted()) return;
+                  IP.flags = { status: 'ready',
+                    model: Data.tenantFlagModel(payload, tenantDoc, connected, envNames, projNames) };
+                  render();
+                })
+                .catch(() => {
+                  if (!stillWanted()) return;
+                  IP.flags = { status: 'error', error: 'Feature flags could not be read for this tenant\'s projects.' };
+                  render();
+                });
+            }
           })
           .catch(e => {
             if (!stillWanted()) return;

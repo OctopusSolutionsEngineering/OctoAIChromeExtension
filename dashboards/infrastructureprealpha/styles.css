@@ -879,3 +879,5 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-pill-warning { background: rgba(196,83,23,.22); color: var(--color-orange-200);
   border-color: transparent; }
 .dark .ip-tn-tabcount { background: rgba(196,83,23,.22); color: var(--color-orange-200); }
+.ip-tn-flagstates { display: inline-flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.ip-tn-flagstate { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
