@@ -1319,7 +1319,11 @@ const Views = (function () {
     // Grouping by time interleaves flag changes with the releases, so a flip
     // that shipped alongside a deployment reads as one moment rather than as
     // two facts in two sections.
-    const changes = (grouping === 'Time' && flags && flags.status === 'ready' && flags.changes) ? flags.changes : [];
+    const changesAll = (flags && flags.status === 'ready' && flags.changes) ? flags.changes : [];
+    // Same treatment as variable changes: a change scoped outside this grid has
+    // no column to sit in, so it is counted in the note rather than drawn.
+    const changesShown = changesAll.filter(c => !c.scopedElsewhere);
+    const changes = grouping === 'Time' ? changesShown : [];
     const varsAll = (flags && flags.status === 'ready' && flags.variables) ? flags.variables : [];
     const varsShown = varsAll.filter(c => !c.scopedElsewhere);
     const varChanges = grouping === 'Time' ? varsShown : [];
@@ -1344,13 +1348,16 @@ const Views = (function () {
     if (m.hiddenByWindow) notes.push(m.hiddenByWindow + ' older ' + (m.hiddenByWindow === 1 ? 'release is' : 'releases are') + ' outside this window.');
     if (m.windowed) notes.push('History reaches back ' + m.historyCount + ' releases per channel.');
     if (m.neverDeployedCount) notes.push(m.neverDeployedCount + ' of these were created and never deployed anywhere.');
+    const flagElsewhere = changesAll.length - changesShown.length;
+    if (flagElsewhere) notes.push(flagElsewhere + ' flag ' + (flagElsewhere === 1 ? 'change is' : 'changes are')
+      + ' scoped to environments this project does not deploy to.');
 
     // Grouped by type, the changes get their own band rather than being mixed
     // into the releases; grouped by time they are already interleaved above.
     let changeBand = '';
-    if (grouping === 'Type' && flags && flags.status === 'ready' && (flags.changes || []).length) {
+    if (grouping === 'Type' && changesShown.length) {
       const envIds = (m.environments || []).map(e => e.id);
-      const changeRows = flags.changes.map(c => _relFlagChangeRow(c, cols, off, envIds)).filter(Boolean).join('');
+      const changeRows = changesShown.map(c => _relFlagChangeRow(c, cols, off, envIds)).filter(Boolean).join('');
       if (changeRows) {
         changeBand = '<div class="ip-rel-band"><p class="ip-rel-bandhead">Flag changes'
           + '<span class="ip-rel-bandcount">last ' + escHtml(String(windowLabel).toLowerCase()) + '</span></p>'

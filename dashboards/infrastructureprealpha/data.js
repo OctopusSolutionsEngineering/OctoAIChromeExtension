@@ -880,13 +880,38 @@ function flagEnvState(env) {
   if (!env) return { key: 'inherit', percent: null };
   if (!env.IsEnabled) return { key: 'off', percent: null };
   const pct = env.RolloutPercentage != null ? env.RolloutPercentage : env.ClientRolloutPercentage;
+  // Enabled at 0% is the first step of a staged rollout and reaches nobody, so
+  // it is off. The tenant resolver has always said so; this one said "on".
+  if (pct === 0) return { key: 'off', percent: 0 };
   if (pct != null && pct > 0 && pct < 100) return { key: 'partial', percent: pct };
   return { key: 'on', percent: pct == null ? 100 : pct };
 }
 
+/** What a flag does in one environment of a grid, with no override meaning the
+ *  flag's own default. Both project-level flag models resolve it this way; a
+ *  model that skipped the default called a flag "on everywhere" on the strength
+ *  of the one environment somebody had configured. */
+function flagStateInGrid(flag, envId) {
+  const envs = flag.Environments || [];
+  let found = null;
+  envs.forEach(e => { if (e.DeploymentEnvironmentId === envId) found = e; });
+  if (found) return flagEnvState(found);
+  return { key: flag.DefaultIsEnabled ? 'on' : 'off', percent: null, viaDefault: true };
+}
+
 /** A flag is in flight when it is part-way somewhere: a percentage between 0
  *  and 100, or on in one environment and off in another. */
-function flagIsInFlight(flag) {
+function flagIsInFlight(flag, gridEnvironments) {
+  // Against a grid, every environment counts — including the ones with no
+  // override, which fall back to the default. Without one, only configured
+  // environments can be compared, which is what the callers without a grid get.
+  const ids = (gridEnvironments || []).map(e => e.id);
+  if (ids.length) {
+    const states = {};
+    ids.forEach(id => { states[flagStateInGrid(flag, id).key] = true; });
+    if (states.partial) return true;
+    return !!(states.on && states.off);
+  }
   const envs = flag.Environments || [];
   if (!envs.length) return false;
   if (envs.some(e => flagEnvState(e).key === 'partial')) return true;
@@ -900,7 +925,7 @@ function featureFlagModel(payload, gridEnvironments) {
   const all = src.items || [];
   const envs = (gridEnvironments || []).map(e => ({ id: e.id, name: e.name }));
 
-  const inFlight = all.filter(flagIsInFlight).map(f => {
+  const inFlight = all.filter(f => flagIsInFlight(f, envs)).map(f => {
     const byEnv = {};
     (f.Environments || []).forEach(e => { byEnv[e.DeploymentEnvironmentId] = e; });
     const cells = envs.map(env => {
@@ -919,12 +944,15 @@ function featureFlagModel(payload, gridEnvironments) {
     };
   }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
+  // Counted over the grid with the default resolved, so these agree with the
+  // project page's own flag panel. Counting over configured environments only
+  // called a flag on in one environment "on everywhere".
   const settled = { onEverywhere: 0, offEverywhere: 0, noOverrides: 0 };
   all.forEach(f => {
-    if (flagIsInFlight(f)) return;
-    const envs2 = f.Environments || [];
-    if (!envs2.length) settled.noOverrides++;
-    else if (envs2.every(e => e.IsEnabled)) settled.onEverywhere++;
+    if (flagIsInFlight(f, envs)) return;
+    if (!(f.Environments || []).length || !envs.length) { settled.noOverrides++; return; }
+    const states = envs.map(env => flagStateInGrid(f, env.id).key);
+    if (states.every(k => k === 'on')) settled.onEverywhere++;
     else settled.offEverywhere++;
   });
 
@@ -973,12 +1001,16 @@ function flagChangeModel(events, gridEnvironments, windowHours, now) {
         const before = (ctx.Environments || [])[idx] || null;
         const envId = (after && after.DeploymentEnvironmentId)
           || (before && before.DeploymentEnvironmentId) || null;
-        // Only environments the grid is showing; an override for an environment
-        // this project never deploys to has no column to sit in.
-        if (!envId || !(envId in envName)) return;
+        if (!envId) return;
+        // An override for an environment this grid does not show has no column
+        // to sit in, but dropping it made a real audit entry disappear without
+        // trace. It is kept and marked, the way variable changes already are, so
+        // the band can say how many it is not showing.
+        const inGrid = envId in envName;
         changes.push({
           id: ev.Id + ':' + dIndex, flagName: name, scope: 'environment',
-          envId: envId, envName: envName[envId], occurred: at,
+          envId: envId, envName: inGrid ? envName[envId] : '', scopedElsewhere: !inGrid,
+          occurred: at,
           before: before ? flagEnvState(before) : null,
           after: after ? flagEnvState(after) : null,
           username: ev.Username || ''
@@ -1004,7 +1036,7 @@ function flagChangeModel(events, gridEnvironments, windowHours, now) {
 function flagChangeLabel(change) {
   const side = st => {
     if (!st) return 'no override';
-    if (st.key === 'off') return 'Off';
+    if (st.key === 'off') return st.percent === 0 ? '0%' : 'Off';
     if (st.key === 'partial') return st.percent + '%';
     if (st.key === 'on') return st.percent != null && st.percent < 100 ? st.percent + '%' : 'On';
     return 'default';
@@ -1063,16 +1095,29 @@ function variableChangeModel(events, gridEnvironments, windowHours, now) {
     if (cutoff != null && at < cutoff) return;
     const vars = ctx.Variables || [];
 
+    // A JSON Patch path points into the document as it stands when that op is
+    // applied, not into the original. An add or remove earlier in the same event
+    // shifts every index after it, so replaying the ops against a working copy
+    // is the only way the index means what it says. Reading them all against the
+    // original named the wrong variable whenever an event did more than one thing.
+    const working = vars.slice();
+
     (cd.Differences || []).forEach((d, dIndex) => {
       const path = String(d.path || '');
       const valueMatch = /^\/Variables\/(\d+)\/Value$/.exec(path);
       const wholeMatch = /^\/Variables\/(\d+)$/.exec(path);
-      if (!valueMatch && !wholeMatch) return;
+      if (!valueMatch && !wholeMatch) {
+        // Still has to move the working copy along, or the next index is wrong.
+        applyVariablePatch(working, d);
+        return;
+      }
 
       const idx = Number((valueMatch || wholeMatch)[1]);
-      const before = vars[idx] || null;
-      const after = wholeMatch ? (d.value || null) : null;
+      const op = String(d.op || '').toLowerCase();
+      const before = working[idx] || null;
+      const after = (wholeMatch && op !== 'remove') ? (d.value || null) : null;
       const subject = before || after;
+      applyVariablePatch(working, d);
       if (!subject) return;
 
       const sensitive = isSensitiveVariable(before) || isSensitiveVariable(after);
@@ -1083,7 +1128,10 @@ function variableChangeModel(events, gridEnvironments, windowHours, now) {
       changes.push({
         id: ev.Id + ':' + dIndex,
         name: subject.Name || '(unnamed)',
-        kind: wholeMatch ? 'added' : 'value',
+        // The op was never read, so a deletion was announced as an addition on
+        // the day the variable disappeared.
+        kind: !wholeMatch ? 'value'
+          : (op === 'remove' ? 'removed' : (op === 'replace' ? 'replaced' : 'added')),
         sensitive: sensitive,
         // Never carry a sensitive value through, placeholder or not.
         before: sensitive || !valueMatch ? null : shortValue(before ? before.Value : null),
@@ -1100,10 +1148,23 @@ function variableChangeModel(events, gridEnvironments, windowHours, now) {
   return changes.sort((a, b) => b.occurred - a.occurred);
 }
 
+/** Applies just enough of a JSON Patch op to keep array indices aligned. */
+function applyVariablePatch(list, d) {
+  const path = String((d && d.path) || '');
+  const whole = /^\/Variables\/(\d+)$/.exec(path);
+  if (!whole) return;
+  const idx = Number(whole[1]);
+  const op = String((d && d.op) || '').toLowerCase();
+  if (op === 'add') list.splice(idx, 0, d.value || null);
+  else if (op === 'remove') list.splice(idx, 1);
+  else if (op === 'replace') list[idx] = d.value || null;
+}
 function variableChangeLabel(change) {
   if (!change) return '';
+  if (change.kind === 'removed') return change.sensitive ? 'secret deleted' : 'deleted';
   if (change.sensitive) return 'secret changed';
   if (change.kind === 'added') return 'added';
+  if (change.kind === 'replaced') return 'replaced';
   const before = change.before === '' ? 'empty' : change.before;
   const after = change.after === '' ? 'empty' : change.after;
   if (before == null && after == null) return 'changed';
@@ -1180,6 +1241,22 @@ function tenantOutcomeKey(state, at, now) {
   return key;
 }
 
+/** The server caps how many projects the dashboard returns. Every deployment
+ *  fact on the tenant pages comes out of that same payload, so a tenant whose
+ *  projects sit beyond the cap reads as never deployed. The projects list has
+ *  always said when it was capped; the tenant views inherited the data and not
+ *  the caveat. */
+function dashboardCap(dash) {
+  const d = dash || {};
+  const shown = (d.Projects || []).length;
+  return {
+    projectLimit: typeof d.ProjectLimit === 'number' ? d.ProjectLimit : null,
+    isFiltered: !!d.IsFiltered,
+    shown: shown,
+    capped: (typeof d.ProjectLimit === 'number' && shown >= d.ProjectLimit) || !!d.IsFiltered
+  };
+}
+
 function tenantsModel(payload) {
   const src = payload || {};
   const tenants = (src.tenants && src.tenants.items) || [];
@@ -1239,6 +1316,7 @@ function tenantsModel(payload) {
     tenants: rows,
     total: (src.tenants && src.tenants.total) || rows.length,
     truncated: !!(src.tenants && src.tenants.truncated),
+    dashboardCap: dashboardCap(dash),
     tagSets: (src.tagSets || []).map(ts => ({
       name: ts.Name,
       tags: (ts.Tags || []).map(tag => ({ name: tag.Name, colour: tag.Color || '' }))
@@ -1404,11 +1482,28 @@ function tenantReadiness(variables, connectedEnvIdsByProject, envName, succeeded
       ? ((connectedEnvIdsByProject || {})[projectId] || [])
       : allEnvIds;
 
+    // Two different payload shapes under one name. A project's variables are
+    // keyed environment then template, because a tenant can answer differently
+    // per environment. A library set's are keyed by template alone — the answer
+    // is per tenant. Reading a library set the project way finds nothing under
+    // an environment id and reports every common variable unset.
+    const isLibrary = entry.scope === 'library';
     tmpl.forEach(t => {
       const hasDefault = !(t.DefaultValue === undefined || t.DefaultValue === null || t.DefaultValue === '');
       if (hasDefault) return;
       const unsetIn = [];
       let anyProven = false;
+      if (isLibrary) {
+        const supplied = (b.Variables || {})[t.Id];
+        if (supplied === undefined || supplied === null || supplied === '') {
+          // One answer covers every environment, so it is one finding, not one
+          // per environment — counting it per environment inflated the total.
+          const provenAnywhere = envs.some(envId => proven[projectId + '|' + envId]);
+          missing.push({ name: t.Label || t.Name || t.Id, scope: b.LibraryVariableSetName || entry.id,
+            environments: [], proven: provenAnywhere });
+        }
+        return;
+      }
       envs.forEach(envId => {
         const values = (b.Variables || {})[envId] || {};
         const supplied = values[t.Id];
@@ -1460,8 +1555,13 @@ function matchTenantTargets(machines, tenant) {
   return {
     dedicated: dedicated, shared: shared, total: all.length,
     healthy: all.filter(t => healthKey(t.health, t.disabled) === 'healthy').length,
-    // A tenant with no matching target has deployments that resolve to nothing.
-    orphaned: all.length === 0
+    // Only true when the whole estate was read. Against a capped list, no match
+    // means the targets may be among the machines we never fetched, and saying
+    // "resolves to nothing" would be an assertion the read cannot support.
+    orphaned: all.length === 0 && !(machines && machines.truncated),
+    truncated: !!(machines && machines.truncated),
+    estateRead: (machines && machines.items ? machines.items.length : 0),
+    estateTotal: (machines && machines.total) || 0
   };
 }
 
@@ -1547,6 +1647,7 @@ function tenantDetailModel(payload) {
     matrix: matrix,
     infrastructure: src.machines ? matchTenantTargets(src.machines, tenant) : null,
     infrastructureError: src.machinesError || null,
+    dashboardCap: dashboardCap(dash),
     activity: activity
   };
 }
@@ -1769,10 +1870,13 @@ function projectFlagModel(payload, environmentIds, envName) {
       return { envId: id, envName: names[id] || id, key: st.key, percent: st.percent,
         viaDefault: !e, tenantCount: e ? ((e.TenantIds || []).length + (e.TenantTags || []).length) : 0 };
     });
+    // No environments is no evidence, not evidence of drift. These used to fall
+    // through to "between" and be reported as rolling out from nothing.
     const allOn = cells.length > 0 && cells.every(c => c.key === 'on');
     const allOff = cells.length > 0 && cells.every(c => c.key === 'off');
+    const settled = !cells.length ? 'unscoped' : (allOn ? 'on' : (allOff ? 'off' : 'between'));
     return { id: f.Id, name: f.Name, slug: f.Slug, defaultOn: !!f.DefaultIsEnabled,
-      cells: cells, settled: allOn ? 'on' : (allOff ? 'off' : 'between') };
+      cells: cells, settled: settled };
   }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
   const between = flags.filter(f => f.settled === 'between');
@@ -1802,12 +1906,22 @@ function projectTargets(machines, roles, environmentIds, tenantedMode) {
   const wantRoles = roles || [];
   const wantEnvs = environmentIds || [];
   if (!wantRoles.length) {
-    return { selectsByRole: false, matched: [], total: 0,
+    return { selectsByRole: false, scopeUnknown: false, matched: [], total: 0,
       healthy: 0, unhealthy: 0, disabled: 0, byRole: [], byEnvironment: [], tenanted: null };
+  }
+  // An empty environment list used to match every environment, so a project on
+  // the built-in Default Lifecycle (no phases) counted targets across the whole
+  // estate while the same page said it reached no environments. Unknown scope is
+  // reported as unknown rather than resolved against everything.
+  if (!wantEnvs.length) {
+    return { selectsByRole: true, scopeUnknown: true, matched: [], total: 0,
+      healthy: 0, unhealthy: 0, disabled: 0, byRole: [], byEnvironment: {}, tenanted: null,
+      truncated: !!(machines && machines.truncated), estateRead: list.length,
+      estateTotal: (machines && machines.total) || list.length };
   }
   const matched = list.filter(m =>
     (m.Roles || []).some(r => wantRoles.indexOf(r) !== -1)
-    && (!wantEnvs.length || (m.EnvironmentIds || []).some(e => wantEnvs.indexOf(e) !== -1)));
+    && (m.EnvironmentIds || []).some(e => wantEnvs.indexOf(e) !== -1));
 
   const counts = { healthy: 0, unhealthy: 0, disabled: 0 };
   matched.forEach(m => { counts[healthKey(m.HealthStatus, m.IsDisabled)]++; });
@@ -1833,6 +1947,9 @@ function projectTargets(machines, roles, environmentIds, tenantedMode) {
 
   return {
     selectsByRole: true,
+    truncated: !!(machines && machines.truncated),
+    estateRead: list.length,
+    estateTotal: (machines && machines.total) || list.length,
     matched: matched.map(m => ({ id: m.Id, name: m.Name, health: m.HealthStatus,
       disabled: !!m.IsDisabled, roles: m.Roles || [] })),
     total: matched.length,
@@ -1950,6 +2067,14 @@ function projectMapModel(payload) {
     triggers: triggers,
     process: process,
     processError: src.processError ? 'The deployment process could not be read.' : null,
+    // fetchProjectMap soft-catches each of these so one failure cannot cost the
+    // page. Dropping the errors here turned every one of them into a confident
+    // zero: "no triggers configured" for a 403, when every project has at least
+    // a Default channel and a lifecycle.
+    channelsError: src.channelsError ? 'Channels could not be read for this project.' : null,
+    triggersError: src.triggersError ? 'Triggers could not be read for this project.' : null,
+    tenantsError: src.tenantsError ? 'Connected tenants could not be counted.' : null,
+    lifecycleError: src.lifecycleError ? 'Lifecycles could not be read for this project.' : null,
     lifecycle: (src.lifecycle || {}).Name || '',
     lifecycles: lifecycles,
     lifecycleEnvironments: columns,
@@ -2003,7 +2128,7 @@ if (typeof module !== 'undefined') {
     fetchProgression, progressionModel, HISTORY_WINDOWS,
     fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
     fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
-    fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue,
+    fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue, applyVariablePatch,
     viewNeedsEstate,
     fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
     parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,

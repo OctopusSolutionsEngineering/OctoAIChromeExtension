@@ -1809,7 +1809,7 @@ describe('Feature flags — model', () => {
   const data = require('./data');
   const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Test' }, { id: 'E3', name: 'Prod' }];
   const payload = { total: 5, truncated: false, items: [
-    { Id: 'F1', Name: 'on-everywhere', Environments: [
+    { Id: 'F1', Name: 'on-everywhere', DefaultIsEnabled: true, Environments: [
       { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
       { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 100 }] },
     { Id: 'F2', Name: 'partial', Environments: [
@@ -1826,6 +1826,36 @@ describe('Feature flags — model', () => {
   test('only flags mid-journey get a row', () => {
     const m = data.featureFlagModel(payload, grid);
     expect(m.flags.map(f => f.name)).toEqual(['mixed', 'partial']);
+  });
+
+  test('an unconfigured environment falls to the default, and can put a flag in flight', () => {
+    // On in Dev, and off in Test and Prod because the flag's default says so.
+    // Counting only configured environments called this "on everywhere".
+    const drifting = { total: 1, items: [{ Id: 'X1', Name: 'drifting', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 }] }] };
+    const m = data.featureFlagModel(drifting, grid);
+    expect(m.flags.map(f => f.name)).toEqual(['drifting']);
+    expect(m.settled).toEqual({ onEverywhere: 0, offEverywhere: 0, noOverrides: 0 });
+  });
+
+  test('the two flag models on the project page agree', () => {
+    const one = { total: 1, items: [{ Id: 'X1', Name: 'a', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 }] }] };
+    const status = data.featureFlagModel(one, grid);
+    const overview = data.projectFlagModel(one, grid.map(e => e.id), { E1: 'Dev', E2: 'Test', E3: 'Prod' });
+    // Status drew a row for it; Overview must not call it settled.
+    expect(status.flags.length).toBe(1);
+    expect(overview.betweenCount).toBe(1);
+    expect(overview.fullyOn).toBe(0);
+  });
+
+  test('enabled at 0% reaches nobody, in both resolvers', () => {
+    expect(data.flagEnvState({ IsEnabled: true, RolloutPercentage: 0 }).key).toBe('off');
+    expect(data.flagStateForTenant({ IsEnabled: true, RolloutPercentage: 0 }, { Id: 'T1' }, false).key).toBe('off');
+    const zero = { total: 1, items: [{ Id: 'X1', Name: 'a', DefaultIsEnabled: false,
+      Environments: grid.map(e => ({ DeploymentEnvironmentId: e.id, IsEnabled: true, RolloutPercentage: 0 })) }] };
+    expect(data.featureFlagModel(zero, grid).settled.onEverywhere).toBe(0);
+    expect(data.projectFlagModel(zero, grid.map(e => e.id), {}).fullyOn).toBe(0);
   });
 
   test('the settled majority is counted, not drawn', () => {
@@ -1873,7 +1903,7 @@ describe('Feature flags — view', () => {
     { Id: 'F2', Name: 'new-checkout', Environments: [
       { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
       { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 }] },
-    { Id: 'F1', Name: 'settled', Environments: [
+    { Id: 'F1', Name: 'settled', DefaultIsEnabled: true, Environments: [
       { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 }] },
     { Id: 'F3', Name: 'also-settled', Environments: [] }
   ] };
@@ -1964,9 +1994,14 @@ describe('Flag changes — reconstructed from the audit trail', () => {
     expect(data.flagChangeLabel(def)).toBe('Off → On');
   });
 
-  test('a change in an environment the grid does not show is dropped', () => {
+  test('a change in an environment the grid does not show is kept and marked', () => {
+    // It has no column to sit in, but dropping it silently lost a real audit
+    // entry. The view counts these in its note instead of drawing them.
     const c = data.flagChangeModel(events, grid, null, Date.now());
-    expect(c.some(x => x.flagName === 'elsewhere')).toBe(false);
+    const outside = c.find(x => x.flagName === 'elsewhere');
+    expect(outside).toBeDefined();
+    expect(outside.scopedElsewhere).toBe(true);
+    expect(outside.envName).toBe('');
   });
 
   test('changes come back newest first', () => {
@@ -1977,8 +2012,12 @@ describe('Flag changes — reconstructed from the audit trail', () => {
 
   test('the window filters changes', () => {
     const now = Date.parse('2026-08-14T04:00:00Z');
-    expect(data.flagChangeModel(events, grid, 2, now)).toHaveLength(1);   // only Ev1
-    expect(data.flagChangeModel(events, grid, null, now).length).toBe(3); // Ev4 excluded by grid
+    // Ev1 is the only one inside the window with a column; Ev4 is inside it too
+    // but scoped elsewhere.
+    expect(data.flagChangeModel(events, grid, 2, now).filter(c => !c.scopedElsewhere)).toHaveLength(1);
+    const all = data.flagChangeModel(events, grid, null, now);
+    expect(all.filter(c => !c.scopedElsewhere).length).toBe(3);  // Ev4 has no column
+    expect(all.length).toBe(4);                                  // but is not lost
   });
 
   test('an empty payload yields nothing and does not throw', () => {
