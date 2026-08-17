@@ -2628,27 +2628,27 @@ describe('Tenant detail — readiness', () => {
     Templates: [{ Id: 'tpl-1', Name: 'ApiKey', Label: 'API key' }, { Id: 'tpl-2', Name: 'Region', DefaultValue: 'eu' }],
     Variables: { E1: { 'tpl-1': 'abc' }, E2: {} } } } };
 
-  test('a template with no value and no default is missing', () => {
-    const r = data.tenantReadiness(vars, { P1: ['E1', 'E2'] }, envName);
+  test('a template with no value and no default is unset', () => {
+    const r = data.tenantReadiness(vars, { P1: ['E1', 'E2'] }, envName, {});
     expect(r.ready).toBe(false);
     expect(r.count).toBe(1);
-    expect(r.missing[0]).toMatchObject({ name: 'API key', environment: 'Production' });
+    expect(r.missing[0]).toMatchObject({ name: 'API key', environments: ['Production'] });
   });
 
   test('a default value satisfies a template', () => {
-    const r = data.tenantReadiness(vars, { P1: ['E1', 'E2'] }, envName);
+    const r = data.tenantReadiness(vars, { P1: ['E1', 'E2'] }, envName, {});
     expect(r.missing.some(x => x.name === 'Region')).toBe(false);
   });
 
   test('only connected environments can be missing anything', () => {
-    const r = data.tenantReadiness(vars, { P1: ['E1'] }, envName);
+    const r = data.tenantReadiness(vars, { P1: ['E1'] }, envName, {});
     expect(r.ready).toBe(true);
   });
 
   test('an empty value counts as missing, not as supplied', () => {
     const blank = { ProjectVariables: { P1: { ProjectId: 'P1', Templates: [{ Id: 't', Name: 'X' }],
       Variables: { E1: { t: '' } } } } };
-    expect(data.tenantReadiness(blank, { P1: ['E1'] }, envName).count).toBe(1);
+    expect(data.tenantReadiness(blank, { P1: ['E1'] }, envName, {}).count).toBe(1);
   });
 });
 
@@ -2759,5 +2759,62 @@ describe('A tenant page is still the tenants view', () => {
     const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
     // Cold start is gated on needsEstate, which a tenant route now fails.
     expect(router).toContain('needsEstate && typeof Data !== \'undefined\' && Data.coldStartApplies');
+  });
+});
+
+describe('Readiness is triangulated against what has deployed', () => {
+  const data = require('./data');
+  const envName = { E1: 'Dev', E2: 'Test', E3: 'Production' };
+  const conn = { P1: ['E1', 'E2', 'E3'] };
+  const vars = { ProjectVariables: { P1: { ProjectId: 'P1', ProjectName: 'Patient Records',
+    Templates: [{ Id: 't1', Name: 'ApiKey' }, { Id: 't2', Name: 'Region', DefaultValue: 'eu' }, { Id: 't3', Name: 'Secret' }],
+    Variables: { E1: {}, E2: {}, E3: {} } } } };
+
+  test('the count is distinct templates, not template times environment', () => {
+    const r = data.tenantReadiness(vars, conn, envName, {});
+    // Two templates unset across three environments is two, not six.
+    expect(r.count).toBe(2);
+    expect(r.pairCount).toBe(6);
+  });
+
+  test('each unset template names the environments it is unset in', () => {
+    const r = data.tenantReadiness(vars, conn, envName, {});
+    expect(r.missing[0].environments).toEqual(['Dev', 'Test', 'Production']);
+  });
+
+  test('a pair that has deployed successfully marks the template proven', () => {
+    const r = data.tenantReadiness(vars, conn, envName, { 'P1|E3': true });
+    expect(r.missing.every(m => m.proven)).toBe(true);
+    expect(r.unprovenCount).toBe(0);
+    expect(r.proven).toBe(true);
+  });
+
+  test('nothing deployed leaves them unproven', () => {
+    const r = data.tenantReadiness(vars, conn, envName, {});
+    expect(r.unprovenCount).toBe(2);
+    expect(r.proven).toBe(false);
+  });
+
+  test('a default value still satisfies a template outright', () => {
+    expect(data.tenantReadiness(vars, conn, envName, {}).missing.some(m => m.name === 'Region')).toBe(false);
+  });
+
+  test('the card stops asserting a deployment would fail', () => {
+    const Views = require('./views');
+    const NOW = Date.now();
+    const model = data.tenantDetailModel({
+      tenant: { Id: 'T1', Name: 'T', TenantTags: [], ProjectEnvironments: { P1: ['E3'] } },
+      dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E3', Name: 'Production' }],
+        Items: [{ IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '1.0',
+          State: 'Success', CompletedTime: new Date(NOW - 3 * 86400000).toISOString() }] },
+      variables: { ProjectVariables: { P1: { ProjectId: 'P1', ProjectName: 'Patient Records',
+        Templates: [{ Id: 't1', Name: 'ApiKey' }], Variables: { E3: {} } } } },
+      now: NOW
+    });
+    const html = Views.renderTenantDetail({ spaceId: 'S', tenantDetail: { status: 'ready', model } });
+    // It deployed three days ago with the value unset, so the page says so.
+    expect(html).not.toContain('would fail on configuration');
+    expect(html).toContain('Deployments have succeeded with these unset');
+    expect(html).toContain('deployed without it');
   });
 });

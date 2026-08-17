@@ -1344,40 +1344,80 @@ async function fetchTenantMachines(spaceId) {
   return { items: items, total: total == null ? items.length : total, truncated: items.length < (total || 0) };
 }
 
-function tenantReadiness(variables, connectedEnvIdsByProject, envName) {
+// Readiness, triangulated against what has actually deployed.
+//
+// Two things were wrong when this only diffed templates against values. It
+// counted a template once per environment, so two unset templates across three
+// environments read as "6 missing variables". And it asserted that a deployment
+// would fail, which live data contradicts: tenants with unset templates have
+// deployed successfully, because a tenant variable template is a request for a
+// value, not a guarantee the process uses it.
+//
+// So the count is distinct templates, the environments are reported beside them,
+// and any pair that has already deployed successfully is marked as proven — an
+// unset value that a real deployment survived is not a blocker, whatever the
+// template says.
+function tenantReadiness(variables, connectedEnvIdsByProject, envName, succeededPairs) {
   const v = variables || {};
+  const proven = succeededPairs || {};
   const missing = [];
-  let templates = 0;
   const blocks = [];
-  Object.keys(v.ProjectVariables || {}).forEach(pid => blocks.push({ scope: 'project', id: pid, block: v.ProjectVariables[pid] }));
-  Object.keys(v.LibraryVariables || {}).forEach(lid => blocks.push({ scope: 'library', id: lid, block: v.LibraryVariables[lid] }));
+  Object.keys(v.ProjectVariables || {}).forEach(pid =>
+    blocks.push({ scope: 'project', id: pid, block: v.ProjectVariables[pid] }));
+  Object.keys(v.LibraryVariables || {}).forEach(lid =>
+    blocks.push({ scope: 'library', id: lid, block: v.LibraryVariables[lid] }));
+
+  // Library sets are not owned by one project, so they are checked against every
+  // environment this tenant is connected to anywhere.
+  const allEnvIds = [];
+  Object.keys(connectedEnvIdsByProject || {}).forEach(pid =>
+    (connectedEnvIdsByProject[pid] || []).forEach(eid => { if (allEnvIds.indexOf(eid) === -1) allEnvIds.push(eid); }));
 
   blocks.forEach(entry => {
     const b = entry.block || {};
     const tmpl = b.Templates || [];
     if (!tmpl.length) return;
-    // Only environments this tenant is actually connected to can be missing a
-    // value; asking for one it never deploys to would invent a problem.
+    const projectId = b.ProjectId || entry.id;
     const envs = entry.scope === 'project'
-      ? ((connectedEnvIdsByProject || {})[entry.ProjectId || b.ProjectId || entry.id] || [])
-      : Object.keys(b.Variables || {});
-    const scopeName = b.ProjectName || b.LibraryVariableSetName || '';
-    envs.forEach(envId => {
-      const values = (b.Variables || {})[envId] || {};
-      tmpl.forEach(t => {
-        templates++;
+      ? ((connectedEnvIdsByProject || {})[projectId] || [])
+      : allEnvIds;
+
+    tmpl.forEach(t => {
+      const hasDefault = !(t.DefaultValue === undefined || t.DefaultValue === null || t.DefaultValue === '');
+      if (hasDefault) return;
+      const unsetIn = [];
+      let anyProven = false;
+      envs.forEach(envId => {
+        const values = (b.Variables || {})[envId] || {};
         const supplied = values[t.Id];
-        const hasValue = !(supplied === undefined || supplied === null || supplied === '');
-        const hasDefault = !(t.DefaultValue === undefined || t.DefaultValue === null || t.DefaultValue === '');
-        if (!hasValue && !hasDefault) {
-          missing.push({ scope: scopeName, environment: (envName || {})[envId] || envId,
-            name: t.Label || t.Name || t.Id });
+        if (supplied === undefined || supplied === null || supplied === '') {
+          unsetIn.push({ envId: envId, environment: (envName || {})[envId] || envId,
+            proven: !!proven[projectId + '|' + envId] });
+          if (proven[projectId + '|' + envId]) anyProven = true;
         }
       });
+      if (unsetIn.length) {
+        missing.push({
+          templateId: t.Id, name: t.Label || t.Name || t.Id,
+          scope: b.ProjectName || b.LibraryVariableSetName || '',
+          scopeKind: entry.scope,
+          environments: unsetIn.map(u => u.environment),
+          // Deployed successfully somewhere with this unset: evidently optional.
+          proven: anyProven
+        });
+      }
     });
   });
 
-  return { missing: missing, count: missing.length, templates: templates, ready: missing.length === 0 };
+  const unproven = missing.filter(m => !m.proven);
+  return {
+    missing: missing,
+    count: missing.length,                 // distinct templates, not template × environment
+    pairCount: missing.reduce((n, m) => n + m.environments.length, 0),
+    unprovenCount: unproven.length,
+    proven: missing.length > 0 && unproven.length === 0,
+    ready: missing.length === 0
+  };
 }
 
 function matchTenantTargets(machines, tenant) {
@@ -1453,6 +1493,14 @@ function tenantDetailModel(payload) {
   const connectedEnvIdsByProject = {};
   projectIds.forEach(pid => { connectedEnvIdsByProject[pid] = pairs[pid] || []; });
 
+  // Which project-environment pairs have actually deployed successfully. An
+  // unset variable on a pair that has shipped is not the blocker the template
+  // implies, and saying otherwise contradicts what the tenant has been doing.
+  const succeededPairs = {};
+  items.forEach(i => {
+    if (releaseStateKey(i.State) === 'success') succeededPairs[i.ProjectId + '|' + i.EnvironmentId] = true;
+  });
+
   const activity = items.slice().sort((a, b) =>
     (Date.parse(b.CompletedTime || b.StartTime || 0) || 0) - (Date.parse(a.CompletedTime || a.StartTime || 0) || 0))
     .slice(0, 8).map(i => {
@@ -1470,7 +1518,8 @@ function tenantDetailModel(payload) {
     connection: { connected: pairCount > 0, pairCount: pairCount, projectCount: projectIds.length },
     lastOutcome: last ? { key: lastKey, label: lastKey === 'stuck' ? 'Stuck' : releaseStateLabel(lastKey),
       when: last.at, projectName: projectName[last.projectId] || '' } : null,
-    readiness: src.variables ? tenantReadiness(src.variables, connectedEnvIdsByProject, envName) : null,
+    readiness: src.variables
+      ? tenantReadiness(src.variables, connectedEnvIdsByProject, envName, succeededPairs) : null,
     readinessError: src.variablesError || null,
     environments: orderedEnvIds.map(id => ({ id: id, name: envName[id] || id })),
     matrix: matrix,

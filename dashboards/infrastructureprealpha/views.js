@@ -1794,10 +1794,17 @@ const Views = (function () {
     } else if (!m.readiness) {
       readyCard = _tnCard('Readiness', 'disabled', 'Loading…', '', '');
     } else {
-      readyCard = _tnCard('Readiness', m.readiness.ready ? 'healthy' : 'unhealthy',
-        m.readiness.ready ? 'Ready' : m.readiness.count + ' missing ' + (m.readiness.count === 1 ? 'variable' : 'variables'),
-        m.readiness.ready ? 'Required variables have values'
-          : 'A deployment would fail on configuration',
+      const rd = m.readiness;
+      // Three states, not two. A template with no value is a question, and what
+      // answers it is whether anything has actually deployed without it.
+      const tone = rd.ready ? 'healthy' : (rd.proven ? 'disabled' : 'unhealthy');
+      const headline = rd.ready ? 'Ready'
+        : rd.count + ' unset ' + (rd.count === 1 ? 'variable' : 'variables');
+      const detail = rd.ready ? 'Every template the projects ask for has a value'
+        : (rd.proven
+            ? 'Deployments have succeeded with these unset, so the process may not use them'
+            : rd.unprovenCount + ' of them on project-environment pairs that have never deployed successfully');
+      readyCard = _tnCard('Readiness', tone, headline, detail,
         link('/app#/' + escHtml(IP.spaceId || '') + '/tenants/' + escHtml(m.id) + '/variables', 'Open tenant variables'));
     }
 
@@ -1848,6 +1855,20 @@ const Views = (function () {
       +   (tagGroups ? '<div class="ip-tn-taggroups">' + tagGroups + '</div>' : '')
       + '</header>'
       + '<div class="ip-tn-cards">' + connCard + readyCard + outcomeCard + '</div>'
+      + (m.readiness && m.readiness.missing.length
+          ? '<section class="ip-tn-panel"><h3>Unset variables'
+            + '<span class="ip-tn-age">' + m.readiness.count + ' of the templates these projects ask for</span></h3>'
+            + '<ul class="ip-tn-targets">' + m.readiness.missing.map(v =>
+                '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(v.name) + '</span>'
+                + '<span class="ip-tn-age">' + escHtml(v.scope) + '</span>'
+                + '<span class="ip-tn-age">' + escHtml(v.environments.join(', ')) + '</span>'
+                + (v.proven ? '<span class="ip-pill ip-pill-disabled">deployed without it</span>'
+                            : '<span class="ip-pill ip-pill-unhealthy">unproven</span>') + '</li>').join('')
+            + '</ul>'
+            + '<p class="ip-tn-legend">A template is a request for a value, not a guarantee the process uses one. '
+            + 'Where a deployment has already succeeded with the value unset, that is recorded rather than called a failure.</p>'
+            + '</section>'
+          : '')
       + '<section class="ip-tn-panel"><h3>Deployment matrix</h3>' + matrix + '</section>'
       + '<div class="ip-tn-split">'
       +   '<section class="ip-tn-panel"><h3>Infrastructure'
