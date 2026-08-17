@@ -1903,12 +1903,12 @@ const Views = (function () {
               + escHtml(st.envName) + ' <span class="ip-tn-age">' + escHtml(text) + '</span></span>';
           }).join('')
         + '</span></li>').join('');
-      return '<section class="ip-tn-panel"><h3>Feature flags'
+      return '<section class="ip-tn-panel ip-tn-flagpanel"><h3>Feature flags'
         + '<span class="ip-tn-age">' + fl.model.total + ' across this tenant\'s projects</span></h3>'
         + '<div class="ip-tn-stats">'
-        +   stat(sm.fullyOn, 'fully on', 'healthy')
-        +   stat(sm.fullyOff, 'fully off', 'disabled')
-        +   stat(sm.betweenCount, 'in between', sm.betweenCount ? 'warning' : 'disabled')
+        +   stat(sm.fullyOn, 'on', 'healthy')
+        +   stat(sm.fullyOff, 'off', 'disabled')
+        +   stat(sm.betweenCount, 'rolling out', sm.betweenCount ? 'warning' : 'disabled')
         + '</div>'
         + (rows
             ? '<ul class="ip-tn-targets">' + rows + '</ul>'
@@ -1919,8 +1919,10 @@ const Views = (function () {
         + '</section>';
     })();
 
-    const overviewTab = '<section class="ip-tn-panel"><h3>Deployment matrix</h3>' + matrix + '</section>'
-      + flagSummary
+    const overviewTab = '<div class="ip-tn-matrixrow">'
+      +   '<section class="ip-tn-panel ip-tn-matrixpanel"><h3>Deployment matrix</h3>' + matrix + '</section>'
+      +   flagSummary
+      + '</div>'
       + '<div class="ip-tn-split">'
       +   '<section class="ip-tn-panel"><h3>Infrastructure'
       +     (m.infrastructure && !m.infrastructure.orphaned

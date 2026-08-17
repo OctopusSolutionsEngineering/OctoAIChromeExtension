@@ -892,3 +892,17 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
 .dark .ip-tn-stat-healthy { color: var(--color-green-300); }
 .dark .ip-tn-stat-warning { color: var(--color-orange-200); }
 .dark .ip-tn-stat-disabled, .dark .ip-tn-statlabel { color: var(--color-grey-400); }
+/* The flag panel sits beside the matrix and stays narrow: it is a summary, and
+   the matrix is the thing being read. Below a comfortable width they stack. */
+.ip-tn-matrixrow { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.ip-tn-matrixpanel { flex: 1 1 420px; min-width: 0; }
+.ip-tn-flagpanel { flex: 0 1 300px; min-width: 240px; }
+.ip-tn-flagpanel .ip-tn-stats { gap: 16px; }
+.ip-tn-flagpanel .ip-tn-statnum { font-size: 18px; }
+/* In a narrow column the per-environment states stack under the flag name. */
+.ip-tn-flagpanel .ip-tn-target { flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 5px 0; border-bottom: 1px solid var(--color-grey-200); }
+.ip-tn-flagpanel .ip-tn-target:last-child { border-bottom: 0; }
+.ip-tn-flagpanel .ip-tn-tname { white-space: normal; }
+.ip-tn-flagpanel .ip-tn-flagstates { justify-content: flex-start; gap: 4px 10px; }
+.dark .ip-tn-flagpanel .ip-tn-target { border-bottom-color: var(--color-navy-700); }

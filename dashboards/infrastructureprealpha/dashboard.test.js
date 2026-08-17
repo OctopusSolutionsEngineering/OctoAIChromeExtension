@@ -3000,11 +3000,14 @@ describe('Feature flag posture on the tenant overview', () => {
         Environments: [{ Id: 'E1', Name: 'Staging' }, { Id: 'E2', Name: 'Production' }], Items: [] } });
     const html = Views.renderTenantDetail({ spaceId: 'S',
       flags: { status: 'ready', model: model }, tenantDetail: { status: 'ready', model: detail } });
-    expect(html).toContain('fully on');
-    expect(html).toContain('fully off');
-    expect(html).toContain('in between');
+    expect(html).toContain('ip-tn-statlabel">on<');
+    expect(html).toContain('ip-tn-statlabel">off<');
+    expect(html).toContain('ip-tn-statlabel">rolling out<');
     expect(html).toContain('half-rolled');
     expect(html).toContain('25%');
+    // It sits beside the matrix rather than under it.
+    expect(html).toContain('ip-tn-matrixrow');
+    expect(html).toContain('ip-tn-flagpanel');
   });
 
   test('a tenant whose flags are all settled says so rather than showing an empty list', () => {
@@ -3023,6 +3026,6 @@ describe('Feature flag posture on the tenant overview', () => {
       dashboard: { Projects: [], Environments: [], Items: [] } });
     const html = Views.renderTenantDetail({ spaceId: 'S', flags: { status: 'loading' },
       tenantDetail: { status: 'ready', model: detail } });
-    expect(html).not.toContain('fully on');
+    expect(html).not.toContain('ip-tn-statlabel');
   });
 });
