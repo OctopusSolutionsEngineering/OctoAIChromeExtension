@@ -4229,13 +4229,13 @@ describe('Incomplete reads say so where the zero used to be', () => {
 
 describe('A redraw keeps focus where the user left it', () => {
   const Views = require('./views');
+  const el = (tag, attrs) => ({
+    tagName: tag.toUpperCase(), id: attrs.id || '',
+    hasAttribute: a => Object.prototype.hasOwnProperty.call(attrs, a),
+    getAttribute: a => attrs[a]
+  });
 
   test('a control is identified by what survives the rebuild', () => {
-    const el = (tag, attrs) => ({
-      tagName: tag.toUpperCase(), id: attrs.id || '',
-      hasAttribute: a => Object.prototype.hasOwnProperty.call(attrs, a),
-      getAttribute: a => attrs[a]
-    });
     expect(Views.focusSelector(el('div', { 'data-project': 'Projects-1' })))
       .toBe('div[data-project="Projects-1"]');
     expect(Views.focusSelector(el('button', { 'data-sort': 'Name' })))
@@ -4243,68 +4243,191 @@ describe('A redraw keeps focus where the user left it', () => {
     // A facet needs both halves, or it finds the wrong checkbox.
     expect(Views.focusSelector(el('input', { 'data-facet': 'tags', 'data-value': 'Region/EU' })))
       .toBe('input[data-facet="tags"][data-value="Region/EU"]');
-    expect(Views.focusSelector(el('input', { id: 'ip-search' }))).toBe('#ip-search');
+  });
+
+  test('keys whose value moves with the state are not used to identify anything', () => {
+    // data-page is relative to the current page, so the captured selector could
+    // never match after paging. The pager's role does not move.
+    expect(Views.focusSelector(el('button', { 'data-page': '4' }))).toBeNull();
+    expect(Views.focusSelector(el('button', { 'data-pager': 'next', 'data-page': '4' })))
+      .toBe('button[data-pager="next"]');
+  });
+
+  test('a project link identifies its own project, not the first on the page', () => {
+    const first = Views.focusSelector(el('a', { 'data-projectlink': 'Projects-1' }));
+    const last = Views.focusSelector(el('a', { 'data-projectlink': 'Projects-99' }));
+    expect(first).not.toBe(last);
+    expect(last).toBe('a[data-projectlink="Projects-99"]');
   });
 
   test('an element with nothing stable about it is left alone', () => {
-    expect(Views.focusSelector({ tagName: 'SPAN', id: '', hasAttribute: () => false, getAttribute: () => null }))
-      .toBeNull();
+    expect(Views.focusSelector(el('span', {}))).toBeNull();
     expect(Views.focusSelector(null)).toBeNull();
   });
 
-  test('focus is restored across a redraw, and the caret with it', () => {
+  test('the escaper runs in both worlds and stays inside the quotes', () => {
+    // Chrome always has CSS.escape; jest never does, so the browser branch had
+    // no coverage at all and the assertion pinned the fallback's output.
+    const chrome = Views.focusSelector(el('input', { 'data-ctl': 'a"b' }));
+    expect(chrome).toBe('input[data-ctl="a\\"b"]');
+    global.CSS = { escape: s => String(s).replace(/([^a-zA-Z0-9_-])/g, '\\$1') };
+    try {
+      expect(Views.focusSelector(el('input', { 'data-value': 'Region/EU' })))
+        .toBe('input[data-value="Region\\/EU"]');
+    } finally { delete global.CSS; }
+  });
+
+  test('focus and caret come back on the control production actually renders', () => {
+    // The tenant search box has no id — it is found by data-ctl. The previous
+    // test used an id no element in #main-content carries, so it proved a branch
+    // that never runs.
     let focused = null, range = null;
     const control = { focus: () => { focused = 'again'; },
       setSelectionRange: (a, b) => { range = [a, b]; } };
-    const active = { tagName: 'INPUT', id: 'ip-search', hasAttribute: () => false,
-      getAttribute: () => null, selectionStart: 3, selectionEnd: 5 };
-    const root = { contains: () => true, querySelector: sel => (sel === '#ip-search' ? control : null) };
+    const active = Object.assign(el('input', { 'data-ctl': 'tenant-search' }),
+      { selectionStart: 3, selectionEnd: 5 });
+    const root = { contains: () => true,
+      querySelector: sel => (sel === 'input[data-ctl="tenant-search"]' ? control : null) };
     global.document = { activeElement: active, body: {} };
     let redrew = false;
     Views.withFocus(root, () => { redrew = true; });
+    delete global.document;
     expect(redrew).toBe(true);
     expect(focused).toBe('again');
     expect(range).toEqual([3, 5]);
-    delete global.document;
   });
 
-  test('a control that no longer exists after the redraw does not throw', () => {
-    const active = { tagName: 'BUTTON', id: '', hasAttribute: a => a === 'data-page',
-      getAttribute: () => '4' };
+  test('a control the redraw legitimately removed is left alone', () => {
+    const active = el('button', { 'data-project': 'Projects-1' });
     const root = { contains: () => true, querySelector: () => null };
     global.document = { activeElement: active, body: {} };
     expect(() => Views.withFocus(root, () => {})).not.toThrow();
     delete global.document;
   });
+
+  test('restoring focus does not drag the viewport with it', () => {
+    let opts = 'never called';
+    const control = { focus: o => { opts = o; } };
+    const active = el('div', { 'data-project': 'Projects-1' });
+    const root = { contains: () => true, querySelector: () => control };
+    global.document = { activeElement: active, body: {} };
+    Views.withFocus(root, () => {});
+    delete global.document;
+    expect(opts).toEqual({ preventScroll: true });
+  });
+});
+
+describe('The rendered controls carry the identity the focus fix relies on', () => {
+  const data = require('./data');
+  const Views = require('./views');
+
+  test('each project link is addressed by its own id', () => {
+    const dash = { Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' },
+                              { Id: 'P2', Name: 'Admin', ProjectGroupId: 'G1' }],
+      ProjectGroups: [{ Id: 'G1', Name: 'Web' }], Environments: [{ Id: 'E1', Name: 'Dev' }],
+      Tenants: [], Items: [{ ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '1.0',
+        State: 'Success', IsCurrent: true, CompletedTime: '2026-08-13T09:00:00Z' },
+        { ProjectId: 'P2', EnvironmentId: 'E1', ReleaseVersion: '2.0', State: 'Success',
+          IsCurrent: true, CompletedTime: '2026-08-13T09:00:00Z' }] };
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(dash) } });
+    expect(html).toContain('data-projectlink="P1"');
+    expect(html).toContain('data-projectlink="P2"');
+    expect(html).not.toContain('data-projectlink="1"');
+  });
+
+  test('the tenant search, sort and pager are addressable', () => {
+    const tenants = [];
+    for (let i = 0; i < 150; i++) tenants.push({ Id: 'T' + i, Name: 'Tenant ' + i, ProjectEnvironments: {} });
+    const model = data.tenantsModel({ tenants: { items: tenants, total: tenants.length },
+      dashboard: { Projects: [], ProjectGroups: [], Environments: [], Tenants: [], Items: [] }, tagSets: [] });
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: model } });
+    expect(html).toContain('data-ctl="tenant-search"');
+    expect(html).toContain('data-ctl="tenant-sort"');
+    // The pager's identity has to be the same on every page.
+    expect(html).toContain('data-pager="prev"');
+    expect(html).toContain('data-pager="next"');
+    const page2 = Views.renderTenants({ tenants: { status: 'ready', model: model }, tenantPage: 1 });
+    expect(page2).toContain('data-pager="next"');
+  });
+});
+
+describe('A hash resolves to the section it belongs to', () => {
+  const data = require('./data');
+
+  test('a detail route is the same section as its list', () => {
+    expect(data.baseView('#projects/Projects-1')).toBe('projects');
+    expect(data.baseView('#projects')).toBe('projects');
+    expect(data.baseView('tenants/Tenants-9')).toBe('tenants');
+  });
+
+  test('an empty or absent hash is the landing view', () => {
+    expect(data.baseView('')).toBe('overview');
+    expect(data.baseView(null)).toBe('overview');
+    expect(data.baseView('#')).toBe('overview');
+  });
 });
 
 describe('The machine list is read once per space, not once per page', () => {
   const data = require('./data');
-
-  test('a second read inside the window reuses the first', async () => {
-    data.clearMachineCache();
+  const stubFetch = pages => {
     const calls = [];
-    global.fetch = async url => { calls.push(url); return {
-      ok: true, status: 200, json: async () => ({ Items: [], TotalResults: 0 }) }; };
-    await data.fetchTenantMachines('Spaces-1');
-    const first = calls.length;
-    await data.fetchTenantMachines('Spaces-1');
-    expect(calls.length).toBe(first);
-    // A different space is a different estate.
+    global.fetch = async url => {
+      calls.push(url);
+      const page = pages[Math.min(calls.length - 1, pages.length - 1)];
+      return { ok: true, status: 200, json: async () => page };
+    };
+    return calls;
+  };
+
+  afterEach(() => { data.clearMachineCache(); delete global.fetch; });
+
+  test('a second read inside the window reuses the first, per space', async () => {
+    const calls = stubFetch([{ Items: [{ Id: 'M1' }], TotalResults: 1 }]);
+    const a = await data.fetchTenantMachines('Spaces-1');
+    const n = calls.length;
+    const b = await data.fetchTenantMachines('Spaces-1');
+    expect(calls.length).toBe(n);
+    expect(b).toBe(a);                       // the same resolved value, not a copy
     await data.fetchTenantMachines('Spaces-2');
-    expect(calls.length).toBeGreaterThan(first);
-    data.clearMachineCache();
-    delete global.fetch;
+    expect(calls.length).toBeGreaterThan(n); // a different space is a different estate
+  });
+
+  test('it pages until the total is reached, and reports what it read', async () => {
+    const full = { Items: new Array(100).fill(0).map((_, i) => ({ Id: 'M' + i })), TotalResults: 150 };
+    const rest = { Items: new Array(50).fill(0).map((_, i) => ({ Id: 'N' + i })), TotalResults: 150 };
+    const calls = stubFetch([full, rest]);
+    const res = await data.fetchTenantMachines('Spaces-1');
+    expect(calls.length).toBe(2);
+    expect(calls[1]).toContain('skip=100');
+    expect(res.items.length).toBe(150);
+    expect(res.truncated).toBe(false);
+  });
+
+  test('concurrent callers join one read rather than starting two', async () => {
+    const calls = stubFetch([{ Items: [], TotalResults: 0 }]);
+    const [x, y] = await Promise.all([
+      data.fetchTenantMachines('Spaces-1'), data.fetchTenantMachines('Spaces-1')]);
+    expect(calls.length).toBe(1);
+    expect(x).toBe(y);
   });
 
   test('a failed read is not remembered as the answer', async () => {
-    data.clearMachineCache();
     let attempts = 0;
     global.fetch = async () => { attempts++; return { ok: false, status: 500, statusText: 'Server Error' }; };
     await data.fetchTenantMachines('Spaces-1').catch(() => {});
     await data.fetchTenantMachines('Spaces-1').catch(() => {});
     expect(attempts).toBe(2);
-    data.clearMachineCache();
-    delete global.fetch;
+  });
+
+  test('clearing names a space, so the one you left is not thrown away too', async () => {
+    const calls = stubFetch([{ Items: [], TotalResults: 0 }]);
+    await data.fetchTenantMachines('Spaces-1');
+    await data.fetchTenantMachines('Spaces-2');
+    const n = calls.length;
+    data.clearMachineCache('Spaces-2');
+    await data.fetchTenantMachines('Spaces-1');   // still cached
+    expect(calls.length).toBe(n);
+    await data.fetchTenantMachines('Spaces-2');   // re-read
+    expect(calls.length).toBe(n + 1);
   });
 });

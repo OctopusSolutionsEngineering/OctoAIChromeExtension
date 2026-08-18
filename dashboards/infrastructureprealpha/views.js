@@ -1104,7 +1104,8 @@ const Views = (function () {
       + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
       + '<div class="ip-rel-proj">'
       +   '<span class="ip-rel-caret" aria-hidden="true"></span>'
-      +   '<a class="ip-rel-proj-name" href="#projects/' + escHtml(proj.id) + '" data-projectlink="1">'
+      +   '<a class="ip-rel-proj-name" href="#projects/' + escHtml(proj.id) + '"'
+      +     ' data-projectlink="' + escHtml(proj.id) + '">'
       +     escHtml(proj.name) + '</a>'
       + '</div>'
       + _relTrack(cells, cols)
@@ -1384,9 +1385,14 @@ const Views = (function () {
   // destroys focus. A keyboard user who activates a project row, a sort header
   // or a tab is returned to document.body, so the next Tab restarts at the top
   // of the page. These re-find the same control afterwards and put focus back.
-  const FOCUS_KEYS = ['data-project', 'data-sort', 'data-facet', 'data-value', 'data-page',
+  // Every key here has to identify one element and keep identifying it after the
+  // rebuild. data-page was in this list and could not: its value is relative to
+  // the current page, so paging always missed. data-projectlink was worse — it
+  // was emitted as a constant, so it matched the first row rather than the
+  // focused one.
+  const FOCUS_KEYS = ['data-project', 'data-sort', 'data-facet', 'data-value', 'data-ctl',
     'data-window', 'data-grouping', 'data-envtoggle', 'data-tenanttab', 'data-projecttab',
-    'data-tab', 'data-projectlink'];
+    'data-tab', 'data-pager', 'data-projectlink'];
 
   function _cssEscape(value) {
     const raw = String(value == null ? '' : value);
@@ -1420,7 +1426,9 @@ const Views = (function () {
     let again = null;
     try { again = root.querySelector(selector); } catch (e) { again = null; }
     if (!again) return;
-    again.focus();
+    // preventScroll where it is supported: restoring focus should not move the
+    // viewport out from under someone.
+    try { again.focus({ preventScroll: true }); } catch (e) { again.focus(); }
     if (caret && again.setSelectionRange) {
       try { again.setSelectionRange(caret.start, caret.end); } catch (e) { /* not a text field */ }
     }
@@ -1564,6 +1572,9 @@ const Views = (function () {
     root.querySelectorAll('.ip-rel-row[data-project]').forEach(el => {
       el.addEventListener('click', () => toggle(el));
       el.addEventListener('keydown', ev => {
+        // The project name is a link inside the row. Enter on it should follow
+        // the link; only the row itself toggles.
+        if (ev.target !== el) return;
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(el); }
       });
     });
@@ -1725,8 +1736,10 @@ const Views = (function () {
 
     return head
       + '<div class="ip-tn-toolbar">'
-      +   '<input class="ip-search ip-tn-search" type="search" placeholder="Search tenants…" value="' + escHtml(IP.tenantQuery) + '">'
-      +   '<label class="ip-tn-sort"><span class="ip-caption">Sort</span><select class="ip-tn-sortsel">' + sorts + '</select></label>'
+      +   '<input class="ip-search ip-tn-search" type="search" data-ctl="tenant-search"'
+      +     ' placeholder="Search tenants…" value="' + escHtml(IP.tenantQuery) + '">'
+      +   '<label class="ip-tn-sort"><span class="ip-caption">Sort</span>'
+      +     '<select class="ip-tn-sortsel" data-ctl="tenant-sort">' + sorts + '</select></label>'
       +   '<span class="ip-count">' + sorted.length.toLocaleString()
       +     (sorted.length === m.tenants.length ? '' : ' of ' + m.tenants.length.toLocaleString())
       +     (sorted.length === 1 ? ' tenant' : ' tenants') + '</span>'
@@ -1747,9 +1760,9 @@ const Views = (function () {
           : '<div class="ip-empty"><h3>No tenants match these filters</h3>'
             + '<p>Clear a filter or search for a different name.</p></div>')
       +     (pages > 1 ? '<div class="ip-tn-pager">'
-            + '<button class="ip-btn ip-btn-secondary" data-page="' + (page - 1) + '"' + (page === 0 ? ' disabled' : '') + '>Previous</button>'
+            + '<button class="ip-btn ip-btn-secondary" data-pager="prev" data-page="' + (page - 1) + '"' + (page === 0 ? ' disabled' : '') + '>Previous</button>'
             + '<span class="ip-tn-age">Page ' + (page + 1) + ' of ' + pages + '</span>'
-            + '<button class="ip-btn ip-btn-secondary" data-page="' + (page + 1) + '"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>'
+            + '<button class="ip-btn ip-btn-secondary" data-pager="next" data-page="' + (page + 1) + '"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>'
             + '</div>' : '')
       +   '</div>'
       + '</div>'
@@ -1770,8 +1783,6 @@ const Views = (function () {
     if (search) search.addEventListener('input', () => {
       IP.tenantQuery = search.value; IP.tenantPage = 0;
       redraw();
-      const again = root.querySelector('.ip-tn-search');
-      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
     });
     const sort = root.querySelector('.ip-tn-sortsel');
     if (sort) sort.addEventListener('change', () => {
@@ -2560,7 +2571,7 @@ const Views = (function () {
     if (!el) return;
     el.addEventListener('change', async e => {
       IP.spaceId = e.target.value;
-      if (typeof Data !== 'undefined' && Data.clearMachineCache) Data.clearMachineCache();
+      if (typeof Data !== 'undefined' && Data.clearMachineCache) Data.clearMachineCache(IP.spaceId);
       IP.filters = {}; IP.search = ''; IP.page = 1;
       IP.wFilters = {}; IP.wSearch = ''; IP.wPage = 1;
       IP.envExpanded = {};

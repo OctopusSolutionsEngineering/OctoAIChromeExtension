@@ -1178,6 +1178,13 @@ function variableChangeLabel(change) {
 // returns 200, which is exactly the case on Cloud Platform.
 const ESTATE_FREE_VIEWS = ['projects', 'tenants'];
 
+/** The section a hash belongs to, ignoring any detail id: 'projects/P-1' and
+ *  'projects' are the same section. */
+function baseView(hash) {
+  const raw = String(hash == null ? '' : hash).replace(/^#/, '');
+  return raw.split('/')[0] || 'overview';
+}
+
 function viewNeedsEstate(view) {
   // Detail routes carry an id — "tenants/Tenants-1" is still the tenants view.
   // Matching the whole hash meant a tenant page counted as an infrastructure
@@ -1437,16 +1444,30 @@ async function fetchTenantVariables(spaceId, tenantId) {
 const MACHINE_CACHE_MS = 120000;
 const machineCache = {};
 
-function clearMachineCache() { Object.keys(machineCache).forEach(k => { delete machineCache[k]; }); }
+/** Clears one space, or all of them when no space is named. Clearing every
+ *  space on a switch was self-defeating: the cache is keyed by space, so going
+ *  A to B and back re-paged A inside its own live window. */
+function clearMachineCache(spaceId) {
+  if (spaceId) { delete machineCache[spaceId]; return; }
+  Object.keys(machineCache).forEach(k => { delete machineCache[k]; });
+}
 
 function fetchTenantMachines(spaceId) {
   const hit = machineCache[spaceId];
-  if (hit && (Date.now() - hit.at) < MACHINE_CACHE_MS) return hit.promise;
-  const promise = fetchAllMachines(spaceId);
-  machineCache[spaceId] = { at: Date.now(), promise: promise };
-  // A failed read must not be remembered as the answer for two minutes.
-  promise.catch(() => { if (machineCache[spaceId] && machineCache[spaceId].promise === promise) delete machineCache[spaceId]; });
-  return promise;
+  // A read still in flight is always worth joining, however long it has taken;
+  // the age only applies once there is an answer that can be stale. Stamping the
+  // clock at the start meant ten paged requests could outlive their own window
+  // and a second caller would start the whole run again.
+  if (hit && (hit.at == null || (Date.now() - hit.at) < MACHINE_CACHE_MS)) return hit.promise;
+  const entry = { at: null, promise: null };
+  entry.promise = fetchAllMachines(spaceId).then(res => {
+    if (machineCache[spaceId] === entry) entry.at = Date.now();
+    return res;
+  });
+  // A failed read must not be remembered as the answer.
+  entry.promise.catch(() => { if (machineCache[spaceId] === entry) delete machineCache[spaceId]; });
+  machineCache[spaceId] = entry;
+  return entry.promise;
 }
 
 async function fetchAllMachines(spaceId) {
@@ -2130,7 +2151,7 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
   fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
   fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable,
-  viewNeedsEstate,
+  viewNeedsEstate, baseView,
   fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
   parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
   fetchTenant, fetchTenantVariables, fetchTenantMachines, clearMachineCache, tenantDetailModel, tenantReadiness, matchTenantTargets,
@@ -2148,7 +2169,7 @@ if (typeof module !== 'undefined') {
     fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
     fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
     fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue, applyVariablePatch,
-    viewNeedsEstate,
+    viewNeedsEstate, baseView,
     fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
     parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
     fetchTenant, fetchTenantVariables, fetchTenantMachines, clearMachineCache, tenantDetailModel, tenantReadiness, matchTenantTargets,

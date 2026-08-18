@@ -13,7 +13,9 @@ const Router = (function () {
   // at is not. Without this, a flag request landing after you navigated to
   // Tenants replaced the DOM under your cursor mid-keystroke.
   function currentView() {
-    return String(window.location.hash || '#overview').slice(1).split('/')[0] || 'overview';
+    return (typeof Data !== 'undefined' && Data.baseView)
+      ? Data.baseView(window.location.hash || '#overview')
+      : String(window.location.hash || '#overview').slice(1).split('/')[0] || 'overview';
   }
   /** Redraw only if we are still on the section this work was started for. */
   function renderIfStill(view) {
@@ -21,7 +23,16 @@ const Router = (function () {
     render();
   }
 
+  /** Every render replaces #main-content wholesale, which destroys focus. One
+   *  wrapper here covers the routed renders and every async callback that ends
+   *  in one; the views wrap their own local redraws the same way. */
   function render() {
+    const el = document.getElementById('main-content');
+    if (el && typeof Views !== 'undefined' && Views.withFocus) Views.withFocus(el, renderRoute);
+    else renderRoute();
+  }
+
+  function renderRoute() {
     const el = document.getElementById('main-content');
     const hash = (window.location.hash || '#overview').slice(1);
     // The section this pass is drawing. Anything it fires asynchronously checks
