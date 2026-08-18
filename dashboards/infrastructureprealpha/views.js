@@ -1380,6 +1380,52 @@ const Views = (function () {
       + changeBand + varBand);
   }
 
+  // Every redraw in this dashboard replaces the whole of #main-content, which
+  // destroys focus. A keyboard user who activates a project row, a sort header
+  // or a tab is returned to document.body, so the next Tab restarts at the top
+  // of the page. These re-find the same control afterwards and put focus back.
+  const FOCUS_KEYS = ['data-project', 'data-sort', 'data-facet', 'data-value', 'data-page',
+    'data-window', 'data-grouping', 'data-envtoggle', 'data-tenanttab', 'data-projecttab',
+    'data-tab', 'data-projectlink'];
+
+  function _cssEscape(value) {
+    const raw = String(value == null ? '' : value);
+    return (typeof CSS !== 'undefined' && CSS && typeof CSS.escape === 'function')
+      ? CSS.escape(raw) : raw.replace(/["\\]/g, '\\$&');
+  }
+
+  /** A selector that finds the same control again after the markup is rebuilt,
+   *  or null when the element has nothing stable to identify it by. */
+  function focusSelector(el) {
+    if (!el || !el.getAttribute || (typeof document !== 'undefined' && el === document.body)) return null;
+    if (el.id) return '#' + _cssEscape(el.id);
+    const parts = FOCUS_KEYS.filter(a => el.hasAttribute(a))
+      .map(a => '[' + a + '="' + _cssEscape(el.getAttribute(a)) + '"]');
+    if (!parts.length) return null;
+    return (el.tagName || '').toLowerCase() + parts.join('');
+  }
+
+  /** Redraws while keeping focus, and the caret, where the user left it. */
+  function withFocus(root, redraw) {
+    const active = document.activeElement;
+    const inside = active && root.contains && root.contains(active);
+    const selector = inside ? focusSelector(active) : null;
+    // Only text fields have a caret worth restoring.
+    let caret = null;
+    try {
+      if (inside && active.selectionStart != null) caret = { start: active.selectionStart, end: active.selectionEnd };
+    } catch (e) { caret = null; }
+    redraw();
+    if (!selector) return;
+    let again = null;
+    try { again = root.querySelector(selector); } catch (e) { again = null; }
+    if (!again) return;
+    again.focus();
+    if (caret && again.setSelectionRange) {
+      try { again.setSelectionRange(caret.start, caret.end); } catch (e) { /* not a text field */ }
+    }
+  }
+
   // The window/grouping controls, the legend and the environment header are the
   // same on the projects list and on one project's Status tab. One copy each.
   function _relControls(IP) {
@@ -1493,7 +1539,9 @@ const Views = (function () {
   function bindProjects(IP) {
     const root = document.getElementById('main-content');
     if (!root) return;
-    _bindRelRows(IP, root, () => { root.innerHTML = renderProjects(IP); bindProjects(IP); });
+    _bindRelRows(IP, root, () => withFocus(root, () => {
+      root.innerHTML = renderProjects(IP); bindProjects(IP);
+    }));
   }
 
   // Expanding a row, hiding an environment, changing the window or the grouping
@@ -1717,7 +1765,7 @@ const Views = (function () {
   function bindTenants(IP) {
     const root = document.getElementById('main-content');
     if (!root) return;
-    const redraw = () => { root.innerHTML = renderTenants(IP); bindTenants(IP); };
+    const redraw = () => withFocus(root, () => { root.innerHTML = renderTenants(IP); bindTenants(IP); });
     const search = root.querySelector('.ip-tn-search');
     if (search) search.addEventListener('input', () => {
       IP.tenantQuery = search.value; IP.tenantPage = 0;
@@ -1848,8 +1896,7 @@ const Views = (function () {
     root.querySelectorAll('[data-tenanttab]').forEach(btn => {
       btn.addEventListener('click', () => {
         IP.tenantTab = btn.getAttribute('data-tenanttab');
-        root.innerHTML = renderTenantDetail(IP);
-        bindTenantDetail(IP);
+        withFocus(root, () => { root.innerHTML = renderTenantDetail(IP); bindTenantDetail(IP); });
       });
     });
   }
@@ -2156,7 +2203,7 @@ const Views = (function () {
   function bindProjectMap(IP) {
     const root = document.getElementById('main-content');
     if (!root) return;
-    const redraw = () => { root.innerHTML = renderProjectMap(IP); bindProjectMap(IP); };
+    const redraw = () => withFocus(root, () => { root.innerHTML = renderProjectMap(IP); bindProjectMap(IP); });
     root.querySelectorAll('[data-projecttab]').forEach(btn => {
       btn.addEventListener('click', () => {
         IP.projectTab = btn.getAttribute('data-projecttab');
@@ -2513,6 +2560,7 @@ const Views = (function () {
     if (!el) return;
     el.addEventListener('change', async e => {
       IP.spaceId = e.target.value;
+      if (typeof Data !== 'undefined' && Data.clearMachineCache) Data.clearMachineCache();
       IP.filters = {}; IP.search = ''; IP.page = 1;
       IP.wFilters = {}; IP.wSearch = ''; IP.wPage = 1;
       IP.envExpanded = {};
@@ -2537,7 +2585,7 @@ const Views = (function () {
   return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderProjectMap, bindProjectMap, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
-    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch, spaceSwitchNav,
+    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch, spaceSwitchNav, focusSelector, withFocus,
     renderThemeToggle, bindThemeToggle };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

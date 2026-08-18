@@ -1430,7 +1430,26 @@ async function fetchTenantVariables(spaceId, tenantId) {
   return fetchJson('/api/' + spaceId + '/tenants/' + encodeURIComponent(tenantId) + '/variables');
 }
 
-async function fetchTenantMachines(spaceId) {
+// Up to ten paged requests, and both the tenant page and the project map want
+// it. Browsing twenty tenants re-paged the whole estate twenty times. Cached per
+// space for a couple of minutes: long enough to make navigation free, short
+// enough that a target registered while you are looking still turns up.
+const MACHINE_CACHE_MS = 120000;
+const machineCache = {};
+
+function clearMachineCache() { Object.keys(machineCache).forEach(k => { delete machineCache[k]; }); }
+
+function fetchTenantMachines(spaceId) {
+  const hit = machineCache[spaceId];
+  if (hit && (Date.now() - hit.at) < MACHINE_CACHE_MS) return hit.promise;
+  const promise = fetchAllMachines(spaceId);
+  machineCache[spaceId] = { at: Date.now(), promise: promise };
+  // A failed read must not be remembered as the answer for two minutes.
+  promise.catch(() => { if (machineCache[spaceId] && machineCache[spaceId].promise === promise) delete machineCache[spaceId]; });
+  return promise;
+}
+
+async function fetchAllMachines(spaceId) {
   let items = [], total = null, page = 0;
   while (page < TENANT_MACHINE_MAX_PAGES) {
     const res = await fetchJson('/api/' + spaceId + '/machines?skip=' + (page * TENANT_MACHINE_PAGE)
@@ -2114,7 +2133,7 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   viewNeedsEstate,
   fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
   parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
-  fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
+  fetchTenant, fetchTenantVariables, fetchTenantMachines, clearMachineCache, tenantDetailModel, tenantReadiness, matchTenantTargets,
   fetchTenantFlags, tenantFlagModel, flagStateForTenant,
   fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets, projectFlagModel }; }
 
@@ -2132,7 +2151,7 @@ if (typeof module !== 'undefined') {
     viewNeedsEstate,
     fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
     parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
-    fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
+    fetchTenant, fetchTenantVariables, fetchTenantMachines, clearMachineCache, tenantDetailModel, tenantReadiness, matchTenantTargets,
     fetchTenantFlags, tenantFlagModel, flagStateForTenant,
     fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets, projectFlagModel };
 }

@@ -4226,3 +4226,85 @@ describe('Incomplete reads say so where the zero used to be', () => {
     expect(r.count).toBe(1);
   });
 });
+
+describe('A redraw keeps focus where the user left it', () => {
+  const Views = require('./views');
+
+  test('a control is identified by what survives the rebuild', () => {
+    const el = (tag, attrs) => ({
+      tagName: tag.toUpperCase(), id: attrs.id || '',
+      hasAttribute: a => Object.prototype.hasOwnProperty.call(attrs, a),
+      getAttribute: a => attrs[a]
+    });
+    expect(Views.focusSelector(el('div', { 'data-project': 'Projects-1' })))
+      .toBe('div[data-project="Projects-1"]');
+    expect(Views.focusSelector(el('button', { 'data-sort': 'Name' })))
+      .toBe('button[data-sort="Name"]');
+    // A facet needs both halves, or it finds the wrong checkbox.
+    expect(Views.focusSelector(el('input', { 'data-facet': 'tags', 'data-value': 'Region/EU' })))
+      .toBe('input[data-facet="tags"][data-value="Region/EU"]');
+    expect(Views.focusSelector(el('input', { id: 'ip-search' }))).toBe('#ip-search');
+  });
+
+  test('an element with nothing stable about it is left alone', () => {
+    expect(Views.focusSelector({ tagName: 'SPAN', id: '', hasAttribute: () => false, getAttribute: () => null }))
+      .toBeNull();
+    expect(Views.focusSelector(null)).toBeNull();
+  });
+
+  test('focus is restored across a redraw, and the caret with it', () => {
+    let focused = null, range = null;
+    const control = { focus: () => { focused = 'again'; },
+      setSelectionRange: (a, b) => { range = [a, b]; } };
+    const active = { tagName: 'INPUT', id: 'ip-search', hasAttribute: () => false,
+      getAttribute: () => null, selectionStart: 3, selectionEnd: 5 };
+    const root = { contains: () => true, querySelector: sel => (sel === '#ip-search' ? control : null) };
+    global.document = { activeElement: active, body: {} };
+    let redrew = false;
+    Views.withFocus(root, () => { redrew = true; });
+    expect(redrew).toBe(true);
+    expect(focused).toBe('again');
+    expect(range).toEqual([3, 5]);
+    delete global.document;
+  });
+
+  test('a control that no longer exists after the redraw does not throw', () => {
+    const active = { tagName: 'BUTTON', id: '', hasAttribute: a => a === 'data-page',
+      getAttribute: () => '4' };
+    const root = { contains: () => true, querySelector: () => null };
+    global.document = { activeElement: active, body: {} };
+    expect(() => Views.withFocus(root, () => {})).not.toThrow();
+    delete global.document;
+  });
+});
+
+describe('The machine list is read once per space, not once per page', () => {
+  const data = require('./data');
+
+  test('a second read inside the window reuses the first', async () => {
+    data.clearMachineCache();
+    const calls = [];
+    global.fetch = async url => { calls.push(url); return {
+      ok: true, status: 200, json: async () => ({ Items: [], TotalResults: 0 }) }; };
+    await data.fetchTenantMachines('Spaces-1');
+    const first = calls.length;
+    await data.fetchTenantMachines('Spaces-1');
+    expect(calls.length).toBe(first);
+    // A different space is a different estate.
+    await data.fetchTenantMachines('Spaces-2');
+    expect(calls.length).toBeGreaterThan(first);
+    data.clearMachineCache();
+    delete global.fetch;
+  });
+
+  test('a failed read is not remembered as the answer', async () => {
+    data.clearMachineCache();
+    let attempts = 0;
+    global.fetch = async () => { attempts++; return { ok: false, status: 500, statusText: 'Server Error' }; };
+    await data.fetchTenantMachines('Spaces-1').catch(() => {});
+    await data.fetchTenantMachines('Spaces-1').catch(() => {});
+    expect(attempts).toBe(2);
+    data.clearMachineCache();
+    delete global.fetch;
+  });
+});
