@@ -1287,6 +1287,11 @@ function tenantsModel(payload) {
     const pairs = t.ProjectEnvironments || {};
     const connectedProjects = Object.keys(pairs);
     const pairCount = connectedProjects.reduce((n, pid) => n + ((pairs[pid] || []).length), 0);
+    // Distinct environments this tenant is connected to, across every project.
+    // Deployment history says where it has been; this says where it can go.
+    const connectedEnvs = {};
+    connectedProjects.forEach(pid => (pairs[pid] || []).forEach(eid => { connectedEnvs[eid] = true; }));
+    const connectedEnvIds = Object.keys(connectedEnvs);
 
     let last = null;
     items.forEach(i => {
@@ -1305,6 +1310,7 @@ function tenantsModel(payload) {
       connected: pairCount > 0,
       pairCount: pairCount,
       connectedProjectIds: connectedProjects,
+      connectedEnvironmentIds: connectedEnvIds,
       projectsOn: Object.keys(projectsOn),
       environmentsOn: Object.keys(envsOn).map(id => envName[id] || id),
       deployed: items.length > 0,
@@ -1319,11 +1325,40 @@ function tenantsModel(payload) {
     };
   });
 
+  // Three numbers about the shape of the tenancy, none of which the table shows
+  // and all of which come from the tenant payload rather than the dashboard, so
+  // the dashboard's project cap does not touch them. The tenant list's own page
+  // limit does, and the view says so.
+  const tagValues = {};
+  const tagSetsInUse = {};
+  rows.forEach(r => r.tags.forEach(tag => {
+    tagValues[tag.raw] = true;
+    if (tag.set) tagSetsInUse[tag.set] = true;
+  }));
+  let widest = null;
+  rows.forEach(r => {
+    if (!widest || r.connectedProjectIds.length > widest.count) {
+      widest = { count: r.connectedProjectIds.length, name: r.name, id: r.id };
+    }
+  });
+  const environmentConnections = rows.reduce((n, r) => n + r.connectedEnvironmentIds.length, 0);
+
   return {
     tenants: rows,
     total: (src.tenants && src.tenants.total) || rows.length,
     truncated: !!(src.tenants && src.tenants.truncated),
     dashboardCap: dashboardCap(dash),
+    metrics: {
+      inEnvironments: rows.filter(r => r.connectedEnvironmentIds.length).length,
+      environmentConnections: environmentConnections,
+      tagValues: Object.keys(tagValues).length,
+      tagSetsInUse: Object.keys(tagSetsInUse).length,
+      maxProjects: widest ? widest.count : 0,
+      maxProjectsTenant: widest && widest.count ? widest.name : '',
+      // Every one of these is computed over the tenants that were read.
+      partial: !!(src.tenants && src.tenants.truncated),
+      countedOver: rows.length
+    },
     tagSets: (src.tagSets || []).map(ts => ({
       name: ts.Name,
       tags: (ts.Tags || []).map(tag => ({ name: tag.Name, colour: tag.Color || '' }))

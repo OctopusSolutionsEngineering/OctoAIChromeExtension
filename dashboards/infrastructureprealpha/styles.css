@@ -1059,3 +1059,7 @@ hr, .divider { border: 0; border-top: 1px solid var(--border); margin: var(--spa
   gap: 16px; flex-wrap: wrap; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
 .ip-pm-tabbar > .ip-tabs { margin-bottom: 0; border-bottom: 0; }
 .ip-pm-tabbar > .ip-rel-controls { padding-bottom: 8px; }
+/* Three tenancy metrics share the KPI card treatment; only the column count
+   differs from the four-up grid it borrows from. */
+.ip-kpi-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 720px) { .ip-kpi-3 { grid-template-columns: 1fr; } }

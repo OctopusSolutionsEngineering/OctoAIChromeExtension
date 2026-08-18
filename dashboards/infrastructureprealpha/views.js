@@ -1643,6 +1643,32 @@ const Views = (function () {
     return '<div class="ip-tn-facetgroup"><p class="ip-tn-facettitle">' + escHtml(title) + '</p>' + rows + '</div>';
   }
 
+  // Three facts about the shape of the tenancy that the table cannot show,
+  // because each is a property of the whole list rather than of a row.
+  function _tenantMetrics(m) {
+    const k = m.metrics;
+    if (!k) return '';
+    const card = (label, value, sub) => '<section class="ip-card">'
+      + '<h4>' + escHtml(label) + '</h4>'
+      + '<div class="ip-big">' + value.toLocaleString() + '</div>'
+      + (sub ? '<p class="ip-sub">' + escHtml(sub) + '</p>' : '')
+      + '</section>';
+    return '<div class="ip-grid ip-kpi-grid ip-kpi-3">'
+      + card('Tenants in environments', k.inEnvironments,
+          k.environmentConnections.toLocaleString() + ' tenant-environment '
+          + (k.environmentConnections === 1 ? 'connection' : 'connections')
+          + (k.inEnvironments === k.countedOver ? '' : ', ' + (k.countedOver - k.inEnvironments) + ' connected to none'))
+      + card('Tenant tags in use', k.tagValues,
+          k.tagSetsInUse + (k.tagSetsInUse === 1 ? ' tag set' : ' tag sets'))
+      + card('Most projects on one tenant', k.maxProjects,
+          k.maxProjectsTenant || 'no tenant is connected to a project')
+      + '</div>'
+      // Counted over what was read, which is not always everything.
+      + (k.partial ? '<p class="ip-rel-hnote-inline">These are counted over the first '
+          + k.countedOver.toLocaleString() + ' tenants read, not all ' + m.total.toLocaleString()
+          + '.</p>' : '');
+  }
+
   function renderTenants(IP) {
     const st = IP.tenants || { status: 'idle' };
     const head = '<header class="ip-head"><h2>Tenants</h2>'
@@ -1735,6 +1761,7 @@ const Views = (function () {
     }));
 
     return head
+      + _tenantMetrics(m)
       + '<div class="ip-tn-toolbar">'
       +   '<input class="ip-search ip-tn-search" type="search" data-ctl="tenant-search"'
       +     ' placeholder="Search tenants…" value="' + escHtml(IP.tenantQuery) + '">'

@@ -4431,3 +4431,95 @@ describe('The machine list is read once per space, not once per page', () => {
     expect(calls.length).toBe(n + 1);
   });
 });
+
+describe('Tenancy metrics on the tenants list', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const dash = { Projects: [], ProjectGroups: [], Environments: [], Tenants: [], Items: [] };
+  const model = (tenants, extra) => data.tenantsModel(Object.assign({
+    tenants: { items: tenants, total: tenants.length, truncated: false },
+    dashboard: dash, tagSets: [] }, extra || {}));
+  const sample = [
+    { Id: 'T1', Name: 'Acme', TenantTags: ['Region/EU', 'Tier/Gold'],
+      ProjectEnvironments: { P1: ['E1', 'E2'], P2: ['E2'] } },     // 2 projects, 2 envs
+    { Id: 'T2', Name: 'Globex', TenantTags: ['Region/EU'],
+      ProjectEnvironments: { P1: ['E1'], P2: ['E1'], P3: ['E3'] } }, // 3 projects, 2 envs
+    { Id: 'T3', Name: 'Initech', TenantTags: [], ProjectEnvironments: {} }
+  ];
+
+  test('tenants in environments counts tenants, and connections separately', () => {
+    const k = model(sample).metrics;
+    expect(k.inEnvironments).toBe(2);            // Initech is connected to none
+    expect(k.environmentConnections).toBe(4);    // Acme E1,E2 + Globex E1,E3
+  });
+
+  test('an environment reached by two projects is one connection, not two', () => {
+    // Acme has three project-environment pairs across two environments.
+    const k = model([sample[0]]).metrics;
+    expect(k.environmentConnections).toBe(2);
+    expect(model([sample[0]]).tenants[0].pairCount).toBe(3);
+  });
+
+  test('tags are counted distinctly, and their sets with them', () => {
+    const k = model(sample).metrics;
+    expect(k.tagValues).toBe(2);      // Region/EU is shared, so it counts once
+    expect(k.tagSetsInUse).toBe(2);   // Region, Tier
+  });
+
+  test('the widest tenant is named, not just counted', () => {
+    const k = model(sample).metrics;
+    expect(k.maxProjects).toBe(3);
+    expect(k.maxProjectsTenant).toBe('Globex');
+  });
+
+  test('a space with no tenancy at all reports zeros without naming anyone', () => {
+    const k = model([]).metrics;
+    expect(k).toMatchObject({ inEnvironments: 0, environmentConnections: 0, tagValues: 0, maxProjects: 0 });
+    expect(k.maxProjectsTenant).toBe('');
+    // A space with no tenants shows the empty state instead of the cards.
+    expect(Views.renderTenants({ tenants: { status: 'ready', model: model([]) } }))
+      .toContain('No tenants in this space');
+  });
+
+  test('tenants that exist but connect to nothing name no tenant', () => {
+    const m = model([{ Id: 'T1', Name: 'Initech', ProjectEnvironments: {} }]);
+    expect(m.metrics.maxProjects).toBe(0);
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: m } });
+    const cards = html.slice(html.indexOf('ip-kpi-3'), html.indexOf('ip-tn-toolbar'));
+    expect(cards).toContain('no tenant is connected to a project');
+    expect(cards).not.toContain('Initech');
+  });
+
+  test('the cards render the numbers and the tenant name', () => {
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: model(sample) } });
+    expect(html).toContain('Tenants in environments');
+    expect(html).toContain('Tenant tags in use');
+    expect(html).toContain('Most projects on one tenant');
+    expect(html).toContain('Globex');
+    expect(html).toContain('4 tenant-environment connections');
+  });
+
+  test('metrics over a truncated list say what they were counted over', () => {
+    const many = [];
+    for (let i = 0; i < 50; i++) many.push({ Id: 'T' + i, Name: 'T' + i, ProjectEnvironments: { P1: ['E1'] } });
+    const m = data.tenantsModel({ tenants: { items: many, total: 4375, truncated: true },
+      dashboard: dash, tagSets: [] });
+    expect(m.metrics.partial).toBe(true);
+    expect(m.metrics.countedOver).toBe(50);
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: m } });
+    expect(html).toContain('first 50 tenants read, not all 4,375');
+  });
+
+  test('a complete list makes no such claim', () => {
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: model(sample) } });
+    expect(html).not.toContain('tenants read, not all');
+  });
+
+  test('the dashboard cap does not touch these — they come from the tenant payload', () => {
+    const capped = data.tenantsModel({ tenants: { items: sample, total: sample.length },
+      dashboard: Object.assign({}, dash, { Projects: [{ Id: 'P1' }], ProjectLimit: 1 }), tagSets: [] });
+    expect(capped.dashboardCap.capped).toBe(true);
+    expect(capped.metrics.maxProjects).toBe(3);   // unchanged by the cap
+    expect(capped.metrics.partial).toBe(false);
+  });
+});
