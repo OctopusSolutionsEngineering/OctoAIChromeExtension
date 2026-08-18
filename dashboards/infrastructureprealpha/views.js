@@ -90,6 +90,13 @@ const Views = (function () {
     return String(base).replace(/\/$/, '') + '/app#/infrastructure/machines';
   }
   function renderOverview(ov, estate) {
+    // Every number below is derived from deployment targets. If they could not
+    // be read, say so above them rather than presenting zeros as findings.
+    const blind = estate && estate.failed && estate.failed.machines
+      ? '<div class="ip-rel-note"><p>Deployment targets can\'t be read in this space, so every '
+        + 'target-derived figure below is missing rather than zero. Environments, worker pools and '
+        + 'tenants are unaffected.</p></div>'
+      : '';
     const ab = (ov.agents && ov.agents.behind) || 0;
     const agentsPillText = ab === 0 ? 'all up to date' : ab + ' behind';
     const typeRows = ov.byType.map(r =>
@@ -110,7 +117,7 @@ const Views = (function () {
       + '<td>' + r.disabled + '</td></tr>').join('');
     const pools = ov.workers.pools.map(p =>
       '<li><span>' + escHtml(p.name) + '</span><b>' + p.count + '</b></li>').join('');
-    return ''
+    return blind + ''
       + '<header class="ip-head ip-head-actions">'
       +   '<div class="ip-head-text"><h2>Infrastructure overview</h2>'
       +     '<p class="ip-sub">A diagnostic snapshot of your deployment estate.</p></div>'
@@ -218,6 +225,12 @@ const Views = (function () {
       + '<td>' + escHtml(t.version) + '</td></tr>';
   }
   function renderTargets(IP) {
+    // A space where targets cannot be read must not render as a space with no
+    // targets — the zero would be a claim we cannot make.
+    if (IP.estate && IP.estate.failed && IP.estate.failed.machines) {
+      return '<header class="ip-head"><h2>Deployment targets</h2></header>'
+        + _unreadable('deployment targets');
+    }
     const all = IP.estate.targets;
     // Nothing to filter, so the facet rail and toolbar would be furniture around a void.
     if (!all.length) return renderTargetsZero(IP);
@@ -988,6 +1001,1477 @@ const Views = (function () {
   const _moonSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" '
     + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+
+  // ─── Projects ──────────────────────────────────────────────────────────────
+  // Environments are fixed-width columns, left-aligned, identical on every row
+  // of the page — collapsed rows, history rows, and every project group. Any
+  // spare width goes to the right of the last column rather than stretching the
+  // columns, so a node sits at the same x wherever it appears.
+  const REL_STATE_TONE = { success:'healthy', failed:'unhealthy', timedout:'unhealthy', cancelled:'disabled', running:'running', unknown:'disabled' };
+
+  function _relTrack(inner, cols) {
+    // Columns are one page-wide width, set on the wrapper from the widest
+    // group, so every group lines up. The width itself is a share of the
+    // available space, so a wide window spreads and a narrow one tightens.
+    return '<div class="ip-rel-track" style="grid-template-columns:repeat(' + cols
+      + ',calc((100% - var(--ip-rel-endgutter)) / var(--ip-rel-cols)))">' + inner + '</div>';
+  }
+
+  function _relWhen(iso) {
+    if (!iso) return '';
+    const then = Date.parse(iso);
+    if (isNaN(then)) return '';
+    const mins = Math.round((Date.now() - then) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return hours + 'h ago';
+    return Math.round(hours / 24) + 'd ago';
+  }
+
+  // An environment holding several releases is a tenant rollout part-way
+  // through. Each entry carries a share bar so the split reads at a glance, and
+  // the cell shows a few of them contracted and every one of them expanded —
+  // the detail lives with the environment it describes rather than in a
+  // separate panel that repeats the column headings.
+  function _relEntry(e, cell, withBar) {
+    const age = _relWhen(e.when);
+    if (!withBar) {
+      return '<span class="ip-rel-entry">'
+        + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
+        + '<span class="ip-rel-age">' + escHtml(age) + '</span>'
+        + (e.tenantCount ? '<span class="ip-rel-tenants">' + escHtml('· ' + e.tenantCount
+            + (e.tenantCount === 1 ? ' tenant' : ' tenants')) + '</span>' : '')
+        + (e.stateKey !== 'success' ? '<span class="ip-rel-state ip-rel-state-' + escHtml(e.stateKey) + '">'
+            + escHtml(e.stateLabel) + '</span>' : '')
+        + '</span>';
+    }
+    // One line per release: version, the share as a small bar, then the count.
+    // No status here — a rollout row is answering "how much of the estate", and
+    // the node above already carries the environment's state.
+    const share = cell.tenantTotal ? (e.tenantCount / cell.tenantTotal * 100) : 0;
+    return '<span class="ip-rel-entry ip-rel-entry-share"'
+      + ' title="' + escHtml(e.version + ' — ' + e.tenantCount.toLocaleString() + ' of '
+          + cell.tenantTotal.toLocaleString() + ' tenants' + (age ? ', ' + age : '')) + '">'
+      + '<span class="ip-rel-ver">' + escHtml(e.version) + '</span>'
+      + '<span class="ip-rel-tsbar"><span style="width:' + share.toFixed(1) + '%"></span></span>'
+      + '<span class="ip-rel-tscount">' + e.tenantCount.toLocaleString() + '</span>'
+      + '</span>';
+  }
+
+  function _relCell(cell, link, expanded) {
+    const seg = link && link !== 'none' ? '<span class="ip-rel-seg ip-rel-seg-' + escHtml(link) + '"></span>' : '';
+    if (!cell.entries.length) {
+      return '<div class="ip-rel-cell">' + seg
+        + '<span class="ip-rel-node ip-rel-node-empty" title="Never deployed"></span>'
+        + '<div class="ip-rel-labels"><span class="ip-rel-none">Never deployed</span></div></div>';
+    }
+    const head = cell.entries[0];
+    const split = cell.entries.length > 1;
+    const withBar = split && cell.tenantTotal > 0;
+    const node = '<span class="ip-rel-node ip-rel-node-' + escHtml(REL_STATE_TONE[head.stateKey] || 'disabled')
+      + (split ? ' ip-rel-node-split' : '') + '" title="' + escHtml(head.stateLabel + ' in ' + cell.envName) + '"></span>';
+
+    // Contracted shows the leading few. Expanded shows the lot, capped only
+    // where a list would stop being readable at all.
+    const CAP = expanded ? 25 : 3;
+    const shown = cell.entries.slice(0, CAP);
+    const hidden = cell.entries.length - shown.length;
+    const hiddenTenants = cell.entries.slice(CAP).reduce((n, e) => n + e.tenantCount, 0);
+
+    // Name a release where it stops, not in every environment it passed
+    // through. A split still names each entry, because its tenant counts are a
+    // per-environment fact, and anything that did not succeed is named where it
+    // happened — a failure is not repetition.
+    const named = shown.filter(e => withBar || e.isFurthest !== false || e.stateKey !== 'success');
+    const labels = named.map(e => _relEntry(e, cell, withBar)).join('');
+    const summary = withBar
+      ? '<span class="ip-rel-tssum">' + cell.versionCount + ' releases · '
+        + cell.tenantTotal.toLocaleString() + (cell.tenantTotal === 1 ? ' tenant' : ' tenants') + '</span>'
+      : '';
+    const more = hidden > 0 && named.length
+      ? '<span class="ip-rel-more">+' + hidden + ' more ' + (hidden === 1 ? 'release' : 'releases')
+        + (hiddenTenants ? ' on ' + hiddenTenants.toLocaleString() + (hiddenTenants === 1 ? ' tenant' : ' tenants') : '')
+        + '</span>'
+      : '';
+    return '<div class="ip-rel-cell' + (withBar ? ' has-split' : '') + '">' + seg + node
+      + '<div class="ip-rel-labels">' + summary + labels + more + '</div></div>';
+  }
+
+  function _relRow(proj, cols, expanded, history, windowLabel, envOff, flags, grouping) {
+    const cells = proj.cells.map((c, i) => _relCell(c, proj.links[i], expanded)).join('');
+    const row = '<div class="ip-rel-row' + (expanded ? ' expanded' : '') + '" role="button" tabindex="0"'
+      + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
+      + '<div class="ip-rel-proj">'
+      +   '<span class="ip-rel-caret" aria-hidden="true"></span>'
+      +   '<a class="ip-rel-proj-name" href="#projects/' + escHtml(proj.id) + '" data-projectlink="1">'
+      +     escHtml(proj.name) + '</a>'
+      + '</div>'
+      + _relTrack(cells, cols)
+      + '</div>';
+    return row + (expanded ? _relHistory(proj, cols, history, windowLabel, envOff || {}, flags, grouping) : '');
+  }
+
+  // The version rides the line at the furthest environment the release reached.
+  // The age beside it is when it ARRIVED there, not when the release was cut —
+  // a release assembled weeks ago and promoted this morning is this morning's
+  // event, and showing its birthday made the window look broken.
+  function _relHistoryRow(r, cols, multiChannel, envOff) {
+    const off = envOff || {};
+    // The label rides the furthest environment still showing, so muting the
+    // noisiest one doesn't strand a release's name in a blank column.
+    let frontier = -1;
+    r.cells.forEach((c, i) => { if (c.deployed && !off[c.envId]) frontier = i; });
+    const headCell = frontier >= 0 ? r.cells[frontier] : null;
+    const headAge = headCell && headCell.when ? headCell.when : r.assembled;
+    const meta = '<span class="ip-rel-hlabel">'
+      + '<span class="ip-rel-hver">' + escHtml(r.version) + '</span>'
+      + (multiChannel && r.channelName ? '<span class="ip-rel-hchan">' + escHtml(r.channelName) + '</span>' : '')
+      + '<span class="ip-rel-hage">' + escHtml(_relWhen(headAge)) + '</span>'
+      + (r.lag > 0 ? '<span class="ip-rel-hlag">' + r.lag + ' behind'
+          + (multiChannel ? ' in ' + escHtml(r.channelName) : '') + '</span>' : '')
+      + (!r.everDeployed ? '<span class="ip-rel-hnever">created ' + escHtml(_relWhen(r.assembled)) + ', never deployed</span>' : '')
+      + '</span>';
+
+    const cells = r.cells.map((c, i) => {
+      if (off[c.envId]) return '<div class="ip-rel-hcell is-off"></div>';
+      const seg = (i > 0 && i <= frontier)
+        ? '<span class="ip-rel-seg ip-rel-seg-' + (i === frontier ? 'strong' : 'pale') + '"></span>' : '';
+      const atHead = (frontier === -1 && i === 0) || i === frontier;
+      const node = c.deployed
+        ? '<span class="ip-rel-hnode ip-rel-node-' + escHtml(REL_STATE_TONE[c.stateKey] || 'disabled')
+          + '" title="' + escHtml(c.stateLabel + ' in ' + c.envName) + '"></span>'
+        : (frontier === -1 && i === 0 ? '<span class="ip-rel-hnode ip-rel-node-empty"></span>' : '');
+      const age = c.deployed && i !== frontier
+        ? '<span class="ip-rel-hcellage">' + escHtml(_relWhen(c.when))
+          + (c.tenantCount ? ' · ' + c.tenantCount + 't' : '') + '</span>' : '';
+      return '<div class="ip-rel-hcell">' + seg + node + age + (atHead ? meta : '') + '</div>';
+    }).join('');
+
+    return '<div class="ip-rel-hrow' + (r.everDeployed ? '' : ' undeployed') + '">' + _relTrack(cells, cols) + '</div>';
+  }
+
+  // ─── Feature flags ─────────────────────────────────────────────────────────
+  // Flags travel across environments the way a release does, so they get the
+  // same line in the same columns — in purple, because a flag is not a
+  // deployment and must not borrow the deployment palette. Only flags mid-
+  // journey get a row; a flag on everywhere is not news, and there are 146 of
+  // those on Octopus Server alone.
+  function _relFlagRow(flag, cols, envOff) {
+    const off = envOff || {};
+    let frontier = -1;
+    flag.cells.forEach((c, i) => { if ((c.state === 'on' || c.state === 'partial') && !off[c.envId]) frontier = i; });
+    const first = flag.cells.reduce((f, c, i) =>
+      (f === -1 && (c.state === 'on' || c.state === 'partial') && !off[c.envId] ? i : f), -1);
+
+    const label = '<span class="ip-rel-hlabel">'
+      + '<span class="ip-rel-flagname">' + escHtml(flag.name) + '</span>'
+      + (frontier >= 0 && flag.cells[frontier].state === 'partial'
+          ? '<span class="ip-rel-flagpct">' + flag.cells[frontier].percent + '%</span>' : '')
+      + '</span>';
+
+    const cells = flag.cells.map((c, i) => {
+      if (off[c.envId]) return '<div class="ip-rel-hcell is-off"></div>';
+      const within = first >= 0 && i > first && i <= frontier;
+      const seg = within ? '<span class="ip-rel-seg ip-rel-seg-flag"></span>' : '';
+      let node = '';
+      if (c.state === 'on') node = '<span class="ip-rel-fnode is-on" title="' + escHtml('On in ' + c.envName) + '"></span>';
+      else if (c.state === 'partial') node = '<span class="ip-rel-fnode is-partial" title="'
+        + escHtml(c.percent + '% in ' + c.envName) + '"></span>';
+      else if (c.state === 'off') node = '<span class="ip-rel-fnode is-off-state" title="' + escHtml('Off in ' + c.envName) + '"></span>';
+      // A percentage gets a bar, the same instrument the tenant split uses.
+      const bar = c.state === 'partial'
+        ? '<span class="ip-rel-fbar" title="' + escHtml(c.percent + '% in ' + c.envName)
+          + '"><span style="width:' + c.percent + '%"></span></span>' : '';
+      return '<div class="ip-rel-hcell ip-rel-fcell">' + seg + node + bar + (i === frontier ? label : '') + '</div>';
+    }).join('');
+
+    return '<div class="ip-rel-hrow ip-rel-frow">' + _relTrack(cells, cols) + '</div>';
+  }
+
+  // A flag change is a point event: it happened in one environment, at one
+  // moment. No line — it did not travel anywhere, it landed.
+  function _relFlagChangeRow(change, cols, envOff, envIds) {
+    const off = envOff || {};
+    const col = change.scope === 'environment' ? envIds.indexOf(change.envId) : 0;
+    if (change.scope === 'environment' && (col < 0 || off[change.envId])) return '';
+    const label = '<span class="ip-rel-hlabel">'
+      + '<span class="ip-rel-flagname">' + escHtml(change.flagName) + '</span>'
+      + '<span class="ip-rel-flagdelta">' + escHtml(Data.flagChangeLabel(change)) + '</span>'
+      + (change.scope === 'default' ? '<span class="ip-rel-flagscope">default</span>' : '')
+      + '<span class="ip-rel-hage">' + escHtml(_relWhen(new Date(change.occurred).toISOString())) + '</span>'
+      + '</span>';
+    const cells = envIds.map((eid, i) => {
+      if (off[eid]) return '<div class="ip-rel-hcell is-off"></div>';
+      if (i !== col) return '<div class="ip-rel-hcell"></div>';
+      return '<div class="ip-rel-hcell ip-rel-fcell">'
+        + '<span class="ip-rel-fnode is-change" title="' + escHtml(change.flagName) + '"></span>'
+        + label + '</div>';
+    }).join('');
+    return '<div class="ip-rel-hrow ip-rel-frow">' + _relTrack(cells, cols) + '</div>';
+  }
+
+  // A variable change is a point event like a flag change, but it can land in
+  // several environments at once — one edit, scoped to two environments, marks
+  // two columns rather than becoming two rows. An unscoped variable applies
+  // everywhere, so it marks every column.
+  function _relVarChangeRow(change, cols, envOff, envIds) {
+    const off = envOff || {};
+    const scoped = change.envIds && change.envIds.length ? change.envIds : null;
+    const marks = envIds.filter(id => !off[id] && (!scoped || scoped.indexOf(id) !== -1));
+    if (!marks.length) return '';
+    const firstCol = envIds.indexOf(marks[0]);
+
+    const label = '<span class="ip-rel-hlabel">'
+      + '<span class="ip-rel-varname">' + escHtml(change.name) + '</span>'
+      + '<span class="ip-rel-vardelta' + (change.sensitive ? ' is-secret' : '') + '">'
+      +   escHtml(Data.variableChangeLabel(change)) + '</span>'
+      + (scoped ? '' : '<span class="ip-rel-flagscope">all environments</span>')
+      + '<span class="ip-rel-hage">' + escHtml(_relWhen(new Date(change.occurred).toISOString())) + '</span>'
+      + '</span>';
+
+    const cells = envIds.map((eid, i) => {
+      if (off[eid]) return '<div class="ip-rel-hcell is-off"></div>';
+      if (marks.indexOf(eid) === -1) return '<div class="ip-rel-hcell"></div>';
+      return '<div class="ip-rel-hcell ip-rel-fcell">'
+        + '<span class="ip-rel-vnode" title="' + escHtml(change.name) + '"></span>'
+        + (i === firstCol ? label : '') + '</div>';
+    }).join('');
+    return '<div class="ip-rel-hrow ip-rel-vrow">' + _relTrack(cells, cols) + '</div>';
+  }
+
+  function _relVarNote(vars) {
+    const elsewhere = (vars || []).filter(c => c.scopedElsewhere).length;
+    const parts = ['A variable change alters nothing already deployed — variables are snapshotted into a release when it is created, so an edit lands with the next one.'];
+    if (elsewhere) parts.push(elsewhere + ' ' + (elsewhere === 1 ? 'change is' : 'changes are')
+      + ' scoped to environments this project does not deploy to.');
+    return '<p class="ip-rel-hnote-inline">' + parts.map(escHtml).join(' ') + '</p>';
+  }
+
+  function _relFlags(proj, cols, flags, envOff) {
+    const st = flags || { status: 'loading' };
+    if (st.status === 'loading' || !st.status) {
+      return '<div class="ip-rel-band"><p class="ip-rel-bandhead">Feature flags</p>'
+        + '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading flags…</span></div></div>';
+    }
+    if (st.status === 'error') {
+      return '<div class="ip-rel-band"><p class="ip-rel-bandhead">Feature flags</p>'
+        + '<p class="ip-rel-hempty">' + escHtml(st.error) + '</p></div>';
+    }
+    const m = st.model;
+    if (!m.total) return '';
+    const settled = m.settled || {};
+    const quiet = [];
+    if (settled.onEverywhere) quiet.push(settled.onEverywhere + ' on everywhere');
+    if (settled.offEverywhere) quiet.push(settled.offEverywhere + ' off everywhere');
+    if (settled.noOverrides) quiet.push(settled.noOverrides + ' on their default');
+    const note = quiet.length
+      ? '<p class="ip-rel-hnote-inline">Not shown: ' + escHtml(quiet.join(', ')) + '.</p>' : '';
+    const truncated = m.truncated
+      ? '<p class="ip-rel-hnote-inline">More than ' + m.total + ' flags — this reads the first few pages only.</p>' : '';
+
+    if (!m.flags.length) {
+      return '<div class="ip-rel-band"><p class="ip-rel-bandhead">Feature flags</p>'
+        + '<p class="ip-rel-hempty">All ' + m.total + ' flags are settled — none is part-way through a rollout.</p>'
+        + note + '</div>';
+    }
+    return '<div class="ip-rel-band">'
+      + '<p class="ip-rel-bandhead">Feature flags in flight'
+      +   '<span class="ip-rel-bandcount">' + m.flags.length + ' of ' + m.total + '</span></p>'
+      + m.flags.map(f => _relFlagRow(f, cols, envOff)).join('')
+      + note + truncated
+      + '</div>';
+  }
+
+  function _relHistory(proj, cols, history, windowLabel, envOff, flags, grouping) {
+    const st = history || { status: 'loading' };
+    // Mirrors the row structure — a label-width gutter, then the track — so an
+    // expanded row starts on exactly the same x as the row it opened from.
+    const wrap = body => '<div class="ip-rel-history">'
+      + '<div class="ip-rel-proj ip-rel-history-gutter" aria-hidden="true"></div>'
+      + '<div class="ip-rel-history-body">' + body + _relFlags(proj, cols, flags, envOff) + '</div></div>';
+
+    if (st.status === 'loading' || !st.status) {
+      return wrap('<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading releases…</span></div>');
+    }
+    if (st.status === 'error') {
+      return wrap('<p class="ip-rel-err">' + escHtml(st.error || 'Could not load this project\'s releases.') + '</p>');
+    }
+    const m = st.model;
+    const off = envOff || {};
+    const anyOff = Object.keys(off).some(k => off[k]);
+    // A project can have nothing released in the window and still have a flag
+    // flip or a variable edit worth seeing, so an empty release list is a
+    // message inside the panel rather than the end of it.
+    const releaseEmpty = !m.totalReleases
+      ? '<p class="ip-rel-hempty">No releases have been created for this project.</p>'
+      : (!m.releases.length
+          ? '<p class="ip-rel-hempty">Nothing moved in the last ' + escHtml(String(windowLabel).toLowerCase())
+            + '. ' + m.totalReleases + ' older ' + (m.totalReleases === 1 ? 'release' : 'releases')
+            + ' — widen the window to see ' + (m.totalReleases === 1 ? 'it' : 'them') + '.</p>'
+          : '');
+    const visible = anyOff
+      ? m.releases.filter(r => r.cells.some((c, i) => c.deployed && !off[c.envId]))
+      : m.releases;
+    const mutedOut = m.releases.length - visible.length;
+    const mutedAll = anyOff && m.releases.length && !visible.length;
+    const multiChannel = m.channels.length > 1;
+    // Grouping by time interleaves flag changes with the releases, so a flip
+    // that shipped alongside a deployment reads as one moment rather than as
+    // two facts in two sections.
+    const changesAll = (flags && flags.status === 'ready' && flags.changes) ? flags.changes : [];
+    // Same treatment as variable changes: a change scoped outside this grid has
+    // no column to sit in, so it is counted in the note rather than drawn.
+    const changesShown = changesAll.filter(c => !c.scopedElsewhere);
+    const changes = grouping === 'Time' ? changesShown : [];
+    const varsAll = (flags && flags.status === 'ready' && flags.variables) ? flags.variables : [];
+    const varsShown = varsAll.filter(c => !c.scopedElsewhere);
+    const varChanges = grouping === 'Time' ? varsShown : [];
+    let rows;
+    if (grouping === 'Time' && (changes.length || varChanges.length)) {
+      const envIds = (m.environments || []).map(e => e.id);
+      const items = visible.map(r => {
+        const head = r.frontier >= 0 ? r.cells[r.frontier] : null;
+        const at = head && head.when ? Date.parse(head.when) : (r.assembled ? Date.parse(r.assembled) : 0);
+        return { at: at, html: _relHistoryRow(r, cols, multiChannel, off) };
+      }).concat(changes.map(c => ({ at: c.occurred, html: _relFlagChangeRow(c, cols, off, envIds) })))
+        .concat(varChanges.map(c => ({ at: c.occurred, html: _relVarChangeRow(c, cols, off, envIds) })));
+      rows = items.filter(i => i.html).sort((a, b) => b.at - a.at).map(i => i.html).join('');
+    } else {
+      rows = visible.map(r => _relHistoryRow(r, cols, multiChannel, off)).join('');
+    }
+    if (mutedAll) rows = '<p class="ip-rel-hempty">Every release in this window only reached environments you have muted.</p>';
+    else if (releaseEmpty) rows = releaseEmpty + rows;
+    const notes = [];
+    if (mutedOut) notes.push(mutedOut + ' ' + (mutedOut === 1 ? 'release' : 'releases')
+      + ' only reached muted environments.');
+    if (m.hiddenByWindow) notes.push(m.hiddenByWindow + ' older ' + (m.hiddenByWindow === 1 ? 'release is' : 'releases are') + ' outside this window.');
+    if (m.windowed) notes.push('History reaches back ' + m.historyCount + ' releases per channel.');
+    if (m.neverDeployedCount) notes.push(m.neverDeployedCount + ' of these were created and never deployed anywhere.');
+    const flagElsewhere = changesAll.length - changesShown.length;
+    if (flagElsewhere) notes.push(flagElsewhere + ' flag ' + (flagElsewhere === 1 ? 'change is' : 'changes are')
+      + ' scoped to environments this project does not deploy to.');
+
+    // Grouped by type, the changes get their own band rather than being mixed
+    // into the releases; grouped by time they are already interleaved above.
+    let changeBand = '';
+    if (grouping === 'Type' && changesShown.length) {
+      const envIds = (m.environments || []).map(e => e.id);
+      const changeRows = changesShown.map(c => _relFlagChangeRow(c, cols, off, envIds)).filter(Boolean).join('');
+      if (changeRows) {
+        changeBand = '<div class="ip-rel-band"><p class="ip-rel-bandhead">Flag changes'
+          + '<span class="ip-rel-bandcount">last ' + escHtml(String(windowLabel).toLowerCase()) + '</span></p>'
+          + changeRows + '</div>';
+      }
+    }
+    let varBand = '';
+    if (grouping === 'Type' && varsShown.length) {
+      const envIds2 = (m.environments || []).map(e => e.id);
+      const varRows = varsShown.map(c => _relVarChangeRow(c, cols, off, envIds2)).filter(Boolean).join('');
+      if (varRows) {
+        varBand = '<div class="ip-rel-band"><p class="ip-rel-bandhead">Variable changes'
+          + '<span class="ip-rel-bandcount">last ' + escHtml(String(windowLabel).toLowerCase()) + '</span></p>'
+          + varRows + _relVarNote(varsAll) + '</div>';
+      }
+    }
+    const varInline = (grouping === 'Time' && varsShown.length) ? _relVarNote(varsAll) : '';
+    return wrap(rows + varInline + (notes.length
+      ? '<div class="ip-rel-hnote">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '')
+      + changeBand + varBand);
+  }
+
+  // The window/grouping controls, the legend and the environment header are the
+  // same on the projects list and on one project's Status tab. One copy each.
+  function _relControls(IP) {
+    const windows = (typeof Data !== 'undefined' && Data.HISTORY_WINDOWS) || [{ label: '24 hours' }, { label: '7 days' }, { label: 'All' }];
+    const active = IP.historyWindow || windows[0].label;
+    const segs = windows.map(w => '<button class="ip-seg' + (w.label === active ? ' active' : '')
+      + '" data-window="' + escHtml(w.label) + '">' + escHtml(w.label) + '</button>').join('');
+    const groupings = (typeof Data !== 'undefined' && Data.GROUPINGS) || ['Time', 'Type'];
+    const grouping = IP.grouping || groupings[0];
+    const gsegs = groupings.map(gname => '<button class="ip-seg' + (gname === grouping ? ' active' : '')
+      + '" data-grouping="' + escHtml(gname) + '">' + escHtml(gname) + '</button>').join('');
+    return '<div class="ip-rel-controls">'
+      + '<div class="ip-rel-window"><span class="ip-caption">History</span><div class="ip-segs">' + segs + '</div></div>'
+      + '<div class="ip-rel-window"><span class="ip-caption">Group by</span><div class="ip-segs">' + gsegs + '</div></div>'
+      + '</div>';
+  }
+
+  function _relWindowLabel(IP) {
+    const windows = (typeof Data !== 'undefined' && Data.HISTORY_WINDOWS) || [{ label: '24 hours' }];
+    return IP.historyWindow || windows[0].label;
+  }
+
+  function _relLegend() {
+    return '<div class="ip-rel-legend">'
+      + '<span><i class="ip-rel-key ip-rel-key-healthy"></i>Deployed</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-running"></i>In progress</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-unhealthy"></i>Failed or timed out</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-split"></i>Split across tenants</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-strong"></i>Same release both sides</span>'
+      + '<span><i class="ip-rel-key ip-rel-key-pale"></i>Drifted</span>'
+      + '</div>';
+  }
+
+  function _relEnvHeads(groupId, environments, off) {
+    return environments.map(e => {
+      const isOff = !!(off || {})[e.id];
+      return '<div class="ip-rel-envhead' + (isOff ? ' is-off' : '') + '">'
+        + '<span class="ip-rel-envname">' + escHtml(e.name) + '</span>'
+        + '<button type="button" class="ip-rel-envtoggle" role="switch"'
+        +   ' aria-checked="' + (isOff ? 'false' : 'true') + '"'
+        +   ' data-envtoggle="' + escHtml(groupId) + '|' + escHtml(e.id) + '"'
+        +   ' title="' + escHtml((isOff ? 'Show ' : 'Hide ') + e.name + ' in expanded history') + '">'
+        +   '<span class="ip-rel-envtoggle-track"><span class="ip-rel-envtoggle-knob"></span></span>'
+        + '</button></div>';
+    }).join('');
+  }
+
+  function renderProjects(IP) {
+    const st = IP.releases || { status: 'idle' };
+    const active = _relWindowLabel(IP);
+    const grouping = IP.grouping || ((typeof Data !== 'undefined' && Data.GROUPINGS) || ['Time'])[0];
+    const head = '<header class="ip-head ip-head-actions"><div class="ip-head-text"><h2>Projects</h2>'
+      + '<p class="ip-sub">What each project is running in each environment, and where a release has stopped moving.</p></div>'
+      + _relControls(IP) + '</header>';
+
+    if (st.status === 'loading' || st.status === 'idle') {
+      return head + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading the project dashboard…</p></div>';
+    }
+    if (st.status === 'error') {
+      return head + '<div class="ip-state"><h3>Couldn\'t load the project dashboard</h3><p>' + escHtml(st.error || 'Unknown error') + '</p></div>';
+    }
+    const m = st.model;
+    if (!m.projects.length) {
+      return head + '<div class="ip-empty"><h3>No projects in this space</h3>'
+        + '<p>Releases move through environments once a space has a project to deploy.</p></div>';
+    }
+    if (!m.environments.length) {
+      return head + '<div class="ip-empty"><h3>Nothing has been deployed in this space</h3>'
+        + '<p>Projects exist, but no release has reached an environment yet.</p></div>';
+    }
+
+    const notes = [];
+    if (IP.spaceError) notes.push('Infrastructure cannot be read in this space, so the other sections are unavailable. Projects reads the project dashboard, which you do have access to.');
+    if (m.truncated.capped) notes.push('Showing ' + m.truncated.shown + ' projects — the server caps the dashboard at ' + m.truncated.projectLimit + '. Projects beyond the cap are missing from this view.');
+    if (m.truncated.isFiltered) notes.push('The dashboard is filtered on this instance, so this is a subset of its projects.');
+    const note = notes.length ? '<div class="ip-rel-note">' + notes.map(n => '<p>' + escHtml(n) + '</p>').join('') + '</div>' : '';
+
+    const open = IP.projectOpen || {};
+    const hist = IP.projectHistory || {};
+
+    const maxCols = (m.groups || []).reduce((n, g) => Math.max(n, g.environments.length), 1);
+    const blocks = (m.groups || []).map(g => {
+      const cols = g.environments.length;
+      if (!cols) {
+        return '<section class="ip-rel-group"><h3 class="ip-rel-group-name">' + escHtml(g.name) + '</h3>'
+          + '<p class="ip-rel-hempty">Nothing in this group has been deployed yet.</p></section>';
+      }
+      const off = (IP.envOff && IP.envOff[g.id]) || {};
+      const heads = _relEnvHeads(g.id, g.environments, off);
+      const flg = IP.projectFlags || {};
+      const rows = g.projects.map(p =>
+        '<div class="ip-rel-card' + (open[p.id] ? ' is-open' : '') + '">'
+        + _relRow(p, cols, !!open[p.id], hist[p.id], active, off, flg[p.id], grouping)
+        + '</div>').join('');
+      const hiddenNote = g.hiddenEnvironments.length
+        ? '<p class="ip-rel-hidden">Not shown, because this group has never deployed to them: '
+          + escHtml(g.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
+      return '<section class="ip-rel-group">'
+        + '<h3 class="ip-rel-group-name">' + escHtml(g.name)
+        +   '<span class="ip-rel-group-count">' + g.projects.length + (g.projects.length === 1 ? ' project' : ' projects') + '</span></h3>'
+        + '<div class="ip-rel-grid">'
+        +   '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>' + _relTrack(heads, cols) + '</div>'
+        +   '<div class="ip-rel-cards">' + rows + '</div>'
+        + '</div>' + hiddenNote + '</section>';
+    }).join('');
+
+    return head + note + _relLegend()
+      + '<div class="ip-rel-groups" style="--ip-rel-cols:' + maxCols + '">' + blocks + '</div>';
+  }
+
+  function bindProjects(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    _bindRelRows(IP, root, () => { root.innerHTML = renderProjects(IP); bindProjects(IP); });
+  }
+
+  // Expanding a row, hiding an environment, changing the window or the grouping
+  // behave the same wherever the row is drawn, so only the redraw differs.
+  function _bindRelRows(IP, root, redraw) {
+    const toggle = el => {
+      const id = el.getAttribute('data-project');
+      if (!id) return;
+      IP.projectOpen = IP.projectOpen || {};
+      if (IP.projectOpen[id]) delete IP.projectOpen[id]; else IP.projectOpen[id] = true;
+      redraw();
+      if (IP.projectOpen[id]) {
+        if (IP.loadProjectHistory) IP.loadProjectHistory(id);
+        if (IP.loadProjectFlags) IP.loadProjectFlags(id);
+      }
+    };
+    root.querySelectorAll('[data-projectlink]').forEach(a => {
+      a.addEventListener('click', ev => ev.stopPropagation());
+    });
+    root.querySelectorAll('.ip-rel-row[data-project]').forEach(el => {
+      el.addEventListener('click', () => toggle(el));
+      el.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(el); }
+      });
+    });
+    root.querySelectorAll('[data-grouping]').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        IP.grouping = btn.getAttribute('data-grouping');
+        redraw();
+      });
+    });
+    root.querySelectorAll('[data-envtoggle]').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        const parts = String(btn.getAttribute('data-envtoggle')).split('|');
+        const gid = parts[0], eid = parts[1];
+        IP.envOff = IP.envOff || {};
+        IP.envOff[gid] = IP.envOff[gid] || {};
+        if (IP.envOff[gid][eid]) delete IP.envOff[gid][eid]; else IP.envOff[gid][eid] = true;
+        redraw();
+      });
+    });
+    // The window filters what was already fetched, so switching it never
+    // re-requests — the 30-per-channel payload is the ceiling either way.
+    root.querySelectorAll('.ip-rel-window [data-window]').forEach(btn => {
+      btn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        IP.historyWindow = btn.getAttribute('data-window');
+        if (IP.rebuildHistories) IP.rebuildHistories();
+        redraw();
+      });
+    });
+  }
+
+  // ─── Tenants ───────────────────────────────────────────────────────────────
+  // A tenant has no health of its own, so the row reports four independent
+  // facts side by side and never merges them into a score.
+  const TENANT_PAGE_SIZE = 100;
+
+  function _tenantWhen(at) {
+    if (!at) return '';
+    return _relWhen(new Date(at).toISOString());
+  }
+
+  function _tenantOutcomeCell(t) {
+    if (!t.connected) return '<span class="ip-tn-muted">Not connected</span>';
+    if (!t.deployed) return '<span class="ip-tn-muted">Never deployed</span>';
+    const tone = t.outcome === 'success' ? 'healthy'
+      : (t.outcome === 'running' ? 'running' : (t.outcome === 'cancelled' ? 'disabled' : 'unhealthy'));
+    return '<span class="ip-tn-outcome">'
+      + '<span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+      + '<span>' + escHtml(t.outcomeLabel) + '</span>'
+      + '<span class="ip-tn-age">' + escHtml(_tenantWhen(t.outcomeAt)) + '</span>'
+      + (t.outcomeProject ? '<span class="ip-tn-age">· ' + escHtml(t.outcomeProject) + '</span>' : '')
+      + '</span>';
+  }
+
+  function _tenantFacetGroup(title, entries, key, selected) {
+    if (!entries.length) return '';
+    const sel = (selected && selected[key]) || {};
+    const rows = entries.map(e =>
+      '<label class="ip-tn-facet' + (sel[e.value] ? ' is-on' : '') + '">'
+      + '<input type="checkbox" data-facet="' + escHtml(key) + '" data-value="' + escHtml(e.value) + '"'
+      +   (sel[e.value] ? ' checked' : '') + '>'
+      + '<span class="ip-tn-facet-name">' + escHtml(e.label) + '</span>'
+      + '<span class="ip-tn-facet-count">' + e.count + '</span></label>').join('');
+    return '<div class="ip-tn-facetgroup"><p class="ip-tn-facettitle">' + escHtml(title) + '</p>' + rows + '</div>';
+  }
+
+  function renderTenants(IP) {
+    const st = IP.tenants || { status: 'idle' };
+    const head = '<header class="ip-head"><h2>Tenants</h2>'
+      + '<p class="ip-sub">Customers, sites and regions deployed through one shared process. '
+      + 'State is four independent facts — connection, last outcome, currency and readiness — never one score.</p></header>';
+
+    if (st.status === 'loading' || st.status === 'idle') {
+      return head + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading tenants…</p></div>';
+    }
+    if (st.status === 'error') {
+      return head + '<div class="ip-state"><h3>Couldn\'t load tenants</h3><p>' + escHtml(st.error || 'Unknown error') + '</p></div>';
+    }
+    const m = st.model;
+    if (!m.tenants.length) {
+      return head + '<div class="ip-empty"><h3>No tenants in this space</h3>'
+        + '<p>A tenant is a customer, site or region that a project deploys to separately, through one shared process.</p></div>';
+    }
+
+    IP.tenantQuery = IP.tenantQuery || '';
+    IP.tenantSort = IP.tenantSort || 'Actionability';
+    IP.tenantSel = IP.tenantSel || {};
+    IP.tenantPage = IP.tenantPage || 0;
+
+    const filtered = Data.filterTenants(m.tenants, IP.tenantQuery, IP.tenantSel);
+    const sorted = Data.sortTenants(filtered, IP.tenantSort, IP.tenantDir);
+    const pages = Math.max(1, Math.ceil(sorted.length / TENANT_PAGE_SIZE));
+    const page = Math.min(IP.tenantPage, pages - 1);
+    const slice = sorted.slice(page * TENANT_PAGE_SIZE, (page + 1) * TENANT_PAGE_SIZE);
+
+    const facets = Data.tenantFacets(m.tenants, IP.tenantQuery, IP.tenantSel);
+    // Tag sets come from the instance, not from a fixed list — an instance with
+    // no tag sets simply has no tag facets.
+    const tagGroups = m.tagSets.map(ts => _tenantFacetGroup(ts.name,
+      ts.tags.map(tag => ({ label: tag.name, value: ts.name + '/' + tag.name,
+        count: facets.count('tags', ts.name + '/' + tag.name) }))
+        .filter(e => e.count > 0), 'tags', IP.tenantSel)).join('');
+
+    const envGroup = _tenantFacetGroup('Environment',
+      m.environments.map(e => ({ label: e.name, value: e.name, count: facets.count('environments', e.name) }))
+        .filter(e => e.count > 0), 'environments', IP.tenantSel);
+
+    const stateGroup = _tenantFacetGroup('State', [
+      { label: 'Needs attention', value: 'needs-attention', count: facets.count('state', 'needs-attention') },
+      { label: 'Never deployed', value: 'never-deployed', count: facets.count('state', 'never-deployed') },
+      { label: 'Not connected', value: 'not-connected', count: facets.count('state', 'not-connected') }
+    ].filter(e => e.count > 0), 'state', IP.tenantSel);
+
+    const projGroup = _tenantFacetGroup('Connected project',
+      m.projects.map(p => ({ label: p.name, value: p.id, count: facets.count('projects', p.id) }))
+        .filter(e => e.count > 0), 'projects', IP.tenantSel);
+
+    IP.tenantDir = IP.tenantDir || Data.tenantSortDir(IP.tenantSort);
+    const sorts = Data.TENANT_SORTS.map(x => '<option' + (x === IP.tenantSort ? ' selected' : '') + '>'
+      + escHtml(x) + '</option>').join('');
+
+    // Headers and the dropdown drive one piece of state, so a column arrow and
+    // the dropdown can never contradict each other. Tags is not sortable —
+    // ordering by a list of labels answers no question anyone has.
+    const th = (label, key) => {
+      if (!key) return '<th>' + escHtml(label) + '</th>';
+      const active = IP.tenantSort === key;
+      const dir = active ? IP.tenantDir : null;
+      const aria = active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none';
+      return '<th aria-sort="' + aria + '" class="ip-tn-th' + (active ? ' is-sorted' : '') + '">'
+        + '<button type="button" class="ip-tn-sortbtn" data-sort="' + escHtml(key) + '">'
+        +   escHtml(label)
+        +   '<span class="ip-tn-arrow" aria-hidden="true">' + (active ? (dir === 'asc' ? '↑' : '↓') : '↕') + '</span>'
+        + '</button></th>';
+    };
+
+    const rows = slice.map(t =>
+      '<tr class="ip-tn-row">'
+      + '<td><a class="ip-tn-name" href="#tenants/' + escHtml(t.id) + '">' + escHtml(t.name) + '</a>'
+      +   '<span class="ip-tn-id">' + escHtml(t.id) + '</span></td>'
+      + '<td>' + (t.tags.length
+          ? t.tags.slice(0, 3).map(tag => '<span class="ip-chipx ip-chipx-tag">' + escHtml(tag.name) + '</span>').join('')
+            + (t.tags.length > 3 ? '<span class="ip-tn-age">+' + (t.tags.length - 3) + '</span>' : '')
+          : '<span class="ip-tn-muted">—</span>') + '</td>'
+      + '<td>' + t.connectedProjectIds.length + '</td>'
+      + '<td>' + (t.environmentsOn.length ? escHtml(t.environmentsOn.slice(0, 2).join(', '))
+          + (t.environmentsOn.length > 2 ? ' +' + (t.environmentsOn.length - 2) : '')
+          : '<span class="ip-tn-muted">—</span>') + '</td>'
+      + '<td>' + _tenantOutcomeCell(t) + '</td>'
+      + '</tr>').join('');
+
+    const activeChips = [];
+    Object.keys(IP.tenantSel).forEach(k => Object.keys(IP.tenantSel[k] || {}).forEach(v => {
+      if (IP.tenantSel[k][v]) activeChips.push('<button class="ip-tn-chip" data-clear="' + escHtml(k) + '|' + escHtml(v) + '">'
+        + escHtml(v) + ' ×</button>');
+    }));
+
+    return head
+      + '<div class="ip-tn-toolbar">'
+      +   '<input class="ip-search ip-tn-search" type="search" placeholder="Search tenants…" value="' + escHtml(IP.tenantQuery) + '">'
+      +   '<label class="ip-tn-sort"><span class="ip-caption">Sort</span><select class="ip-tn-sortsel">' + sorts + '</select></label>'
+      +   '<span class="ip-count">' + sorted.length.toLocaleString()
+      +     (sorted.length === m.tenants.length ? '' : ' of ' + m.tenants.length.toLocaleString())
+      +     (sorted.length === 1 ? ' tenant' : ' tenants') + '</span>'
+      + '</div>'
+      + (activeChips.length ? '<div class="ip-tn-chips">' + activeChips.join('')
+          + '<button class="ip-tn-chip is-clear" data-clear="all">Clear all</button></div>' : '')
+      + '<p class="ip-rel-hnote-inline">Pick a release scope to see currency. Versions from different projects don\'t add up, '
+      +   'so there is no cross-project figure to show. Readiness needs a request per tenant, so it lives on the tenant page.</p>'
+      + '<div class="ip-tn-body">'
+      +   '<aside class="ip-tn-facets"><p class="ip-tn-facethead">Filters</p>'
+      +     tagGroups + envGroup + stateGroup + projGroup + '</aside>'
+      +   '<div class="ip-tn-table-wrap">'
+      +     (slice.length
+          ? '<table class="ip-table ip-tn-table"><thead><tr>'
+            + th('Tenant', 'Name') + th('Tags', null) + th('Projects', 'Projects')
+            + th('Environments', 'Environments') + th('Last outcome', 'Last outcome')
+            + '</tr></thead><tbody>' + rows + '</tbody></table>'
+          : '<div class="ip-empty"><h3>No tenants match these filters</h3>'
+            + '<p>Clear a filter or search for a different name.</p></div>')
+      +     (pages > 1 ? '<div class="ip-tn-pager">'
+            + '<button class="ip-btn ip-btn-secondary" data-page="' + (page - 1) + '"' + (page === 0 ? ' disabled' : '') + '>Previous</button>'
+            + '<span class="ip-tn-age">Page ' + (page + 1) + ' of ' + pages + '</span>'
+            + '<button class="ip-btn ip-btn-secondary" data-page="' + (page + 1) + '"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>'
+            + '</div>' : '')
+      +   '</div>'
+      + '</div>'
+      + (m.truncated ? '<p class="ip-rel-hnote-inline">More than ' + m.total + ' tenants — this reads the first pages only.</p>' : '')
+      + ((m.dashboardCap && m.dashboardCap.capped)
+          ? '<p class="ip-rel-hnote-inline">' + escHtml(m.dashboardCap.isFiltered
+              ? 'The project dashboard is filtered on this instance. Last outcome and Environments come from it, so a tenant deploying only to projects it leaves out reads as never deployed.'
+              : 'The project dashboard returns at most ' + m.dashboardCap.projectLimit
+                + ' projects. Last outcome and Environments come from it, so a tenant deploying only to projects beyond that reads as never deployed.')
+            + '</p>' : '');
+  }
+
+  function bindTenants(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    const redraw = () => { root.innerHTML = renderTenants(IP); bindTenants(IP); };
+    const search = root.querySelector('.ip-tn-search');
+    if (search) search.addEventListener('input', () => {
+      IP.tenantQuery = search.value; IP.tenantPage = 0;
+      redraw();
+      const again = root.querySelector('.ip-tn-search');
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+    const sort = root.querySelector('.ip-tn-sortsel');
+    if (sort) sort.addEventListener('change', () => {
+      IP.tenantSort = sort.value;
+      IP.tenantDir = Data.tenantSortDir(sort.value);
+      redraw();
+    });
+    root.querySelectorAll('[data-sort]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-sort');
+        // Same column again reverses; a new column starts in its natural
+        // direction rather than inheriting the last one's.
+        if (IP.tenantSort === key) IP.tenantDir = IP.tenantDir === 'asc' ? 'desc' : 'asc';
+        else { IP.tenantSort = key; IP.tenantDir = Data.tenantSortDir(key); }
+        IP.tenantPage = 0;
+        redraw();
+      });
+    });
+    root.querySelectorAll('[data-facet]').forEach(box => {
+      box.addEventListener('change', () => {
+        const key = box.getAttribute('data-facet'), value = box.getAttribute('data-value');
+        IP.tenantSel[key] = IP.tenantSel[key] || {};
+        if (IP.tenantSel[key][value]) delete IP.tenantSel[key][value]; else IP.tenantSel[key][value] = true;
+        IP.tenantPage = 0; redraw();
+      });
+    });
+    root.querySelectorAll('[data-clear]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const spec = btn.getAttribute('data-clear');
+        if (spec === 'all') IP.tenantSel = {};
+        else { const parts = spec.split('|'); if (IP.tenantSel[parts[0]]) delete IP.tenantSel[parts[0]][parts[1]]; }
+        IP.tenantPage = 0; redraw();
+      });
+    });
+    root.querySelectorAll('[data-page]').forEach(btn => {
+      btn.addEventListener('click', () => { IP.tenantPage = Number(btn.getAttribute('data-page')); redraw(); });
+    });
+  }
+
+  // ─── Tenant detail ─────────────────────────────────────────────────────────
+  // Four independent facts across the top, then the matrix that answers "what
+  // is on it", then what it deploys to and what it has been doing. The four
+  // cards are never combined into one badge: a tenant that is disconnected and
+  // a tenant whose last deployment failed are different problems.
+  function _tnCard(title, tone, headline, detail, link) {
+    return '<div class="ip-tn-card">'
+      + '<p class="ip-tn-cardtitle">' + escHtml(title) + '</p>'
+      + '<p class="ip-tn-cardhead"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+      +   escHtml(headline) + '</p>'
+      + (detail ? '<p class="ip-tn-carddetail">' + escHtml(detail) + '</p>' : '')
+      + (link ? '<p class="ip-tn-cardlink">' + link + '</p>' : '')
+      + '</div>';
+  }
+
+  function _tnMatrixCell(c) {
+    // Three different absences, drawn three different ways. Not connected is
+    // structural, never deployed is a fact about history, and neither is a
+    // failure.
+    if (!c.connected) return '<td class="ip-tn-mcell is-absent"><span class="ip-tn-muted">not connected</span></td>';
+    if (!c.deployed) return '<td class="ip-tn-mcell"><span class="ip-tn-muted">never deployed</span></td>';
+    const tone = c.stateKey === 'success' ? 'healthy'
+      : (c.stateKey === 'running' ? 'running' : (c.stateKey === 'cancelled' ? 'disabled' : 'unhealthy'));
+    return '<td class="ip-tn-mcell">'
+      + '<span class="ip-tn-mver">' + escHtml(c.version) + '</span>'
+      + '<span class="ip-tn-mmeta"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+      +   escHtml(c.stateLabel) + '<span class="ip-tn-age">' + escHtml(_tenantWhen(c.when)) + '</span></span>'
+      + '</td>';
+  }
+
+  function _tnTargets(list, kind, caption) {
+    if (!list.length) return '';
+    const rows = list.slice(0, 20).map(t => {
+      const key = Data.healthKeyLabel ? Data.healthKeyLabel(_tnHealthKey(t)) : '';
+      return '<li class="ip-tn-target">'
+        + '<span class="ip-tn-tname">' + escHtml(t.name) + '</span>'
+        + (t.via ? '<span class="ip-tn-age">via ' + escHtml(t.via) + '</span>' : '')
+        + '<span class="ip-pill ip-pill-' + escHtml(_tnHealthKey(t)) + '">' + escHtml(key) + '</span>'
+        + '</li>';
+    }).join('');
+    const rest = list.length - Math.min(list.length, 20);
+    return '<div class="ip-tn-targetgroup">'
+      + '<p class="ip-tn-targethead">' + escHtml(kind) + '<span class="ip-tn-age">' + escHtml(caption) + '</span>'
+      +   '<span class="ip-tn-age">' + list.length + (list.length === 1 ? ' target' : ' targets') + '</span></p>'
+      + '<ul class="ip-tn-targets">' + rows + '</ul>'
+      + (rest ? '<p class="ip-tn-age">+' + rest + ' more</p>' : '')
+      + '</div>';
+  }
+  function _tnHealthKey(t) {
+    return Data.healthKeyLabel ? (t.disabled ? 'disabled'
+      : (t.health === 'Healthy' || t.health === 'HealthyWithWarnings' ? 'healthy' : 'unhealthy')) : 'healthy';
+  }
+
+  // A tenant's description is free text the instance owns, and on Octopus Cloud
+  // it is licence boilerplate — a markdown link to a subscription page on every
+  // one of thousands of tenants. Printed raw under the title it read as broken
+  // markup and buried the tenant's own name.
+  //
+  // Markdown links are turned into real links, and nothing else about the field
+  // is trusted: both halves are escaped, and only http and https are allowed
+  // through, so the field cannot inject markup or a javascript: URL.
+  function _tnDescription(text) {
+    const raw = String(text == null ? '' : text).trim();
+    if (!raw) return '';
+    const oneLine = raw.replace(/\s*[\r\n]+\s*/g, ' · ');
+    const linked = oneLine.replace(/\[([^\]\n]{1,120})\]\((https?:\/\/[^\s)]{1,300})\)/g,
+      (whole, label, url) => '<a href="' + escHtml(url) + '" target="_blank" rel="noopener">'
+        + escHtml(label) + '</a>');
+    // Anything that was not a link is escaped by the split, so the only markup
+    // here is the anchors built above.
+    const safe = linked === oneLine ? escHtml(oneLine)
+      : oneLine.split(/(\[[^\]\n]{1,120}\]\(https?:\/\/[^\s)]{1,300}\))/g).map(part => {
+          const m = /^\[([^\]\n]{1,120})\]\((https?:\/\/[^\s)]{1,300})\)$/.exec(part);
+          return m ? '<a href="' + escHtml(m[2]) + '" target="_blank" rel="noopener">'
+            + escHtml(m[1]) + '</a>' : escHtml(part);
+        }).join('');
+    return '<p class="ip-tn-desc" title="' + escHtml(raw) + '">' + safe + '</p>';
+  }
+
+  function bindTenantDetail(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    root.querySelectorAll('[data-tenanttab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        IP.tenantTab = btn.getAttribute('data-tenanttab');
+        root.innerHTML = renderTenantDetail(IP);
+        bindTenantDetail(IP);
+      });
+    });
+  }
+
+  function renderTenantDetail(IP) {
+    const st = IP.tenantDetail || { status: 'loading' };
+    const back = '<p class="ip-tn-back"><a href="#tenants">← All tenants</a></p>';
+    if (st.status === 'loading' || !st.status) {
+      return back + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading tenant…</p></div>';
+    }
+    if (st.status === 'error') {
+      return back + '<div class="ip-state"><h3>Couldn\'t load this tenant</h3><p>'
+        + escHtml(st.error || 'Unknown error') + '</p></div>';
+    }
+    const m = st.model;
+    const serverUrl = (IP.serverUrl || '').replace(/\/$/, '');
+    const link = (path, label) => serverUrl
+      ? '<a href="' + escHtml(serverUrl + path) + '" target="_blank" rel="noopener">' + escHtml(label) + ' ↗</a>' : '';
+
+    const tagsBySet = {};
+    m.tags.forEach(t => { (tagsBySet[t.set || 'Tags'] || (tagsBySet[t.set || 'Tags'] = [])).push(t.name); });
+    const tagGroups = Object.keys(tagsBySet).map(setName =>
+      '<span class="ip-tn-taggroup"><span class="ip-tn-tagset">' + escHtml(setName) + '</span>'
+      + tagsBySet[setName].map(n => '<span class="ip-chipx ip-chipx-tag">' + escHtml(n) + '</span>').join('')
+      + '</span>').join('');
+
+    const conn = m.connection;
+    const connCard = _tnCard('Connection', conn.connected ? 'healthy' : 'unhealthy',
+      conn.connected ? 'Connected' : 'Not connected',
+      conn.connected ? conn.pairCount + ' project-environment ' + (conn.pairCount === 1 ? 'pair' : 'pairs')
+        + ' across ' + conn.projectCount + (conn.projectCount === 1 ? ' project' : ' projects')
+        : 'No project is scoped to this tenant, so nothing can deploy to it.',
+      link('/app#/' + escHtml(IP.spaceId || '') + '/tenants/' + escHtml(m.id) + '/overview', 'Open connections'));
+
+    let readyCard;
+    if (m.readinessError) {
+      readyCard = _tnCard('Readiness', 'disabled', 'Unknown', m.readinessError, '');
+    } else if (!m.readiness) {
+      readyCard = _tnCard('Readiness', 'disabled', 'Loading…', '', '');
+    } else {
+      const rd = m.readiness;
+      // Three states, not two. A template with no value is a question, and what
+      // answers it is whether anything has actually deployed without it.
+      const tone = rd.ready ? 'healthy' : (rd.proven ? 'disabled' : 'warning');
+      const headline = rd.ready ? 'Ready'
+        : rd.count + ' unset ' + (rd.count === 1 ? 'variable' : 'variables');
+      const detail = rd.ready ? 'Every template the projects ask for has a value'
+        : (rd.proven
+            ? 'Deployments have succeeded with these unset, so the process may not use them'
+            : rd.unprovenCount + ' of them on project-environment pairs that have never deployed successfully');
+      readyCard = _tnCard('Readiness', tone, headline, detail,
+        link('/app#/' + escHtml(IP.spaceId || '') + '/tenants/' + escHtml(m.id) + '/variables', 'Open tenant variables'));
+    }
+
+    const lo = m.lastOutcome;
+    const loTone = !lo ? 'disabled'
+      : (lo.key === 'success' ? 'healthy' : (lo.key === 'running' ? 'running' : 'unhealthy'));
+    const outcomeCard = _tnCard('Last outcome', loTone,
+      lo ? lo.label : 'Never deployed',
+      lo ? _tenantWhen(lo.when) + (lo.projectName ? ' · ' + lo.projectName : '')
+        : 'Connected, but nothing has been deployed here yet', '');
+
+    const matrix = m.matrix.length
+      ? '<table class="ip-table ip-tn-matrix"><thead><tr><th>Project</th>'
+        + m.environments.map(e => '<th>' + escHtml(e.name) + '</th>').join('') + '</tr></thead><tbody>'
+        + m.matrix.map(row => '<tr><td class="ip-tn-mproj">' + escHtml(row.projectName) + '</td>'
+          + row.cells.map(_tnMatrixCell).join('') + '</tr>').join('')
+        + '</tbody></table>'
+        + '<p class="ip-tn-legend"><span class="ip-tn-muted">not connected</span> is structural — the pair does not exist. '
+        + '<span class="ip-tn-muted">never deployed</span> means it does, and nothing has gone to it. Neither is a failure.</p>'
+      : '<p class="ip-tn-muted">No project is scoped to this tenant.</p>';
+
+    let infra;
+    if (m.infrastructureError) {
+      infra = '<p class="ip-tn-muted">' + escHtml(m.infrastructureError) + '</p>';
+    } else if (!m.infrastructure) {
+      infra = '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading targets…</span></div>';
+    } else if (m.infrastructure.orphaned) {
+      infra = '<p class="ip-tn-warn">No deployment target matches this tenant. Its deployments resolve to nothing.</p>';
+    } else if (!m.infrastructure.total && m.infrastructure.truncated) {
+      infra = '<p class="ip-tn-muted">Nothing among the first '
+        + m.infrastructure.estateRead.toLocaleString() + ' of '
+        + m.infrastructure.estateTotal.toLocaleString()
+        + ' deployment targets in this space matches this tenant. The rest were not read, '
+        + 'so whether it has targets is unknown.</p>';
+    } else {
+      infra = _tnTargets(m.infrastructure.dedicated, 'Dedicated', 'targets that name this tenant directly')
+        + _tnTargets(m.infrastructure.shared, 'Shared', 'matched by tag')
+        + (m.infrastructure.truncated ? '<p class="ip-tn-legend">Matched against the first '
+            + m.infrastructure.estateRead.toLocaleString() + ' of '
+            + m.infrastructure.estateTotal.toLocaleString()
+            + ' deployment targets in this space. There may be more.</p>' : '');
+    }
+
+    const activity = m.activity.length
+      ? '<ul class="ip-tn-activity">' + m.activity.map(a => {
+          const tone = a.stateKey === 'success' ? 'healthy'
+            : (a.stateKey === 'running' ? 'running' : (a.stateKey === 'cancelled' ? 'disabled' : 'unhealthy'));
+          return '<li><span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+            + '<span class="ip-tn-actmain">' + escHtml(a.projectName + ' ' + a.version + ' → ' + a.envName) + '</span>'
+            + '<span class="ip-tn-age">' + escHtml(a.stateLabel) + ' · ' + escHtml(_tenantWhen(a.when)) + '</span></li>';
+        }).join('') + '</ul>'
+      : '<p class="ip-tn-muted">Nothing has been deployed to this tenant.</p>';
+
+    // The unset variables sit behind a tab rather than in the flow: they are a
+    // thing to go and look at, not part of the answer to "what is on this
+    // tenant right now".
+    const unsetCount = m.readiness ? m.readiness.count : 0;
+    const flagCount = (IP.flags && IP.flags.status === 'ready') ? IP.flags.model.liveCount : null;
+    const tabDefs = [{ key: 'Overview', label: 'Overview' }];
+    if (unsetCount) tabDefs.push({ key: 'Variables', label: 'Unset variables', count: unsetCount });
+    if (IP.flags) tabDefs.push({ key: 'Flags', label: 'Feature flags', count: flagCount || 0 });
+    const wanted = IP.tenantTab || 'Overview';
+    const tab = tabDefs.some(d => d.key === wanted) ? wanted : 'Overview';
+    const tabs = tabDefs.length > 1
+      ? '<nav class="ip-tabs ip-section-tabs" aria-label="Tenant sections">'
+        + tabDefs.map(d => '<button type="button" class="ip-tab ip-section-tab'
+          + (d.key === tab ? ' ip-tab-active' : '') + '" data-tenanttab="' + escHtml(d.key) + '"'
+          + (d.key === tab ? ' aria-current="page"' : '') + '>' + escHtml(d.label)
+          + (d.count ? '<span class="ip-tn-tabcount">' + d.count + '</span>' : '') + '</button>').join('')
+        + '</nav>'
+      : '';
+
+    const fl = IP.flags;
+    // A summary of where this tenant's flags stand, on the tab you land on.
+    // Fully on and fully off are counts because that is all they are; the ones
+    // in between are named, because "3 in between" is not something you can act
+    // on without knowing which three.
+    const flagSummary = (function () {
+      if (!fl || fl.status !== 'ready') return '';
+      const sm = fl.model.summary;
+      if (!fl.model.total) return '';
+      const stat = (n, label, tone) => '<span class="ip-tn-stat">'
+        + '<span class="ip-tn-statnum ip-tn-stat-' + escHtml(tone) + '">' + n + '</span>'
+        + '<span class="ip-tn-statlabel">' + escHtml(label) + '</span></span>';
+      const rows = sm.between.map(b =>
+        '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(b.name) + '</span>'
+        + '<span class="ip-tn-age">' + escHtml(b.projectName) + '</span>'
+        + '<span class="ip-tn-flagstates">' + b.states.map(st => {
+            const tone = st.key === 'on' ? 'healthy' : (st.key === 'partial' || st.key === 'segment' ? 'warning' : 'disabled');
+            const text = st.key === 'partial' ? st.percent + '%'
+              : st.key === 'segment' ? 'segment'
+              : st.key === 'excluded' ? 'excluded' : st.key;
+            return '<span class="ip-tn-flagstate"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone) + '"></span>'
+              + escHtml(st.envName) + ' <span class="ip-tn-age">' + escHtml(text) + '</span></span>';
+          }).join('')
+        + '</span></li>').join('');
+      return '<section class="ip-tn-panel ip-tn-flagpanel"><h3>Feature flags'
+        + '<span class="ip-tn-age">' + fl.model.total + ' across this tenant\'s projects</span></h3>'
+        + '<div class="ip-tn-stats">'
+        +   stat(sm.fullyOn, 'on', 'healthy')
+        +   stat(sm.fullyOff, 'off', 'disabled')
+        +   stat(sm.betweenCount, 'rolling out', sm.betweenCount ? 'warning' : 'disabled')
+        + '</div>'
+        + (rows
+            ? '<ul class="ip-tn-targets">' + rows + '</ul>'
+              + '<p class="ip-tn-legend">A flag is in between when it is on in one environment and not another, '
+              + 'or part-way through a rollout. A percentage is decided when the flag is evaluated, so the number '
+              + 'is the rollout, not a verdict for this tenant.</p>'
+            : '<p class="ip-tn-muted">Every flag is settled one way or the other for this tenant.</p>')
+        + '</section>';
+    })();
+
+    const capNote = (m.dashboardCap && m.dashboardCap.capped)
+      ? '<div class="ip-rel-note"><p>' + escHtml(m.dashboardCap.isFiltered
+          ? 'The project dashboard is filtered on this instance, so any project it leaves out reads here as never deployed.'
+          : 'The project dashboard returns at most ' + m.dashboardCap.projectLimit
+            + ' projects. Any of this tenant\'s projects beyond that reads here as never deployed.')
+        + '</p></div>' : '';
+    const overviewTab = capNote + '<div class="ip-tn-matrixrow">'
+      +   '<section class="ip-tn-panel ip-tn-matrixpanel"><h3>Deployment matrix</h3>' + matrix + '</section>'
+      +   flagSummary
+      + '</div>'
+      + '<div class="ip-tn-split">'
+      +   '<section class="ip-tn-panel"><h3>Infrastructure'
+      +     (m.infrastructure && !m.infrastructure.orphaned
+            ? '<span class="ip-tn-age">' + m.infrastructure.healthy + ' of ' + m.infrastructure.total + ' healthy</span>' : '')
+      +     '</h3>' + infra + '</section>'
+      +   '<section class="ip-tn-panel"><h3>Activity</h3>' + activity + '</section>'
+      + '</div>';
+
+    const flagsTab = (function () {
+      if (!fl) return '';
+      if (fl.status === 'loading') {
+        return '<section class="ip-tn-panel"><h3>Feature flags</h3>'
+          + '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading flags…</span></div></section>';
+      }
+      if (fl.status === 'error') {
+        return '<section class="ip-tn-panel"><h3>Feature flags</h3>'
+          + '<p class="ip-tn-muted">' + escHtml(fl.error) + '</p></section>';
+      }
+      const fm = fl.model;
+      if (!fm.flags.length) {
+        return '<section class="ip-tn-panel"><h3>Feature flags</h3>'
+          + '<p class="ip-tn-muted">None of the ' + fm.total + ' flags on this tenant\'s projects is on for it.</p></section>';
+      }
+      const tone = k => k === 'on' ? 'healthy' : (k === 'partial' || k === 'segment' ? 'warning' : 'disabled');
+      const label = c => c.key === 'on' ? (c.via === 'targeted' ? 'on · targeted' : 'on')
+        : c.key === 'partial' ? c.percent + '% rollout'
+        : c.key === 'segment' ? 'segment rule'
+        : c.key === 'excluded' ? 'excluded'
+        : c.key === 'off' ? (c.via === 'targeted-elsewhere' ? 'other tenants' : 'off') : '—';
+      const rows = fm.flags.map(f =>
+        '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(f.name) + '</span>'
+        + '<span class="ip-tn-age">' + escHtml(f.projectName) + '</span>'
+        + '<span class="ip-tn-flagstates">' + f.cells.map(c =>
+            '<span class="ip-tn-flagstate"><span class="ip-tn-dot ip-rel-node-' + escHtml(tone(c.key)) + '"></span>'
+            + escHtml(c.envName) + ' <span class="ip-tn-age">' + escHtml(label(c)) + '</span></span>').join('')
+        + '</span></li>').join('');
+      const notes = [];
+      if (fm.undecidedCount) notes.push(fm.undecidedCount + ' of these depend on a percentage rollout or a segment rule, '
+        + 'which are decided when the flag is evaluated rather than in its configuration — this cannot say yes or no for a tenant.');
+      if (fm.unreadableProjects) notes.push(fm.unreadableProjects + ' of this tenant\'s projects could not be read for flags.');
+      if (fm.truncated) notes.push('Only the first ' + fm.projectsRead + ' projects were read.');
+      return '<section class="ip-tn-panel"><h3>Feature flags'
+        + '<span class="ip-tn-age">' + fm.liveCount + ' on for this tenant, of ' + fm.total + ' across its projects</span></h3>'
+        + '<ul class="ip-tn-targets">' + rows + '</ul>'
+        + (notes.length ? '<p class="ip-tn-legend">' + notes.map(escHtml).join(' ') + '</p>' : '')
+        + '</section>';
+    })();
+
+    const variablesTab = m.readiness && m.readiness.missing.length
+      ? '<section class="ip-tn-panel"><h3>Unset variables'
+        + '<span class="ip-tn-age">' + m.readiness.count + ' of the templates these projects ask for</span></h3>'
+        + '<ul class="ip-tn-targets">' + m.readiness.missing.map(v =>
+            '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(v.name) + '</span>'
+            + '<span class="ip-tn-age">' + escHtml(v.scope) + '</span>'
+            + '<span class="ip-tn-age">' + escHtml(v.environments.join(', ')) + '</span>'
+            + (v.proven ? '<span class="ip-pill ip-pill-disabled">deployed without it</span>'
+                        : '<span class="ip-pill ip-pill-warning">unproven</span>') + '</li>').join('')
+        + '</ul>'
+        + '<p class="ip-tn-legend">A template is a request for a value, not a guarantee the process uses one. '
+        + 'Where a deployment has already succeeded with the value unset, that is recorded rather than called a failure.</p>'
+        + '</section>'
+      : '';
+
+    // Feature flags, on the same terms as the tenant page: on and off are
+    // counts, and the ones in between are named, because "4 in between" is not
+    // something anyone can act on without knowing which four.
+
+    return back
+      + '<header class="ip-head"><h2>' + escHtml(m.name) + (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
+      +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
+      +   _tnDescription(m.description)
+      +   (tagGroups ? '<div class="ip-tn-taggroups">' + tagGroups + '</div>' : '')
+      + '</header>'
+      + '<div class="ip-tn-cards">' + connCard + readyCard + outcomeCard + '</div>'
+      + tabs
+      + (tab === 'Variables' ? variablesTab : (tab === 'Flags' ? flagsTab : overviewTab))
+      + '<p class="ip-rel-hnote-inline">Currency against each project\'s latest release is not shown yet — '
+      +   'it needs a request per connected project.</p>';
+  }
+
+  // ─── Project map ───────────────────────────────────────────────────────────
+  // What goes in, what starts it, what it does, where it lands. Panels rather
+  // than a flow diagram: the same facts, without asking anyone to trust a
+  // layout before they trust the data.
+  // The projects list draws one row per project; a project's own page draws that
+  // same row for one project. Same builders, same interactions — the only
+  // difference is that this one opens expanded, because a page about one project
+  // should not make you click to see it.
+  function _projectStatus(IP, projectId) {
+    const st = IP.releases || { status: 'idle' };
+    if (st.status === 'loading' || st.status === 'idle') {
+      return '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading the project dashboard…</span></div>';
+    }
+    if (st.status === 'error') {
+      return '<p class="ip-tn-muted">' + escHtml(st.error || 'The project dashboard could not be read.') + '</p>';
+    }
+    const m = st.model;
+    const group = (m.groups || []).find(g => g.projects.some(pr => pr.id === projectId));
+    const proj = group && group.projects.find(pr => pr.id === projectId);
+    if (!proj) {
+      // Two different reasons, and the dashboard cap is the one worth naming.
+      return '<p class="ip-tn-muted">'
+        + (m.truncated && m.truncated.capped
+            ? 'This project is beyond the ' + m.truncated.projectLimit + ' the dashboard returns, so its releases are not on it.'
+            : 'This project has no releases on the dashboard yet.')
+        + '</p>';
+    }
+    const cols = group.environments.length;
+    if (!cols) return '<p class="ip-tn-muted">Nothing in this project group has been deployed yet.</p>';
+
+    const off = (IP.envOff && IP.envOff[group.id]) || {};
+    const open = !!(IP.projectOpen || {})[projectId];
+    const grouping = IP.grouping || ((typeof Data !== 'undefined' && Data.GROUPINGS) || ['Time'])[0];
+    const card = '<div class="ip-rel-card' + (open ? ' is-open' : '') + '">'
+      + _relRow(proj, cols, open, (IP.projectHistory || {})[projectId], _relWindowLabel(IP), off,
+          (IP.projectFlags || {})[projectId], grouping)
+      + '</div>';
+    const hidden = group.hiddenEnvironments.length
+      ? '<p class="ip-rel-hidden">Not shown, because this project group has never deployed to them: '
+        + escHtml(group.hiddenEnvironments.map(e => e.name).join(', ')) + '.</p>' : '';
+    return _relLegend()
+      + '<div class="ip-rel-groups" style="--ip-rel-cols:' + cols + '">'
+      +   '<section class="ip-rel-group"><div class="ip-rel-grid">'
+      +     '<div class="ip-rel-head"><div class="ip-rel-proj">Project</div>'
+      +       _relTrack(_relEnvHeads(group.id, group.environments, off), cols) + '</div>'
+      +     '<div class="ip-rel-cards">' + card + '</div>'
+      +   '</div>' + hidden + '</section>'
+      + '</div>';
+  }
+
+  function bindProjectMap(IP) {
+    const root = document.getElementById('main-content');
+    if (!root) return;
+    const redraw = () => { root.innerHTML = renderProjectMap(IP); bindProjectMap(IP); };
+    root.querySelectorAll('[data-projecttab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        IP.projectTab = btn.getAttribute('data-projecttab');
+        redraw();
+        // Opening Status for the first time is when its history is first wanted.
+        const id = IP.projectMap && IP.projectMap.projectId;
+        if (IP.projectTab === 'Status' && id && (IP.projectOpen || {})[id]
+            && IP.releases && IP.releases.status === 'ready') {
+          if (IP.loadProjectHistory) IP.loadProjectHistory(id);
+          if (IP.loadProjectFlags) IP.loadProjectFlags(id);
+        }
+      });
+    });
+    _bindRelRows(IP, root, redraw);
+  }
+
+  function renderProjectMap(IP) {
+    const st = IP.projectMap || { status: 'loading' };
+    const back = '<p class="ip-tn-back"><a href="#projects">← All projects</a></p>';
+    if (st.status === 'loading' || !st.status) {
+      return back + '<div class="ip-state"><div class="ip-spinner"></div><p>Loading project…</p></div>';
+    }
+    if (st.status === 'error') {
+      return back + '<div class="ip-state"><h3>Couldn\'t load this project</h3><p>'
+        + escHtml(st.error || 'Unknown error') + '</p></div>';
+    }
+    const m = st.model;
+    const panel = (title, meta, body) => '<section class="ip-tn-panel"><h3>' + escHtml(title)
+      + (meta ? '<span class="ip-tn-age">' + escHtml(meta) + '</span>' : '') + '</h3>' + body + '</section>';
+    const none = text => '<p class="ip-tn-muted">' + escHtml(text) + '</p>';
+
+    // Inputs: what the process consumes.
+    const inputs = (m.git
+        ? '<div class="ip-pm-git"><span class="ip-tn-tagset">Repository</span>'
+          + '<span class="ip-pm-repo">' + escHtml(m.git.url || 'version controlled') + '</span>'
+          + (m.git.branch ? '<span class="ip-chipx ip-chipx-tag">' + escHtml(m.git.branch) + '</span>' : '')
+          + (m.git.basePath ? '<span class="ip-tn-age">' + escHtml(m.git.basePath) + '</span>' : '')
+          + '</div>' : '')
+      + (m.inputs.length
+          ? '<ul class="ip-tn-targets">' + m.inputs.map(f =>
+              '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(f.feed) + '</span>'
+              + (f.feedType ? '<span class="ip-chipx ip-chipx-tag">' + escHtml(f.feedType) + '</span>' : '')
+              + '<span class="ip-tn-age">' + escHtml(f.packages.join(', ')) + '</span></li>').join('') + '</ul>'
+          : (m.git ? '' : none('No packages are consumed by this process.')));
+
+    // Triggers: what starts a deployment. Anything driven from outside Octopus
+    // is invisible here, and saying so is better than implying nothing does.
+    const triggers = m.triggersError ? none(m.triggersError) : (m.triggers.length
+        ? '<ul class="ip-tn-targets">' + m.triggers.map(t =>
+            '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(t.name) + '</span>'
+            + '<span class="ip-chipx ip-chipx-tag">' + escHtml(t.kind) + '</span>'
+            + '<span class="ip-tn-age">' + escHtml(t.detail) + '</span>'
+            + (t.disabled ? '<span class="ip-pill ip-pill-disabled">disabled</span>' : '') + '</li>').join('') + '</ul>'
+        : none('No triggers are configured.'))
+      + (m.triggersError ? '' : (m.autoCreateRelease ? '<p class="ip-tn-legend">A release is created automatically when a new package arrives.</p>' : '')
+      + '<p class="ip-tn-legend">Deployments started from CI or the API do not appear here — only what Octopus itself triggers.</p>');
+
+    // Process: what it does, in order. Names, types and packages — the detail
+    // lives in Octopus and this is a map, not a second editor.
+    const process = m.processError ? none(m.processError)
+      : (m.process.length
+          ? '<ol class="ip-pm-steps">' + m.process.map(stp =>
+              '<li class="ip-pm-step' + (stp.disabled ? ' is-disabled' : '') + '">'
+              + '<span class="ip-pm-num">' + stp.number + '</span>'
+              + '<span class="ip-pm-stepmain">'
+              +   '<span class="ip-tn-tname">' + escHtml(stp.name) + '</span>'
+              +   '<span class="ip-tn-age">' + escHtml(stp.type) + '</span>'
+              + '</span>'
+              + (stp.roles.length ? '<span class="ip-pm-roles">' + stp.roles.map(r =>
+                  '<span class="ip-chipx ip-chipx-tag">' + escHtml(r) + '</span>').join('') + '</span>' : '')
+              + (stp.packages.length ? '<span class="ip-tn-age">'
+                  + escHtml(stp.packages.map(pk => pk.packageId).join(', ')) + '</span>' : '')
+              + (stp.disabled ? '<span class="ip-pill ip-pill-disabled">disabled</span>' : '')
+              + '</li>').join('') + '</ol>'
+          : none('This project has no deployment steps.'));
+
+    // Environments once across the top; each lifecycle is a line beneath them
+    // with a numbered node in every environment it reaches. The number is the
+    // phase, so two environments in one phase carry the same number and the
+    // grouping is visible without repeating any names.
+    const cols = m.lifecycleEnvironments || [];
+    const lcTrack = lc => {
+      const reached = lc.cells.map((c, i) => c.reached ? i : -1).filter(i => i >= 0);
+      const first = reached.length ? reached[0] : -1;
+      const last = reached.length ? reached[reached.length - 1] : -1;
+      return lc.cells.map((c, i) => {
+        const within = first >= 0 && i > first && i <= last;
+        const seg = within ? '<span class="ip-pm-seg"></span>' : '';
+        if (!c.reached) return '<div class="ip-pm-cell">' + seg + '</div>';
+        return '<div class="ip-pm-cell">' + seg
+          + '<span class="ip-pm-node' + (c.automatic ? ' is-auto' : '') + '" title="'
+          + escHtml('Phase ' + (c.phaseIndex + 1) + ': ' + c.phase + (c.automatic ? ' — deploys automatically' : ''))
+          + '">' + (c.phaseIndex + 1) + '</span></div>';
+      }).join('');
+    };
+
+    const lcRow = lc => '<div class="ip-pm-lcrow">'
+      + '<div class="ip-pm-lclabel">'
+      +   '<span class="ip-tn-tname">' + escHtml(lc.name) + '</span>'
+      +   (lc.isDefault ? '<span class="ip-pm-def">default</span>' : '')
+      +   '<span class="ip-tn-age">' + escHtml(lc.channels.length
+            ? lc.channels.join(', ') : 'unused') + '</span>'
+      + '</div>'
+      + '<div class="ip-pm-lctrack">' + lcTrack(lc) + '</div>'
+      + '</div>';
+    // Most projects have one route that matters. The others are shown on ask,
+    // so a project with six channel lifecycles does not open with six lines.
+    const lcAll = m.lifecycles || [];
+    const lcMain = lcAll.filter(lc => lc.isDefault);
+    const lcRest = lcAll.filter(lc => !lc.isDefault);
+    const lcLead = lcMain.length ? lcMain : lcAll.slice(0, 1);
+    const lcMore = lcMain.length ? lcRest : lcAll.slice(1);
+
+    const lifecycles = (lcAll.length && cols.length)
+      ? '<div class="ip-pm-lc" style="--ip-pm-cols:' + cols.length + '">'
+        + '<div class="ip-pm-lcrow ip-pm-lchead"><div class="ip-pm-lclabel"></div>'
+        +   '<div class="ip-pm-lctrack">' + cols.map(e =>
+              '<div class="ip-pm-colhead">' + escHtml(e) + '</div>').join('') + '</div></div>'
+        + lcLead.map(lcRow).join('')
+        + (lcMore.length
+            ? '<details class="ip-pm-lcmore"><summary>' + lcMore.length
+              + (lcMore.length === 1 ? ' other lifecycle' : ' other lifecycles')
+              + '</summary>' + lcMore.map(lcRow).join('') + '</details>'
+            : '')
+        + '</div>'
+        + '<p class="ip-tn-legend">Numbers are lifecycle phases — environments sharing a number are in the '
+        + 'same phase. A filled node deploys automatically. No node means that lifecycle never reaches '
+        + 'that environment.</p>'
+      : (m.lifecycleError ? none(m.lifecycleError) : none('This project has no lifecycle phases.'));
+
+    // Destinations: how targets are chosen, what that resolves to, and what
+    // shape it is in. The lifecycle panel says where releases may go; this says
+    // what is actually there to receive them.
+    const tg = m.targets;
+    const selection = '<dl class="ip-pm-sel">'
+      + '<dt>Selected by</dt><dd>' + (m.roles.length
+          ? m.roles.map(r => '<span class="ip-chipx ip-chipx-tag">' + escHtml(r) + '</span>').join('')
+          : '<span class="ip-tn-muted">No target roles — this project runs without deployment targets</span>') + '</dd>'
+      + '<dt>Within</dt><dd>' + (m.lifecycleEnvironments.length
+          ? m.lifecycleEnvironments.map(e => '<span class="ip-chipx ip-chipx-env">' + escHtml(e) + '</span>').join('')
+          : '<span class="ip-tn-muted">no environments</span>') + '</dd>'
+      + '<dt>Tenants</dt><dd>' + (m.tenantedMode === 'Untenanted'
+          ? '<span class="ip-tn-muted">Untenanted — deploys to environments directly</span>'
+          : (m.tenantsError
+              ? escHtml(m.tenantedMode) + ' · <span class="ip-tn-muted">' + escHtml(m.tenantsError) + '</span>'
+              : escHtml(m.tenantedMode) + ' · ' + m.tenantCount.toLocaleString()
+                + (m.tenantCount === 1 ? ' tenant connected' : ' tenants connected'))) + '</dd>'
+      + '</dl>';
+
+    let targets;
+    if (m.targetsError) {
+      targets = '<p class="ip-tn-muted">' + escHtml(m.targetsError) + '</p>';
+    } else if (!tg) {
+      targets = '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading targets…</span></div>';
+    } else if (tg.scopeUnknown) {
+      // No environments to scope to. Counting across the whole estate instead
+      // reported targets in environments this project cannot reach.
+      targets = '<p class="ip-tn-muted">Which environments this project reaches is not known'
+        + (m.lifecycleError ? ' — its lifecycles could not be read' : '')
+        + ', so its targets cannot be counted. It selects by '
+        + escHtml(m.roles.join(', ')) + '.</p>';
+    } else if (!tg.selectsByRole) {
+      // No roles is a fact about the project, not an empty estate. Showing
+      // "0 targets" here would read as something missing.
+      targets = '<p class="ip-tn-muted">No step selects targets by role, so this project has no deployment '
+        + 'targets to report. Its steps run on the server or on workers.</p>';
+    } else if (!tg.total && tg.truncated) {
+      // Nothing matched, but the estate was only partly read. "Nowhere to run"
+      // would be an assertion this read cannot support.
+      targets = '<p class="ip-tn-muted">Nothing among the first '
+        + tg.estateRead.toLocaleString() + ' of ' + tg.estateTotal.toLocaleString()
+        + ' deployment targets matches ' + escHtml(m.roles.join(', '))
+        + ' in these environments. The rest were not read.</p>';
+    } else if (!tg.total) {
+      targets = '<p class="ip-tn-warn">Nothing matches ' + escHtml(m.roles.join(', '))
+        + ' in these environments. Deployments would have nowhere to run.</p>';
+    } else {
+      const pct = n => tg.total ? Math.round(n / tg.total * 100) : 0;
+      targets = '<div class="ip-pm-tstats">'
+        + '<span class="ip-tn-stat"><span class="ip-tn-statnum">' + tg.total + '</span>'
+        +   '<span class="ip-tn-statlabel">' + (tg.total === 1 ? 'target' : 'targets') + '</span></span>'
+        + '<span class="ip-tn-stat"><span class="ip-tn-statnum ip-tn-stat-healthy">' + tg.healthy + '</span>'
+        +   '<span class="ip-tn-statlabel">healthy</span></span>'
+        + (tg.unhealthy ? '<span class="ip-tn-stat"><span class="ip-tn-statnum ip-tn-stat-warning">'
+            + tg.unhealthy + '</span><span class="ip-tn-statlabel">unhealthy</span></span>' : '')
+        + (tg.disabled ? '<span class="ip-tn-stat"><span class="ip-tn-statnum ip-tn-stat-disabled">'
+            + tg.disabled + '</span><span class="ip-tn-statlabel">disabled</span></span>' : '')
+        + '</div>'
+        + '<div class="ip-bar ip-pm-health">'
+        +   '<span style="width:' + pct(tg.healthy) + '%;background:var(--color-green-500)"></span>'
+        +   '<span style="width:' + pct(tg.unhealthy) + '%;background:var(--color-red-500)"></span>'
+        +   '<span style="width:' + pct(tg.disabled) + '%;background:var(--color-slate-300)"></span>'
+        + '</div>'
+        + (tg.byRole.length ? '<ul class="ip-tn-targets">' + tg.byRole.map(r =>
+            '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(r.role) + '</span>'
+            + '<span class="ip-tn-age">' + r.count + (r.count === 1 ? ' target' : ' targets') + '</span></li>').join('')
+          + '</ul>' : '')
+        + (tg.truncated ? '<p class="ip-tn-legend">Counted over the first '
+            + tg.estateRead.toLocaleString() + ' of ' + tg.estateTotal.toLocaleString()
+            + ' deployment targets in this space. There may be more.</p>' : '')
+        + (tg.byEnvironment.length ? '<p class="ip-tn-legend">By environment: '
+            + tg.byEnvironment.map(e => escHtml(e.environment) + ' ' + e.count).join(' · ') + '.</p>' : '')
+        + (tg.tenanted
+            ? '<p class="ip-tn-legend">'
+              + (tg.tenanted.dedicated ? tg.tenanted.dedicated + ' name a tenant directly. ' : '')
+              + (tg.tenanted.byTag ? tg.tenanted.byTag + ' are matched by tenant tag. ' : '')
+              + Object.keys(tg.tenanted.participation).map(k =>
+                  tg.tenanted.participation[k] + ' ' + escHtml(k)).join(', ')
+              + '.</p>'
+            : '');
+    }
+    const destinations = selection + targets;
+
+    const channels = m.channels.length
+      ? '<ul class="ip-tn-targets">' + m.channels.map(c =>
+          '<li class="ip-tn-target"><span class="ip-tn-tname">' + escHtml(c.name) + '</span>'
+          + (c.isDefault ? '<span class="ip-chipx ip-chipx-tag">default</span>' : '')
+          + '<span class="ip-tn-age">' + (c.rules ? c.rules + (c.rules === 1 ? ' version rule' : ' version rules')
+              : 'no version rules') + '</span></li>').join('') + '</ul>'
+      : (m.channelsError ? none(m.channelsError) : none('This project has one implicit channel.'));
+
+    // Feature flags, on the same terms as the tenant page: on and off are
+    // counts, and the ones in between are named, because "4 in between" is not
+    // something anyone can act on without knowing which four.
+    const flagPanel = (function () {
+      if (m.flagsError) return none(m.flagsError);
+      const fm = m.flags;
+      if (!fm) return '<div class="ip-rel-loading"><div class="ip-spinner"></div><span>Loading flags…</span></div>';
+      if (!fm.total) return none('This project has no feature flags.');
+      if (!fm.scoped) return none(fm.total + ' flags, but no lifecycle environments to place them in.');
+      const stat = (n, lbl, tone) => '<span class="ip-tn-stat">'
+        + '<span class="ip-tn-statnum ip-tn-stat-' + escHtml(tone) + '">' + n + '</span>'
+        + '<span class="ip-tn-statlabel">' + escHtml(lbl) + '</span></span>';
+      // Environments named once across the top, the same way the lifecycle
+      // panel does it. Repeating them per flag cost more room than the states
+      // themselves.
+      const cell = c => {
+        const title = c.envName + ': ' + (c.key === 'partial' ? c.percent + '% rollout'
+          : c.key === 'on' ? (c.tenantCount ? 'on, ' + c.tenantCount + ' targeted' : 'on') : 'off')
+          + (c.viaDefault ? ' (by default)' : '');
+        const body = c.key === 'partial'
+          ? '<span class="ip-pm-fpct">' + c.percent + '</span>'
+          : '<span class="ip-pm-fdot is-' + escHtml(c.key) + (c.viaDefault ? ' is-default' : '') + '"></span>';
+        return '<div class="ip-pm-cell" title="' + escHtml(title) + '">' + body + '</div>';
+      };
+      const grid = fm.between.length
+        ? '<div class="ip-pm-lc ip-pm-fg" style="--ip-pm-cols:' + fm.environments.length + '">'
+          + '<div class="ip-pm-lcrow ip-pm-lchead"><div class="ip-pm-lclabel"></div>'
+          +   '<div class="ip-pm-lctrack">' + fm.environments.map(e =>
+                '<div class="ip-pm-colhead" title="' + escHtml(e) + '">' + escHtml(e) + '</div>').join('')
+          + '</div></div>'
+          + fm.between.map(f =>
+              '<div class="ip-pm-lcrow"><div class="ip-pm-lclabel">'
+              + '<span class="ip-tn-tname" title="' + escHtml(f.name) + '">' + escHtml(f.name) + '</span></div>'
+              + '<div class="ip-pm-lctrack">' + f.cells.map(cell).join('') + '</div></div>').join('')
+          + '</div>'
+        : '';
+      const notes = [];
+      notes.push('A flag with no setting for an environment falls back to its default, and is counted that way.');
+      if (fm.truncated) notes.push('Only the first ' + fm.flags.length + ' of ' + fm.total + ' flags were read.');
+      return '<div class="ip-tn-stats">'
+        +   stat(fm.fullyOn, 'on', 'healthy')
+        +   stat(fm.fullyOff, 'off', 'disabled')
+        +   stat(fm.betweenCount, 'rolling out', fm.betweenCount ? 'warning' : 'disabled')
+        + '</div>'
+        + (grid || '<p class="ip-tn-muted">Every flag is on or off across all of these environments.</p>')
+        + '<p class="ip-tn-legend">' + notes.map(escHtml).join(' ') + '</p>';
+    })();
+
+    // Two questions about one project: what is running right now, and how the
+    // project is put together. They are different enough to be different tabs.
+    const tab = IP.projectTab === 'Overview' ? 'Overview' : 'Status';
+    // Status's window and grouping controls ride the tab row, right-aligned, the
+    // way they sit against the heading on the projects list. Below the tabs they
+    // read as page content rather than as controls.
+    const ready = IP.releases && IP.releases.status === 'ready';
+    const tabs = '<div class="ip-pm-tabbar">'
+      + '<nav class="ip-tabs ip-section-tabs" aria-label="Project sections">'
+      + [{ key: 'Status', label: 'Status' }, { key: 'Overview', label: 'Overview' }].map(d =>
+          '<button type="button" class="ip-tab ip-section-tab' + (d.key === tab ? ' ip-tab-active' : '')
+          + '" data-projecttab="' + escHtml(d.key) + '"'
+          + (d.key === tab ? ' aria-current="page"' : '') + '>' + escHtml(d.label) + '</button>').join('')
+      + '</nav>'
+      + (tab === 'Status' && ready ? _relControls(IP) : '')
+      + '</div>';
+
+    const header = back
+      + '<header class="ip-head"><h2>' + escHtml(m.name)
+      +   (m.disabled ? ' <span class="ip-pill ip-pill-disabled">Disabled</span>' : '') + '</h2>'
+      +   '<p class="ip-tn-id">' + escHtml(m.id) + '</p>'
+      +   _tnDescription(m.description)
+      + '</header>' + tabs;
+
+    if (tab === 'Status') return header + _projectStatus(IP, m.id);
+
+    return header
+      + panel('Lifecycles', m.lifecycles && m.lifecycles.length > 1
+          ? m.lifecycles.length + ' in use' : m.lifecycle, lifecycles)
+      + '<div class="ip-pm-grid">'
+      // What feeds the project, what starts it, and what it ships through are
+      // the same question asked three ways, so they share a column.
+      +   '<div class="ip-pm-col">'
+      +     panel('Channels', m.channels.length ? String(m.channels.length) : '', channels)
+      +     panel('Inputs', m.git ? 'version controlled' : '', inputs)
+      +     panel('Triggers', m.triggers.length ? m.triggers.length + ' configured' : '', triggers)
+      +   '</div>'
+      +   panel('Process', m.process.length ? m.process.length + (m.process.length === 1 ? ' step' : ' steps') : '', process)
+      +   '<div class="ip-pm-col">'
+      +     panel('Destinations', '', destinations)
+      +     panel('Feature flags', m.flags && m.flags.total ? String(m.flags.total) : '', flagPanel)
+      +   '</div>'
+      + '</div>'
+      + '<p class="ip-rel-hnote-inline">The activity timeline and the project\'s variables are not on this page yet.</p>';
+  }
+
   function renderThemeToggle(IP) {
     const dark = IP.theme === 'dark';
     const icon = dark ? _sunSvg : _moonSvg;
@@ -1014,6 +2498,16 @@ const Views = (function () {
     return '<label class="ip-space-lbl">Space</label>'
       + '<select id="ip-space-select" class="ip-space-select">' + opts.join('') + '</select>';
   }
+  // Switching space changes what every id on screen means, so staying put is
+  // rarely right: a target, tenant or project detail page belongs to the space
+  // you just left. Projects is where a space switch lands.
+  function spaceSwitchNav(currentHash) {
+    const target = '#projects';
+    const now = String(currentHash || '');
+    // An identical hash fires no hashchange, so that case has to re-render itself.
+    return { hash: target, rerender: now === target || now === '' };
+  }
+
   function bindSpaceSwitch(IP) {
     const el = document.getElementById('ip-space-select');
     if (!el) return;
@@ -1030,7 +2524,9 @@ const Views = (function () {
       el.disabled = true;
       try {
         if (typeof IP.rescope === 'function') await IP.rescope();
-        Router.render();
+        const nav = spaceSwitchNav(window.location.hash);
+        if (nav.rerender) Router.render();
+        else window.location.hash = nav.hash;
       } catch (err) {
         if (main) main.innerHTML = stateView('error', (err && err.message) || 'Could not load that space');
       } finally {
@@ -1038,10 +2534,10 @@ const Views = (function () {
       }
     });
   }
-  return { escHtml, stateView, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
+  return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderProjectMap, bindProjectMap, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
-    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch,
+    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch, spaceSwitchNav,
     renderThemeToggle, bindThemeToggle };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

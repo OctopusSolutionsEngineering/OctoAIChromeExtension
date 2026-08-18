@@ -1221,15 +1221,22 @@ describe('overview ring segments unhealthy in red', () => {
   });
 });
 
-describe('sidebar is down to Paul\'s five items', () => {
+// Paul's five-item sidebar (28 Jul walkthrough) gained a sixth on 14 Aug when
+// Releases was added. That reopens a decision Paul made, so the count is
+// asserted explicitly rather than loosely — if someone adds a seventh without
+// a conversation, this fails and the conversation happens.
+describe('sidebar composition', () => {
   const fs = require('fs');
   const html = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
   const items = [...html.matchAll(/class="ip-nav-item" data-view="([^"]+)">([^<]+)</g)]
     .map(m => ({ view:m[1], label:m[2] }));
 
-  test('five nav items, in the order Paul proposed', () => {
+  test('Projects leads, then Paul\'s five in his order, then Tenants', () => {
     expect(items.map(i => i.view)).toEqual(
-      ['overview','targets','environments','workers','argocd']);
+      ['projects','overview','targets','environments','workers','argocd','tenants']);
+  });
+  test('Projects sits above the Infrastructure heading', () => {
+    expect(html.indexOf('data-view="projects"')).toBeLessThan(html.indexOf('ip-sidebar-title'));
   });
 
   test('Machine Policies and Deployment Agents are no longer nav destinations', () => {
@@ -1247,5 +1254,2975 @@ describe('sidebar is down to Paul\'s five items', () => {
     // agent-versions pill still links straight to #agents
     expect(views).toContain("'agents'");
     expect(views).toContain("'machinepolicies'");
+  });
+});
+
+describe('Releases — state mapping', () => {
+  const data = require('./data');
+  test('queued and executing both read as in flight', () => {
+    expect(data.releaseStateKey('Queued')).toBe('running');
+    expect(data.releaseStateKey('Executing')).toBe('running');
+  });
+  test('cancelled and timed out stay distinct from failed', () => {
+    expect(data.releaseStateKey('Failed')).toBe('failed');
+    expect(data.releaseStateKey('TimedOut')).toBe('timedout');
+    expect(data.releaseStateKey('Canceled')).toBe('cancelled');
+  });
+  test('an unrecognised state degrades to unknown rather than success', () => {
+    expect(data.releaseStateKey('Something')).toBe('unknown');
+    expect(data.releaseStateKey(undefined)).toBe('unknown');
+  });
+});
+
+describe('Releases — link tone between environments', () => {
+  const data = require('./data');
+  test('a shared release reads as strong', () => {
+    expect(data.linkTone(['9.1'], ['9.1'])).toBe('strong');
+    expect(data.linkTone(['9.1', '9.0'], ['9.0'])).toBe('strong');
+  });
+  test('different releases read as drifted', () => {
+    expect(data.linkTone(['9.3'], ['9.1'])).toBe('pale');
+  });
+  test('an empty side draws no line at all', () => {
+    expect(data.linkTone([], ['9.1'])).toBe('none');
+    expect(data.linkTone(['9.1'], [])).toBe('none');
+  });
+});
+
+describe('Releases — model', () => {
+  const data = require('./data');
+  const base = {
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Test' }, { Id: 'E3', Name: 'Prod' }],
+    Projects: [{ Id: 'P1', Name: 'Portal', Slug: 'portal', ProjectGroupId: 'G1' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud Platform' }],
+    Tenants: [{ Id: 'T1', Name: 'Acme' }, { Id: 'T2', Name: 'Globex' }],
+    ProjectLimit: 200,
+    IsFiltered: false,
+    Items: []
+  };
+  const withItems = items => Object.assign({}, base, { Items: items });
+
+  test('an empty payload yields no projects and does not throw', () => {
+    const m = data.releasesModel({});
+    expect(m.projects).toEqual([]);
+    expect(m.environments).toEqual([]);
+  });
+
+  test('only current deployments are counted', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: false, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '8.0', State: 'Success' }
+    ]));
+    expect(m.projects[0].cells[0].entries.map(e => e.version)).toEqual(['9.3']);
+  });
+
+  test('a tenant split leaves two releases live in one environment', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '9.1', State: 'Success', TenantId: 'T1', CompletedTime: '2026-08-14T02:00:00Z' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '9.0', State: 'Success', TenantId: 'T2', CompletedTime: '2026-08-12T02:00:00Z' }
+    ]));
+    const prod = m.projects[0].cells.find(c => c.envName === 'Prod').entries;
+    expect(prod.map(e => e.version)).toEqual(['9.1', '9.0']);
+    expect(prod[0].tenantCount).toBe(1);
+    expect(prod[0].tenantNames).toEqual(['Acme']);
+  });
+
+  test('the most recent deployment decides the environment state', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success', CompletedTime: '2026-08-14T01:00:00Z' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Executing', CompletedTime: '2026-08-14T03:00:00Z' }
+    ]));
+    expect(m.projects[0].cells[0].entries[0].stateKey).toBe('running');
+  });
+
+  test('links describe drift across the row', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '9.1', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '9.1', State: 'Success' }
+    ]));
+    expect(m.projects[0].links).toEqual([null, 'pale', 'strong']);
+  });
+
+  test('an environment nothing has reached is dropped from the group, and named', () => {
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }
+    ]));
+    const g = m.groups[0];
+    expect(g.environments.map(e => e.name)).toEqual(['Dev']);
+    expect(g.hiddenEnvironments.map(e => e.name)).toEqual(['Test', 'Prod']);
+  });
+
+  test('a gap for one project still shows while another project uses that environment', () => {
+    const two = Object.assign({}, base, {
+      Projects: [{ Id: 'P1', Name: 'Alpha' }, { Id: 'P2', Name: 'Beta' }],
+      Items: [
+        { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+        { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E3', ReleaseVersion: '2.0', State: 'Success' }
+      ]
+    });
+    const m = data.releasesModel(two);
+    // E2 is used by nobody and goes; E1 and E3 stay, so Alpha keeps an empty Prod cell.
+    expect(m.environments.map(e => e.name)).toEqual(['Dev', 'Prod']);
+    expect(m.projects[0].cells[1].entries).toEqual([]);
+    expect(m.projects[0].links[1]).toBe('none');
+  });
+
+  test('the hidden environments are reported in the view', () => {
+    const Views = require('./views');
+    const m = data.releasesModel(withItems([
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }
+    ]));
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    expect(html).toContain('this group has never deployed to them');
+    expect(html).toContain('Test, Prod');
+  });
+
+  test('a capped project list is reported, not silently truncated', () => {
+    const capped = Object.assign({}, base, {
+      ProjectLimit: 1,
+      Projects: [{ Id: 'P1', Name: 'Portal' }],
+      Items: []
+    });
+    expect(data.releasesModel(capped).truncated.capped).toBe(true);
+    expect(data.releasesModel(base).truncated.capped).toBe(false);
+  });
+
+  test('a filtered dashboard is reported', () => {
+    const filtered = Object.assign({}, base, { IsFiltered: true });
+    expect(data.releasesModel(filtered).truncated.isFiltered).toBe(true);
+  });
+
+  test('projects are ordered by name', () => {
+    const two = Object.assign({}, base, {
+      Projects: [{ Id: 'P2', Name: 'Zebra' }, { Id: 'P1', Name: 'Alpha' }]
+    });
+    expect(data.releasesModel(two).projects.map(p => p.name)).toEqual(['Alpha', 'Zebra']);
+  });
+});
+
+describe('Releases — many releases live in one environment', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  // Cloud Platform has a cell holding 41 distinct versions across its tenants.
+  const many = {
+    Environments: [{ Id: 'E1', Name: 'Production' }],
+    Projects: [{ Id: 'P1', Name: 'Tenanted' }],
+    Tenants: Array.from({ length: 41 }, (_, i) => ({ Id: 'T' + i, Name: 'Tenant ' + i })),
+    Items: Array.from({ length: 41 }, (_, i) => ({
+      IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1',
+      ReleaseVersion: '1.' + i, State: 'Success', TenantId: 'T' + i,
+      CompletedTime: '2026-08-' + String(10 + (i % 4)).padStart(2, '0') + 'T00:00:00Z'
+    }))
+  };
+  test('the model keeps every version and reports the spread', () => {
+    const cell = data.releasesModel(many).projects[0].cells[0];
+    expect(cell.versionCount).toBe(41);
+    expect(cell.tenantTotal).toBe(41);
+  });
+  test('the view names a few and summarises the rest', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(many) } });
+    // The tail reports the tenants it covers, which is the actionable half.
+    expect(html).toContain('+38 more releases on 38 tenants');
+    // Three named, not forty-one.
+    expect((html.match(/ip-rel-ver/g) || []).length).toBe(3);
+  });
+  test('a single release needs no summary line', () => {
+    const one = Object.assign({}, many, { Items: many.Items.slice(0, 1) });
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(one) } });
+    expect(html).not.toContain('ip-rel-more');
+  });
+});
+
+describe('Releases — project groups', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const payload = {
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Preprod' }, { Id: 'E3', Name: 'Prod' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }, { Id: 'G2', Name: 'Tools' }],
+    Projects: [
+      { Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' },
+      { Id: 'P2', Name: 'Hub', ProjectGroupId: 'G1' },
+      { Id: 'P3', Name: 'Script', ProjectGroupId: 'G2' }
+    ],
+    Items: [
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E3', ReleaseVersion: '4.1', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P3', EnvironmentId: 'E1', ReleaseVersion: '1.0', State: 'Success' }
+    ]
+  };
+
+  test('projects are grouped, groups and members ordered by name', () => {
+    const m = data.releasesModel(payload);
+    expect(m.groups.map(g => g.name)).toEqual(['Cloud', 'Tools']);
+    expect(m.groups[0].projects.map(p => p.name)).toEqual(['Hub', 'Portal']);
+  });
+
+  test('each group hides the environments it has never deployed to', () => {
+    const m = data.releasesModel(payload);
+    expect(m.groups[0].environments.map(e => e.name)).toEqual(['Dev', 'Prod']);
+    expect(m.groups[0].hiddenEnvironments.map(e => e.name)).toEqual(['Preprod']);
+    // Tools only ever touched Dev, so it carries one column, not Cloud's two.
+    expect(m.groups[1].environments.map(e => e.name)).toEqual(['Dev']);
+  });
+
+  test('a project keeps a gap for an environment its group uses but it does not', () => {
+    const m = data.releasesModel(payload);
+    const hub = m.groups[0].projects.find(p => p.name === 'Hub');
+    expect(hub.cells.map(c => c.envName)).toEqual(['Dev', 'Prod']);
+    expect(hub.cells[0].entries).toEqual([]);
+  });
+
+  test('a project with no group falls under Ungrouped rather than vanishing', () => {
+    const orphan = Object.assign({}, payload, {
+      Projects: [{ Id: 'P9', Name: 'Loose' }],
+      Items: [{ IsCurrent: true, ProjectId: 'P9', EnvironmentId: 'E1', ReleaseVersion: '1.0', State: 'Success' }]
+    });
+    const m = data.releasesModel(orphan);
+    expect(m.groups.map(g => g.name)).toEqual(['Ungrouped']);
+    expect(m.projects.map(p => p.name)).toEqual(['Loose']);
+  });
+
+  test('the view renders a grid per group and names each hidden environment', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
+    expect((html.match(/ip-rel-grid/g) || []).length).toBe(2);
+    expect(html).toContain('Cloud');
+    expect(html).toContain('this group has never deployed to them: Preprod');
+  });
+});
+
+describe('Project history — progression model', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Prod' }];
+  const prog = {
+    Releases: [
+      { Release: { Id: 'R4', Version: '2.4', ChannelId: 'C1', Assembled: '2026-08-14T00:00:00Z' },
+        Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} },
+      { Release: { Id: 'R3', Version: '9.9-pre', ChannelId: 'C2', Assembled: '2026-08-13T00:00:00Z' },
+        Channel: { Id: 'C2', Name: 'Pre-Release' }, Deployments: {
+          E1: [{ State: 'Success', CompletedTime: '2026-08-13T01:00:00Z' }] } },
+      { Release: { Id: 'R2', Version: '2.3', ChannelId: 'C1', Assembled: '2026-08-12T00:00:00Z' },
+        Channel: { Id: 'C1', Name: 'Main' }, Deployments: {
+          E1: [{ State: 'Success', CompletedTime: '2026-08-12T01:00:00Z' }],
+          E2: [{ State: 'Failed', CompletedTime: '2026-08-12T02:00:00Z' }] } }
+    ]
+  };
+
+  test('lag counts within a channel, not across the whole list', () => {
+    const m = data.progressionModel(prog, grid);
+    const byVer = Object.fromEntries(m.releases.map(r => [r.version, r]));
+    expect(byVer['2.4'].lag).toBe(0);          // newest in Main
+    expect(byVer['9.9-pre'].lag).toBe(0);      // newest in Pre-Release, not "1 behind"
+    expect(byVer['2.3'].lag).toBe(1);          // one Main release ahead of it
+  });
+
+  test('cells follow the grid columns so an expanded row lines up', () => {
+    const m = data.progressionModel(prog, grid);
+    expect(m.releases[0].cells.map(c => c.envName)).toEqual(['Dev', 'Prod']);
+  });
+
+  test('a release created and never deployed is kept and marked', () => {
+    const m = data.progressionModel(prog, grid);
+    const never = m.releases.find(r => r.version === '2.4');
+    expect(never.everDeployed).toBe(false);
+    expect(never.frontier).toBe(-1);
+    expect(m.neverDeployedCount).toBe(1);
+  });
+
+  test('the furthest environment reached becomes the frontier', () => {
+    const m = data.progressionModel(prog, grid);
+    const full = m.releases.find(r => r.version === '2.3');
+    expect(full.frontier).toBe(1);
+    expect(full.cells[1].stateKey).toBe('failed');
+  });
+
+  test('channels present are listed', () => {
+    expect(data.progressionModel(prog, grid).channels.sort()).toEqual(['Main', 'Pre-Release']);
+  });
+
+  test('an empty payload yields no releases and does not throw', () => {
+    expect(data.progressionModel({}, grid).releases).toEqual([]);
+  });
+});
+
+describe('Project history — window', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Prod' }];
+  const NOW = Date.parse('2026-08-14T12:00:00Z');
+  const hoursAgo = h => new Date(NOW - h * 3600000).toISOString();
+  const prog = {
+    Releases: [
+      { Release: { Id: 'R3', Version: '3.0', ChannelId: 'C1', Assembled: hoursAgo(2) },
+        Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} },
+      { Release: { Id: 'R2', Version: '2.0', ChannelId: 'C1', Assembled: hoursAgo(72) },
+        Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} },
+      // Cut long ago, promoted an hour ago — recent news despite an old birthday.
+      { Release: { Id: 'R1', Version: '1.0', ChannelId: 'C1', Assembled: hoursAgo(800) },
+        Channel: { Id: 'C1', Name: 'Main' },
+        Deployments: { E2: [{ State: 'Success', CompletedTime: hoursAgo(1) }] } }
+    ]
+  };
+
+  test('24 hours keeps what was created or moved inside it', () => {
+    const m = data.progressionModel(prog, grid, 24, NOW);
+    expect(m.releases.map(r => r.version).sort()).toEqual(['1.0', '3.0']);
+    expect(m.hiddenByWindow).toBe(1);
+  });
+
+  test('7 days widens to everything created inside it', () => {
+    const m = data.progressionModel(prog, grid, 24 * 7, NOW);
+    expect(m.releases).toHaveLength(3);
+    expect(m.hiddenByWindow).toBe(0);
+  });
+
+  test('no window keeps the lot', () => {
+    const m = data.progressionModel(prog, grid, null, NOW);
+    expect(m.releases).toHaveLength(3);
+  });
+
+  test('totalReleases reports the unfiltered count so an empty window can explain itself', () => {
+    // Half an hour excludes even the deployment made an hour ago.
+    const m = data.progressionModel(prog, grid, 0.5, NOW);
+    expect(m.releases).toHaveLength(0);
+    expect(m.totalReleases).toBe(3);
+  });
+
+  test('lag is counted before the window filter, so it stays true', () => {
+    const m = data.progressionModel(prog, grid, 24, NOW);
+    expect(m.releases.find(r => r.version === '1.0').lag).toBe(2);
+  });
+
+  test('the window options are 24 hours, 7 days and All', () => {
+    expect(data.HISTORY_WINDOWS.map(w => w.label)).toEqual(['24 hours', '7 days', 'All']);
+  });
+});
+
+describe('Projects — column geometry', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const payload = {
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }, { Id: 'G2', Name: 'Tools' }],
+    Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' }, { Id: 'P2', Name: 'Script', ProjectGroupId: 'G2' }],
+    Items: [
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '9.3', State: 'Success' },
+      { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E1', ReleaseVersion: '1.0', State: 'Success' }
+    ]
+  };
+  test('columns are a share of the page, never a stretching fraction per group', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
+    expect(html).toContain('var(--ip-rel-cols)');
+    expect(html).not.toContain('minmax(0,1fr)');
+  });
+  test('the widest group sets the column count for the whole page', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(payload) } });
+    // Cloud has two environments, Tools one — both size against 2.
+    expect(html).toContain('--ip-rel-cols:2');
+    expect(html).toContain('repeat(2,calc((100% - var(--ip-rel-endgutter)) / var(--ip-rel-cols)))');
+    expect(html).toContain('repeat(1,calc((100% - var(--ip-rel-endgutter)) / var(--ip-rel-cols)))');
+  });
+});
+
+describe('Project history — the age on the line', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Prod' }];
+  // _relWhen reads the real clock, so this fixture is anchored to it rather than
+  // to a fixed instant — otherwise the timestamps land in the future.
+  const NOW = Date.now();
+  const hoursAgo = h => new Date(NOW - h * 3600000).toISOString();
+
+  test('the label shows when the release arrived, not when it was cut', () => {
+    // Assembled a month ago, promoted to Production two hours ago. Inside a
+    // 24-hour window because it moved; the label must say so.
+    const prog = { Releases: [{
+      Release: { Id: 'R1', Version: '1.0', ChannelId: 'C1', Assembled: hoursAgo(720) },
+      Channel: { Id: 'C1', Name: 'Main' },
+      Deployments: { E2: [{ State: 'Success', CompletedTime: hoursAgo(2) }] } }] };
+    const m = data.progressionModel(prog, grid, 24, NOW);
+    expect(m.releases).toHaveLength(1);
+    const html = Views.renderProjects({
+      projectOpen: { P1: true },
+      projectHistory: { P1: { status: 'ready', model: m } },
+      releases: { status: 'ready', model: { environments: grid, groups: [{ id: 'G', name: 'G',
+        environments: grid, hiddenEnvironments: [],
+        projects: [{ id: 'P1', name: 'P', cells: [{ envId:'E1', envName:'Dev', entries: [] },
+          { envId:'E2', envName:'Prod', entries: [] }], links: [null, 'none'] }] }],
+        projects: [{ id: 'P1' }], truncated: {} } }
+    });
+    expect(html).toContain('2h ago');
+    expect(html).not.toContain('30d ago');
+  });
+
+  test('a release that never deployed still says when it was created', () => {
+    const prog = { Releases: [{
+      Release: { Id: 'R1', Version: '1.0', ChannelId: 'C1', Assembled: hoursAgo(3) },
+      Channel: { Id: 'C1', Name: 'Main' }, Deployments: {} }] };
+    const m = data.progressionModel(prog, grid, 24, NOW);
+    expect(m.releases[0].everDeployed).toBe(false);
+  });
+});
+
+describe('Projects — tenant split lives in the environment cell', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const tenants = Array.from({ length: 20 }, (_, i) => ({ Id: 'T' + i, Name: 'Tenant ' + i }));
+  const payload = {
+    Environments: [{ Id: 'E1', Name: 'Production' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+    Projects: [{ Id: 'P1', Name: 'Octopus Server', ProjectGroupId: 'G1' }],
+    Tenants: tenants,
+    // 11 tenants on 9.3, 6 on 9.2, 3 on 9.0 — a rollout part-way through.
+    Items: tenants.map((t, i) => ({
+      IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1',
+      ReleaseVersion: i < 11 ? '9.3' : (i < 17 ? '9.2' : '9.0'),
+      State: 'Success', TenantId: t.Id, CompletedTime: '2026-08-14T0' + (i % 5) + ':00:00Z'
+    }))
+  };
+  const model = data.releasesModel(payload);
+  const render = open => Views.renderProjects({
+    projectOpen: open ? { P1: true } : {},
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: [] } } },
+    releases: { status: 'ready', model }
+  });
+
+  test('the model keeps every version and its tenant count', () => {
+    const cell = model.groups[0].projects[0].cells[0];
+    expect(cell.versionCount).toBe(3);
+    expect(cell.tenantTotal).toBe(20);
+    expect(cell.entries.map(e => e.tenantCount).sort((a, b) => a - b)).toEqual([3, 6, 11]);
+  });
+
+  test('the contracted row carries a share bar per release', () => {
+    const html = render(false);
+    expect(html).toContain('ip-rel-entry-share');
+    expect(html).toContain('ip-rel-tsbar');
+    expect(html).toContain('width:55.0%');   // 11 of 20
+  });
+
+  test('a share row is one line: version, bar, count — and no status', () => {
+    const failing = Object.assign({}, payload, {
+      Items: payload.Items.map((it, i) => i === 0 ? Object.assign({}, it, { State: 'Failed' }) : it)
+    });
+    const html = Views.renderProjects({ projectOpen: {},
+      releases: { status: 'ready', model: data.releasesModel(failing) } });
+    // The node above carries the environment's state; the rollout rows answer
+    // "how much of the estate", so they stay free of status chips.
+    const cell = /<div class="ip-rel-cell has-split">[\s\S]*?<\/div><\/div>/.exec(html)[0];
+    expect(cell).not.toContain('ip-rel-state');
+    expect(cell).not.toContain('ip-rel-entry-head');
+  });
+
+  test('there is no separate tenant panel above the history', () => {
+    expect(render(true)).not.toContain('ip-rel-tsblock');
+  });
+
+  test('expanding shows every release in the cell, contracted caps at three', () => {
+    const many = Object.assign({}, payload, {
+      Items: tenants.map((t, i) => ({
+        IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1',
+        ReleaseVersion: 'v' + i, State: 'Success', TenantId: t.Id
+      }))
+    });
+    const m2 = data.releasesModel(many);
+    const shut = Views.renderProjects({ projectOpen: {}, releases: { status: 'ready', model: m2 } });
+    const open = Views.renderProjects({ projectOpen: { P1: true },
+      projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: [] } } },
+      releases: { status: 'ready', model: m2 } });
+    expect((shut.match(/ip-rel-entry-share/g) || []).length).toBe(3);
+    expect((open.match(/ip-rel-entry-share/g) || []).length).toBe(20);
+    expect(shut).toContain('+17 more releases on 17 tenants');
+  });
+
+  test('an environment on a single release draws no bar', () => {
+    const single = Object.assign({}, payload, {
+      Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success', TenantId: 'T0' }]
+    });
+    const html = Views.renderProjects({ projectOpen: {}, releases: { status: 'ready', model: data.releasesModel(single) } });
+    expect(html).not.toContain('ip-rel-entry-share');
+  });
+});
+
+describe('Projects — muting an environment', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Branch Instances' }, { id: 'E2', name: 'Production' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: [{ envId: 'E1', envName: 'Branch Instances', entries: [], versionCount: 0, tenantTotal: 0 },
+                { envId: 'E2', envName: 'Production', entries: [], versionCount: 0, tenantTotal: 0 }],
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  // One release that only ever reached the noisy environment, one that reached Production.
+  const history = { status: 'ready', model: {
+    environments: grid, channels: ['Main'], totalReleases: 2, hiddenByWindow: 0, neverDeployedCount: 0,
+    releases: [
+      { version: 'noise.1', channelName: 'Main', assembled: null, lag: 0, everDeployed: true, frontier: 0,
+        cells: [{ envId: 'E1', envName: 'Branch Instances', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: null, tenantCount: 0, count: 1 },
+                { envId: 'E2', envName: 'Production', deployed: false, stateKey: null, stateLabel: '', when: null, tenantCount: 0, count: 0 }] },
+      { version: 'real.1', channelName: 'Main', assembled: null, lag: 0, everDeployed: true, frontier: 1,
+        cells: [{ envId: 'E1', envName: 'Branch Instances', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: null, tenantCount: 0, count: 1 },
+                { envId: 'E2', envName: 'Production', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: null, tenantCount: 0, count: 1 }] }
+    ] } };
+  const render = envOff => Views.renderProjects({
+    projectOpen: { P1: true }, projectHistory: { P1: history },
+    envOff: envOff, releases: { status: 'ready', model }
+  });
+
+  test('every environment has a switch, on by default', () => {
+    const html = render(undefined);
+    expect((html.match(/data-envtoggle=/g) || []).length).toBe(2);
+    expect(html).not.toContain('aria-checked="false"');
+  });
+
+  test('muting drops releases that only reached the muted environment', () => {
+    const html = render({ G1: { E1: true } });
+    expect(html).toContain('real.1');
+    expect(html).not.toContain('noise.1');
+    expect(html).toContain('1 release only reached muted environments');
+  });
+
+  test('the muted column stays in place so nothing shifts', () => {
+    const html = render({ G1: { E1: true } });
+    expect(html).toContain('repeat(2,calc((100% - var(--ip-rel-endgutter)) / var(--ip-rel-cols)))');
+    expect(html).toContain('ip-rel-hcell is-off');
+  });
+
+  test('the collapsed row still reports the muted environment', () => {
+    const html = render({ G1: { E1: true } });
+    // The grid answers "what is running where"; muting is a history filter.
+    expect(html).toContain('Branch Instances');
+    expect(html).toContain('aria-checked="false"');
+  });
+
+  test('muting everything says so rather than showing a blank panel', () => {
+    const html = render({ G1: { E1: true, E2: true } });
+    expect(html).toContain('only reached environments you have muted');
+  });
+});
+
+describe('Feature flags — model', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E2', name: 'Test' }, { id: 'E3', name: 'Prod' }];
+  const payload = { total: 5, truncated: false, items: [
+    { Id: 'F1', Name: 'on-everywhere', DefaultIsEnabled: true, Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 100 }] },
+    { Id: 'F2', Name: 'partial', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 }] },
+    { Id: 'F3', Name: 'mixed', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: false }] },
+    { Id: 'F4', Name: 'no-overrides', Environments: [] },
+    { Id: 'F5', Name: 'off-everywhere', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: false }] }
+  ] };
+
+  test('only flags mid-journey get a row', () => {
+    const m = data.featureFlagModel(payload, grid);
+    expect(m.flags.map(f => f.name)).toEqual(['mixed', 'partial']);
+  });
+
+  test('an unconfigured environment falls to the default, and can put a flag in flight', () => {
+    // On in Dev, and off in Test and Prod because the flag's default says so.
+    // Counting only configured environments called this "on everywhere".
+    const drifting = { total: 1, items: [{ Id: 'X1', Name: 'drifting', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 }] }] };
+    const m = data.featureFlagModel(drifting, grid);
+    expect(m.flags.map(f => f.name)).toEqual(['drifting']);
+    expect(m.settled).toEqual({ onEverywhere: 0, offEverywhere: 0, noOverrides: 0 });
+  });
+
+  test('the two flag models on the project page agree', () => {
+    const one = { total: 1, items: [{ Id: 'X1', Name: 'a', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 }] }] };
+    const status = data.featureFlagModel(one, grid);
+    const overview = data.projectFlagModel(one, grid.map(e => e.id), { E1: 'Dev', E2: 'Test', E3: 'Prod' });
+    // Status drew a row for it; Overview must not call it settled.
+    expect(status.flags.length).toBe(1);
+    expect(overview.betweenCount).toBe(1);
+    expect(overview.fullyOn).toBe(0);
+  });
+
+  test('enabled at 0% reaches nobody, in both resolvers', () => {
+    expect(data.flagEnvState({ IsEnabled: true, RolloutPercentage: 0 }).key).toBe('off');
+    expect(data.flagStateForTenant({ IsEnabled: true, RolloutPercentage: 0 }, { Id: 'T1' }, false).key).toBe('off');
+    const zero = { total: 1, items: [{ Id: 'X1', Name: 'a', DefaultIsEnabled: false,
+      Environments: grid.map(e => ({ DeploymentEnvironmentId: e.id, IsEnabled: true, RolloutPercentage: 0 })) }] };
+    expect(data.featureFlagModel(zero, grid).settled.onEverywhere).toBe(0);
+    expect(data.projectFlagModel(zero, grid.map(e => e.id), {}).fullyOn).toBe(0);
+  });
+
+  test('the settled majority is counted, not drawn', () => {
+    const m = data.featureFlagModel(payload, grid);
+    expect(m.settled).toEqual({ onEverywhere: 1, offEverywhere: 1, noOverrides: 1 });
+    expect(m.total).toBe(5);
+  });
+
+  test('a percentage between 0 and 100 is a partial rollout, 100 is not', () => {
+    expect(data.flagEnvState({ IsEnabled: true, RolloutPercentage: 10 }).key).toBe('partial');
+    expect(data.flagEnvState({ IsEnabled: true, RolloutPercentage: 100 }).key).toBe('on');
+    expect(data.flagEnvState({ IsEnabled: false }).key).toBe('off');
+    expect(data.flagEnvState(undefined).key).toBe('inherit');
+  });
+
+  test('an environment with no override inherits rather than reading as off', () => {
+    const m = data.featureFlagModel(payload, grid);
+    const partial = m.flags.find(f => f.name === 'partial');
+    expect(partial.cells.map(c => c.state)).toEqual(['on', 'inherit', 'partial']);
+  });
+
+  test('cells follow the grid columns so a flag row lines up with the releases', () => {
+    const m = data.featureFlagModel(payload, grid);
+    expect(m.flags[0].cells.map(c => c.envName)).toEqual(['Dev', 'Test', 'Prod']);
+  });
+
+  test('an empty payload yields nothing and does not throw', () => {
+    expect(data.featureFlagModel(undefined, grid).flags).toEqual([]);
+  });
+});
+
+describe('Feature flags — view', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: grid.map(e => ({ envId: e.id, envName: e.name, entries: [], versionCount: 0, tenantTotal: 0 })),
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  const flagPayload = { total: 3, truncated: false, items: [
+    { Id: 'F2', Name: 'new-checkout', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 }] },
+    { Id: 'F1', Name: 'settled', DefaultIsEnabled: true, Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 }] },
+    { Id: 'F3', Name: 'also-settled', Environments: [] }
+  ] };
+  const render = (flags, envOff) => Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: grid } } },
+    projectFlags: { P1: flags },
+    envOff: envOff,
+    releases: { status: 'ready', model }
+  });
+
+  test('an in-flight flag draws a row with its percentage', () => {
+    const html = render({ status: 'ready', model: data.featureFlagModel(flagPayload, grid) });
+    expect(html).toContain('Feature flags in flight');
+    expect(html).toContain('new-checkout');
+    expect(html).toContain('10%');
+    expect(html).toContain('1 of 3');
+  });
+
+  test('the settled majority is reported as a count', () => {
+    const html = render({ status: 'ready', model: data.featureFlagModel(flagPayload, grid) });
+    expect(html).toContain('Not shown:');
+    expect(html).toContain('1 on everywhere');
+    expect(html).toContain('1 on their default');
+  });
+
+  test('flags do not borrow the deployment palette', () => {
+    const html = render({ status: 'ready', model: data.featureFlagModel(flagPayload, grid) });
+    const band = /<div class="ip-rel-band">[\s\S]*$/.exec(html)[0];
+    expect(band).toContain('ip-rel-fnode');
+    expect(band).not.toContain('ip-rel-node-healthy');
+  });
+
+  test('a project with no flags at all renders no band', () => {
+    const html = render({ status: 'ready', model: { flags: [], total: 0, settled: {}, truncated: false } });
+    expect(html).not.toContain('ip-rel-band');
+  });
+
+  test('muting an environment hides that column for flags too', () => {
+    const html = render({ status: 'ready', model: data.featureFlagModel(flagPayload, grid) }, { G1: { E3: true } });
+    const band = /<div class="ip-rel-band">[\s\S]*$/.exec(html)[0];
+    expect(band).toContain('ip-rel-hcell is-off');
+  });
+
+  test('a flag read failure does not take the release history with it', () => {
+    const html = render({ status: 'error', error: 'Feature flags could not be read for this project.' });
+    expect(html).toContain('Feature flags could not be read');
+    expect(html).toContain('ip-rel-history');
+  });
+});
+
+describe('Flag changes — reconstructed from the audit trail', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const events = { Items: [
+    { Id: 'Ev1', Occurred: '2026-08-14T03:00:00Z', ChangeDetails: {
+      DocumentContext: { Name: 'new-checkout', Environments: [{ DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 0 }] },
+      Differences: [{ op: 'replace', path: '/Environments/0', value: { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 } }] } },
+    { Id: 'Ev2', Occurred: '2026-08-14T01:00:00Z', ChangeDetails: {
+      DocumentContext: { Name: 'new-checkout', Environments: [] },
+      Differences: [{ op: 'add', path: '/Environments/0', value: { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 } }] } },
+    { Id: 'Ev3', Occurred: '2026-08-13T01:00:00Z', ChangeDetails: {
+      DocumentContext: { Name: 'legacy', DefaultIsEnabled: false },
+      Differences: [{ op: 'replace', path: '/DefaultIsEnabled', value: true }] } },
+    // An override for an environment this project's grid does not show.
+    { Id: 'Ev4', Occurred: '2026-08-14T02:00:00Z', ChangeDetails: {
+      DocumentContext: { Name: 'elsewhere', Environments: [] },
+      Differences: [{ op: 'add', path: '/Environments/0', value: { DeploymentEnvironmentId: 'E9', IsEnabled: true } }] } }
+  ] };
+
+  test('both ends of the arrow come out of context plus patch', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const first = c.find(x => x.id.indexOf('Ev1') === 0);
+    expect(data.flagChangeLabel(first)).toBe('0% → 10%');
+  });
+
+  test('an added override reads as "no override", not as off', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const added = c.find(x => x.id.indexOf('Ev2') === 0);
+    expect(added.before).toBeNull();
+    expect(data.flagChangeLabel(added)).toBe('no override → On');
+  });
+
+  test('a default-level change is kept and marked as such', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const def = c.find(x => x.scope === 'default');
+    expect(def.flagName).toBe('legacy');
+    expect(data.flagChangeLabel(def)).toBe('Off → On');
+  });
+
+  test('a change in an environment the grid does not show is kept and marked', () => {
+    // It has no column to sit in, but dropping it silently lost a real audit
+    // entry. The view counts these in its note instead of drawing them.
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const outside = c.find(x => x.flagName === 'elsewhere');
+    expect(outside).toBeDefined();
+    expect(outside.scopedElsewhere).toBe(true);
+    expect(outside.envName).toBe('');
+  });
+
+  test('changes come back newest first', () => {
+    const c = data.flagChangeModel(events, grid, null, Date.now());
+    const times = c.map(x => x.occurred);
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+  });
+
+  test('the window filters changes', () => {
+    const now = Date.parse('2026-08-14T04:00:00Z');
+    // Ev1 is the only one inside the window with a column; Ev4 is inside it too
+    // but scoped elsewhere.
+    expect(data.flagChangeModel(events, grid, 2, now).filter(c => !c.scopedElsewhere)).toHaveLength(1);
+    const all = data.flagChangeModel(events, grid, null, now);
+    expect(all.filter(c => !c.scopedElsewhere).length).toBe(3);  // Ev4 has no column
+    expect(all.length).toBe(4);                                  // but is not lost
+  });
+
+  test('an empty payload yields nothing and does not throw', () => {
+    expect(data.flagChangeModel(undefined, grid, null, Date.now())).toEqual([]);
+    expect(data.flagChangeModel({ Items: [] }, grid, null, Date.now())).toEqual([]);
+  });
+});
+
+describe('Projects — grouping by time or type', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: grid.map(e => ({ envId: e.id, envName: e.name, entries: [], versionCount: 0, tenantTotal: 0 })),
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  const history = { status: 'ready', model: {
+    environments: grid, channels: ['Main'], totalReleases: 1, hiddenByWindow: 0, neverDeployedCount: 0,
+    releases: [{ version: '9.3', channelName: 'Main', assembled: '2026-08-14T02:00:00Z', lag: 0,
+      everDeployed: true, frontier: 1,
+      cells: [{ envId: 'E1', envName: 'Dev', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: '2026-08-14T02:00:00Z', tenantCount: 0, count: 1 },
+              { envId: 'E3', envName: 'Prod', deployed: true, stateKey: 'success', stateLabel: 'Succeeded', when: '2026-08-14T02:30:00Z', tenantCount: 0, count: 1 }] }] } };
+  const flags = { status: 'ready',
+    model: { flags: [], total: 2, settled: { onEverywhere: 2 }, truncated: false },
+    changes: [{ id: 'c1', flagName: 'new-checkout', scope: 'environment', envId: 'E3', envName: 'Prod',
+      occurred: Date.parse('2026-08-14T02:45:00Z'), before: { key: 'partial', percent: 0 }, after: { key: 'partial', percent: 10 } }] };
+  const render = grouping => Views.renderProjects({
+    projectOpen: { P1: true }, projectHistory: { P1: history }, projectFlags: { P1: flags },
+    grouping: grouping, releases: { status: 'ready', model }
+  });
+
+  test('the control offers Time and Type, defaulting to Time', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model } });
+    expect(html).toContain('data-grouping="Time"');
+    expect(html).toContain('data-grouping="Type"');
+    expect(html).toContain('class="ip-seg active" data-grouping="Time"');
+  });
+
+  test('grouped by time, a flag change sits among the releases', () => {
+    const html = render('Time');
+    const body = /ip-rel-history-body[\s\S]*$/.exec(html)[0];
+    // The change is more recent than the release, so it comes first.
+    expect(body.indexOf('new-checkout')).toBeLessThan(body.indexOf('9.3'));
+    expect(html).not.toContain('Flag changes');
+  });
+
+  test('grouped by type, changes get their own band instead', () => {
+    const html = render('Type');
+    expect(html).toContain('Flag changes');
+    const body = /ip-rel-history-body[\s\S]*$/.exec(html)[0];
+    expect(body.indexOf('9.3')).toBeLessThan(body.indexOf('new-checkout'));
+  });
+
+  test('current flag state survives both groupings', () => {
+    expect(render('Time')).toContain('Not shown:');
+    expect(render('Type')).toContain('Not shown:');
+  });
+});
+
+describe('Flag rows are visually separated', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: grid.map(e => ({ envId: e.id, envName: e.name, entries: [], versionCount: 0, tenantTotal: 0 })),
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  const flagPayload = { total: 1, truncated: false, items: [
+    { Id: 'F1', Name: 'new-checkout', Environments: [
+      { DeploymentEnvironmentId: 'E1', IsEnabled: true, RolloutPercentage: 100 },
+      { DeploymentEnvironmentId: 'E3', IsEnabled: true, RolloutPercentage: 10 }] } ] };
+  const html = Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 0, channels: [], environments: grid } } },
+    projectFlags: { P1: { status: 'ready', model: data.featureFlagModel(flagPayload, grid),
+      changes: [{ id: 'c1', flagName: 'x', scope: 'environment', envId: 'E3', envName: 'Prod',
+        occurred: Date.now(), before: { key: 'off', percent: null }, after: { key: 'on', percent: 100 } }] } },
+    grouping: 'Type', releases: { status: 'ready', model }
+  });
+
+  test('flag rows carry the class the wash is attached to', () => {
+    expect(html).toContain('ip-rel-hrow ip-rel-frow');
+  });
+
+  test('release rows do not', () => {
+    // A release row is an ip-rel-hrow that is not an ip-rel-frow.
+    expect(html).not.toContain('ip-rel-hrow ip-rel-hrow');
+  });
+
+  test('the wash is not the only signal a row is a flag', () => {
+    // Square node, purple line and the flag name each survive without colour.
+    expect(html).toContain('ip-rel-fnode');
+    expect(html).toContain('ip-rel-flagname');
+  });
+});
+
+describe('Variable changes — model', () => {
+  const data = require('./data');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const PLACEHOLDER = 'x'.repeat(45);
+  const events = { Items: [
+    { Id: 'V1', Occurred: '2026-08-14T03:00:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'ApiTimeout', Value: '30s', Scope: { Environment: ['E3'] } }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: '60s' }] } },
+    { Id: 'V2', Occurred: '2026-08-14T02:00:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'DbPassword', Type: 'Sensitive', Value: PLACEHOLDER, Scope: { Environment: ['E1', 'E3'] } }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: 'y'.repeat(45) }] } },
+    { Id: 'V3', Occurred: '2026-08-14T01:00:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'Global', Value: 'a' }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: 'b' }] } },
+    { Id: 'V4', Occurred: '2026-08-14T00:30:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'Elsewhere', Value: 'a', Scope: { Environment: ['E9'] } }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: 'b' }] } },
+    // Renames and description edits are not value changes and are ignored.
+    { Id: 'V5', Occurred: '2026-08-14T00:15:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'Renamed', Value: 'a' }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Name', value: 'NewName' }] } }
+  ] };
+  const model = () => data.variableChangeModel(events, grid, null, Date.now());
+
+  test('both ends of the arrow come from context plus patch', () => {
+    const c = model().find(x => x.name === 'ApiTimeout');
+    expect(data.variableChangeLabel(c)).toBe('30s → 60s');
+  });
+
+  test('a sensitive value never reaches the model, placeholder or not', () => {
+    const c = model().find(x => x.name === 'DbPassword');
+    expect(c.sensitive).toBe(true);
+    expect(c.before).toBeNull();
+    expect(c.after).toBeNull();
+    expect(data.variableChangeLabel(c)).toBe('secret changed');
+    expect(JSON.stringify(c)).not.toContain(PLACEHOLDER);
+  });
+
+  test('one edit scoped to two environments is one change marking both', () => {
+    const c = model().find(x => x.name === 'DbPassword');
+    expect(c.envIds).toEqual(['E1', 'E3']);
+  });
+
+  test('a variable with no environment scope applies everywhere', () => {
+    const c = model().find(x => x.name === 'Global');
+    expect(c.envIds).toEqual([]);
+    expect(c.scopedElsewhere).toBe(false);
+  });
+
+  test('scoped to an environment this grid does not show is flagged, not silently dropped', () => {
+    const c = model().find(x => x.name === 'Elsewhere');
+    expect(c.envIds).toEqual([]);
+    expect(c.scopedElsewhere).toBe(true);
+  });
+
+  test('a rename is not a value change', () => {
+    expect(model().some(x => x.name === 'Renamed')).toBe(false);
+  });
+
+  test('long values are truncated for display', () => {
+    const long = { Items: [{ Id: 'L', Occurred: '2026-08-14T03:00:00Z', ChangeDetails: {
+      DocumentContext: { Variables: [{ Name: 'Long', Value: 'a'.repeat(200) }] },
+      Differences: [{ op: 'replace', path: '/Variables/0/Value', value: 'b'.repeat(200) }] } }] };
+    const c = data.variableChangeModel(long, grid, null, Date.now())[0];
+    expect(c.before.length).toBeLessThanOrEqual(40);
+    expect(c.after.length).toBeLessThanOrEqual(40);
+  });
+
+  test('the window filters changes', () => {
+    const now = Date.parse('2026-08-14T04:00:00Z');
+    // 90 minutes excludes the 02:00 edit; a 2-hour window would include it,
+    // since a change exactly on the boundary is inside the window.
+    expect(data.variableChangeModel(events, grid, 1.5, now)).toHaveLength(1);
+    expect(data.variableChangeModel(events, grid, 2, now)).toHaveLength(2);
+  });
+
+  test('an empty payload yields nothing and does not throw', () => {
+    expect(data.variableChangeModel(undefined, grid, null, Date.now())).toEqual([]);
+  });
+});
+
+describe('Variable changes — view', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }, { id: 'E3', name: 'Prod' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: grid.map(e => ({ envId: e.id, envName: e.name, entries: [], versionCount: 0, tenantTotal: 0 })),
+        links: [null, 'none'] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  const vars = [
+    { id: 'v1', name: 'ApiTimeout', kind: 'value', sensitive: false, before: '30s', after: '60s',
+      envIds: ['E3'], scopedElsewhere: false, occurred: Date.now() - 3600000 },
+    { id: 'v2', name: 'DbPassword', kind: 'value', sensitive: true, before: null, after: null,
+      envIds: ['E1', 'E3'], scopedElsewhere: false, occurred: Date.now() - 7200000 },
+    { id: 'v3', name: 'Global', kind: 'value', sensitive: false, before: 'a', after: 'b',
+      envIds: [], scopedElsewhere: false, occurred: Date.now() - 10800000 },
+    { id: 'v4', name: 'Elsewhere', kind: 'value', sensitive: false, before: 'a', after: 'b',
+      envIds: [], scopedElsewhere: true, occurred: Date.now() - 14400000 }
+  ];
+  const render = grouping => Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 1, channels: [], environments: grid,
+      hiddenByWindow: 0, neverDeployedCount: 0 } } },
+    projectFlags: { P1: { status: 'ready', model: { flags: [], total: 0, settled: {}, truncated: false },
+      changes: [], variables: vars } },
+    grouping: grouping, releases: { status: 'ready', model }
+  });
+
+  test('grouped by type, variables get their own band', () => {
+    const html = render('Type');
+    expect(html).toContain('Variable changes');
+    expect(html).toContain('ApiTimeout');
+    expect(html).toContain('30s → 60s');
+  });
+
+  test('a secret says it changed and never shows a value', () => {
+    const html = render('Type');
+    expect(html).toContain('secret changed');
+    expect(html).toContain('DbPassword');
+  });
+
+  test('an unscoped variable is labelled as applying everywhere', () => {
+    expect(render('Type')).toContain('all environments');
+  });
+
+  test('the snapshot caveat is stated, since a change alters nothing deployed', () => {
+    expect(render('Type')).toContain('snapshotted into a release');
+  });
+
+  test('a change scoped outside the grid is counted, not drawn', () => {
+    const html = render('Type');
+    expect(html).toContain('1 change is scoped to environments this project does not deploy to');
+    expect(html).not.toContain('Elsewhere');
+  });
+
+  test('grouped by time, variables interleave with everything else', () => {
+    const html = render('Time');
+    expect(html).toContain('ip-rel-vrow');
+    expect(html).not.toContain('Variable changes');
+  });
+
+  test('variable rows are amber, distinct from flags and releases', () => {
+    const html = render('Type');
+    expect(html).toContain('ip-rel-vnode');
+    expect(html).not.toContain('ip-rel-fnode');
+  });
+});
+
+describe('An empty release window still shows what changed', () => {
+  const Views = require('./views');
+  const grid = [{ id: 'E1', name: 'Dev' }];
+  const model = {
+    environments: grid,
+    groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+      projects: [{ id: 'P1', name: 'Portal',
+        cells: [{ envId: 'E1', envName: 'Dev', entries: [], versionCount: 0, tenantTotal: 0 }], links: [null] }] }],
+    projects: [{ id: 'P1' }], truncated: {}
+  };
+  // Nothing released in the window, but a flag flipped and a variable changed.
+  const html = Views.renderProjects({
+    projectOpen: { P1: true },
+    projectHistory: { P1: { status: 'ready', model: { releases: [], totalReleases: 4, channels: [],
+      environments: grid, hiddenByWindow: 4, neverDeployedCount: 0 } } },
+    projectFlags: { P1: { status: 'ready', model: { flags: [], total: 0, settled: {}, truncated: false },
+      changes: [{ id: 'c1', flagName: 'new-checkout', scope: 'environment', envId: 'E1', envName: 'Dev',
+        occurred: Date.now(), before: { key: 'off', percent: null }, after: { key: 'on', percent: 100 } }],
+      variables: [{ id: 'v1', name: 'ApiTimeout', kind: 'value', sensitive: false, before: '30s', after: '60s',
+        envIds: ['E1'], scopedElsewhere: false, occurred: Date.now() }] } },
+    grouping: 'Type', releases: { status: 'ready', model }
+  });
+
+  test('the empty release state is stated', () => {
+    expect(html).toContain('Nothing moved in the last');
+  });
+
+  test('but the flag change still shows', () => {
+    expect(html).toContain('new-checkout');
+  });
+
+  test('and so does the variable change', () => {
+    expect(html).toContain('ApiTimeout');
+    expect(html).toContain('30s → 60s');
+  });
+});
+
+describe('A space we cannot read infrastructure in still has Projects', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const fs = require('fs');
+  const path = require('path');
+
+  test('only Projects is exempt from needing the estate', () => {
+    expect(data.viewNeedsEstate('projects')).toBe(false);
+    ['overview', 'targets', 'environments', 'workers', 'argocd', 'machinepolicies', 'agents']
+      .forEach(v => expect(data.viewNeedsEstate(v)).toBe(true));
+  });
+
+  test('the router gates the error view on that, not on spaceError alone', () => {
+    const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
+    expect(router).toContain('IP.spaceError && needsEstate');
+    // The old unconditional guard must be gone.
+    expect(router).not.toContain('if (IP.spaceError) {');
+  });
+
+  test('cold start cannot intercept Projects either', () => {
+    const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
+    expect(router).toContain('needsEstate && typeof Data !== \'undefined\' && Data.coldStartApplies');
+  });
+
+  test('the Projects view explains why the other sections are missing', () => {
+    const grid = [{ id: 'E1', name: 'Dev' }];
+    const model = {
+      environments: grid,
+      groups: [{ id: 'G1', name: 'Cloud', environments: grid, hiddenEnvironments: [],
+        projects: [{ id: 'P1', name: 'Portal',
+          cells: [{ envId: 'E1', envName: 'Dev', entries: [], versionCount: 0, tenantTotal: 0 }], links: [null] }] }],
+      projects: [{ id: 'P1' }], truncated: {}
+    };
+    const html = Views.renderProjects({ spaceError: 'Machines could not be read.',
+      releases: { status: 'ready', model } });
+    expect(html).toContain('Infrastructure cannot be read in this space');
+    // And it still renders the grid rather than an error.
+    expect(html).toContain('Portal');
+  });
+});
+
+describe('A release is named where it stops, not everywhere it went', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const envs = [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Test' },
+                { Id: 'E3', Name: 'Preprod' }, { Id: 'E4', Name: 'Prod' }];
+  const build = items => data.releasesModel({
+    Environments: envs, ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+    Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' }],
+    Tenants: [{ Id: 'T1', Name: 'A' }, { Id: 'T2', Name: 'B' }], Items: items
+  });
+  const item = (env, ver, extra) => Object.assign({ IsCurrent: true, ProjectId: 'P1',
+    EnvironmentId: env, ReleaseVersion: ver, State: 'Success' }, extra || {});
+
+  test('only the furthest environment a version reaches is marked', () => {
+    const m = build([item('E1', '9.3'), item('E2', '9.3'), item('E3', '9.3'), item('E4', '9.1')]);
+    const cells = m.groups[0].projects[0].cells;
+    expect(cells.map(c => c.entries[0] && c.entries[0].isFurthest)).toEqual([false, false, true, true]);
+  });
+
+  test('the version is printed once, not once per environment', () => {
+    const m = build([item('E1', '9.3'), item('E2', '9.3'), item('E3', '9.3'), item('E4', '9.1')]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    expect((html.match(/9\.3</g) || []).length).toBe(1);
+    expect((html.match(/9\.1</g) || []).length).toBe(1);
+  });
+
+  test('the nodes still appear in every environment the release is in', () => {
+    const m = build([item('E1', '9.3'), item('E2', '9.3'), item('E3', '9.3'), item('E4', '9.1')]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    // Four environments hold something, so four head nodes.
+    expect((html.match(/ip-rel-node ip-rel-node-healthy/g) || []).length).toBe(4);
+  });
+
+  test('a failure is named where it happened, even mid-journey', () => {
+    const m = build([item('E1', '9.3'), item('E2', '9.3', { State: 'Failed' }), item('E3', '9.3')]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    // Named at Test because it failed there, and at Preprod because it stops there.
+    expect((html.match(/9\.3</g) || []).length).toBe(2);
+    expect(html).toContain('Failed');
+  });
+
+  test('a tenant split names every entry, since its counts are per environment', () => {
+    // Both environments are mid-rollout, so both need their own counts named.
+    const m = build([
+      item('E3', '9.3', { TenantId: 'T1' }), item('E3', '9.1', { TenantId: 'T2' }),
+      item('E4', '9.3', { TenantId: 'T1' }), item('E4', '9.1', { TenantId: 'T2' })
+    ]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    expect((html.match(/9\.3</g) || []).length).toBe(2);
+    expect((html.match(/9\.1</g) || []).length).toBe(2);
+  });
+
+  test('a single release passing through a split environment is still suppressed', () => {
+    // Preprod holds one release and is not a rollout, so it stays a bare node.
+    const m = build([
+      item('E3', '9.3', { TenantId: 'T1' }),
+      item('E4', '9.3', { TenantId: 'T1' }), item('E4', '9.1', { TenantId: 'T2' })
+    ]);
+    const html = Views.renderProjects({ releases: { status: 'ready', model: m } });
+    expect((html.match(/9\.3</g) || []).length).toBe(1);
+  });
+});
+
+describe('Tenants — the four independent facts', () => {
+  const data = require('./data');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const ago = d => new Date(NOW - d * 86400000).toISOString();
+  const payload = {
+    now: NOW,
+    tenants: { total: 4, truncated: false, items: [
+      { Id: 'T1', Name: 'Mercy Polyclinic', TenantTags: ['Hosted/Reef', 'Ring/Stable'], ProjectEnvironments: { P1: ['E1'] } },
+      { Id: 'T2', Name: 'Riverside General', TenantTags: ['Hosted/Cluster'], ProjectEnvironments: { P1: ['E1'], P2: ['E1'] } },
+      { Id: 'T3', Name: 'Never Ran', TenantTags: [], ProjectEnvironments: { P1: ['E1'] } },
+      { Id: 'T4', Name: 'Unwired', TenantTags: [], ProjectEnvironments: {} }
+    ] },
+    dashboard: {
+      Projects: [{ Id: 'P1', Name: 'Patient Records' }, { Id: 'P2', Name: 'Billing' }],
+      Environments: [{ Id: 'E1', Name: 'Production' }],
+      Items: [
+        { IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E1', State: 'Failed', CompletedTime: ago(2) },
+        { IsCurrent: true, TenantId: 'T2', ProjectId: 'P1', EnvironmentId: 'E1', State: 'Success', CompletedTime: ago(1) }
+      ]
+    },
+    tagSets: [{ Name: 'Hosted', Tags: [{ Name: 'Reef' }, { Name: 'Cluster' }] }]
+  };
+  const m = data.tenantsModel(payload);
+  const by = name => m.tenants.find(t => t.name === name);
+
+  test('connection, last outcome, never-deployed and not-connected stay separate', () => {
+    expect(by('Mercy Polyclinic').needsAttention).toBe(true);
+    expect(by('Never Ran').neverDeployed).toBe(true);
+    expect(by('Never Ran').needsAttention).toBe(false);
+    expect(by('Unwired').notConnected).toBe(true);
+    expect(by('Unwired').neverDeployed).toBe(false);
+  });
+
+  test('a task running past a week is stuck, not in progress', () => {
+    expect(data.tenantOutcomeKey('Executing', NOW - 8 * 86400000, NOW)).toBe('stuck');
+    expect(data.tenantOutcomeKey('Executing', NOW - 3600000, NOW)).toBe('running');
+  });
+
+  test('tags are split into their set and value', () => {
+    expect(data.parseTenantTag('Hosted/Reef')).toEqual({ set: 'Hosted', name: 'Reef', raw: 'Hosted/Reef' });
+    expect(data.parseTenantTag('Loose').set).toBe('');
+  });
+
+  test('the default sort is actionability, not alphabet', () => {
+    expect(data.sortTenants(m.tenants, 'Actionability').map(t => t.name))
+      .toEqual(['Mercy Polyclinic', 'Never Ran', 'Unwired', 'Riverside General']);
+    expect(data.sortTenants(m.tenants, 'Name').map(t => t.name)[0]).toBe('Mercy Polyclinic');
+  });
+
+  test('filters combine, and a tag filter needs every selected tag', () => {
+    expect(data.filterTenants(m.tenants, '', { tags: { 'Hosted/Reef': true } }).map(t => t.name)).toEqual(['Mercy Polyclinic']);
+    expect(data.filterTenants(m.tenants, '', { tags: { 'Hosted/Reef': true, 'Ring/Stable': true } })).toHaveLength(1);
+    expect(data.filterTenants(m.tenants, '', { tags: { 'Hosted/Reef': true, 'Hosted/Cluster': true } })).toHaveLength(0);
+  });
+
+  test('search matches name or id', () => {
+    expect(data.filterTenants(m.tenants, 'riverside', {})).toHaveLength(1);
+    expect(data.filterTenants(m.tenants, 'T4', {})).toHaveLength(1);
+  });
+
+  test('state filters use the independent facts', () => {
+    expect(data.filterTenants(m.tenants, '', { state: { 'needs-attention': true } }).map(t => t.name)).toEqual(['Mercy Polyclinic']);
+    expect(data.filterTenants(m.tenants, '', { state: { 'not-connected': true } }).map(t => t.name)).toEqual(['Unwired']);
+  });
+
+  test('facet counts are computed against the other active filters', () => {
+    const facets = data.tenantFacets(m.tenants, '', { state: { 'needs-attention': true } });
+    // Only Mercy needs attention, and it is the only Reef tenant.
+    expect(facets.count('tags', 'Hosted/Reef')).toBe(1);
+    expect(facets.count('tags', 'Hosted/Cluster')).toBe(0);
+  });
+
+  test('counts report the three list-scale facts', () => {
+    expect(m.counts).toEqual({ needsAttention: 1, neverDeployed: 1, notConnected: 1 });
+  });
+
+  test('an empty payload yields nothing and does not throw', () => {
+    expect(data.tenantsModel({}).tenants).toEqual([]);
+    expect(data.tenantsModel(undefined).tenants).toEqual([]);
+  });
+});
+
+describe('Tenants — view', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const model = data.tenantsModel({
+    now: NOW,
+    tenants: { total: 2, truncated: false, items: [
+      { Id: 'T1', Name: 'Mercy Polyclinic', TenantTags: ['Hosted/Reef'], ProjectEnvironments: { P1: ['E1'] } },
+      { Id: 'T2', Name: 'Unwired', TenantTags: [], ProjectEnvironments: {} }
+    ] },
+    dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E1', Name: 'Production' }],
+      Items: [{ IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E1', State: 'Failed',
+        CompletedTime: new Date(NOW - 2 * 86400000).toISOString() }] },
+    tagSets: [{ Name: 'Hosted', Tags: [{ Name: 'Reef' }] }]
+  });
+  const html = Views.renderTenants({ tenants: { status: 'ready', model } });
+
+  test('a tenant links to its own page', () => {
+    expect(html).toContain('href="#tenants/T1"');
+  });
+
+  test('the unscoped currency prompt is shown rather than a faked figure', () => {
+    expect(html).toContain('Pick a release scope to see currency');
+  });
+
+  test('readiness says where it lives rather than pretending to be absent', () => {
+    expect(html).toContain('Readiness needs a request per tenant');
+  });
+
+  test('a not-connected tenant says so instead of showing a zero', () => {
+    expect(html).toContain('Not connected');
+  });
+
+  test('facet groups come from the instance tag sets', () => {
+    expect(html).toContain('Hosted');
+    expect(html).toContain('Reef');
+  });
+
+  test('an empty space explains what a tenant is', () => {
+    const empty = Views.renderTenants({ tenants: { status: 'ready', model: data.tenantsModel({}) } });
+    expect(empty).toContain('No tenants in this space');
+  });
+});
+
+describe('Tenants — sortable column headers', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const model = data.tenantsModel({
+    now: NOW,
+    tenants: { total: 3, truncated: false, items: [
+      { Id: 'T1', Name: 'Alpha', TenantTags: [], ProjectEnvironments: { P1: ['E1'] } },
+      { Id: 'T2', Name: 'Bravo', TenantTags: [], ProjectEnvironments: { P1: ['E1'], P2: ['E1'], P3: ['E1'] } },
+      { Id: 'T3', Name: 'Charlie', TenantTags: [], ProjectEnvironments: { P1: ['E1'], P2: ['E1'] } }
+    ] },
+    dashboard: { Projects: [{ Id: 'P1', Name: 'One' }], Environments: [{ Id: 'E1', Name: 'Production' }], Items: [] },
+    tagSets: []
+  });
+  const render = (sort, dir) => Views.renderTenants({
+    tenants: { status: 'ready', model }, tenantSort: sort, tenantDir: dir });
+
+  test('every sortable column offers a control; Tags does not', () => {
+    const html = render();
+    ['Name', 'Projects', 'Environments', 'Last outcome'].forEach(k =>
+      expect(html).toContain('data-sort="' + k + '"'));
+    expect(html).not.toContain('data-sort="Tags"');
+  });
+
+  test('the active column reports its direction to assistive tech', () => {
+    const asc = render('Name', 'asc');
+    expect(asc).toContain('aria-sort="ascending"');
+    expect(render('Name', 'desc')).toContain('aria-sort="descending"');
+    // Only one column is ever the sorted one.
+    expect((asc.match(/aria-sort="(ascending|descending)"/g) || []).length).toBe(1);
+  });
+
+  test('each sort has a natural first direction', () => {
+    expect(data.tenantSortDir('Name')).toBe('asc');
+    expect(data.tenantSortDir('Projects')).toBe('desc');
+    expect(data.tenantSortDir('Last outcome')).toBe('desc');
+  });
+
+  test('sorting by a column orders by that column', () => {
+    expect(data.sortTenants(model.tenants, 'Projects').map(t => t.name)).toEqual(['Bravo', 'Charlie', 'Alpha']);
+    expect(data.sortTenants(model.tenants, 'Name').map(t => t.name)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  });
+
+  test('reversing a column reverses it', () => {
+    expect(data.sortTenants(model.tenants, 'Projects', 'asc').map(t => t.name)).toEqual(['Alpha', 'Charlie', 'Bravo']);
+  });
+
+  test('ties fall back to name so the order is stable', () => {
+    const tied = data.tenantsModel({
+      now: NOW,
+      tenants: { total: 2, items: [
+        { Id: 'B', Name: 'Beta', TenantTags: [], ProjectEnvironments: { P1: ['E1'] } },
+        { Id: 'A', Name: 'Aardvark', TenantTags: [], ProjectEnvironments: { P1: ['E1'] } }
+      ] },
+      dashboard: { Projects: [], Environments: [], Items: [] }, tagSets: []
+    });
+    expect(data.sortTenants(tied.tenants, 'Projects').map(t => t.name)).toEqual(['Aardvark', 'Beta']);
+  });
+
+  test('the dropdown and the headers offer the same set', () => {
+    const html = render();
+    data.TENANT_SORTS.forEach(s => expect(html).toContain(s));
+  });
+});
+
+describe('Tenant detail — model', () => {
+  const data = require('./data');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const ago = d => new Date(NOW - d * 86400000).toISOString();
+  const tenant = { Id: 'T1', Name: 'Mercy Polyclinic', TenantTags: ['Hosted/Reef', 'Ring/Stable'],
+    Description: 'A hospital group', ProjectEnvironments: { P1: ['E1', 'E2'], P2: ['E2'] } };
+  const dashboard = {
+    Projects: [{ Id: 'P1', Name: 'Patient Records' }, { Id: 'P2', Name: 'Billing' }],
+    Environments: [{ Id: 'E1', Name: 'Staging' }, { Id: 'E2', Name: 'Production' }, { Id: 'E3', Name: 'Unused' }],
+    Items: [
+      { IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '5.9.0',
+        State: 'Failed', CompletedTime: ago(2), TaskId: 'ServerTasks-1' },
+      { IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '5.10.0',
+        State: 'Success', CompletedTime: ago(8), TaskId: 'ServerTasks-2' },
+      { IsCurrent: true, TenantId: 'OTHER', ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '9.9', State: 'Success' }
+    ]
+  };
+  const build = extra => data.tenantDetailModel(Object.assign({ tenant, dashboard, now: NOW }, extra || {}));
+
+  test('the four facts are reported separately', () => {
+    const m = build();
+    expect(m.connection).toEqual({ connected: true, pairCount: 3, projectCount: 2 });
+    expect(m.lastOutcome.key).toBe('failed');
+    expect(m.readiness).toBeNull();          // not fetched in this call
+    expect(m.infrastructure).toBeNull();
+  });
+
+  test('columns are only the environments this tenant is connected to', () => {
+    expect(build().environments.map(e => e.name)).toEqual(['Staging', 'Production']);
+  });
+
+  test('another tenant\'s deployments are not counted', () => {
+    const m = build();
+    const prod = m.matrix.find(r => r.projectName === 'Patient Records').cells.find(c => c.envName === 'Production');
+    expect(prod.version).toBe('5.9.0');
+  });
+
+  test('not connected and never deployed are different cells', () => {
+    const m = build();
+    const billing = m.matrix.find(r => r.projectName === 'Billing');
+    const staging = billing.cells.find(c => c.envName === 'Staging');
+    const prod = billing.cells.find(c => c.envName === 'Production');
+    expect(staging.connected).toBe(false);   // structural: the pair does not exist
+    expect(prod.connected).toBe(true);
+    expect(prod.deployed).toBe(false);       // it does exist, nothing has gone to it
+  });
+
+  test('activity is newest first and only this tenant', () => {
+    const a = build().activity;
+    expect(a).toHaveLength(2);
+    expect(a[0].version).toBe('5.9.0');
+  });
+});
+
+describe('Tenant detail — readiness', () => {
+  const data = require('./data');
+  const envName = { E1: 'Staging', E2: 'Production' };
+  const vars = { ProjectVariables: { P1: { ProjectId: 'P1', ProjectName: 'Patient Records',
+    Templates: [{ Id: 'tpl-1', Name: 'ApiKey', Label: 'API key' }, { Id: 'tpl-2', Name: 'Region', DefaultValue: 'eu' }],
+    Variables: { E1: { 'tpl-1': 'abc' }, E2: {} } } } };
+
+  test('a template with no value and no default is unset', () => {
+    const r = data.tenantReadiness(vars, { P1: ['E1', 'E2'] }, envName, {});
+    expect(r.ready).toBe(false);
+    expect(r.count).toBe(1);
+    expect(r.missing[0]).toMatchObject({ name: 'API key', environments: ['Production'] });
+  });
+
+  test('a default value satisfies a template', () => {
+    const r = data.tenantReadiness(vars, { P1: ['E1', 'E2'] }, envName, {});
+    expect(r.missing.some(x => x.name === 'Region')).toBe(false);
+  });
+
+  test('only connected environments can be missing anything', () => {
+    const r = data.tenantReadiness(vars, { P1: ['E1'] }, envName, {});
+    expect(r.ready).toBe(true);
+  });
+
+  test('an empty value counts as missing, not as supplied', () => {
+    const blank = { ProjectVariables: { P1: { ProjectId: 'P1', Templates: [{ Id: 't', Name: 'X' }],
+      Variables: { E1: { t: '' } } } } };
+    expect(data.tenantReadiness(blank, { P1: ['E1'] }, envName, {}).count).toBe(1);
+  });
+});
+
+describe('Tenant detail — target matching', () => {
+  const data = require('./data');
+  const tenant = { Id: 'T1', TenantTags: ['Hosted/Reef'] };
+  const machines = { items: [
+    { Id: 'M1', Name: 'dedicated-01', TenantIds: ['T1'], TenantTags: [], HealthStatus: 'Healthy' },
+    { Id: 'M2', Name: 'shared-01', TenantIds: [], TenantTags: ['Hosted/Reef'], HealthStatus: 'Unhealthy' },
+    { Id: 'M3', Name: 'unrelated', TenantIds: ['T9'], TenantTags: ['Hosted/Other'], HealthStatus: 'Healthy' }
+  ] };
+
+  test('dedicated names the tenant, shared matches a tag', () => {
+    const r = data.matchTenantTargets(machines, tenant);
+    expect(r.dedicated.map(t => t.name)).toEqual(['dedicated-01']);
+    expect(r.shared.map(t => t.name)).toEqual(['shared-01']);
+    expect(r.shared[0].via).toBe('Hosted/Reef');
+  });
+
+  test('health rolls up as a count without hiding the unhealthy one', () => {
+    const r = data.matchTenantTargets(machines, tenant);
+    expect(r.total).toBe(2);
+    expect(r.healthy).toBe(1);
+  });
+
+  test('a tenant nothing matches is flagged, because its deployments resolve to nothing', () => {
+    expect(data.matchTenantTargets(machines, { Id: 'T404', TenantTags: [] }).orphaned).toBe(true);
+  });
+});
+
+describe('Tenant detail — view', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const NOW = Date.parse('2026-08-17T12:00:00Z');
+  const base = {
+    tenant: { Id: 'T1', Name: 'Mercy Polyclinic', TenantTags: ['Hosted/Reef'], ProjectEnvironments: { P1: ['E1'] } },
+    dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E1', Name: 'Production' }],
+      Items: [{ IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '5.9.0',
+        State: 'Success', CompletedTime: new Date(NOW - 86400000).toISOString() }] },
+    now: NOW
+  };
+  const render = extra => Views.renderTenantDetail({ spaceId: 'Spaces-1', serverUrl: 'https://x.octopus.app/',
+    tenantDetail: { status: 'ready', model: data.tenantDetailModel(Object.assign({}, base, extra || {})) } });
+
+  test('the four facts are three separate cards, never one badge', () => {
+    const html = render();
+    expect(html).toContain('Connection');
+    expect(html).toContain('Readiness');
+    expect(html).toContain('Last outcome');
+  });
+
+  test('unreadable machines degrade to a sentence, not a broken page', () => {
+    const html = render({ machinesError: 'Deployment targets cannot be read in this space.' });
+    expect(html).toContain('Deployment targets cannot be read');
+    expect(html).toContain('Deployment matrix');
+  });
+
+  test('unreadable variables leave readiness unknown rather than claiming ready', () => {
+    const html = render({ variablesError: 'Tenant variables could not be read.' });
+    expect(html).toContain('Unknown');
+    expect(html).not.toContain('>Ready<');
+  });
+
+  test('a tenant with no matching target says its deployments resolve to nothing', () => {
+    const html = render({ machines: { items: [] } });
+    expect(html).toContain('resolve to nothing');
+  });
+
+  test('the matrix legend explains the two kinds of absence', () => {
+    expect(render()).toContain('is structural');
+  });
+
+  test('what is not built yet is named rather than silently missing', () => {
+    expect(render()).toContain('needs a request per connected project');
+  });
+
+  test('it links back to the list', () => {
+    expect(render()).toContain('href="#tenants"');
+  });
+});
+
+describe('A tenant page is still the tenants view', () => {
+  const data = require('./data');
+  const fs = require('fs');
+  const path = require('path');
+
+  test('a detail route is matched by its base, not the whole hash', () => {
+    expect(data.viewNeedsEstate('tenants/Tenants-1')).toBe(false);
+    expect(data.viewNeedsEstate('tenants')).toBe(false);
+    expect(data.viewNeedsEstate('projects')).toBe(false);
+  });
+
+  test('an infrastructure detail route still needs the estate', () => {
+    // Target detail reads IP.estate.targets, so it must stay gated.
+    expect(data.viewNeedsEstate('targets/Machines-1')).toBe(true);
+    expect(data.viewNeedsEstate('overview')).toBe(true);
+  });
+
+  test('the tenant route is checked before the view falls back to overview', () => {
+    const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
+    const detail = router.indexOf("hash.indexOf('tenants/') === 0");
+    const fallback = router.indexOf("const view = VIEWS.includes(hash)");
+    expect(detail).toBeGreaterThan(-1);
+    expect(detail).toBeLessThan(fallback);
+  });
+
+  test('cold start cannot intercept a tenant page', () => {
+    const router = fs.readFileSync(path.join(__dirname, 'router.js'), 'utf8');
+    // Cold start is gated on needsEstate, which a tenant route now fails.
+    expect(router).toContain('needsEstate && typeof Data !== \'undefined\' && Data.coldStartApplies');
+  });
+});
+
+describe('Readiness is triangulated against what has deployed', () => {
+  const data = require('./data');
+  const envName = { E1: 'Dev', E2: 'Test', E3: 'Production' };
+  const conn = { P1: ['E1', 'E2', 'E3'] };
+  const vars = { ProjectVariables: { P1: { ProjectId: 'P1', ProjectName: 'Patient Records',
+    Templates: [{ Id: 't1', Name: 'ApiKey' }, { Id: 't2', Name: 'Region', DefaultValue: 'eu' }, { Id: 't3', Name: 'Secret' }],
+    Variables: { E1: {}, E2: {}, E3: {} } } } };
+
+  test('the count is distinct templates, not template times environment', () => {
+    const r = data.tenantReadiness(vars, conn, envName, {});
+    // Two templates unset across three environments is two, not six.
+    expect(r.count).toBe(2);
+    expect(r.pairCount).toBe(6);
+  });
+
+  test('each unset template names the environments it is unset in', () => {
+    const r = data.tenantReadiness(vars, conn, envName, {});
+    expect(r.missing[0].environments).toEqual(['Dev', 'Test', 'Production']);
+  });
+
+  test('a pair that has deployed successfully marks the template proven', () => {
+    const r = data.tenantReadiness(vars, conn, envName, { 'P1|E3': true });
+    expect(r.missing.every(m => m.proven)).toBe(true);
+    expect(r.unprovenCount).toBe(0);
+    expect(r.proven).toBe(true);
+  });
+
+  test('nothing deployed leaves them unproven', () => {
+    const r = data.tenantReadiness(vars, conn, envName, {});
+    expect(r.unprovenCount).toBe(2);
+    expect(r.proven).toBe(false);
+  });
+
+  test('a default value still satisfies a template outright', () => {
+    expect(data.tenantReadiness(vars, conn, envName, {}).missing.some(m => m.name === 'Region')).toBe(false);
+  });
+
+  test('the card stops asserting a deployment would fail', () => {
+    const Views = require('./views');
+    const NOW = Date.now();
+    const model = data.tenantDetailModel({
+      tenant: { Id: 'T1', Name: 'T', TenantTags: [], ProjectEnvironments: { P1: ['E3'] } },
+      dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E3', Name: 'Production' }],
+        Items: [{ IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E3', ReleaseVersion: '1.0',
+          State: 'Success', CompletedTime: new Date(NOW - 3 * 86400000).toISOString() }] },
+      variables: { ProjectVariables: { P1: { ProjectId: 'P1', ProjectName: 'Patient Records',
+        Templates: [{ Id: 't1', Name: 'ApiKey' }], Variables: { E3: {} } } } },
+      now: NOW
+    });
+    const overview = Views.renderTenantDetail({ spaceId: 'S', tenantDetail: { status: 'ready', model } });
+    // It deployed three days ago with the value unset, so the page says so.
+    expect(overview).not.toContain('would fail on configuration');
+    expect(overview).toContain('Deployments have succeeded with these unset');
+    // The detail sits behind a tab rather than in the flow.
+    expect(overview).not.toContain('deployed without it');
+    const variables = Views.renderTenantDetail({ spaceId: 'S', tenantTab: 'Variables',
+      tenantDetail: { status: 'ready', model } });
+    expect(variables).toContain('deployed without it');
+  });
+});
+
+describe('Unset variables live behind a tab, in amber', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const NOW = Date.now();
+  const build = (items, templates) => data.tenantDetailModel({
+    tenant: { Id: 'T1', Name: 'T', TenantTags: [], ProjectEnvironments: { P1: ['E3'] } },
+    dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E3', Name: 'Production' }],
+      Items: items },
+    variables: { ProjectVariables: { P1: { ProjectId: 'P1', ProjectName: 'Patient Records',
+      Templates: templates, Variables: { E3: {} } } } },
+    now: NOW
+  });
+  const deployed = [{ IsCurrent: true, TenantId: 'T1', ProjectId: 'P1', EnvironmentId: 'E3',
+    ReleaseVersion: '1.0', State: 'Success', CompletedTime: new Date(NOW - 3 * 86400000).toISOString() }];
+  const render = (model, tab) => Views.renderTenantDetail({ spaceId: 'S', tenantTab: tab,
+    tenantDetail: { status: 'ready', model } });
+
+  test('a tab appears only when something is unset', () => {
+    const none = build(deployed, [{ Id: 't1', Name: 'ApiKey', DefaultValue: 'x' }]);
+    expect(render(none)).not.toContain('data-tenanttab');
+    const some = build(deployed, [{ Id: 't1', Name: 'ApiKey' }]);
+    expect(render(some)).toContain('data-tenanttab="Variables"');
+  });
+
+  test('the tab carries the count', () => {
+    const html = render(build(deployed, [{ Id: 't1', Name: 'ApiKey' }, { Id: 't2', Name: 'Secret' }]));
+    expect(html).toContain('ip-tn-tabcount');
+    expect(html).toContain('Unset variables');
+  });
+
+  test('the overview keeps the matrix rather than the variable list', () => {
+    const html = render(build(deployed, [{ Id: 't1', Name: 'ApiKey' }]));
+    expect(html).toContain('Deployment matrix');
+    expect(html).not.toContain('ip-tn-legend">A template is a request');
+  });
+
+  test('the variables tab shows the list and not the matrix', () => {
+    const html = render(build(deployed, [{ Id: 't1', Name: 'ApiKey' }]), 'Variables');
+    expect(html).toContain('A template is a request for a value');
+    expect(html).not.toContain('Deployment matrix');
+  });
+
+  test('unproven reads amber, never red', () => {
+    // Nothing has deployed, so the template is unproven — the strongest case.
+    const html = render(build([], [{ Id: 't1', Name: 'ApiKey' }]), 'Variables');
+    expect(html).toContain('ip-pill-warning');
+    expect(html).not.toContain('ip-pill-unhealthy');
+  });
+
+  test('the readiness card is amber too, not the failure tone', () => {
+    const html = render(build([], [{ Id: 't1', Name: 'ApiKey' }]));
+    expect(html).toContain('ip-rel-node-warning');
+  });
+});
+
+describe('Feature flags for one tenant', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const tenant = { Id: 'T1', TenantTags: ['Hosted/Reef'], Name: 'Mercy', ProjectEnvironments: { P1: ['E1'] } };
+  const env = o => Object.assign({ DeploymentEnvironmentId: 'E1', IsEnabled: true }, o);
+
+  test('exclusion beats everything else', () => {
+    expect(data.flagStateForTenant(env({ ExcludedTenantIds: ['T1'], TenantIds: ['T1'] }), tenant).key).toBe('excluded');
+    expect(data.flagStateForTenant(env({ ExcludedTenantTags: ['Hosted/Reef'] }), tenant).key).toBe('excluded');
+  });
+
+  test('named targeting is exact, and beats the percentage beside it', () => {
+    // Named tenants have it even at 0% rollout — that is what naming means.
+    expect(data.flagStateForTenant(env({ TenantIds: ['T1'], RolloutPercentage: 0 }), tenant).key).toBe('on');
+    expect(data.flagStateForTenant(env({ TenantIds: ['T9'] }), tenant).key).toBe('off');
+    expect(data.flagStateForTenant(env({ TenantIds: ['T9'] }), tenant).via).toBe('targeted-elsewhere');
+  });
+
+  test('a matching tag targets the tenant', () => {
+    expect(data.flagStateForTenant(env({ TenantTags: ['Hosted/Reef'] }), tenant).key).toBe('on');
+    expect(data.flagStateForTenant(env({ TenantTags: ['Hosted/Other'] }), tenant).key).toBe('off');
+  });
+
+  test('what cannot be decided from configuration is not guessed', () => {
+    expect(data.flagStateForTenant(env({ Segments: [{ Key: 'plan', Value: 'pro' }] }), tenant).key).toBe('segment');
+    expect(data.flagStateForTenant(env({ RolloutPercentage: 10 }), tenant).key).toBe('partial');
+  });
+
+  test('a disabled flag is off however it is targeted', () => {
+    expect(data.flagStateForTenant(env({ IsEnabled: false, TenantIds: ['T1'] }), tenant).key).toBe('off');
+  });
+
+  test('only flags actually on for the tenant are listed', () => {
+    const payload = { projectsRead: 1, byProject: { P1: { items: [
+      { Id: 'F1', Name: 'on-for-us', Environments: [env({ TenantIds: ['T1'] })] },
+      { Id: 'F2', Name: 'for-others', Environments: [env({ TenantIds: ['T9'] })] },
+      { Id: 'F3', Name: 'rolling', Environments: [env({ RolloutPercentage: 25 })] }
+    ], total: 3 } } };
+    const m = data.tenantFlagModel(payload, tenant, { P1: ['E1'] }, { E1: 'Production' }, { P1: 'Patient Records' });
+    expect(m.flags.map(f => f.name)).toEqual(['on-for-us', 'rolling']);
+    expect(m.total).toBe(3);
+    expect(m.liveCount).toBe(2);
+    expect(m.undecidedCount).toBe(1);
+  });
+
+  test('an unreadable project is counted, not silently dropped', () => {
+    const payload = { projectsRead: 2, byProject: { P1: { items: [], total: 0 }, P2: { error: true } } };
+    const m = data.tenantFlagModel(payload, tenant, { P1: ['E1'] }, {}, {});
+    expect(m.unreadableProjects).toBe(1);
+  });
+
+  test('the tab says when a state cannot be decided', () => {
+    const model = data.tenantDetailModel({
+      tenant: tenant,
+      dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }], Environments: [{ Id: 'E1', Name: 'Production' }], Items: [] }
+    });
+    const flags = { status: 'ready', model: data.tenantFlagModel(
+      { projectsRead: 1, byProject: { P1: { items: [{ Id: 'F3', Name: 'rolling',
+        Environments: [env({ RolloutPercentage: 25 })] }], total: 1 } } },
+      tenant, { P1: ['E1'] }, { E1: 'Production' }, { P1: 'Patient Records' }) };
+    const html = Views.renderTenantDetail({ spaceId: 'S', tenantTab: 'Flags', flags: flags,
+      tenantDetail: { status: 'ready', model } });
+    expect(html).toContain('25% rollout');
+    expect(html).toContain('decided when the flag is evaluated');
+  });
+
+  test('the flags tab only exists once flags have been asked for', () => {
+    const model = data.tenantDetailModel({ tenant: tenant,
+      dashboard: { Projects: [], Environments: [], Items: [] } });
+    const without = Views.renderTenantDetail({ spaceId: 'S', tenantDetail: { status: 'ready', model } });
+    expect(without).not.toContain('data-tenanttab="Flags"');
+    const withFlags = Views.renderTenantDetail({ spaceId: 'S', flags: { status: 'loading' },
+      tenantDetail: { status: 'ready', model } });
+    expect(withFlags).toContain('data-tenanttab="Flags"');
+  });
+});
+
+describe('Feature flag posture on the tenant overview', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const tenant = { Id: 'T1', TenantTags: [], Name: 'Mercy', ProjectEnvironments: { P1: ['E1', 'E2'] } };
+  const e1 = o => Object.assign({ DeploymentEnvironmentId: 'E1', IsEnabled: true }, o);
+  const e2 = o => Object.assign({ DeploymentEnvironmentId: 'E2', IsEnabled: true }, o);
+  const payload = { projectsRead: 1, byProject: { P1: { total: 5, items: [
+    { Id: 'A', Name: 'fully-on', DefaultIsEnabled: true, Environments: [e1({ RolloutPercentage: 100 }), e2({ RolloutPercentage: 100 })] },
+    { Id: 'B', Name: 'fully-off', DefaultIsEnabled: false, Environments: [e1({ IsEnabled: false }), e2({ IsEnabled: false })] },
+    { Id: 'C', Name: 'half-rolled', DefaultIsEnabled: true, Environments: [e1({ RolloutPercentage: 100 }), e2({ RolloutPercentage: 25 })] },
+    { Id: 'D', Name: 'prod-only', DefaultIsEnabled: false, Environments: [e1({ IsEnabled: false }), e2({ RolloutPercentage: 100 })] },
+    { Id: 'E', Name: 'default-on', DefaultIsEnabled: true, Environments: [] }
+  ] } } };
+  const model = data.tenantFlagModel(payload, tenant, { P1: ['E1', 'E2'] },
+    { E1: 'Staging', E2: 'Production' }, { P1: 'Patient Records' });
+
+  test('flags split into fully on, fully off and in between', () => {
+    expect(model.summary.fullyOn).toBe(2);       // fully-on, default-on
+    expect(model.summary.fullyOff).toBe(1);
+    expect(model.summary.betweenCount).toBe(2);  // half-rolled, prod-only
+  });
+
+  test('an environment with no override falls back to the flag default', () => {
+    expect(data.flagStateForTenant(undefined, tenant, true).key).toBe('on');
+    expect(data.flagStateForTenant(undefined, tenant, false).key).toBe('off');
+  });
+
+  test('in-between flags are named with what they are doing per environment', () => {
+    const half = model.summary.between.find(b => b.name === 'half-rolled');
+    expect(half.percent).toBe(25);
+    expect(half.states.map(s => s.envName + ':' + s.key)).toEqual(['Staging:on', 'Production:partial']);
+  });
+
+  test('a flag on in one environment and off in another counts as in between', () => {
+    const split = model.summary.between.find(b => b.name === 'prod-only');
+    expect(split.percent).toBeNull();
+    expect(split.states.map(s => s.key)).toEqual(['off', 'on']);
+  });
+
+  test('the overview panel shows the counts and names the in-between ones', () => {
+    const detail = data.tenantDetailModel({ tenant: tenant,
+      dashboard: { Projects: [{ Id: 'P1', Name: 'Patient Records' }],
+        Environments: [{ Id: 'E1', Name: 'Staging' }, { Id: 'E2', Name: 'Production' }], Items: [] } });
+    const html = Views.renderTenantDetail({ spaceId: 'S',
+      flags: { status: 'ready', model: model }, tenantDetail: { status: 'ready', model: detail } });
+    expect(html).toContain('ip-tn-statlabel">on<');
+    expect(html).toContain('ip-tn-statlabel">off<');
+    expect(html).toContain('ip-tn-statlabel">rolling out<');
+    expect(html).toContain('half-rolled');
+    expect(html).toContain('25%');
+    // It sits beside the matrix rather than under it.
+    expect(html).toContain('ip-tn-matrixrow');
+    expect(html).toContain('ip-tn-flagpanel');
+  });
+
+  test('a tenant whose flags are all settled says so rather than showing an empty list', () => {
+    const settled = data.tenantFlagModel({ projectsRead: 1, byProject: { P1: { total: 1, items: [
+      { Id: 'A', Name: 'on', DefaultIsEnabled: true, Environments: [e1({ RolloutPercentage: 100 })] }
+    ] } } }, tenant, { P1: ['E1'] }, { E1: 'Staging' }, { P1: 'P' });
+    const detail = data.tenantDetailModel({ tenant: tenant,
+      dashboard: { Projects: [], Environments: [{ Id: 'E1', Name: 'Staging' }], Items: [] } });
+    const html = Views.renderTenantDetail({ spaceId: 'S',
+      flags: { status: 'ready', model: settled }, tenantDetail: { status: 'ready', model: detail } });
+    expect(html).toContain('settled one way or the other');
+  });
+
+  test('no panel before the flags have loaded', () => {
+    const detail = data.tenantDetailModel({ tenant: tenant,
+      dashboard: { Projects: [], Environments: [], Items: [] } });
+    const html = Views.renderTenantDetail({ spaceId: 'S', flags: { status: 'loading' },
+      tenantDetail: { status: 'ready', model: detail } });
+    expect(html).not.toContain('ip-tn-statlabel');
+  });
+});
+
+describe('A space where targets are forbidden is not a space that failed', () => {
+  const d = require('./data');
+  const page = items => ({ status: 200, ok: true, json: async () => items });
+  const deny = { status: 403, ok: false, statusText: 'Forbidden' };
+
+  test('403 on machines keeps the space, and records what could not be read', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all') ? deny : page([{ Id: 'X' }]);
+    const hydrated = await d.hydrateSpace({ Id: 'Spaces-842', Name: 'Build Platform' });
+    expect(hydrated).not.toBeNull();
+    expect(hydrated.failed).toContain('machines');
+    // The resources that did come back are still there.
+    expect(hydrated.envs).toHaveLength(1);
+    expect(hydrated.workerpools).toHaveLength(1);
+  });
+
+  test('500 on machines still yields null — a broken read is a broken space', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all')
+      ? { status: 500, ok: false, statusText: 'Server Error' } : page([]);
+    expect(await d.hydrateSpace({ Id: 'Spaces-1', Name: 'One' })).toBe(null);
+  });
+
+  test('everything forbidden is still a space you cannot read', async () => {
+    global.fetch = async () => deny;
+    expect(await d.hydrateSpace({ Id: 'Spaces-1', Name: 'One' })).toBe(null);
+  });
+
+  test('the estate records the gap so views can avoid claiming zero', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all') ? deny : page([]);
+    const hydrated = await d.hydrateSpace({ Id: 'Spaces-842', Name: 'Build Platform' });
+    const estate = d.buildEstate([hydrated]);
+    expect(estate.failed.machines).toBe(true);
+    expect(estate.targets).toEqual([]);
+  });
+
+  test('cold start does not offer to add infrastructure you simply cannot see', async () => {
+    global.fetch = async (url) => String(url).includes('/machines/all') ? deny : page([]);
+    const blind = d.buildEstate([await d.hydrateSpace({ Id: 'Spaces-842', Name: 'Build Platform' })]);
+    expect(d.coldStartApplies('overview', blind)).toBe(false);
+    // A genuinely empty estate still gets the walkthrough.
+    global.fetch = async () => page([]);
+    const empty = d.buildEstate([await d.hydrateSpace({ Id: 'Spaces-622', Name: 'Octopus Server' })]);
+    expect(d.coldStartApplies('overview', empty)).toBe(true);
+  });
+
+  test('the targets view says unreadable rather than showing none', () => {
+    const Views = require('./views');
+    const html = Views.renderTargets({ estate: { failed: { machines: true }, targets: [], workers: [],
+      environments: [], policies: [] } });
+    expect(html).toContain('your account can\'t read them here');
+    expect(html).not.toContain('No deployment targets');
+  });
+});
+
+describe('Projects render as cards, not as a table', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const model = data.releasesModel({
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }],
+    ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+    Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' },
+               { Id: 'P2', Name: 'Hub', ProjectGroupId: 'G1' }],
+    Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' },
+            { IsCurrent: true, ProjectId: 'P2', EnvironmentId: 'E2', ReleaseVersion: '4.1', State: 'Success' }]
+  });
+
+  test('every project gets its own card', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model } });
+    expect((html.match(/ip-rel-card"/g) || []).length).toBe(2);
+  });
+
+  test('the environment header still stands above them', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model } });
+    expect(html).toContain('ip-rel-head');
+    expect(html.indexOf('ip-rel-head')).toBeLessThan(html.indexOf('ip-rel-cards'));
+  });
+
+  test('an open project is marked, and its history sits inside its own card', () => {
+    const html = Views.renderProjects({ projectOpen: { P1: true },
+      projectHistory: { P1: { status: 'loading' } }, releases: { status: 'ready', model } });
+    expect(html).toContain('ip-rel-card is-open');
+    expect(/ip-rel-card is-open[\s\S]*?ip-rel-history/.test(html)).toBe(true);
+  });
+
+  test('the columns still line up between the header and the cards', () => {
+    const html = Views.renderProjects({ releases: { status: 'ready', model } });
+    // Header and rows use the same track template, which is what keeps the
+    // nodes under their environment names once the shared box is gone.
+    const tracks = html.match(/grid-template-columns:repeat\(2,[^"]+/g) || [];
+    expect(tracks.length).toBeGreaterThan(1);
+    expect(new Set(tracks).size).toBe(1);
+  });
+});
+
+describe('Project cards: background, sticky header, inline toggle', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  const rule = re => (re.exec(css) || [''])[0];
+
+  test('the card sets its own surface as well as its background', () => {
+    // Both, or the version labels mask the line in the wrong colour.
+    const card = rule(/\.ip-rel-card \{[\s\S]*?\}/);
+    expect(card).toContain('--ip-rel-surface: var(--ip-rel-cardbg)');
+    expect(card).toContain('background: var(--ip-rel-surface)');
+  });
+
+  test('the card uses the same treatment as the overview cards', () => {
+    // One card style across the dashboard, and --card already flips per theme.
+    expect(css).toContain('--ip-rel-cardbg: var(--card)');
+    const card = rule(/\.ip-rel-card \{[\s\S]*?\}/);
+    expect(card).toContain('border: 1px solid var(--border)');
+    expect(card).toContain('border-radius: var(--radius-lg)');
+    expect(card).toContain('box-shadow: var(--shadow-xs)');
+  });
+
+  test('the header draws no rule under itself', () => {
+    expect(css).not.toContain('.ip-rel-head::after');
+  });
+
+  test('the environment header sticks, with a background to sit on', () => {
+    const head = rule(/\.ip-rel-head \{ position: sticky[\s\S]*?\}/);
+    expect(head).toContain('position: sticky');
+    expect(head).toContain('top: 0');
+    expect(head).toContain('background: var(--background)');
+  });
+
+  test('a card cannot paint over the sticky header', () => {
+    const card = rule(/\.ip-rel-card \{[\s\S]*?\}/);
+    const head = rule(/\.ip-rel-head \{ position: sticky[\s\S]*?\}/);
+    const cardZ = Number(/z-index:\s*(\d+)/.exec(card)[1]);
+    const headZ = Number(/z-index:\s*(\d+)/.exec(head)[1]);
+    expect(/position:\s*relative/.test(card)).toBe(true);   // its own stacking context
+    expect(cardZ).toBeLessThan(headZ);
+  });
+
+  test('the environment name and its toggle share a line', () => {
+    // Two rules carry this selector; the direction is set in the later one, so
+    // check every block rather than whichever happens to come first.
+    const blocks = css.match(/\.ip-rel-envhead \{[\s\S]*?\}/g) || [];
+    expect(blocks.length).toBeGreaterThan(0);
+    const joined = blocks.join('\n');
+    expect(joined).toContain('flex-direction: row');
+    expect(joined).not.toContain('flex-direction: column');
+  });
+});
+
+describe('The project divider is the height of its text', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+
+  test('the divider is a short segment, not a full-height border', () => {
+    const seg = /\.ip-rel-proj::after \{[\s\S]*?\}/.exec(css)[0];
+    expect(seg).toContain('height: 16px');
+    expect(seg).toContain('top: 12px');   // lines up with the project name
+  });
+
+  test('the border stays in the box so the columns do not shift', () => {
+    // Removing it outright would narrow the label column by a pixel and pull
+    // every environment column left of its heading.
+    expect(css).toContain('border-right-color: transparent');
+    expect(css).not.toContain('.ip-rel-proj { border-right: 0');
+  });
+
+  test('the header divider centres on its own text', () => {
+    const head = /\.ip-rel-head \.ip-rel-proj::after \{[\s\S]*?\}/.exec(css)[0];
+    expect(head).toContain('top: 50%');
+  });
+
+  test('the expanded gutter has no divider, having no text to divide', () => {
+    expect(css).toContain('.ip-rel-history-gutter::after { display: none; }');
+  });
+});
+
+describe('The divider follows the card open and shut', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  const rule = re => (re.exec(css) || [''])[0];
+
+  test('shut, it is a short segment beside the project name', () => {
+    const base = rule(/\.ip-rel-proj::after \{[\s\S]*?\}/);
+    expect(base).toContain('height: 16px');
+    expect(css).toContain('.ip-rel-history-gutter::after { display: none; }');
+  });
+
+  test('open, it runs to the bottom of the row', () => {
+    const open = rule(/\.ip-rel-card\.is-open \.ip-rel-proj::after \{[\s\S]*?\}/);
+    expect(open).toContain('bottom: 0');
+    expect(open).toContain('height: auto');
+  });
+
+  test('open, it continues through the history gutter as one line', () => {
+    const gut = rule(/\.ip-rel-card\.is-open \.ip-rel-history-gutter::after \{[\s\S]*?\}/);
+    expect(gut).toContain('display: block');
+    expect(gut).toContain('top: 0');
+    expect(gut).toContain('bottom: 0');
+  });
+
+  test('the open rules come after the shut ones so they win', () => {
+    expect(css.indexOf('.ip-rel-card.is-open .ip-rel-proj::after'))
+      .toBeGreaterThan(css.indexOf('.ip-rel-history-gutter::after { display: none; }'));
+  });
+});
+
+describe('An open card looks like a card', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+
+  test('opening does not restyle the card itself', () => {
+    // No blue border, no shadow change — the caret and the panel below already
+    // say it is open.
+    expect(css).not.toMatch(/\.ip-rel-card\.is-open \{/);
+    expect(css).not.toContain('.dark .ip-rel-card.is-open {');
+  });
+
+  test('the open class is still there for the divider to hang off', () => {
+    expect(css).toContain('.ip-rel-card.is-open .ip-rel-proj::after');
+    expect(css).toContain('.ip-rel-card.is-open .ip-rel-history-gutter::after');
+  });
+
+  test('the markup still marks an open card', () => {
+    const data = require('./data');
+    const Views = require('./views');
+    const model = data.releasesModel({
+      Environments: [{ Id: 'E1', Name: 'Dev' }],
+      ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+      Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' }],
+      Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '9.3', State: 'Success' }]
+    });
+    const html = Views.renderProjects({ projectOpen: { P1: true },
+      projectHistory: { P1: { status: 'loading' } }, releases: { status: 'ready', model } });
+    expect(html).toContain('ip-rel-card is-open');
+  });
+});
+
+describe('One card treatment across the dashboard', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, 'styles.css'), 'utf8');
+  const rule = name => (new RegExp('\\.' + name + ' \\{[\\s\\S]*?\\}').exec(css) || [''])[0];
+
+  // Every raised surface added for Projects and Tenants.
+  const surfaces = ['ip-tn-card', 'ip-tn-panel', 'ip-tn-facets', 'ip-rel-card'];
+
+  surfaces.forEach(name => {
+    test(name + ' uses the shared border, radius and shadow', () => {
+      const r = rule(name);
+      expect(r).toContain('var(--border)');
+      expect(r).toContain('var(--radius-lg)');
+      expect(r).toContain('var(--shadow-xs)');
+    });
+  });
+
+  test('every surface resolves its background to --card', () => {
+    // The project card reaches it through --ip-rel-cardbg, which is what lets
+    // the version labels mask the line in the card's own colour.
+    expect(rule('ip-tn-card')).toContain('var(--card)');
+    expect(rule('ip-tn-panel')).toContain('var(--card)');
+    expect(rule('ip-tn-facets')).toContain('var(--card)');
+    expect(rule('ip-rel-card')).toContain('var(--ip-rel-surface)');
+    expect(css).toContain('--ip-rel-cardbg: var(--card)');
+  });
+
+  test('no surface carries a hand-written dark border', () => {
+    // --card and --border already flip per theme; a second set would drift.
+    expect(/\.dark \.ip-tn-(card|panel|facets)[^{]*\{[^}]*border-color/.test(css)).toBe(false);
+    expect(/\.dark \.ip-rel-card \{[^}]*border-color/.test(css)).toBe(false);
+  });
+
+  test('none of them is a bare outline', () => {
+    surfaces.forEach(name => {
+      const r = rule(name);
+      expect(r).toMatch(/background:/);
+      expect(r).toMatch(/box-shadow:/);
+    });
+  });
+});
+
+describe('Tenant description: one line, and never trusted', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const model = desc => data.tenantDetailModel({
+    tenant: { Id: 'T1', Name: 'Acme', TenantTags: [], Description: desc, ProjectEnvironments: {} },
+    dashboard: { Projects: [], Environments: [], Items: [] } });
+  const desc = d => {
+    const m = /<p class="ip-tn-desc"[\s\S]*?<\/p>/.exec(
+      Views.renderTenantDetail({ spaceId: 'S', tenantDetail: { status: 'ready', model: model(d) } }));
+    return m ? m[0] : '';
+  };
+  const tags = h => [...new Set([...h.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)].map(m => m[1].toLowerCase()))];
+  const hrefs = h => [...h.matchAll(/href="([^"]*)"/g)].map(m => m[1]);
+
+  test('a markdown link becomes a real link', () => {
+    const out = desc('[License Details](https://octofront.com/cloud-subscriptions/1)');
+    expect(hrefs(out)).toEqual(['https://octofront.com/cloud-subscriptions/1']);
+    expect(out).toContain('>License Details<');
+  });
+
+  test('it is one line, whatever the field contains', () => {
+    const out = desc('[A](https://a.com)\r\n[B](https://b.com)\r\nplain');
+    // The title keeps the original text, newlines and all; the visible body is
+    // what has to be a single line.
+    const body = out.replace(/ title="[\s\S]*?"/, '');
+    expect(body).not.toMatch(/[\r\n]/);
+    expect(body).toContain(' · ');
+    expect(hrefs(out)).toHaveLength(2);
+  });
+
+  test('only http and https reach an href', () => {
+    expect(hrefs(desc('[x](javascript:alert(1))'))).toEqual([]);
+    expect(hrefs(desc('[x](data:text/html,<script>alert(1)</script>)'))).toEqual([]);
+  });
+
+  test('the field can never produce a tag other than the paragraph and its links', () => {
+    ['<img src=x onerror=alert(1)>', '<script>alert(1)</script>',
+     '[x](https://a.com" onmouseover="alert(1))', '" onmouseover="alert(1)'
+    ].forEach(input => {
+      expect(tags(desc(input)).every(t => t === 'p' || t === 'a')).toBe(true);
+    });
+  });
+
+  test('a label containing markup is escaped, not rendered', () => {
+    const out = desc('[<b>bold</b>](https://a.com)');
+    expect(tags(out).every(t => t === 'p' || t === 'a')).toBe(true);
+    expect(out).toContain('&lt;b&gt;');
+  });
+
+  test('no description renders nothing at all', () => {
+    expect(desc('')).toBe('');
+    expect(desc('   ')).toBe('');
+  });
+
+  test('it no longer uses the page subtitle styling', () => {
+    expect(desc('plain text')).toContain('ip-tn-desc');
+    expect(desc('plain text')).not.toContain('ip-sub');
+  });
+});
+
+describe('Project map', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const payload = {
+    project: { Id: 'P1', Name: 'Azure Front Door', ProjectGroupId: 'G1', LifecycleId: 'L1',
+      IsVersionControlled: true, TenantedDeploymentMode: 'Untenanted', AutoCreateRelease: false,
+      PersistenceSettings: { Url: 'https://github.com/acme/repo.git', DefaultBranch: 'main', BasePath: '.octopus' } },
+    branch: 'main',
+    process: { Steps: [
+      { Name: 'Apply Terraform', Properties: { 'Octopus.Action.TargetRoles': 'web,api' },
+        Actions: [{ ActionType: 'Octopus.TerraformApply', Packages: [{ PackageId: 'infra', FeedId: 'Feeds-201' }] }] },
+      { Name: 'Notify', Actions: [{ ActionType: 'Octopus.Script', IsDisabled: true }] } ] },
+    channels: { Items: [{ Name: 'Full', IsDefault: true, LifecycleId: 'L1', Rules: [{}] }] },
+    triggers: { Items: [{ Name: 'Nightly', Filter: { FilterType: 'OnceDailySchedule' } }] },
+    lifecycle: { Name: 'Std', Phases: [
+      { Name: 'Dev', OptionalDeploymentTargets: ['E1'], AutomaticDeploymentTargets: [] },
+      { Name: 'Prod', OptionalDeploymentTargets: [], AutomaticDeploymentTargets: ['E2'] } ] },
+    feeds: { Items: [{ Id: 'Feeds-201', Name: 'Docker Hub', FeedType: 'Docker' }] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Production' }],
+    tenants: { TotalResults: 0 }
+  };
+  const model = data.projectMapModel(payload);
+  const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model } });
+
+  test('inputs name the feed behind each package, not the feed id', () => {
+    expect(model.inputs).toEqual([{ feed: 'Docker Hub', feedType: 'Docker', packages: ['infra'] }]);
+  });
+
+  test('a version-controlled project shows its repository and branch', () => {
+    expect(model.git).toMatchObject({ url: 'https://github.com/acme/repo.git', branch: 'main' });
+    expect(html).toContain('github.com/acme/repo.git');
+  });
+
+  test('action types read as steps rather than as machinery', () => {
+    expect(data.actionTypeLabel('Octopus.TerraformApply')).toBe('Terraform Apply');
+    expect(data.actionTypeLabel('')).toBe('Step');
+  });
+
+  test('a disabled step is kept and marked, not dropped', () => {
+    expect(model.process[1]).toMatchObject({ name: 'Notify', disabled: true });
+    expect(html).toContain('disabled');
+  });
+
+  test('target roles are surfaced, since they decide where a step lands', () => {
+    expect(model.roles).toEqual(['web', 'api']);
+  });
+
+  test('lifecycle phases come out in order with their environments', () => {
+    expect(model.phases.map(p => p.name)).toEqual(['Dev', 'Prod']);
+    expect(model.phases[1].automatic).toEqual(['Production']);
+  });
+
+  test('triggers are named by kind', () => {
+    expect(model.triggers[0]).toMatchObject({ name: 'Nightly', kind: 'Schedule' });
+  });
+
+  test('it says that CI-driven deployments are invisible here', () => {
+    expect(html).toContain('do not appear here');
+  });
+
+  test('an unreadable process does not cost the rest of the map', () => {
+    const broken = data.projectMapModel(Object.assign({}, payload, { process: null, processError: new Error('x') }));
+    const out = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: broken } });
+    expect(out).toContain('deployment process could not be read');
+    expect(out).toContain('Destinations');
+    expect(out).toContain('Channels');
+  });
+
+  test('a tenanted project reports how many tenants are connected', () => {
+    const tenanted = data.projectMapModel(Object.assign({}, payload, {
+      project: Object.assign({}, payload.project, { TenantedDeploymentMode: 'Tenanted' }),
+      tenants: { TotalResults: 48 } }));
+    expect(Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: tenanted } }))
+      .toContain('48 tenants connected');
+  });
+
+  test('the project card links to the map without swallowing the expand', () => {
+    const rel = data.releasesModel({
+      Environments: [{ Id: 'E1', Name: 'Dev' }], ProjectGroups: [{ Id: 'G1', Name: 'Cloud' }],
+      Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' }],
+      Items: [{ IsCurrent: true, ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '1', State: 'Success' }] });
+    const list = Views.renderProjects({ releases: { status: 'ready', model: rel } });
+    expect(list).toContain('href="#projects/P1"');
+    expect(list).toContain('data-projectlink');
+    expect(list).toContain('data-project="P1"');   // the row is still the toggle
+  });
+});
+
+describe('The project map columns hold what belongs together', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: data.projectMapModel({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+    process: { Steps: [{ Name: 'Deploy', Actions: [{ ActionType: 'Octopus.Script' }] }] },
+    channels: { Items: [] }, triggers: { Items: [{ Name: 'Nightly', Filter: { FilterType: 'OnceDailySchedule' } }] },
+    lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [], tenants: { TotalResults: 0 }
+  }) } });
+
+  // Walk div depth to find where a column actually ends, rather than trusting
+  // a lazy regex to guess it.
+  const column = n => {
+    let start = -1;
+    for (let i = 0; i <= n; i++) start = html.indexOf('<div class="ip-pm-col">', start + 1);
+    if (start === -1) return null;
+    const rest = html.slice(start);
+    const tok = /<div\b|<\/div>/g;
+    let depth = 0, m;
+    while ((m = tok.exec(rest))) {
+      depth += m[0] === '</div>' ? -1 : 1;
+      if (depth === 0) return rest.slice(0, m.index + m[0].length);
+    }
+    return null;
+  };
+  const headings = col => (col.match(/<h3>([^<]*)/g) || []).map(h => h.replace('<h3>', ''));
+
+  test('both columns exist and close cleanly', () => {
+    expect(column(0)).not.toBeNull();
+    expect(column(1)).not.toBeNull();
+  });
+
+  test('channels lead the left column, above what feeds the project', () => {
+    expect(headings(column(0))).toEqual(['Channels', 'Inputs', 'Triggers']);
+  });
+
+  test('flags sit under destinations in the right column', () => {
+    expect(headings(column(1))).toEqual(['Destinations', 'Feature flags']);
+  });
+
+  test('process stays outside both columns', () => {
+    expect(column(0).indexOf('>Process')).toBe(-1);
+    expect(column(1).indexOf('>Process')).toBe(-1);
+    expect(html.indexOf('>Process')).toBeGreaterThan(-1);
+  });
+
+  test('lifecycles sit above the grid, full width', () => {
+    expect(html.indexOf('>Lifecycles')).toBeGreaterThan(-1);
+    expect(html.indexOf('>Lifecycles')).toBeLessThan(html.indexOf('ip-pm-grid'));
+  });
+});
+
+describe('Project map — lifecycles', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const model = data.projectMapModel({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+    channels: { Items: [
+      { Name: 'Full', IsDefault: true, LifecycleId: 'L1', Rules: [] },
+      { Name: 'Hotfix', LifecycleId: 'L2', Rules: [] },
+      { Name: 'Beta', Rules: [] } ] },
+    lifecycle: { Id: 'L1', Name: 'Standard', Phases: [
+      { Name: 'Dev', OptionalDeploymentTargets: ['E1'] },
+      { Name: 'Prod', AutomaticDeploymentTargets: ['E2'] } ] },
+    lifecycles: [
+      { Id: 'L1', Name: 'Standard', Phases: [
+        { Name: 'Dev', OptionalDeploymentTargets: ['E1'] },
+        { Name: 'Prod', AutomaticDeploymentTargets: ['E2'] } ] },
+      { Id: 'L2', Name: 'Hotfix path', Phases: [{ Name: 'Straight to prod', OptionalDeploymentTargets: ['E2'] }] } ],
+    process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Production' }], tenants: { TotalResults: 0 }
+  });
+  const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model } });
+
+  test('every lifecycle the project ships through is modelled, not just the default', () => {
+    expect(model.lifecycles.map(l => l.name)).toEqual(['Standard', 'Hotfix path']);
+    expect(model.lifecycles[0].isDefault).toBe(true);
+  });
+
+  test('a channel with no lifecycle of its own belongs to the default', () => {
+    expect(model.lifecycles[0].channels).toEqual(['Full', 'Beta']);
+    expect(model.lifecycles[1].channels).toEqual(['Hotfix']);
+  });
+
+  test('environments are named once, as columns', () => {
+    expect(model.lifecycleEnvironments).toEqual(['Dev', 'Production']);
+    // Once in the header, and nowhere else in the panel however many lifecycles.
+    expect((html.match(/ip-pm-colhead">Production/g) || []).length).toBe(1);
+  });
+
+  test('each lifecycle is a row across those columns', () => {
+    expect(model.lifecycles[0].cells.map(c => c.reached)).toEqual([true, true]);
+    expect(model.lifecycles[1].cells.map(c => c.reached)).toEqual([false, true]);
+    expect(html).toContain('Straight to prod');
+  });
+
+  test('a lifecycle that never reaches an environment gets no node there', () => {
+    // Hotfix reaches Production only, so its Dev cell carries no node.
+    const rows = html.split('ip-pm-lcrow').slice(2);       // skip the header row
+    const hotfix = rows.find(r => r.indexOf('Hotfix path') > -1);
+    expect((hotfix.match(/ip-pm-node/g) || []).length).toBe(1);
+  });
+
+  test('an automatic phase is drawn differently from an optional one', () => {
+    expect(html).toContain('ip-pm-node is-auto');
+  });
+
+  test('the phase number carries the grouping instead of repeated names', () => {
+    // Standard: Dev is phase 1, Prod is phase 2.
+    expect(html).toContain('>1</span>');
+    expect(html).toContain('>2</span>');
+  });
+
+  test('destinations no longer repeats the phases', () => {
+    const dest = html.slice(html.indexOf('>Destinations'));
+    expect(dest).not.toContain('ip-pm-phasebox');
+  });
+
+  test('a lifecycle nothing routes through is still shown, and said to be unused', () => {
+    const orphan = data.projectMapModel({
+      project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      channels: { Items: [] },
+      lifecycle: { Id: 'L1', Name: 'Standard', Phases: [] },
+      lifecycles: [{ Id: 'L1', Name: 'Standard', Phases: [] }],
+      process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+      environments: [], tenants: { TotalResults: 0 } });
+    const orphanHtml = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: orphan } });
+    // No phases at all, so there are no columns and nothing to tabulate.
+    expect(orphanHtml).toContain('no lifecycle phases');
+  });
+});
+
+describe('Lifecycle columns are ordered and shared', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const model = data.projectMapModel({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+    channels: { Items: [{ Name: 'Full', LifecycleId: 'L1' }, { Name: 'Hotfix', LifecycleId: 'L2' }] },
+    lifecycle: { Id: 'L1', Name: 'Standard', Phases: [
+      { Name: 'Dev', OptionalDeploymentTargets: ['E1'] },
+      { Name: 'Test', OptionalDeploymentTargets: ['E2'] },
+      { Name: 'Prod', AutomaticDeploymentTargets: ['E3'] } ] },
+    lifecycles: [
+      { Id: 'L1', Name: 'Standard', Phases: [
+        { Name: 'Dev', OptionalDeploymentTargets: ['E1'] },
+        { Name: 'Test', OptionalDeploymentTargets: ['E2'] },
+        { Name: 'Prod', AutomaticDeploymentTargets: ['E3'] } ] },
+      { Id: 'L2', Name: 'Hotfix path', Phases: [{ Name: 'Straight to prod', OptionalDeploymentTargets: ['E3'] }] },
+      { Id: 'L3', Name: 'Lab only', Phases: [{ Name: 'Lab', OptionalDeploymentTargets: ['E9'] }] } ],
+    process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Test' },
+                   { Id: 'E3', Name: 'Production' }, { Id: 'E9', Name: 'Lab' }],
+    tenants: { TotalResults: 0 }
+  });
+
+  test('columns follow the default lifecycle, then anything only others reach', () => {
+    expect(model.lifecycleEnvironments).toEqual(['Dev', 'Test', 'Production', 'Lab']);
+  });
+
+  test('two routes to production land in the same column', () => {
+    const prod = model.lifecycleEnvironments.indexOf('Production');
+    expect(model.lifecycles[0].cells[prod]).toMatchObject({ reached: true, phase: 'Prod', automatic: true });
+    expect(model.lifecycles[1].cells[prod]).toMatchObject({ reached: true, phase: 'Straight to prod' });
+  });
+
+  test('every row has a cell per column, reached or not', () => {
+    model.lifecycles.forEach(lc => expect(lc.cells).toHaveLength(model.lifecycleEnvironments.length));
+  });
+
+  test('an automatic phase is marked, an optional one is not', () => {
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model } });
+    // Only Standard's Prod phase is automatic, across all three lifecycles.
+    expect((html.match(/ip-pm-node is-auto/g) || []).length).toBe(1);
+  });
+
+  test('environments in the same phase share a number', () => {
+    const two = data.projectMapModel({
+      project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' }, channels: { Items: [] },
+      lifecycle: { Id: 'L1', Name: 'One', Phases: [{ Name: 'Both', OptionalDeploymentTargets: ['E1', 'E2'] }] },
+      lifecycles: [{ Id: 'L1', Name: 'One', Phases: [{ Name: 'Both', OptionalDeploymentTargets: ['E1', 'E2'] }] }],
+      process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+      environments: [{ Id: 'E1', Name: 'A' }, { Id: 'E2', Name: 'B' }], tenants: { TotalResults: 0 } });
+    expect(two.lifecycles[0].cells.map(c => c.phaseIndex)).toEqual([0, 0]);
+  });
+
+  test('a blank cell is explained rather than left ambiguous', () => {
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model } });
+    expect(html).toContain('never reaches that environment');
+  });
+});
+
+describe('Destinations: selection, targets and their shape', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const machines = { items: [
+    { Id: 'M1', Name: 'web-01', Roles: ['web'], EnvironmentIds: ['E1'], HealthStatus: 'Healthy', IsDisabled: false, TenantedDeploymentParticipation: 'Untenanted' },
+    { Id: 'M2', Name: 'web-02', Roles: ['web'], EnvironmentIds: ['E2'], HealthStatus: 'Unhealthy', IsDisabled: false, TenantedDeploymentParticipation: 'Tenanted', TenantIds: ['T1'] },
+    { Id: 'M3', Name: 'db-01', Roles: ['db'], EnvironmentIds: ['E1'], HealthStatus: 'Healthy', IsDisabled: true },
+    { Id: 'M4', Name: 'other', Roles: ['unrelated'], EnvironmentIds: ['E1'], HealthStatus: 'Healthy' },
+    { Id: 'M5', Name: 'wrong-env', Roles: ['web'], EnvironmentIds: ['E9'], HealthStatus: 'Healthy' }
+  ] };
+  const build = (roles, extra) => data.projectMapModel(Object.assign({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1', TenantedDeploymentMode: 'Tenanted' },
+    channels: { Items: [] },
+    lifecycle: { Id: 'L1', Name: 'Std', Phases: [{ Name: 'All', OptionalDeploymentTargets: ['E1', 'E2'] }] },
+    lifecycles: [{ Id: 'L1', Name: 'Std', Phases: [{ Name: 'All', OptionalDeploymentTargets: ['E1', 'E2'] }] }],
+    process: { Steps: [{ Name: 'Deploy', Properties: { 'Octopus.Action.TargetRoles': roles },
+      Actions: [{ ActionType: 'Octopus.Script' }] }] },
+    triggers: { Items: [] }, feeds: { Items: [] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }, { Id: 'E9', Name: 'Lab' }],
+    tenants: { TotalResults: 12 }, machines: machines
+  }, extra || {}));
+
+  test('targets are matched by role and environment together', () => {
+    const t = build('web,db').targets;
+    expect(t.total).toBe(3);                       // M4 wrong role, M5 wrong environment
+    expect(t.matched.map(x => x.name).sort()).toEqual(['db-01', 'web-01', 'web-02']);
+  });
+
+  test('health aggregates, disabled counted separately from unhealthy', () => {
+    const t = build('web,db').targets;
+    expect({ healthy: t.healthy, unhealthy: t.unhealthy, disabled: t.disabled })
+      .toEqual({ healthy: 1, unhealthy: 1, disabled: 1 });
+  });
+
+  test('it breaks down by role and by environment', () => {
+    const t = build('web,db').targets;
+    expect(t.byRole).toEqual([{ role: 'web', count: 2 }, { role: 'db', count: 1 }]);
+    expect(t.byEnvironment).toEqual([{ environment: 'Dev', count: 2 }, { environment: 'Prod', count: 1 }]);
+  });
+
+  test('tenant participation is aggregated for a tenanted project', () => {
+    const t = build('web,db').targets;
+    expect(t.tenanted.dedicated).toBe(1);
+    expect(t.tenanted.participation).toEqual({ Untenanted: 2, Tenanted: 1 });
+  });
+
+  test('an untenanted project reports no tenant aggregate at all', () => {
+    const m = build('web', { project: { Id: 'P1', Name: 'X', LifecycleId: 'L1', TenantedDeploymentMode: 'Untenanted' } });
+    expect(m.targets.tenanted).toBeNull();
+  });
+
+  test('a project with no roles says so rather than reporting zero targets', () => {
+    const m = build('');
+    expect(m.targets.selectsByRole).toBe(false);
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m } });
+    expect(html).toContain('run on the server or on workers');
+    expect(html).not.toContain('Deployments would have nowhere to run');
+  });
+
+  test('roles that match nothing is a warning, and a different one', () => {
+    const m = build('ghost');
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m } });
+    expect(html).toContain('Deployments would have nowhere to run');
+  });
+
+  test('unreadable machines leave the selection visible', () => {
+    const m = build('web', { machines: null, machinesError: new Error('403') });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m } });
+    expect(html).toContain('Deployment targets cannot be read');
+    expect(html).toContain('Selected by');       // how it chooses is still known
+  });
+
+  test('the selection mechanism is stated whatever the targets say', () => {
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: build('web,db') } });
+    expect(html).toContain('Selected by');
+    expect(html).toContain('Within');
+    expect(html).toContain('12 tenants connected');
+  });
+});
+
+describe('Project feature flags across the lifecycle environments', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const envs = ['E1', 'E2'];
+  const names = { E1: 'Dev', E2: 'Prod' };
+  const model = items => data.projectFlagModel({ items: items, total: items.length }, envs, names);
+
+  test('a flag with no environment settings resolves against its default', () => {
+    const on = model([{ Id: 'F1', Name: 'a', DefaultIsEnabled: true }]);
+    expect(on.fullyOn).toBe(1);
+    expect(on.flags[0].cells.every(c => c.viaDefault)).toBe(true);
+    expect(model([{ Id: 'F2', Name: 'b', DefaultIsEnabled: false }]).fullyOff).toBe(1);
+  });
+
+  test('an environment setting beats the default for that environment only', () => {
+    const m = model([{ Id: 'F1', Name: 'a', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true }] }]);
+    expect(m.flags[0].cells.map(c => c.key)).toEqual(['on', 'off']);
+    expect(m.betweenCount).toBe(1);
+  });
+
+  test('a percentage rollout is in between wherever it lands', () => {
+    const m = model([{ Id: 'F1', Name: 'a', DefaultIsEnabled: true,
+      Environments: [{ DeploymentEnvironmentId: 'E2', IsEnabled: true, RolloutPercentage: 25 }] }]);
+    expect(m.flags[0].settled).toBe('between');
+    expect(m.flags[0].cells[1]).toMatchObject({ key: 'partial', percent: 25 });
+  });
+
+  test('the ones in between are named, not just counted', () => {
+    const m = model([
+      { Id: 'F1', Name: 'settled', DefaultIsEnabled: true },
+      { Id: 'F2', Name: 'drifting', DefaultIsEnabled: false,
+        Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true }] }
+    ]);
+    expect(m.between.map(f => f.name)).toEqual(['drifting']);
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: Object.assign(
+      data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+        process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+        lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+        tenants: { TotalResults: 0 } }), { flags: m }) } });
+    expect(html).toContain('drifting');
+    expect(html).not.toContain('>settled<');
+  });
+
+  test('environment targeting counts toward what the flag says it does', () => {
+    const m = model([{ Id: 'F1', Name: 'a', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true, TenantIds: ['T1', 'T2'], TenantTags: ['x/y'] }] }]);
+    expect(m.flags[0].cells[0].tenantCount).toBe(3);
+  });
+
+  test('no flags, and flags with nowhere to land, read differently', () => {
+    const base = data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+      tenants: { TotalResults: 0 } });
+    const render = flags => Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready',
+      model: Object.assign({}, base, { flags: flags }) } });
+    expect(render(data.projectFlagModel({ items: [], total: 0 }, envs, names)))
+      .toContain('no feature flags');
+    expect(render(data.projectFlagModel({ items: [{ Id: 'F1', Name: 'a' }], total: 1 }, [], names)))
+      .toContain('no lifecycle environments to place them in');
+  });
+
+  test('an instance without the preview says so rather than showing zero', () => {
+    const err = new Error('404 Not Found'); err.code = '404 Not Found';
+    const m = data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+      tenants: { TotalResults: 0 }, flagsError: err });
+    expect(Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m } }))
+      .toContain('Feature flags are not available on this instance');
+    // Anything else is a read failure, not an absent capability.
+    const other = new Error('500 Server Error'); other.code = '500 Server Error';
+    const m2 = data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+      tenants: { TotalResults: 0 }, flagsError: other });
+    expect(Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: m2 } }))
+      .toContain('could not be read for this project');
+  });
+});
+
+describe('The lifecycle panel opens on the default only', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const lc = (id, name, envIds) => ({ Id: id, Name: name,
+    Phases: envIds.map((e, i) => ({ Name: 'P' + i, OptionalDeploymentTargets: [e] })) });
+  const build = extra => data.projectMapModel(Object.assign({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+    process: { Steps: [] }, triggers: { Items: [] }, feeds: { Items: [] },
+    environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }],
+    tenants: { TotalResults: 0 }
+  }, extra));
+
+  test('one lifecycle needs no disclosure at all', () => {
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: build({
+      channels: { Items: [] }, lifecycle: lc('L1', 'Std', ['E1', 'E2']), lifecycles: [lc('L1', 'Std', ['E1', 'E2'])]
+    }) } });
+    expect(html).toContain('Std');
+    expect(html).not.toContain('ip-pm-lcmore');
+  });
+
+  test('the others fold away behind a count', () => {
+    const model = build({
+      channels: { Items: [{ Id: 'C1', Name: 'Hotfix', LifecycleId: 'L2' }] },
+      lifecycle: lc('L1', 'Std', ['E1', 'E2']),
+      lifecycles: [lc('L1', 'Std', ['E1', 'E2']), lc('L2', 'Hotfix', ['E2'])]
+    });
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: model } });
+    const details = html.slice(html.indexOf('<details class="ip-pm-lcmore">'));
+    expect(html).toContain('<details class="ip-pm-lcmore">');
+    expect(html).toContain('1 other lifecycle</summary>');
+    // The default is on the page before the disclosure; the other is inside it.
+    expect(html.indexOf('Std')).toBeLessThan(html.indexOf('<details'));
+    expect(details).toContain('Hotfix');
+    // Not open by default — that is the whole point.
+    expect(html).not.toContain('<details class="ip-pm-lcmore" open>');
+  });
+
+  test('the plural is right for more than one', () => {
+    const html = Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready', model: build({
+      channels: { Items: [] }, lifecycle: lc('L1', 'Std', ['E1']),
+      lifecycles: [lc('L1', 'Std', ['E1']), lc('L2', 'A', ['E1']), lc('L3', 'B', ['E2'])]
+    }) } });
+    expect(html).toContain('2 other lifecycles</summary>');
+  });
+});
+
+describe('Flags name their environments once, not once per flag', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const render = items => {
+    const fm = data.projectFlagModel({ items: items, total: items.length },
+      ['E1', 'E2', 'E3'], { E1: 'Dev', E2: 'Staging', E3: 'Production' });
+    const base = data.projectMapModel({ project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] }, environments: [],
+      tenants: { TotalResults: 0 } });
+    return Views.renderProjectMap({ projectTab: 'Overview', projectMap: { status: 'ready',
+      model: Object.assign({}, base, { flags: fm }) } });
+  };
+  const twoFlags = [
+    { Id: 'F1', Name: 'alpha', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: true }] },
+    { Id: 'F2', Name: 'beta', DefaultIsEnabled: false,
+      Environments: [{ DeploymentEnvironmentId: 'E2', IsEnabled: true, RolloutPercentage: 40 }] }
+  ];
+
+  test('each environment head appears once however many flags there are', () => {
+    const html = render(twoFlags);
+    const grid = html.slice(html.indexOf('ip-pm-fg'));
+    expect((grid.match(/ip-pm-colhead/g) || []).length).toBe(3);
+    expect((grid.match(/>Production</g) || []).length).toBe(1);
+  });
+
+  test('every flag gets a cell per environment, aligned to those heads', () => {
+    const grid = render(twoFlags);
+    const rows = grid.split('<div class="ip-pm-lcrow">').slice(1);
+    expect(rows.length).toBe(2);
+    rows.forEach(r => expect((r.match(/ip-pm-cell/g) || []).length).toBe(3));
+  });
+
+  test('a rollout shows its number; on and off differ by more than colour', () => {
+    const grid = render(twoFlags);
+    expect(grid).toContain('<span class="ip-pm-fpct">40</span>');
+    expect(grid).toContain('ip-pm-fdot is-on');
+    expect(grid).toContain('ip-pm-fdot is-off');
+  });
+
+  test('the environment a state belongs to survives in the cell title', () => {
+    expect(render(twoFlags)).toContain('title="Staging: 40% rollout"');
+  });
+
+  test('a state inherited from the default is marked as such', () => {
+    const html = render([{ Id: 'F1', Name: 'a', DefaultIsEnabled: true,
+      Environments: [{ DeploymentEnvironmentId: 'E1', IsEnabled: false }] }]);
+    expect(html).toContain('is-on is-default');
+    expect(html).toContain('(by default)');
+  });
+});
+
+// String-replace edits have twice copied a render block into a second function
+// that happened to share an anchor. Neither copy is reachable from the wrong
+// view, so nothing failed — it just sat there. This catches the next one.
+describe('Render blocks are defined once, in the view that uses them', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'views.js'), 'utf8');
+  const body = name => {
+    const i = src.indexOf('function ' + name + '(IP)');
+    if (i === -1) return '';
+    const j = src.indexOf('\n  function ', i + 1);
+    return src.slice(i, j === -1 ? undefined : j);
+  };
+
+  test('the project map owns the flag panel and the lifecycle track', () => {
+    expect((src.match(/const flagPanel = \(function/g) || []).length).toBe(1);
+    expect(body('renderProjectMap')).toContain('const flagPanel = (function');
+    expect(body('renderTenantDetail')).not.toContain('const flagPanel = (function');
+    expect((src.match(/const lcRow = lc =>/g) || []).length).toBe(1);
+  });
+});
+
+describe('A project page opens on Status and keeps Overview a click away', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const dash = {
+    Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'PG1' },
+               { Id: 'P2', Name: 'Other', ProjectGroupId: 'PG1' }],
+    ProjectGroups: [{ Id: 'PG1', Name: 'Web' }],
+    Environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E2', Name: 'Prod' }],
+    Tenants: [],
+    Items: [
+      { ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '2.0', State: 'Success', IsCurrent: true, CompletedTime: '2026-08-13T09:00:00Z' },
+      { ProjectId: 'P1', EnvironmentId: 'E2', ReleaseVersion: '1.9', State: 'Success', IsCurrent: true, CompletedTime: '2026-08-12T09:00:00Z' },
+      { ProjectId: 'P2', EnvironmentId: 'E1', ReleaseVersion: '5.0', State: 'Success', IsCurrent: true, CompletedTime: '2026-08-13T09:00:00Z' }
+    ]
+  };
+  const mapModel = data.projectMapModel({
+    project: { Id: 'P1', Name: 'Portal', LifecycleId: 'L1' },
+    process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+    lifecycle: { Name: 'Std', Phases: [] }, feeds: { Items: [] },
+    environments: [], tenants: { TotalResults: 0 }
+  });
+  const IP = extra => Object.assign({
+    projectMap: { status: 'ready', projectId: 'P1', model: mapModel },
+    releases: { status: 'ready', spaceId: 'S1', model: data.releasesModel(dash) },
+    projectOpen: { P1: true }
+  }, extra || {});
+
+  test('both tabs are offered, and Status is where it lands', () => {
+    const html = Views.renderProjectMap(IP());
+    expect(html).toContain('data-projecttab="Status"');
+    expect(html).toContain('data-projecttab="Overview"');
+    expect(html).toContain('ip-tab-active" data-projecttab="Status"');
+  });
+
+  test('Status draws this project only, not the whole dashboard', () => {
+    const html = Views.renderProjectMap(IP());
+    expect(html).toContain('data-project="P1"');
+    expect(html).toContain('Portal');
+    expect(html).not.toContain('data-project="P2"');
+    expect(html).not.toContain('>Other<');
+  });
+
+  test('Status carries the same environment columns and controls as the list', () => {
+    const html = Views.renderProjectMap(IP());
+    expect(html).toContain('data-envtoggle="PG1|E1"');
+    expect(html).toContain('data-envtoggle="PG1|E2"');
+    expect(html).toContain('data-window=');
+    expect(html).toContain('data-grouping=');
+    // Same column count the group would give it, so the row lines up.
+    expect(html).toContain('--ip-rel-cols:2');
+  });
+
+  test('the controls sit on the tab row, not above the content', () => {
+    const html = Views.renderProjectMap(IP());
+    const bar = html.slice(html.indexOf('<div class="ip-pm-tabbar">'), html.indexOf('</nav>') + 200);
+    expect(bar).toContain('ip-rel-controls');
+    // They belong to Status, and there is nothing to filter until the dashboard lands.
+    expect(Views.renderProjectMap(IP({ projectTab: 'Overview' }))).not.toContain('ip-rel-controls');
+    expect(Views.renderProjectMap(IP({ releases: { status: 'loading' } }))).not.toContain('ip-rel-controls');
+  });
+
+  test('the row opens expanded, because the page is about this project', () => {
+    expect(Views.renderProjectMap(IP())).toContain('ip-rel-card is-open');
+    expect(Views.renderProjectMap(IP({ projectOpen: {} }))).not.toContain('ip-rel-card is-open');
+  });
+
+  test('Overview is the map, and carries none of the Status furniture', () => {
+    const html = Views.renderProjectMap(IP({ projectTab: 'Overview' }));
+    expect(html).toContain('>Destinations');
+    expect(html).toContain('>Lifecycles');
+    expect(html).not.toContain('data-envtoggle=');
+    expect(html).toContain('ip-tab-active" data-projecttab="Overview"');
+  });
+
+  test('a project the dashboard never returned says which of the two reasons', () => {
+    const empty = data.releasesModel({ Projects: [], ProjectGroups: [], Environments: [], Tenants: [], Items: [] });
+    expect(Views.renderProjectMap(IP({ releases: { status: 'ready', model: empty } })))
+      .toContain('no releases on the dashboard yet');
+    const capped = data.releasesModel(Object.assign({}, dash,
+      { Projects: [], Items: [], IsFiltered: false, ProjectLimit: 20 }));
+    const html = Views.renderProjectMap(IP({ releases: { status: 'ready', model: capped } }));
+    if (capped.truncated.capped) expect(html).toContain('beyond the 20');
+  });
+
+  test('a dashboard that has not landed yet does not look like an empty project', () => {
+    const html = Views.renderProjectMap(IP({ releases: { status: 'loading' } }));
+    expect(html).toContain('Loading the project dashboard');
+    expect(html).not.toContain('no releases on the dashboard yet');
+  });
+
+  test('a dashboard that failed says so on Status and leaves Overview intact', () => {
+    const failed = { releases: { status: 'error', error: 'The dashboard request failed.' } };
+    expect(Views.renderProjectMap(IP(failed))).toContain('The dashboard request failed.');
+    expect(Views.renderProjectMap(IP(Object.assign({ projectTab: 'Overview' }, failed))))
+      .toContain('>Destinations');
+  });
+});
+
+describe('The list and the project page draw the row from one source', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'views.js'), 'utf8');
+  const count = str => src.split(str).length - 1;
+
+  test('the controls, legend and environment heads are built in one place each', () => {
+    ['_relControls', '_relLegend', '_relEnvHeads'].forEach(fn => {
+      expect(count('function ' + fn + '(')).toBe(1);
+      // One definition plus at least two call sites: the list and the project page.
+      expect(count(fn + '(')).toBeGreaterThan(2);
+    });
+  });
+
+  test('row interactions are bound once and shared', () => {
+    expect(count('function _bindRelRows(')).toBe(1);
+    // The definition plus both binders.
+    expect(count('_bindRelRows(IP, root')).toBe(3);
+  });
+});
+
+describe('Switching space lands on Projects', () => {
+  const Views = require('./views');
+
+  test('a detail page for the old space is not somewhere to stay', () => {
+    ['#tenants/Tenants-1', '#projects/Projects-9', '#targets/Machines-3', '#overview']
+      .forEach(from => {
+        const nav = Views.spaceSwitchNav(from);
+        expect(nav.hash).toBe('#projects');
+        expect(nav.rerender).toBe(false);   // the hash changes, so navigation renders
+      });
+  });
+
+  test('already on Projects, the switch has to redraw itself', () => {
+    // No hashchange fires when the hash does not change.
+    expect(Views.spaceSwitchNav('#projects')).toEqual({ hash: '#projects', rerender: true });
+    expect(Views.spaceSwitchNav('')).toEqual({ hash: '#projects', rerender: true });
+  });
+});
+
+describe('Incomplete reads say so where the zero used to be', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const err = msg => { const e = new Error(msg); e.code = msg; return e; };
+  const mapWith = extra => data.projectMapModel(Object.assign({
+    project: { Id: 'P1', Name: 'X', LifecycleId: 'L1', TenantedDeploymentMode: 'Tenanted' },
+    process: { Steps: [] }, channels: { Items: [] }, triggers: { Items: [] },
+    lifecycle: { Name: 'Std', Phases: [{ Name: 'All', OptionalDeploymentTargets: ['E1'] }] },
+    lifecycles: [{ Id: 'L1', Name: 'Std', Phases: [{ Name: 'All', OptionalDeploymentTargets: ['E1'] }] }],
+    feeds: { Items: [] }, environments: [{ Id: 'E1', Name: 'Dev' }], tenants: { TotalResults: 4 }
+  }, extra));
+  const render = m => Views.renderProjectMap({ projectTab: 'Overview',
+    projectMap: { status: 'ready', model: m } });
+
+  test('a forbidden read is not "none configured"', () => {
+    const html = render(mapWith({ channelsError: err('403'), triggersError: err('403'),
+      tenantsError: err('403'), lifecycleError: err('403'), lifecycle: null, lifecycles: [] }));
+    expect(html).toContain('Channels could not be read');
+    expect(html).toContain('Triggers could not be read');
+    expect(html).toContain('Lifecycles could not be read');
+    expect(html).toContain('Connected tenants could not be counted');
+    // None of the confident zeros survive.
+    expect(html).not.toContain('one implicit channel');
+    expect(html).not.toContain('No triggers are configured');
+    expect(html).not.toContain('no lifecycle phases');
+    expect(html).not.toContain('4 tenants connected');
+  });
+
+  test('a lifecycle with no phases does not silently mean every environment', () => {
+    const machines = { items: [
+      { Id: 'M1', Name: 'in-scope', Roles: ['web'], EnvironmentIds: ['E1'], HealthStatus: 'Healthy' },
+      { Id: 'M2', Name: 'far-away', Roles: ['web'], EnvironmentIds: ['E9'], HealthStatus: 'Healthy' }
+    ], total: 2 };
+    const m = data.projectMapModel({
+      project: { Id: 'P1', Name: 'X', LifecycleId: 'L1' },
+      process: { Steps: [{ Name: 'D', Properties: { 'Octopus.Action.TargetRoles': 'web' },
+        Actions: [{ ActionType: 'Octopus.Script' }] }] },
+      channels: { Items: [] }, triggers: { Items: [] },
+      lifecycle: { Id: 'L1', Name: 'Default Lifecycle', Phases: [] },
+      lifecycles: [{ Id: 'L1', Name: 'Default Lifecycle', Phases: [] }],
+      feeds: { Items: [] }, environments: [{ Id: 'E1', Name: 'Dev' }, { Id: 'E9', Name: 'Lab' }],
+      tenants: { TotalResults: 0 }, machines: machines });
+    expect(m.targets.scopeUnknown).toBe(true);
+    expect(m.targets.total).toBe(0);
+    const html = render(m);
+    expect(html).toContain('is not known');
+    expect(html).not.toContain('far-away');
+  });
+
+  test('a capped estate is not an empty one, on either page', () => {
+    const capped = { items: [{ Id: 'M1', Name: 'a', Roles: ['other'], EnvironmentIds: ['E1'] }],
+      total: 5000, truncated: true };
+    const html = render(mapWith({ machines: capped,
+      process: { Steps: [{ Name: 'D', Properties: { 'Octopus.Action.TargetRoles': 'web' },
+        Actions: [{ ActionType: 'Octopus.Script' }] }] } }));
+    expect(html).toContain('The rest were not read');
+    expect(html).not.toContain('nowhere to run');
+
+    const tenant = data.tenantDetailModel({
+      tenant: { Id: 'T1', Name: 'Acme', ProjectEnvironments: {} },
+      dashboard: { Projects: [], Environments: [], Items: [] },
+      machines: capped });
+    expect(tenant.infrastructure.orphaned).toBe(false);
+    expect(tenant.infrastructure.truncated).toBe(true);
+    const tHtml = Views.renderTenantDetail({ tenantDetail: { status: 'ready', model: tenant } });
+    expect(tHtml).toContain('The rest were not read');
+    expect(tHtml).not.toContain('resolve to nothing');
+  });
+
+  test('a fully read estate still says plainly when nothing matches', () => {
+    const whole = { items: [], total: 0, truncated: false };
+    const tenant = data.tenantDetailModel({
+      tenant: { Id: 'T1', Name: 'Acme', ProjectEnvironments: {} },
+      dashboard: { Projects: [], Environments: [], Items: [] }, machines: whole });
+    expect(tenant.infrastructure.orphaned).toBe(true);
+    expect(Views.renderTenantDetail({ tenantDetail: { status: 'ready', model: tenant } }))
+      .toContain('resolve to nothing');
+  });
+
+  test('the dashboard cap is disclosed on both tenant views', () => {
+    const dash = { Projects: [{ Id: 'P1', Name: 'One' }], ProjectGroups: [], Environments: [],
+      Tenants: [], Items: [], ProjectLimit: 1 };
+    const list = data.tenantsModel({ tenants: { items: [{ Id: 'T1', Name: 'Acme', ProjectEnvironments: { 'P9': ['E1'] } }], total: 1 },
+      dashboard: dash, tagSets: [] });
+    expect(list.dashboardCap.capped).toBe(true);
+    expect(Views.renderTenants({ tenants: { status: 'ready', model: list } }))
+      .toContain('reads as never deployed');
+
+    const detail = data.tenantDetailModel({ tenant: { Id: 'T1', Name: 'Acme', ProjectEnvironments: { 'P9': ['E1'] } },
+      dashboard: dash });
+    expect(detail.dashboardCap.capped).toBe(true);
+    expect(Views.renderTenantDetail({ tenantDetail: { status: 'ready', model: detail } }))
+      .toContain('reads here as never deployed');
+  });
+
+  test('an uncapped dashboard says nothing at all', () => {
+    const dash = { Projects: [{ Id: 'P1', Name: 'One' }], ProjectGroups: [], Environments: [],
+      Tenants: [], Items: [], ProjectLimit: 200 };
+    const list = data.tenantsModel({ tenants: { items: [{ Id: 'T1', Name: 'Acme', ProjectEnvironments: {} }], total: 1 },
+      dashboard: dash, tagSets: [] });
+    expect(list.dashboardCap.capped).toBe(false);
+    expect(Views.renderTenants({ tenants: { status: 'ready', model: list } }))
+      .not.toContain('reads as never deployed');
+  });
+
+  test('library variable sets are read by template, not by environment', () => {
+    const variables = { LibraryVariables: { 'LVS-1': {
+      LibraryVariableSetName: 'Standard',
+      Templates: [{ Id: 'tpl-region', Label: 'Region' }, { Id: 'tpl-tier', Label: 'Tier' }],
+      Variables: { 'tpl-region': 'eu-west' } } } };
+    const r = data.tenantReadiness(variables, { 'P1': ['E1', 'E2', 'E3'] },
+      { E1: 'Dev', E2: 'Test', E3: 'Prod' }, {});
+    // Region is supplied. Tier is not — once, not once per environment.
+    expect(r.missing.map(x => x.name)).toEqual(['Tier']);
+    expect(r.count).toBe(1);
   });
 });
