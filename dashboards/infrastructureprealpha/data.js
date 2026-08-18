@@ -1178,6 +1178,13 @@ function variableChangeLabel(change) {
 // returns 200, which is exactly the case on Cloud Platform.
 const ESTATE_FREE_VIEWS = ['projects', 'tenants'];
 
+/** The section a hash belongs to, ignoring any detail id: 'projects/P-1' and
+ *  'projects' are the same section. */
+function baseView(hash) {
+  const raw = String(hash == null ? '' : hash).replace(/^#/, '');
+  return raw.split('/')[0] || 'overview';
+}
+
 function viewNeedsEstate(view) {
   // Detail routes carry an id — "tenants/Tenants-1" is still the tenants view.
   // Matching the whole hash meant a tenant page counted as an infrastructure
@@ -1280,6 +1287,11 @@ function tenantsModel(payload) {
     const pairs = t.ProjectEnvironments || {};
     const connectedProjects = Object.keys(pairs);
     const pairCount = connectedProjects.reduce((n, pid) => n + ((pairs[pid] || []).length), 0);
+    // Distinct environments this tenant is connected to, across every project.
+    // Deployment history says where it has been; this says where it can go.
+    const connectedEnvs = {};
+    connectedProjects.forEach(pid => (pairs[pid] || []).forEach(eid => { connectedEnvs[eid] = true; }));
+    const connectedEnvIds = Object.keys(connectedEnvs);
 
     let last = null;
     items.forEach(i => {
@@ -1298,6 +1310,7 @@ function tenantsModel(payload) {
       connected: pairCount > 0,
       pairCount: pairCount,
       connectedProjectIds: connectedProjects,
+      connectedEnvironmentIds: connectedEnvIds,
       projectsOn: Object.keys(projectsOn),
       environmentsOn: Object.keys(envsOn).map(id => envName[id] || id),
       deployed: items.length > 0,
@@ -1312,11 +1325,40 @@ function tenantsModel(payload) {
     };
   });
 
+  // Three numbers about the shape of the tenancy, none of which the table shows
+  // and all of which come from the tenant payload rather than the dashboard, so
+  // the dashboard's project cap does not touch them. The tenant list's own page
+  // limit does, and the view says so.
+  const tagValues = {};
+  const tagSetsInUse = {};
+  rows.forEach(r => r.tags.forEach(tag => {
+    tagValues[tag.raw] = true;
+    if (tag.set) tagSetsInUse[tag.set] = true;
+  }));
+  let widest = null;
+  rows.forEach(r => {
+    if (!widest || r.connectedProjectIds.length > widest.count) {
+      widest = { count: r.connectedProjectIds.length, name: r.name, id: r.id };
+    }
+  });
+  const environmentConnections = rows.reduce((n, r) => n + r.connectedEnvironmentIds.length, 0);
+
   return {
     tenants: rows,
     total: (src.tenants && src.tenants.total) || rows.length,
     truncated: !!(src.tenants && src.tenants.truncated),
     dashboardCap: dashboardCap(dash),
+    metrics: {
+      inEnvironments: rows.filter(r => r.connectedEnvironmentIds.length).length,
+      environmentConnections: environmentConnections,
+      tagValues: Object.keys(tagValues).length,
+      tagSetsInUse: Object.keys(tagSetsInUse).length,
+      maxProjects: widest ? widest.count : 0,
+      maxProjectsTenant: widest && widest.count ? widest.name : '',
+      // Every one of these is computed over the tenants that were read.
+      partial: !!(src.tenants && src.tenants.truncated),
+      countedOver: rows.length
+    },
     tagSets: (src.tagSets || []).map(ts => ({
       name: ts.Name,
       tags: (ts.Tags || []).map(tag => ({ name: tag.Name, colour: tag.Color || '' }))
@@ -1430,7 +1472,40 @@ async function fetchTenantVariables(spaceId, tenantId) {
   return fetchJson('/api/' + spaceId + '/tenants/' + encodeURIComponent(tenantId) + '/variables');
 }
 
-async function fetchTenantMachines(spaceId) {
+// Up to ten paged requests, and both the tenant page and the project map want
+// it. Browsing twenty tenants re-paged the whole estate twenty times. Cached per
+// space for a couple of minutes: long enough to make navigation free, short
+// enough that a target registered while you are looking still turns up.
+const MACHINE_CACHE_MS = 120000;
+const machineCache = {};
+
+/** Clears one space, or all of them when no space is named. Clearing every
+ *  space on a switch was self-defeating: the cache is keyed by space, so going
+ *  A to B and back re-paged A inside its own live window. */
+function clearMachineCache(spaceId) {
+  if (spaceId) { delete machineCache[spaceId]; return; }
+  Object.keys(machineCache).forEach(k => { delete machineCache[k]; });
+}
+
+function fetchTenantMachines(spaceId) {
+  const hit = machineCache[spaceId];
+  // A read still in flight is always worth joining, however long it has taken;
+  // the age only applies once there is an answer that can be stale. Stamping the
+  // clock at the start meant ten paged requests could outlive their own window
+  // and a second caller would start the whole run again.
+  if (hit && (hit.at == null || (Date.now() - hit.at) < MACHINE_CACHE_MS)) return hit.promise;
+  const entry = { at: null, promise: null };
+  entry.promise = fetchAllMachines(spaceId).then(res => {
+    if (machineCache[spaceId] === entry) entry.at = Date.now();
+    return res;
+  });
+  // A failed read must not be remembered as the answer.
+  entry.promise.catch(() => { if (machineCache[spaceId] === entry) delete machineCache[spaceId]; });
+  machineCache[spaceId] = entry;
+  return entry.promise;
+}
+
+async function fetchAllMachines(spaceId) {
   let items = [], total = null, page = 0;
   while (page < TENANT_MACHINE_MAX_PAGES) {
     const res = await fetchJson('/api/' + spaceId + '/machines?skip=' + (page * TENANT_MACHINE_PAGE)
@@ -2111,10 +2186,10 @@ if (typeof window !== 'undefined') { window.Data = { setServerUrl, apiUrl, fetch
   fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
   fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
   fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable,
-  viewNeedsEstate,
+  viewNeedsEstate, baseView,
   fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
   parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
-  fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
+  fetchTenant, fetchTenantVariables, fetchTenantMachines, clearMachineCache, tenantDetailModel, tenantReadiness, matchTenantTargets,
   fetchTenantFlags, tenantFlagModel, flagStateForTenant,
   fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets, projectFlagModel }; }
 
@@ -2129,10 +2204,10 @@ if (typeof module !== 'undefined') {
     fetchFeatureToggles, featureFlagModel, flagEnvState, flagIsInFlight,
     fetchFlagEvents, flagChangeModel, flagChangeLabel, GROUPINGS,
     fetchVariableEvents, variableChangeModel, variableChangeLabel, isSensitiveVariable, shortValue, applyVariablePatch,
-    viewNeedsEstate,
+    viewNeedsEstate, baseView,
     fetchTenants, fetchTagSets, tenantsModel, sortTenants, filterTenants, tenantFacets,
     parseTenantTag, tenantOutcomeKey, TENANT_SORTS, tenantSortDir,
-    fetchTenant, fetchTenantVariables, fetchTenantMachines, tenantDetailModel, tenantReadiness, matchTenantTargets,
+    fetchTenant, fetchTenantVariables, fetchTenantMachines, clearMachineCache, tenantDetailModel, tenantReadiness, matchTenantTargets,
     fetchTenantFlags, tenantFlagModel, flagStateForTenant,
     fetchProjectMap, projectMapModel, actionTypeLabel, triggerLabel, projectTargets, projectFlagModel };
 }

@@ -1104,7 +1104,8 @@ const Views = (function () {
       + ' aria-expanded="' + (expanded ? 'true' : 'false') + '" data-project="' + escHtml(proj.id) + '">'
       + '<div class="ip-rel-proj">'
       +   '<span class="ip-rel-caret" aria-hidden="true"></span>'
-      +   '<a class="ip-rel-proj-name" href="#projects/' + escHtml(proj.id) + '" data-projectlink="1">'
+      +   '<a class="ip-rel-proj-name" href="#projects/' + escHtml(proj.id) + '"'
+      +     ' data-projectlink="' + escHtml(proj.id) + '">'
       +     escHtml(proj.name) + '</a>'
       + '</div>'
       + _relTrack(cells, cols)
@@ -1380,6 +1381,59 @@ const Views = (function () {
       + changeBand + varBand);
   }
 
+  // Every redraw in this dashboard replaces the whole of #main-content, which
+  // destroys focus. A keyboard user who activates a project row, a sort header
+  // or a tab is returned to document.body, so the next Tab restarts at the top
+  // of the page. These re-find the same control afterwards and put focus back.
+  // Every key here has to identify one element and keep identifying it after the
+  // rebuild. data-page was in this list and could not: its value is relative to
+  // the current page, so paging always missed. data-projectlink was worse — it
+  // was emitted as a constant, so it matched the first row rather than the
+  // focused one.
+  const FOCUS_KEYS = ['data-project', 'data-sort', 'data-facet', 'data-value', 'data-ctl',
+    'data-window', 'data-grouping', 'data-envtoggle', 'data-tenanttab', 'data-projecttab',
+    'data-tab', 'data-pager', 'data-projectlink'];
+
+  function _cssEscape(value) {
+    const raw = String(value == null ? '' : value);
+    return (typeof CSS !== 'undefined' && CSS && typeof CSS.escape === 'function')
+      ? CSS.escape(raw) : raw.replace(/["\\]/g, '\\$&');
+  }
+
+  /** A selector that finds the same control again after the markup is rebuilt,
+   *  or null when the element has nothing stable to identify it by. */
+  function focusSelector(el) {
+    if (!el || !el.getAttribute || (typeof document !== 'undefined' && el === document.body)) return null;
+    if (el.id) return '#' + _cssEscape(el.id);
+    const parts = FOCUS_KEYS.filter(a => el.hasAttribute(a))
+      .map(a => '[' + a + '="' + _cssEscape(el.getAttribute(a)) + '"]');
+    if (!parts.length) return null;
+    return (el.tagName || '').toLowerCase() + parts.join('');
+  }
+
+  /** Redraws while keeping focus, and the caret, where the user left it. */
+  function withFocus(root, redraw) {
+    const active = document.activeElement;
+    const inside = active && root.contains && root.contains(active);
+    const selector = inside ? focusSelector(active) : null;
+    // Only text fields have a caret worth restoring.
+    let caret = null;
+    try {
+      if (inside && active.selectionStart != null) caret = { start: active.selectionStart, end: active.selectionEnd };
+    } catch (e) { caret = null; }
+    redraw();
+    if (!selector) return;
+    let again = null;
+    try { again = root.querySelector(selector); } catch (e) { again = null; }
+    if (!again) return;
+    // preventScroll where it is supported: restoring focus should not move the
+    // viewport out from under someone.
+    try { again.focus({ preventScroll: true }); } catch (e) { again.focus(); }
+    if (caret && again.setSelectionRange) {
+      try { again.setSelectionRange(caret.start, caret.end); } catch (e) { /* not a text field */ }
+    }
+  }
+
   // The window/grouping controls, the legend and the environment header are the
   // same on the projects list and on one project's Status tab. One copy each.
   function _relControls(IP) {
@@ -1493,7 +1547,9 @@ const Views = (function () {
   function bindProjects(IP) {
     const root = document.getElementById('main-content');
     if (!root) return;
-    _bindRelRows(IP, root, () => { root.innerHTML = renderProjects(IP); bindProjects(IP); });
+    _bindRelRows(IP, root, () => withFocus(root, () => {
+      root.innerHTML = renderProjects(IP); bindProjects(IP);
+    }));
   }
 
   // Expanding a row, hiding an environment, changing the window or the grouping
@@ -1516,6 +1572,9 @@ const Views = (function () {
     root.querySelectorAll('.ip-rel-row[data-project]').forEach(el => {
       el.addEventListener('click', () => toggle(el));
       el.addEventListener('keydown', ev => {
+        // The project name is a link inside the row. Enter on it should follow
+        // the link; only the row itself toggles.
+        if (ev.target !== el) return;
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(el); }
       });
     });
@@ -1582,6 +1641,32 @@ const Views = (function () {
       + '<span class="ip-tn-facet-name">' + escHtml(e.label) + '</span>'
       + '<span class="ip-tn-facet-count">' + e.count + '</span></label>').join('');
     return '<div class="ip-tn-facetgroup"><p class="ip-tn-facettitle">' + escHtml(title) + '</p>' + rows + '</div>';
+  }
+
+  // Three facts about the shape of the tenancy that the table cannot show,
+  // because each is a property of the whole list rather than of a row.
+  function _tenantMetrics(m) {
+    const k = m.metrics;
+    if (!k) return '';
+    const card = (label, value, sub) => '<section class="ip-card">'
+      + '<h4>' + escHtml(label) + '</h4>'
+      + '<div class="ip-big">' + value.toLocaleString() + '</div>'
+      + (sub ? '<p class="ip-sub">' + escHtml(sub) + '</p>' : '')
+      + '</section>';
+    return '<div class="ip-grid ip-kpi-grid ip-kpi-3">'
+      + card('Tenants in environments', k.inEnvironments,
+          k.environmentConnections.toLocaleString() + ' tenant-environment '
+          + (k.environmentConnections === 1 ? 'connection' : 'connections')
+          + (k.inEnvironments === k.countedOver ? '' : ', ' + (k.countedOver - k.inEnvironments) + ' connected to none'))
+      + card('Tenant tags in use', k.tagValues,
+          k.tagSetsInUse + (k.tagSetsInUse === 1 ? ' tag set' : ' tag sets'))
+      + card('Most projects on one tenant', k.maxProjects,
+          k.maxProjectsTenant || 'no tenant is connected to a project')
+      + '</div>'
+      // Counted over what was read, which is not always everything.
+      + (k.partial ? '<p class="ip-rel-hnote-inline">These are counted over the first '
+          + k.countedOver.toLocaleString() + ' tenants read, not all ' + m.total.toLocaleString()
+          + '.</p>' : '');
   }
 
   function renderTenants(IP) {
@@ -1676,9 +1761,12 @@ const Views = (function () {
     }));
 
     return head
+      + _tenantMetrics(m)
       + '<div class="ip-tn-toolbar">'
-      +   '<input class="ip-search ip-tn-search" type="search" placeholder="Search tenants…" value="' + escHtml(IP.tenantQuery) + '">'
-      +   '<label class="ip-tn-sort"><span class="ip-caption">Sort</span><select class="ip-tn-sortsel">' + sorts + '</select></label>'
+      +   '<input class="ip-search ip-tn-search" type="search" data-ctl="tenant-search"'
+      +     ' placeholder="Search tenants…" value="' + escHtml(IP.tenantQuery) + '">'
+      +   '<label class="ip-tn-sort"><span class="ip-caption">Sort</span>'
+      +     '<select class="ip-tn-sortsel" data-ctl="tenant-sort">' + sorts + '</select></label>'
       +   '<span class="ip-count">' + sorted.length.toLocaleString()
       +     (sorted.length === m.tenants.length ? '' : ' of ' + m.tenants.length.toLocaleString())
       +     (sorted.length === 1 ? ' tenant' : ' tenants') + '</span>'
@@ -1699,9 +1787,9 @@ const Views = (function () {
           : '<div class="ip-empty"><h3>No tenants match these filters</h3>'
             + '<p>Clear a filter or search for a different name.</p></div>')
       +     (pages > 1 ? '<div class="ip-tn-pager">'
-            + '<button class="ip-btn ip-btn-secondary" data-page="' + (page - 1) + '"' + (page === 0 ? ' disabled' : '') + '>Previous</button>'
+            + '<button class="ip-btn ip-btn-secondary" data-pager="prev" data-page="' + (page - 1) + '"' + (page === 0 ? ' disabled' : '') + '>Previous</button>'
             + '<span class="ip-tn-age">Page ' + (page + 1) + ' of ' + pages + '</span>'
-            + '<button class="ip-btn ip-btn-secondary" data-page="' + (page + 1) + '"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>'
+            + '<button class="ip-btn ip-btn-secondary" data-pager="next" data-page="' + (page + 1) + '"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>'
             + '</div>' : '')
       +   '</div>'
       + '</div>'
@@ -1717,13 +1805,11 @@ const Views = (function () {
   function bindTenants(IP) {
     const root = document.getElementById('main-content');
     if (!root) return;
-    const redraw = () => { root.innerHTML = renderTenants(IP); bindTenants(IP); };
+    const redraw = () => withFocus(root, () => { root.innerHTML = renderTenants(IP); bindTenants(IP); });
     const search = root.querySelector('.ip-tn-search');
     if (search) search.addEventListener('input', () => {
       IP.tenantQuery = search.value; IP.tenantPage = 0;
       redraw();
-      const again = root.querySelector('.ip-tn-search');
-      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
     });
     const sort = root.querySelector('.ip-tn-sortsel');
     if (sort) sort.addEventListener('change', () => {
@@ -1848,8 +1934,7 @@ const Views = (function () {
     root.querySelectorAll('[data-tenanttab]').forEach(btn => {
       btn.addEventListener('click', () => {
         IP.tenantTab = btn.getAttribute('data-tenanttab');
-        root.innerHTML = renderTenantDetail(IP);
-        bindTenantDetail(IP);
+        withFocus(root, () => { root.innerHTML = renderTenantDetail(IP); bindTenantDetail(IP); });
       });
     });
   }
@@ -2156,7 +2241,7 @@ const Views = (function () {
   function bindProjectMap(IP) {
     const root = document.getElementById('main-content');
     if (!root) return;
-    const redraw = () => { root.innerHTML = renderProjectMap(IP); bindProjectMap(IP); };
+    const redraw = () => withFocus(root, () => { root.innerHTML = renderProjectMap(IP); bindProjectMap(IP); });
     root.querySelectorAll('[data-projecttab]').forEach(btn => {
       btn.addEventListener('click', () => {
         IP.projectTab = btn.getAttribute('data-projecttab');
@@ -2513,6 +2598,7 @@ const Views = (function () {
     if (!el) return;
     el.addEventListener('change', async e => {
       IP.spaceId = e.target.value;
+      if (typeof Data !== 'undefined' && Data.clearMachineCache) Data.clearMachineCache(IP.spaceId);
       IP.filters = {}; IP.search = ''; IP.page = 1;
       IP.wFilters = {}; IP.wSearch = ''; IP.wPage = 1;
       IP.envExpanded = {};
@@ -2537,7 +2623,7 @@ const Views = (function () {
   return { escHtml, stateView, renderProjects, bindProjects, renderTenants, bindTenants, renderTenantDetail, bindTenantDetail, renderProjectMap, bindProjectMap, renderOverview, renderTargets, bindTargets, renderTargetDetail, bindTargetDetail, fillTargetDetail, renderTargetsZero, renderWorkersZero, deploymentsCardHtml, runbooksCardHtml, connectivityCardHtml, eventsCardHtml,
     renderEnvironments, bindEnvironments, filterEnvTargets, renderMachinePolicies, renderWorkers, bindWorkers,
     renderAgents, bindAgents, renderArgo, renderAddTarget, bindAddTarget,
-    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch, spaceSwitchNav,
+    pill, chip, healthBar, donut, heatCell, renderSpaceSwitch, bindSpaceSwitch, spaceSwitchNav, focusSelector, withFocus,
     renderThemeToggle, bindThemeToggle };
 })();
 if (typeof module !== 'undefined') { module.exports = Views; }

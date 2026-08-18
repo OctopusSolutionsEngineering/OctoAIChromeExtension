@@ -7,9 +7,38 @@ const Router = (function () {
     document.querySelectorAll('.ip-nav-item').forEach(a =>
       a.classList.toggle('active', a.getAttribute('data-view') === view));
   }
+  // Which section the hash is on, ignoring any detail id. Loaders capture this
+  // when they fire and check it when they resolve: the state they fetched is
+  // always worth keeping, but redrawing over whatever the user is now looking
+  // at is not. Without this, a flag request landing after you navigated to
+  // Tenants replaced the DOM under your cursor mid-keystroke.
+  function currentView() {
+    return (typeof Data !== 'undefined' && Data.baseView)
+      ? Data.baseView(window.location.hash || '#overview')
+      : String(window.location.hash || '#overview').slice(1).split('/')[0] || 'overview';
+  }
+  /** Redraw only if we are still on the section this work was started for. */
+  function renderIfStill(view) {
+    if (currentView() !== view) return;
+    render();
+  }
+
+  /** Every render replaces #main-content wholesale, which destroys focus. One
+   *  wrapper here covers the routed renders and every async callback that ends
+   *  in one; the views wrap their own local redraws the same way. */
   function render() {
     const el = document.getElementById('main-content');
+    if (el && typeof Views !== 'undefined' && Views.withFocus) Views.withFocus(el, renderRoute);
+    else renderRoute();
+  }
+
+  function renderRoute() {
+    const el = document.getElementById('main-content');
     const hash = (window.location.hash || '#overview').slice(1);
+    // The section this pass is drawing. Anything it fires asynchronously checks
+    // this before redrawing, so a slow request cannot replace a page the user
+    // has since navigated to.
+    const startedOn = hash.split('/')[0] || 'overview';
     // A space that failed to hydrate has no estate to route over, and rendering
     // infrastructure views against it would show zeros as though the space were
     // empty. Projects is not one of those views: it reads the project dashboard
@@ -62,7 +91,10 @@ const Router = (function () {
         IP.projectTab = 'Status'; }
       ensureReleases();
       IP.projectOpen = IP.projectOpen || {};
-      if (IP.projectOpen[projectId] === undefined) IP.projectOpen[projectId] = true;
+      // Only on the first render of this project. Defaulting it open on every
+      // render meant collapsing the row and then having an in-flight request
+      // resolve sprang it back open, twice — once per request.
+      if (staleP && IP.projectOpen[projectId] === undefined) IP.projectOpen[projectId] = true;
       el.innerHTML = Views.renderProjectMap(IP);
       Views.bindProjectMap && Views.bindProjectMap(IP);
       // The history and flags are only fetchable once the dashboard has given us
@@ -79,13 +111,13 @@ const Router = (function () {
             if (IP.spaceId !== wantedSpace || !IP.projectMap || IP.projectMap.projectId !== projectId) return;
             IP.projectMap = { status: 'ready', projectId: projectId, spaceId: wantedSpace,
               model: Data.projectMapModel(payload) };
-            render();
+            renderIfStill(startedOn);
           })
           .catch(e => {
             if (IP.spaceId !== wantedSpace || !IP.projectMap || IP.projectMap.projectId !== projectId) return;
             IP.projectMap = { status: 'error', projectId: projectId, spaceId: wantedSpace,
               error: e && e.auth ? 'Your session isn\'t authenticated.' : (e && e.code) || 'The project request failed.' };
-            render();
+            renderIfStill(startedOn);
           });
       }
       return;
@@ -106,7 +138,12 @@ const Router = (function () {
         // The tenant page reuses the dashboard the list already fetched when it
         // is there, and asks for one when it is not. Variables and machines are
         // separate: either can fail without costing the page.
-        const dashboard = (IP.tenants && IP.tenants.status === 'ready' && IP.tenants.raw)
+        // Reuse the list's dashboard only when it belongs to this space. Without
+        // the space check, viewing tenants in one space and then opening a
+        // tenant in another paired the tenant with the previous space's
+        // deployments: unknown project names, every matrix cell never deployed.
+        const dashboard = (IP.tenants && IP.tenants.status === 'ready' && IP.tenants.raw
+            && IP.tenants.spaceId === wantedSpace)
           ? Promise.resolve(IP.tenants.raw) : Data.fetchDashboard(wantedSpace);
         Promise.all([
           Data.fetchTenant(wantedSpace, tenantId),
@@ -122,7 +159,7 @@ const Router = (function () {
               model: Data.tenantDetailModel({ tenant: res[0], dashboard: res[1],
                 variables: res[2].v, variablesError: res[2].err,
                 machines: res[3].mach, machinesError: res[3].err }) };
-            render();
+            renderIfStill(startedOn);
 
             // Flags are one request per connected project, so they follow the
             // page rather than holding it up. Failing leaves the rest intact.
@@ -138,12 +175,12 @@ const Router = (function () {
                   if (!stillWanted()) return;
                   IP.flags = { status: 'ready',
                     model: Data.tenantFlagModel(payload, tenantDoc, connected, envNames, projNames) };
-                  render();
+                  renderIfStill(startedOn);
                 })
                 .catch(() => {
                   if (!stillWanted()) return;
                   IP.flags = { status: 'error', error: 'Feature flags could not be read for this tenant\'s projects.' };
-                  render();
+                  renderIfStill(startedOn);
                 });
             }
           })
@@ -151,7 +188,7 @@ const Router = (function () {
             if (!stillWanted()) return;
             IP.tenantDetail = { status: 'error', tenantId: tenantId, spaceId: wantedSpace,
               error: e && e.auth ? 'Your session isn\'t authenticated.' : (e && e.code) || 'The tenant request failed.' };
-            render();
+            renderIfStill(startedOn);
           });
       }
       return;
@@ -188,14 +225,14 @@ const Router = (function () {
             if (IP.spaceId !== wanted) return;
             IP.tenants = { status: 'ready', spaceId: wanted, raw: res[1],
               model: Data.tenantsModel({ tenants: res[0], dashboard: res[1], tagSets: res[2] }) };
-            render();
+            renderIfStill(startedOn);
           })
           .catch(e => {
             if (IP.spaceId !== wanted) return;
             IP.tenants = { status: 'error', spaceId: wanted,
               error: e && e.auth ? 'Your session isn\'t authenticated. Sign in to Octopus and reopen this dashboard.'
                 : (e && e.code) || 'The tenant request failed.' };
-            render();
+            renderIfStill(startedOn);
           });
       }
     }
@@ -211,6 +248,7 @@ const Router = (function () {
   // flags, the window rebuild — are wanted by the projects list and by a single
   // project's Status tab. They are installed once, here, so neither owns them.
   function ensureReleases() {
+    const startedOn = currentView();
     // One request, made the first time someone needs it and re-made when they
     // switch space. Keyed on spaceId so a switch can't leave the previous
     // space's releases on screen.
@@ -282,7 +320,7 @@ const Router = (function () {
             model: Data.featureFlagModel(res[0], gridFor(projectId)),
             changes: Data.flagChangeModel(res[1], gridFor(projectId), windowHours()),
             variables: Data.variableChangeModel(res[2], gridFor(projectId), windowHours()) };
-          render();
+          renderIfStill(startedOn);
         })
         .catch(e => {
           if (IP.spaceId !== wantedSpace) return;
@@ -293,7 +331,7 @@ const Router = (function () {
             ? { status: 'ready', model: { flags: [], total: 0, settled: {}, truncated: false } }
             : { status: 'error', error: e && e.auth ? 'Your session isn\'t authenticated.'
                 : 'Feature flags could not be read for this project.' };
-          render();
+          renderIfStill(startedOn);
         });
     };
     IP.loadProjectHistory = function (projectId) {
@@ -308,13 +346,13 @@ const Router = (function () {
           IP.progressionRaw[projectId] = prog;
           IP.projectHistory[projectId] = { status: 'ready',
             model: Data.progressionModel(prog, gridFor(projectId), windowHours()) };
-          render();
+          renderIfStill(startedOn);
         })
         .catch(e => {
           if (IP.spaceId !== wantedSpace) return;
           IP.projectHistory[projectId] = { status: 'error',
             error: e && e.auth ? 'Your session isn\'t authenticated.' : (e && e.code) || 'The release history request failed.' };
-          render();
+          renderIfStill(startedOn);
         });
     };
     if (needed && Data.fetchDashboard) {
@@ -327,14 +365,14 @@ const Router = (function () {
           // columns at all. Rebuilding from the raw payload costs nothing and is
           // the difference between an aligned row and an empty one.
           IP.rebuildHistories();
-          render();
+          renderIfStill(startedOn);
         })
         .catch(e => {
           if (IP.spaceId !== wanted) return;
           const msg = e && e.auth ? 'Your session isn\'t authenticated. Sign in to Octopus and reopen this dashboard.'
             : (e && e.code) || 'The dashboard request failed.';
           IP.releases = { status: 'error', spaceId: wanted, error: msg };
-          render();
+          renderIfStill(startedOn);
         });
     }
     return needed;

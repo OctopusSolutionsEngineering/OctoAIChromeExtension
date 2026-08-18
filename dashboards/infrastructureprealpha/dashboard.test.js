@@ -4226,3 +4226,300 @@ describe('Incomplete reads say so where the zero used to be', () => {
     expect(r.count).toBe(1);
   });
 });
+
+describe('A redraw keeps focus where the user left it', () => {
+  const Views = require('./views');
+  const el = (tag, attrs) => ({
+    tagName: tag.toUpperCase(), id: attrs.id || '',
+    hasAttribute: a => Object.prototype.hasOwnProperty.call(attrs, a),
+    getAttribute: a => attrs[a]
+  });
+
+  test('a control is identified by what survives the rebuild', () => {
+    expect(Views.focusSelector(el('div', { 'data-project': 'Projects-1' })))
+      .toBe('div[data-project="Projects-1"]');
+    expect(Views.focusSelector(el('button', { 'data-sort': 'Name' })))
+      .toBe('button[data-sort="Name"]');
+    // A facet needs both halves, or it finds the wrong checkbox.
+    expect(Views.focusSelector(el('input', { 'data-facet': 'tags', 'data-value': 'Region/EU' })))
+      .toBe('input[data-facet="tags"][data-value="Region/EU"]');
+  });
+
+  test('keys whose value moves with the state are not used to identify anything', () => {
+    // data-page is relative to the current page, so the captured selector could
+    // never match after paging. The pager's role does not move.
+    expect(Views.focusSelector(el('button', { 'data-page': '4' }))).toBeNull();
+    expect(Views.focusSelector(el('button', { 'data-pager': 'next', 'data-page': '4' })))
+      .toBe('button[data-pager="next"]');
+  });
+
+  test('a project link identifies its own project, not the first on the page', () => {
+    const first = Views.focusSelector(el('a', { 'data-projectlink': 'Projects-1' }));
+    const last = Views.focusSelector(el('a', { 'data-projectlink': 'Projects-99' }));
+    expect(first).not.toBe(last);
+    expect(last).toBe('a[data-projectlink="Projects-99"]');
+  });
+
+  test('an element with nothing stable about it is left alone', () => {
+    expect(Views.focusSelector(el('span', {}))).toBeNull();
+    expect(Views.focusSelector(null)).toBeNull();
+  });
+
+  test('the escaper runs in both worlds and stays inside the quotes', () => {
+    // Chrome always has CSS.escape; jest never does, so the browser branch had
+    // no coverage at all and the assertion pinned the fallback's output.
+    const chrome = Views.focusSelector(el('input', { 'data-ctl': 'a"b' }));
+    expect(chrome).toBe('input[data-ctl="a\\"b"]');
+    global.CSS = { escape: s => String(s).replace(/([^a-zA-Z0-9_-])/g, '\\$1') };
+    try {
+      expect(Views.focusSelector(el('input', { 'data-value': 'Region/EU' })))
+        .toBe('input[data-value="Region\\/EU"]');
+    } finally { delete global.CSS; }
+  });
+
+  test('focus and caret come back on the control production actually renders', () => {
+    // The tenant search box has no id — it is found by data-ctl. The previous
+    // test used an id no element in #main-content carries, so it proved a branch
+    // that never runs.
+    let focused = null, range = null;
+    const control = { focus: () => { focused = 'again'; },
+      setSelectionRange: (a, b) => { range = [a, b]; } };
+    const active = Object.assign(el('input', { 'data-ctl': 'tenant-search' }),
+      { selectionStart: 3, selectionEnd: 5 });
+    const root = { contains: () => true,
+      querySelector: sel => (sel === 'input[data-ctl="tenant-search"]' ? control : null) };
+    global.document = { activeElement: active, body: {} };
+    let redrew = false;
+    Views.withFocus(root, () => { redrew = true; });
+    delete global.document;
+    expect(redrew).toBe(true);
+    expect(focused).toBe('again');
+    expect(range).toEqual([3, 5]);
+  });
+
+  test('a control the redraw legitimately removed is left alone', () => {
+    const active = el('button', { 'data-project': 'Projects-1' });
+    const root = { contains: () => true, querySelector: () => null };
+    global.document = { activeElement: active, body: {} };
+    expect(() => Views.withFocus(root, () => {})).not.toThrow();
+    delete global.document;
+  });
+
+  test('restoring focus does not drag the viewport with it', () => {
+    let opts = 'never called';
+    const control = { focus: o => { opts = o; } };
+    const active = el('div', { 'data-project': 'Projects-1' });
+    const root = { contains: () => true, querySelector: () => control };
+    global.document = { activeElement: active, body: {} };
+    Views.withFocus(root, () => {});
+    delete global.document;
+    expect(opts).toEqual({ preventScroll: true });
+  });
+});
+
+describe('The rendered controls carry the identity the focus fix relies on', () => {
+  const data = require('./data');
+  const Views = require('./views');
+
+  test('each project link is addressed by its own id', () => {
+    const dash = { Projects: [{ Id: 'P1', Name: 'Portal', ProjectGroupId: 'G1' },
+                              { Id: 'P2', Name: 'Admin', ProjectGroupId: 'G1' }],
+      ProjectGroups: [{ Id: 'G1', Name: 'Web' }], Environments: [{ Id: 'E1', Name: 'Dev' }],
+      Tenants: [], Items: [{ ProjectId: 'P1', EnvironmentId: 'E1', ReleaseVersion: '1.0',
+        State: 'Success', IsCurrent: true, CompletedTime: '2026-08-13T09:00:00Z' },
+        { ProjectId: 'P2', EnvironmentId: 'E1', ReleaseVersion: '2.0', State: 'Success',
+          IsCurrent: true, CompletedTime: '2026-08-13T09:00:00Z' }] };
+    const html = Views.renderProjects({ releases: { status: 'ready', model: data.releasesModel(dash) } });
+    expect(html).toContain('data-projectlink="P1"');
+    expect(html).toContain('data-projectlink="P2"');
+    expect(html).not.toContain('data-projectlink="1"');
+  });
+
+  test('the tenant search, sort and pager are addressable', () => {
+    const tenants = [];
+    for (let i = 0; i < 150; i++) tenants.push({ Id: 'T' + i, Name: 'Tenant ' + i, ProjectEnvironments: {} });
+    const model = data.tenantsModel({ tenants: { items: tenants, total: tenants.length },
+      dashboard: { Projects: [], ProjectGroups: [], Environments: [], Tenants: [], Items: [] }, tagSets: [] });
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: model } });
+    expect(html).toContain('data-ctl="tenant-search"');
+    expect(html).toContain('data-ctl="tenant-sort"');
+    // The pager's identity has to be the same on every page.
+    expect(html).toContain('data-pager="prev"');
+    expect(html).toContain('data-pager="next"');
+    const page2 = Views.renderTenants({ tenants: { status: 'ready', model: model }, tenantPage: 1 });
+    expect(page2).toContain('data-pager="next"');
+  });
+});
+
+describe('A hash resolves to the section it belongs to', () => {
+  const data = require('./data');
+
+  test('a detail route is the same section as its list', () => {
+    expect(data.baseView('#projects/Projects-1')).toBe('projects');
+    expect(data.baseView('#projects')).toBe('projects');
+    expect(data.baseView('tenants/Tenants-9')).toBe('tenants');
+  });
+
+  test('an empty or absent hash is the landing view', () => {
+    expect(data.baseView('')).toBe('overview');
+    expect(data.baseView(null)).toBe('overview');
+    expect(data.baseView('#')).toBe('overview');
+  });
+});
+
+describe('The machine list is read once per space, not once per page', () => {
+  const data = require('./data');
+  const stubFetch = pages => {
+    const calls = [];
+    global.fetch = async url => {
+      calls.push(url);
+      const page = pages[Math.min(calls.length - 1, pages.length - 1)];
+      return { ok: true, status: 200, json: async () => page };
+    };
+    return calls;
+  };
+
+  afterEach(() => { data.clearMachineCache(); delete global.fetch; });
+
+  test('a second read inside the window reuses the first, per space', async () => {
+    const calls = stubFetch([{ Items: [{ Id: 'M1' }], TotalResults: 1 }]);
+    const a = await data.fetchTenantMachines('Spaces-1');
+    const n = calls.length;
+    const b = await data.fetchTenantMachines('Spaces-1');
+    expect(calls.length).toBe(n);
+    expect(b).toBe(a);                       // the same resolved value, not a copy
+    await data.fetchTenantMachines('Spaces-2');
+    expect(calls.length).toBeGreaterThan(n); // a different space is a different estate
+  });
+
+  test('it pages until the total is reached, and reports what it read', async () => {
+    const full = { Items: new Array(100).fill(0).map((_, i) => ({ Id: 'M' + i })), TotalResults: 150 };
+    const rest = { Items: new Array(50).fill(0).map((_, i) => ({ Id: 'N' + i })), TotalResults: 150 };
+    const calls = stubFetch([full, rest]);
+    const res = await data.fetchTenantMachines('Spaces-1');
+    expect(calls.length).toBe(2);
+    expect(calls[1]).toContain('skip=100');
+    expect(res.items.length).toBe(150);
+    expect(res.truncated).toBe(false);
+  });
+
+  test('concurrent callers join one read rather than starting two', async () => {
+    const calls = stubFetch([{ Items: [], TotalResults: 0 }]);
+    const [x, y] = await Promise.all([
+      data.fetchTenantMachines('Spaces-1'), data.fetchTenantMachines('Spaces-1')]);
+    expect(calls.length).toBe(1);
+    expect(x).toBe(y);
+  });
+
+  test('a failed read is not remembered as the answer', async () => {
+    let attempts = 0;
+    global.fetch = async () => { attempts++; return { ok: false, status: 500, statusText: 'Server Error' }; };
+    await data.fetchTenantMachines('Spaces-1').catch(() => {});
+    await data.fetchTenantMachines('Spaces-1').catch(() => {});
+    expect(attempts).toBe(2);
+  });
+
+  test('clearing names a space, so the one you left is not thrown away too', async () => {
+    const calls = stubFetch([{ Items: [], TotalResults: 0 }]);
+    await data.fetchTenantMachines('Spaces-1');
+    await data.fetchTenantMachines('Spaces-2');
+    const n = calls.length;
+    data.clearMachineCache('Spaces-2');
+    await data.fetchTenantMachines('Spaces-1');   // still cached
+    expect(calls.length).toBe(n);
+    await data.fetchTenantMachines('Spaces-2');   // re-read
+    expect(calls.length).toBe(n + 1);
+  });
+});
+
+describe('Tenancy metrics on the tenants list', () => {
+  const data = require('./data');
+  const Views = require('./views');
+  const dash = { Projects: [], ProjectGroups: [], Environments: [], Tenants: [], Items: [] };
+  const model = (tenants, extra) => data.tenantsModel(Object.assign({
+    tenants: { items: tenants, total: tenants.length, truncated: false },
+    dashboard: dash, tagSets: [] }, extra || {}));
+  const sample = [
+    { Id: 'T1', Name: 'Acme', TenantTags: ['Region/EU', 'Tier/Gold'],
+      ProjectEnvironments: { P1: ['E1', 'E2'], P2: ['E2'] } },     // 2 projects, 2 envs
+    { Id: 'T2', Name: 'Globex', TenantTags: ['Region/EU'],
+      ProjectEnvironments: { P1: ['E1'], P2: ['E1'], P3: ['E3'] } }, // 3 projects, 2 envs
+    { Id: 'T3', Name: 'Initech', TenantTags: [], ProjectEnvironments: {} }
+  ];
+
+  test('tenants in environments counts tenants, and connections separately', () => {
+    const k = model(sample).metrics;
+    expect(k.inEnvironments).toBe(2);            // Initech is connected to none
+    expect(k.environmentConnections).toBe(4);    // Acme E1,E2 + Globex E1,E3
+  });
+
+  test('an environment reached by two projects is one connection, not two', () => {
+    // Acme has three project-environment pairs across two environments.
+    const k = model([sample[0]]).metrics;
+    expect(k.environmentConnections).toBe(2);
+    expect(model([sample[0]]).tenants[0].pairCount).toBe(3);
+  });
+
+  test('tags are counted distinctly, and their sets with them', () => {
+    const k = model(sample).metrics;
+    expect(k.tagValues).toBe(2);      // Region/EU is shared, so it counts once
+    expect(k.tagSetsInUse).toBe(2);   // Region, Tier
+  });
+
+  test('the widest tenant is named, not just counted', () => {
+    const k = model(sample).metrics;
+    expect(k.maxProjects).toBe(3);
+    expect(k.maxProjectsTenant).toBe('Globex');
+  });
+
+  test('a space with no tenancy at all reports zeros without naming anyone', () => {
+    const k = model([]).metrics;
+    expect(k).toMatchObject({ inEnvironments: 0, environmentConnections: 0, tagValues: 0, maxProjects: 0 });
+    expect(k.maxProjectsTenant).toBe('');
+    // A space with no tenants shows the empty state instead of the cards.
+    expect(Views.renderTenants({ tenants: { status: 'ready', model: model([]) } }))
+      .toContain('No tenants in this space');
+  });
+
+  test('tenants that exist but connect to nothing name no tenant', () => {
+    const m = model([{ Id: 'T1', Name: 'Initech', ProjectEnvironments: {} }]);
+    expect(m.metrics.maxProjects).toBe(0);
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: m } });
+    const cards = html.slice(html.indexOf('ip-kpi-3'), html.indexOf('ip-tn-toolbar'));
+    expect(cards).toContain('no tenant is connected to a project');
+    expect(cards).not.toContain('Initech');
+  });
+
+  test('the cards render the numbers and the tenant name', () => {
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: model(sample) } });
+    expect(html).toContain('Tenants in environments');
+    expect(html).toContain('Tenant tags in use');
+    expect(html).toContain('Most projects on one tenant');
+    expect(html).toContain('Globex');
+    expect(html).toContain('4 tenant-environment connections');
+  });
+
+  test('metrics over a truncated list say what they were counted over', () => {
+    const many = [];
+    for (let i = 0; i < 50; i++) many.push({ Id: 'T' + i, Name: 'T' + i, ProjectEnvironments: { P1: ['E1'] } });
+    const m = data.tenantsModel({ tenants: { items: many, total: 4375, truncated: true },
+      dashboard: dash, tagSets: [] });
+    expect(m.metrics.partial).toBe(true);
+    expect(m.metrics.countedOver).toBe(50);
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: m } });
+    expect(html).toContain('first 50 tenants read, not all 4,375');
+  });
+
+  test('a complete list makes no such claim', () => {
+    const html = Views.renderTenants({ tenants: { status: 'ready', model: model(sample) } });
+    expect(html).not.toContain('tenants read, not all');
+  });
+
+  test('the dashboard cap does not touch these — they come from the tenant payload', () => {
+    const capped = data.tenantsModel({ tenants: { items: sample, total: sample.length },
+      dashboard: Object.assign({}, dash, { Projects: [{ Id: 'P1' }], ProjectLimit: 1 }), tagSets: [] });
+    expect(capped.dashboardCap.capped).toBe(true);
+    expect(capped.metrics.maxProjects).toBe(3);   // unchanged by the cap
+    expect(capped.metrics.partial).toBe(false);
+  });
+});
