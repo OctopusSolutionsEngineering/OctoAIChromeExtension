@@ -863,6 +863,7 @@ function getPinnedDashboards() {
                 && isValidDashboardFile(dashboard.dashboardFile))
             : [];
     } catch (error) {
+        localStorage.removeItem(getPinnedDashboardsKey());
         return [];
     }
 }
