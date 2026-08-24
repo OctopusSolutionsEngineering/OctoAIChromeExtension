@@ -416,6 +416,10 @@ function ensureOctoAiStyles(theme) {
             transform: scale(1.15);
         }
 
+        .octoai-pin:focus-visible {
+            opacity: 1;
+        }
+
         .octoai-pin.octoai-pinned {
             opacity: 1;
             color: #9FD8FF;
@@ -608,6 +612,7 @@ function ensureOctoAiStyles(theme) {
         .octoai-item:focus-visible,
         .octoai-icon-btn:focus-visible,
         .octoai-go:focus-visible,
+        .octoai-pin:focus-visible,
         #octoai-submit:focus-visible,
         #octo-ai-thumbs-up:focus-visible,
         #octo-ai-thumbs-down:focus-visible {
@@ -853,11 +858,19 @@ function getPinnedDashboards() {
     try {
         const pinned = JSON.parse(localStorage.getItem(getPinnedDashboardsKey()));
         return Array.isArray(pinned)
-            ? pinned.filter(dashboard => dashboard && dashboard.dashboardName && dashboard.dashboardFile)
+            ? pinned.filter(dashboard => dashboard
+                && dashboard.dashboardName
+                && isValidDashboardFile(dashboard.dashboardFile))
             : [];
     } catch (error) {
         return [];
     }
+}
+
+// Mirrors the validation applied by background.js before opening a dashboard, so
+// entries with an invalid file are dropped rather than rendered as dead buttons
+function isValidDashboardFile(dashboardFile) {
+    return typeof dashboardFile === 'string' && /^[a-z][a-z0-9]+\/index.html$/.test(dashboardFile);
 }
 
 function isDashboardPinned(dashboardFile) {
