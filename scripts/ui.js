@@ -389,6 +389,42 @@ function ensureOctoAiStyles(theme) {
             transform: scale(1.15);
         }
 
+        .octoai-pin {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            flex: none;
+            margin-left: auto;
+            color: ${theme.textSecondary};
+            opacity: 0.35;
+            transition: opacity 0.15s ease, transform 0.15s ease, color 0.15s ease;
+        }
+
+        .octoai-pin svg {
+            display: block;
+            width: 15px;
+            height: 15px;
+        }
+
+        .octoai-item:hover .octoai-pin {
+            opacity: 1;
+        }
+
+        .octoai-pin:hover {
+            transform: scale(1.15);
+        }
+
+        .octoai-pin:focus-visible {
+            opacity: 1;
+        }
+
+        .octoai-pin.octoai-pinned {
+            opacity: 1;
+            color: #9FD8FF;
+        }
+
         .octoai-badge {
             flex: none;
             font-size: 10px;
@@ -576,6 +612,7 @@ function ensureOctoAiStyles(theme) {
         .octoai-item:focus-visible,
         .octoai-icon-btn:focus-visible,
         .octoai-go:focus-visible,
+        .octoai-pin:focus-visible,
         #octoai-submit:focus-visible,
         #octo-ai-thumbs-up:focus-visible,
         #octo-ai-thumbs-down:focus-visible {
@@ -811,6 +848,111 @@ function createButton(text, theme, id, icon, badge) {
     return button;
 }
 
+// Pinned dashboards are stored per Octopus instance, as localStorage is scoped to the page origin.
+// This must be a function rather than a top level const, as this script can be injected more than once.
+function getPinnedDashboardsKey() {
+    return 'octoai-pinned-dashboards';
+}
+
+function getPinnedDashboards() {
+    try {
+        const pinned = JSON.parse(localStorage.getItem(getPinnedDashboardsKey()));
+        return Array.isArray(pinned)
+            ? pinned.filter(dashboard => dashboard
+                && dashboard.dashboardName
+                && isValidDashboardFile(dashboard.dashboardFile))
+            : [];
+    } catch (error) {
+        localStorage.removeItem(getPinnedDashboardsKey());
+        return [];
+    }
+}
+
+// Mirrors the validation applied by background.js before opening a dashboard, so
+// entries with an invalid file are dropped rather than rendered as dead buttons
+function isValidDashboardFile(dashboardFile) {
+    return typeof dashboardFile === 'string' && /^[a-z][a-z0-9]+\/index.html$/.test(dashboardFile);
+}
+
+function isDashboardPinned(dashboardFile) {
+    return getPinnedDashboards().some(dashboard => dashboard.dashboardFile === dashboardFile);
+}
+
+function togglePinnedDashboard(dashboardName, dashboardFile) {
+    const pinned = getPinnedDashboards();
+    const alreadyPinned = pinned.some(dashboard => dashboard.dashboardFile === dashboardFile);
+    const next = alreadyPinned
+        ? pinned.filter(dashboard => dashboard.dashboardFile !== dashboardFile)
+        : [...pinned, {dashboardName, dashboardFile}];
+    localStorage.setItem(getPinnedDashboardsKey(), JSON.stringify(next));
+}
+
+function addPinButton(button, dashboard, onToggle) {
+    const pinButton = document.createElement('span');
+    pinButton.className = 'octoai-pin';
+
+    const updateState = () => {
+        const pinned = isDashboardPinned(dashboard.dashboardFile);
+        const label = pinned ? 'Unpin dashboard' : 'Pin dashboard';
+        pinButton.classList.toggle('octoai-pinned', pinned);
+        pinButton.title = label;
+        pinButton.setAttribute('aria-label', label);
+        pinButton.setAttribute('aria-pressed', pinned);
+    };
+
+    makeKeyboardClickable(pinButton, 'Pin dashboard');
+    updateState();
+    addSvgFromFile('img/pin.svg', pinButton);
+
+    pinButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        togglePinnedDashboard(dashboard.dashboardName, dashboard.dashboardFile);
+        updateState();
+        if (onToggle) {
+            onToggle();
+        }
+    });
+
+    button.appendChild(pinButton);
+}
+
+// Pinned dashboards get a quick-access section at the top level of the assistant
+function renderPinnedDashboards(container, theme) {
+    const section = document.createElement('div');
+    section.id = 'octoai-pinned-section';
+    container.appendChild(section);
+
+    const render = () => {
+        section.innerHTML = '';
+
+        const pinned = getPinnedDashboards();
+
+        // Only take up space when there is something to show
+        section.style.marginBottom = pinned.length ? '10px' : '0';
+
+        if (pinned.length === 0) {
+            return;
+        }
+
+        const eyebrow = document.createElement('div');
+        eyebrow.className = 'octoai-eyebrow';
+        eyebrow.textContent = 'Pinned dashboards';
+        section.appendChild(eyebrow);
+
+        pinned.forEach((dashboard, index) => {
+            const button = createButton(dashboard.dashboardName, theme);
+            button.addEventListener('click', () => {
+                displayDashboard(dashboard.dashboardFile);
+            });
+            addPinButton(button, dashboard, render);
+            button.style.animationDelay = Math.min(index * 30, 300) + 'ms';
+            section.appendChild(button);
+        });
+    };
+
+    render();
+}
+
 function displayExamples(prompts, parentPrompts, theme) {
     const examplesContainer = document.getElementById('octoai-examples');
 
@@ -861,6 +1003,8 @@ function displayExamples(prompts, parentPrompts, theme) {
                 displayDashboard(prompt.dashboardFile);
             });
 
+            addPinButton(button, prompt);
+
             return button;
         } else {
             // Regular prompts display the sample prompt they execute
@@ -906,6 +1050,8 @@ function displayExamples(prompts, parentPrompts, theme) {
         });
         examplesContainer.appendChild(backButton);
     } else {
+        renderPinnedDashboards(examplesContainer, theme);
+
         const eyebrow = document.createElement('div');
         eyebrow.className = 'octoai-eyebrow';
         eyebrow.textContent = 'Suggestions';
