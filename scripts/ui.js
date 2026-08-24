@@ -879,7 +879,8 @@ function isDashboardPinned(dashboardFile) {
 
 function togglePinnedDashboard(dashboardName, dashboardFile) {
     const pinned = getPinnedDashboards();
-    const next = isDashboardPinned(dashboardFile)
+    const alreadyPinned = pinned.some(dashboard => dashboard.dashboardFile === dashboardFile);
+    const next = alreadyPinned
         ? pinned.filter(dashboard => dashboard.dashboardFile !== dashboardFile)
         : [...pinned, {dashboardName, dashboardFile}];
     localStorage.setItem(getPinnedDashboardsKey(), JSON.stringify(next));
