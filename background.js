@@ -20,16 +20,39 @@ amplitude.init(AMPLITUDE_API_KEY, {
     customEnrichment: false,
 });
 
-function trackEvent(eventName, properties = {}) {
-    console.info(`Tracking event: ${eventName}`, properties);
-    try {
-        amplitude.track(eventName, {
-            ...properties,
-            identifier: AMPLITUDE_IDENTIFIER,
-        });
-    } catch (err) {
-        console.warn('[Analytics] Failed to track ' + eventName + ':', err);
+// Analytics are opt-out. The setting is toggled from the extension popup. The service worker is
+// torn down between events, so it is read from storage on every startup and kept current with a
+// storage listener. A failed read leaves analytics enabled.
+let disableAnalyticsLoaded = chrome.storage.local.get("disableAnalytics")
+    .then(data => !!data.disableAnalytics)
+    .catch(err => {
+        console.warn('[Analytics] Failed to read the disableAnalytics setting:', err);
+        return false;
+    });
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes.disableAnalytics) {
+        disableAnalyticsLoaded = Promise.resolve(!!changes.disableAnalytics.newValue);
     }
+});
+
+function trackEvent(eventName, properties = {}) {
+    disableAnalyticsLoaded.then(disableAnalytics => {
+        if (disableAnalytics) {
+            return;
+        }
+
+        console.info(`Tracking event: ${eventName}`, properties);
+
+        try {
+            amplitude.track(eventName, {
+                ...properties,
+                identifier: AMPLITUDE_IDENTIFIER,
+            });
+        } catch (err) {
+            console.warn('[Analytics] Failed to track ' + eventName + ':', err);
+        }
+    });
 }
 
 chrome.action.onClicked.addListener((tab) => {
