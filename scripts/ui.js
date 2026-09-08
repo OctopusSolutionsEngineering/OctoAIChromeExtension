@@ -1117,10 +1117,25 @@ function hidePromptUI() {
     }
 }
 
+const DEFAULT_FIRST_RUN_PROMPT = 'Create a Script project called "Basic Script App"';
+
+/**
+ * The first time the dialog is opened we prepopulate the input with a default prompt
+ * so new users have an example to run.
+ */
+function applyFirstRunPrompt() {
+    if (localStorage.getItem("octoai-opened") !== "true") {
+        localStorage.setItem("octoai-prompt", DEFAULT_FIRST_RUN_PROMPT);
+        localStorage.setItem("octoai-opened", "true");
+    }
+}
+
 function displayPromptUIV2(theme) {
     chrome.runtime.sendMessage({action: "show_ui"});
 
     ensureOctoAiStyles(theme);
+
+    applyFirstRunPrompt();
 
     const existingContainer = document.getElementById('octoai-container');
 
