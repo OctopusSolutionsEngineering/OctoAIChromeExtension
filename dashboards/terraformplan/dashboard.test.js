@@ -17,6 +17,8 @@ const {
     describeDeployment,
     relativeAge,
     filterRowsByDate,
+    filterRowsByTenant,
+    tenantsForProject,
     filterMatches,
     extractPendingInterruption,
     parseInline,
@@ -394,11 +396,13 @@ describe('deployment history helpers', () => {
                 TaskId: 'ServerTasks-7',
                 ReleaseId: 'Releases-1',
                 EnvironmentId: 'Environments-1',
+                TenantId: 'Tenants-3',
                 Created: '2026-08-15T10:30:00Z',
             },
             {
                 versions: { 'Releases-1': '1.2.3' },
                 environments: { 'Environments-1': 'Production' },
+                tenants: { 'Tenants-3': 'Acme Corp' },
                 tasks: { 'ServerTasks-7': { state: 'Executing', awaitingIntervention: true } },
             });
 
@@ -408,10 +412,29 @@ describe('deployment history helpers', () => {
             name: 'Deploy to Production',
             version: '1.2.3',
             environmentName: 'Production',
+            tenantId: 'Tenants-3',
+            tenantName: 'Acme Corp',
             created: '2026-08-15T10:30:00Z',
             state: 'Executing',
             awaitingIntervention: true,
         });
+    });
+
+    test('describeDeployment reports an untenanted deployment as having no tenant', () => {
+        const row = describeDeployment(
+            { Id: 'Deployments-2', EnvironmentId: 'Environments-1', TenantId: null },
+            { environments: { 'Environments-1': 'Production' }, tenants: { 'Tenants-3': 'Acme Corp' } });
+
+        expect(row.tenantId).toBeNull();
+        expect(row.tenantName).toBeNull();
+    });
+
+    test('describeDeployment falls back to the tenant id when the lookup is missing it', () => {
+        const row = describeDeployment(
+            { Id: 'Deployments-3', TenantId: 'Tenants-9' },
+            { tenants: { 'Tenants-3': 'Acme Corp' } });
+
+        expect(row.tenantName).toBe('Tenants-9');
     });
 
     test('describeDeployment degrades gracefully with missing lookups', () => {
@@ -424,6 +447,7 @@ describe('deployment history helpers', () => {
         expect(row.environmentName).toBe('Environments-9');
         expect(row.state).toBeNull();
         expect(row.awaitingIntervention).toBe(false);
+        expect(row.tenantName).toBeNull();
     });
 
     test('relativeAge formats ages across units', () => {
@@ -488,6 +512,60 @@ describe('filterRowsByDate', () => {
     test('keeps rows with missing or unparseable dates', () => {
         expect(ids(filterRowsByDate([{ deploymentId: 'x', created: 'garbage' }], '2026-08-01', '2026-08-02')))
             .toEqual(['x']);
+    });
+});
+
+describe('tenantsForProject', () => {
+    // Shape returned by /tenants/all - the real Demo space has tenants wired to
+    // two different projects, which is exactly the list this has to cut down.
+    const tenants = [
+        { Id: 'Tenants-61', Name: 'Acme Corp', ProjectEnvironments: { 'Projects-242': ['Environments-61'] } },
+        { Id: 'Tenants-41', Name: 'Tenant 1', ProjectEnvironments: { 'Projects-181': ['Environments-63'] } },
+        { Id: 'Tenants-62', Name: 'Globex', ProjectEnvironments: { 'Projects-242': [], 'Projects-181': ['Environments-61'] } },
+    ];
+    const names = filtered => filtered.map(t => t.Name);
+
+    test('keeps only tenants connected to the project', () => {
+        expect(names(tenantsForProject(tenants, 'Projects-242'))).toEqual(['Acme Corp', 'Globex']);
+        expect(names(tenantsForProject(tenants, 'Projects-181'))).toEqual(['Tenant 1', 'Globex']);
+    });
+
+    test('a connected tenant with no environments yet still counts as connected', () => {
+        const globex = tenantsForProject(tenants, 'Projects-242').find(t => t.Name === 'Globex');
+        expect(globex).toBeDefined();
+    });
+
+    test('returns nothing without a project, or for a project nobody is linked to', () => {
+        expect(tenantsForProject(tenants, '')).toEqual([]);
+        expect(tenantsForProject(tenants, 'Projects-999')).toEqual([]);
+        expect(tenantsForProject(undefined, 'Projects-242')).toEqual([]);
+    });
+
+    test('tolerates tenants with no ProjectEnvironments at all', () => {
+        expect(tenantsForProject([{ Id: 'Tenants-9' }, null], 'Projects-242')).toEqual([]);
+    });
+});
+
+describe('filterRowsByTenant', () => {
+    const rows = [
+        { deploymentId: 'a', tenantId: 'Tenants-1' },
+        { deploymentId: 'b', tenantId: 'Tenants-2' },
+        { deploymentId: 'c', tenantId: null },
+    ];
+    const ids = filtered => filtered.map(r => r.deploymentId);
+
+    test('returns everything when no tenant is selected', () => {
+        expect(ids(filterRowsByTenant(rows, ''))).toEqual(['a', 'b', 'c']);
+        expect(filterRowsByTenant(undefined, '')).toEqual([]);
+    });
+
+    test('narrows to a single tenant', () => {
+        expect(ids(filterRowsByTenant(rows, 'Tenants-2'))).toEqual(['b']);
+        expect(ids(filterRowsByTenant(rows, 'Tenants-404'))).toEqual([]);
+    });
+
+    test('the untenanted sentinel keeps only deployments with no tenant', () => {
+        expect(ids(filterRowsByTenant(rows, 'untenanted'))).toEqual(['c']);
     });
 });
 
