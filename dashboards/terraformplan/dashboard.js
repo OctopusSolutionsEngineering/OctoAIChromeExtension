@@ -391,6 +391,18 @@ function filterRowsByDate(rows, from, to) {
     });
 }
 
+// Keep only the tenants actually connected to the project. The API is asked to
+// do this with ?projectId=, but /tenants/all is only documented - not proven -
+// to honour it, and a filter populated with unrelated tenants would leave the
+// user picking a tenant that can only ever return an empty history.
+// ProjectEnvironments comes back on every tenant, so the check is free.
+function tenantsForProject(tenants, projectId) {
+    if (!projectId) return [];
+    return (tenants || []).filter(tenant => tenant
+        && tenant.ProjectEnvironments
+        && Object.prototype.hasOwnProperty.call(tenant.ProjectEnvironments, projectId));
+}
+
 // Client-side tenant filter for loaded history rows. tenantId is a tenant id,
 // the UNTENANTED_FILTER sentinel, or '' for "all tenants". The deployments API
 // is also asked to filter by tenant, but untenanted deployments have no
@@ -1718,8 +1730,9 @@ async function loadProjectTenants() {
         state.history.tenantList = [];
     } else {
         try {
-            state.history.tenantList = await octoGet(state.serverUrl,
+            const tenants = await octoGet(state.serverUrl,
                 '/api/' + state.spaceId + '/tenants/all?projectId=' + encodeURIComponent(projectId)) || [];
+            state.history.tenantList = tenantsForProject(tenants, projectId);
         } catch (error) {
             // Untenanted spaces and accounts without tenant view permission
             // just lose the filter - the rest of the history list still works.
@@ -2203,6 +2216,7 @@ if (typeof module !== 'undefined') {
         relativeAge,
         filterRowsByDate,
         filterRowsByTenant,
+        tenantsForProject,
         filterMatches,
         extractPendingInterruption,
         parseInline,

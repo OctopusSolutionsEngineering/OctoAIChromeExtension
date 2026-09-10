@@ -18,6 +18,7 @@ const {
     relativeAge,
     filterRowsByDate,
     filterRowsByTenant,
+    tenantsForProject,
     filterMatches,
     extractPendingInterruption,
     parseInline,
@@ -511,6 +512,37 @@ describe('filterRowsByDate', () => {
     test('keeps rows with missing or unparseable dates', () => {
         expect(ids(filterRowsByDate([{ deploymentId: 'x', created: 'garbage' }], '2026-08-01', '2026-08-02')))
             .toEqual(['x']);
+    });
+});
+
+describe('tenantsForProject', () => {
+    // Shape returned by /tenants/all - the real Demo space has tenants wired to
+    // two different projects, which is exactly the list this has to cut down.
+    const tenants = [
+        { Id: 'Tenants-61', Name: 'Acme Corp', ProjectEnvironments: { 'Projects-242': ['Environments-61'] } },
+        { Id: 'Tenants-41', Name: 'Tenant 1', ProjectEnvironments: { 'Projects-181': ['Environments-63'] } },
+        { Id: 'Tenants-62', Name: 'Globex', ProjectEnvironments: { 'Projects-242': [], 'Projects-181': ['Environments-61'] } },
+    ];
+    const names = filtered => filtered.map(t => t.Name);
+
+    test('keeps only tenants connected to the project', () => {
+        expect(names(tenantsForProject(tenants, 'Projects-242'))).toEqual(['Acme Corp', 'Globex']);
+        expect(names(tenantsForProject(tenants, 'Projects-181'))).toEqual(['Tenant 1', 'Globex']);
+    });
+
+    test('a connected tenant with no environments yet still counts as connected', () => {
+        const globex = tenantsForProject(tenants, 'Projects-242').find(t => t.Name === 'Globex');
+        expect(globex).toBeDefined();
+    });
+
+    test('returns nothing without a project, or for a project nobody is linked to', () => {
+        expect(tenantsForProject(tenants, '')).toEqual([]);
+        expect(tenantsForProject(tenants, 'Projects-999')).toEqual([]);
+        expect(tenantsForProject(undefined, 'Projects-242')).toEqual([]);
+    });
+
+    test('tolerates tenants with no ProjectEnvironments at all', () => {
+        expect(tenantsForProject([{ Id: 'Tenants-9' }, null], 'Projects-242')).toEqual([]);
     });
 });
 
