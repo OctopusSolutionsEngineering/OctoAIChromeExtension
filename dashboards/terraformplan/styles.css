@@ -567,6 +567,24 @@ a:focus-visible {
     white-space: nowrap;
 }
 
+.history-tenant {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--link);
+    background: rgba(68, 155, 225, 0.14);
+    border: 1px solid rgba(68, 155, 225, 0.36);
+    border-radius: 999px;
+    padding: 1px 10px;
+    white-space: nowrap;
+}
+
+.history-tenant.untenanted {
+    color: var(--faint);
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--border);
+}
+
 .history-when {
     margin-left: auto;
     display: flex;

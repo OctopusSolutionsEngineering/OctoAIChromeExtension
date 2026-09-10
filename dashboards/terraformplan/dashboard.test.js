@@ -17,6 +17,7 @@ const {
     describeDeployment,
     relativeAge,
     filterRowsByDate,
+    filterRowsByTenant,
     filterMatches,
     extractPendingInterruption,
     parseInline,
@@ -394,11 +395,13 @@ describe('deployment history helpers', () => {
                 TaskId: 'ServerTasks-7',
                 ReleaseId: 'Releases-1',
                 EnvironmentId: 'Environments-1',
+                TenantId: 'Tenants-3',
                 Created: '2026-08-15T10:30:00Z',
             },
             {
                 versions: { 'Releases-1': '1.2.3' },
                 environments: { 'Environments-1': 'Production' },
+                tenants: { 'Tenants-3': 'Acme Corp' },
                 tasks: { 'ServerTasks-7': { state: 'Executing', awaitingIntervention: true } },
             });
 
@@ -408,10 +411,29 @@ describe('deployment history helpers', () => {
             name: 'Deploy to Production',
             version: '1.2.3',
             environmentName: 'Production',
+            tenantId: 'Tenants-3',
+            tenantName: 'Acme Corp',
             created: '2026-08-15T10:30:00Z',
             state: 'Executing',
             awaitingIntervention: true,
         });
+    });
+
+    test('describeDeployment reports an untenanted deployment as having no tenant', () => {
+        const row = describeDeployment(
+            { Id: 'Deployments-2', EnvironmentId: 'Environments-1', TenantId: null },
+            { environments: { 'Environments-1': 'Production' }, tenants: { 'Tenants-3': 'Acme Corp' } });
+
+        expect(row.tenantId).toBeNull();
+        expect(row.tenantName).toBeNull();
+    });
+
+    test('describeDeployment falls back to the tenant id when the lookup is missing it', () => {
+        const row = describeDeployment(
+            { Id: 'Deployments-3', TenantId: 'Tenants-9' },
+            { tenants: { 'Tenants-3': 'Acme Corp' } });
+
+        expect(row.tenantName).toBe('Tenants-9');
     });
 
     test('describeDeployment degrades gracefully with missing lookups', () => {
@@ -424,6 +446,7 @@ describe('deployment history helpers', () => {
         expect(row.environmentName).toBe('Environments-9');
         expect(row.state).toBeNull();
         expect(row.awaitingIntervention).toBe(false);
+        expect(row.tenantName).toBeNull();
     });
 
     test('relativeAge formats ages across units', () => {
@@ -488,6 +511,29 @@ describe('filterRowsByDate', () => {
     test('keeps rows with missing or unparseable dates', () => {
         expect(ids(filterRowsByDate([{ deploymentId: 'x', created: 'garbage' }], '2026-08-01', '2026-08-02')))
             .toEqual(['x']);
+    });
+});
+
+describe('filterRowsByTenant', () => {
+    const rows = [
+        { deploymentId: 'a', tenantId: 'Tenants-1' },
+        { deploymentId: 'b', tenantId: 'Tenants-2' },
+        { deploymentId: 'c', tenantId: null },
+    ];
+    const ids = filtered => filtered.map(r => r.deploymentId);
+
+    test('returns everything when no tenant is selected', () => {
+        expect(ids(filterRowsByTenant(rows, ''))).toEqual(['a', 'b', 'c']);
+        expect(filterRowsByTenant(undefined, '')).toEqual([]);
+    });
+
+    test('narrows to a single tenant', () => {
+        expect(ids(filterRowsByTenant(rows, 'Tenants-2'))).toEqual(['b']);
+        expect(ids(filterRowsByTenant(rows, 'Tenants-404'))).toEqual([]);
+    });
+
+    test('the untenanted sentinel keeps only deployments with no tenant', () => {
+        expect(ids(filterRowsByTenant(rows, 'untenanted'))).toEqual(['c']);
     });
 });
 

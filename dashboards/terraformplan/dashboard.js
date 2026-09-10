@@ -15,6 +15,10 @@ const CONFIG_TIMEOUT_MS = 2500;
 const AI_PLAN_CHAR_LIMIT = 6000;
 const DEFAULT_OPEN_THRESHOLD = 8;
 const HISTORY_PAGE_SIZE = 30;
+// Sentinel value for the "Untenanted" option in the tenant filter. The
+// deployments API filters by tenant id only, so untenanted deployments are
+// separated out client-side.
+const UNTENANTED_FILTER = 'untenanted';
 const RELEASE_LOOKUP_SIZE = 100;
 const MI_INSTRUCTIONS_CHAR_LIMIT = 400;
 // API access is rate limited to 200 requests/minute via pThrottle (bundled in
@@ -351,8 +355,10 @@ function buildTaskMap(tasks) {
 function describeDeployment(deployment, lookups) {
     const versions = (lookups && lookups.versions) || {};
     const environments = (lookups && lookups.environments) || {};
+    const tenants = (lookups && lookups.tenants) || {};
     const tasks = (lookups && lookups.tasks) || {};
     const task = deployment.TaskId ? tasks[deployment.TaskId] : undefined;
+    const tenantId = deployment.TenantId || null;
 
     return {
         deploymentId: deployment.Id,
@@ -360,6 +366,8 @@ function describeDeployment(deployment, lookups) {
         name: deployment.Name || deployment.Id,
         version: versions[deployment.ReleaseId] || null,
         environmentName: environments[deployment.EnvironmentId] || deployment.EnvironmentId || '',
+        tenantId,
+        tenantName: tenantId ? (tenants[tenantId] || tenantId) : null,
         created: deployment.Created || null,
         state: task ? task.state : null,
         awaitingIntervention: !!(task && task.awaitingIntervention),
@@ -381,6 +389,16 @@ function filterRowsByDate(rows, from, to) {
         if (toMs !== null && Number.isFinite(toMs) && created >= toMs) return false;
         return true;
     });
+}
+
+// Client-side tenant filter for loaded history rows. tenantId is a tenant id,
+// the UNTENANTED_FILTER sentinel, or '' for "all tenants". The deployments API
+// is also asked to filter by tenant, but untenanted deployments have no
+// server-side equivalent, so the loaded rows are filtered here as well.
+function filterRowsByTenant(rows, tenantId) {
+    if (!tenantId) return rows || [];
+    if (tenantId === UNTENANTED_FILTER) return (rows || []).filter(row => !row.tenantId);
+    return (rows || []).filter(row => row.tenantId === tenantId);
 }
 
 // Human-friendly age of an ISO timestamp relative to nowMs.
@@ -584,6 +602,7 @@ function buildAiPrompt(parsed, context) {
     const contextParts = [];
     if (context && context.space) contextParts.push('The current space is "' + context.space + '".');
     if (context && context.project) contextParts.push('The current project is "' + context.project + '".');
+    if (context && context.tenant) contextParts.push('The deployment was made for the tenant "' + context.tenant + '".');
 
     return [
         'You are helping a change approver review a Terraform plan produced by an Octopus deployment.',
@@ -613,6 +632,7 @@ const state = {
     spaceId: null,
     taskId: null,
     task: null,
+    tenantName: null,       // tenant of the task being viewed, if any
     stepName: null,
     stepCandidates: [],
     activeStepName: null,
@@ -633,6 +653,8 @@ const state = {
         projects: [],
         environments: null, // {EnvironmentId: Name}, cached per space
         environmentList: [],
+        tenants: null,      // {TenantId: Name}, cached per project
+        tenantList: [],
         rows: [],           // accumulated across "Load more" pages
         totalResults: 0,
         selectedDeploymentId: null,
@@ -646,6 +668,8 @@ function resetHistoryCache(keepSpaces) {
         projects: [],
         environments: null,
         environmentList: [],
+        tenants: null,
+        tenantList: [],
         rows: [],
         totalResults: 0,
         selectedDeploymentId: null,
@@ -828,16 +852,29 @@ async function resolveSpaceId(serverUrl, spaceName) {
     return match.Id;
 }
 
-async function resolveTaskId(serverUrl, spaceId, context) {
+// The task resource does not carry the tenant, but the deployment or runbook
+// run that spawned it does, so both are picked up in the one lookup.
+async function resolveTaskContext(serverUrl, spaceId, context) {
     if (context.deployment) {
         const deployment = await octoGet(serverUrl, '/api/' + spaceId + '/deployments/' + encodeURIComponent(context.deployment));
-        return deployment.TaskId;
+        return { taskId: deployment.TaskId, tenantId: deployment.TenantId || null };
     }
     if (context.runbook_run) {
         const run = await octoGet(serverUrl, '/api/' + spaceId + '/runbookRuns/' + encodeURIComponent(context.runbook_run));
-        return run.TaskId;
+        return { taskId: run.TaskId, tenantId: run.TenantId || null };
     }
-    return null;
+    return { taskId: null, tenantId: null };
+}
+
+async function resolveTenantName(serverUrl, spaceId, tenantId) {
+    if (!tenantId) return null;
+    try {
+        const tenant = await octoGet(serverUrl, '/api/' + spaceId + '/tenants/' + encodeURIComponent(tenantId));
+        return (tenant && tenant.Name) || tenantId;
+    } catch (error) {
+        // The id is still more useful in the task panel than nothing
+        return tenantId;
+    }
 }
 
 function fetchTaskDetails(serverUrl, spaceId, taskId) {
@@ -928,6 +965,9 @@ function renderTaskPanel() {
     const projectName = state.mode === 'history' ? historySelectedProjectName() : context.project;
     if (spaceName) meta.appendChild(el('span', null, 'Space: ' + spaceName));
     if (projectName) meta.appendChild(el('span', null, 'Project: ' + projectName));
+    // Resolved from the deployment in live mode and from the selected row in
+    // history mode, so it always describes the task actually on screen.
+    if (state.tenantName) meta.appendChild(el('span', null, 'Tenant: ' + state.tenantName));
     if (state.stepName) meta.appendChild(el('span', null, 'Step: ' + state.stepName));
     if (task.Duration) meta.appendChild(el('span', null, 'Duration: ' + task.Duration));
     meta.appendChild(el('span', null, 'Updated: ' + new Date().toLocaleTimeString()));
@@ -1342,6 +1382,7 @@ async function runAiSummary() {
             context.space = historySelectedSpaceName() || context.space;
             context.project = historySelectedProjectName() || context.project;
         }
+        context.tenant = state.tenantName || context.tenant;
         const prompt = buildAiPrompt(state.parsed, context);
 
         if (state.extensionMode && typeof dashboardSendPrompt === 'function' && state.serverUrl) {
@@ -1558,13 +1599,16 @@ async function startLiveMode() {
         showStatus('loading', 'Connecting to ' + state.serverUrl + '…', 'Resolving the task for this ' + (context.deployment ? 'deployment' : 'runbook run') + '.');
 
         state.spaceId = await resolveSpaceId(state.serverUrl, context.space);
-        state.taskId = await resolveTaskId(state.serverUrl, state.spaceId, context);
+        const resolved = await resolveTaskContext(state.serverUrl, state.spaceId, context);
+        state.taskId = resolved.taskId;
 
         if (!state.taskId) {
             showStatus('error', 'Could not resolve the task', 'The deployment or runbook run did not reference a server task.');
             return;
         }
 
+        state.tenantName = await resolveTenantName(state.serverUrl, state.spaceId, resolved.tenantId)
+            || context.tenant || null;
         state.pollFailures = 0;
         await pollOnce();
     } catch (error) {
@@ -1628,6 +1672,65 @@ function populateEnvironmentSelect() {
     }
 }
 
+// Tenants are linked per project, so the filter is scoped to the selected
+// project and hidden entirely in spaces or projects with no tenants.
+function populateTenantSelect() {
+    const select = byId('historyTenant');
+    const tenants = state.history.tenantList || [];
+
+    byId('historyTenantFilter').hidden = !tenants.length;
+    if (!tenants.length) {
+        select.replaceChildren();
+        return;
+    }
+
+    const previous = select.value;
+    select.replaceChildren();
+
+    const all = document.createElement('option');
+    all.value = '';
+    all.textContent = 'All tenants';
+    select.appendChild(all);
+
+    const untenanted = document.createElement('option');
+    untenanted.value = UNTENANTED_FILTER;
+    untenanted.textContent = 'Untenanted';
+    select.appendChild(untenanted);
+
+    const sorted = [...tenants].sort((a, b) => (a.Name || '').localeCompare(b.Name || ''));
+    for (const tenant of sorted) {
+        const option = document.createElement('option');
+        option.value = tenant.Id;
+        option.textContent = tenant.Name || tenant.Id;
+        select.appendChild(option);
+    }
+
+    // Keep the tenant selection across project changes where it still applies
+    if (previous && [...select.options].some(option => option.value === previous)) {
+        select.value = previous;
+    }
+}
+
+async function loadProjectTenants() {
+    const projectId = byId('historyProject').value;
+
+    if (!projectId) {
+        state.history.tenantList = [];
+    } else {
+        try {
+            state.history.tenantList = await octoGet(state.serverUrl,
+                '/api/' + state.spaceId + '/tenants/all?projectId=' + encodeURIComponent(projectId)) || [];
+        } catch (error) {
+            // Untenanted spaces and accounts without tenant view permission
+            // just lose the filter - the rest of the history list still works.
+            state.history.tenantList = [];
+        }
+    }
+
+    state.history.tenants = buildNameMap(state.history.tenantList);
+    populateTenantSelect();
+}
+
 // (Re)load projects and environments for the currently selected space, then
 // load the first page of deployments for the selected project.
 async function loadSpaceScope(preferredProjectName) {
@@ -1637,6 +1740,8 @@ async function loadSpaceScope(preferredProjectName) {
     state.history.environmentList = await octoGet(state.serverUrl, '/api/' + state.spaceId + '/environments/all') || [];
     state.history.environments = buildNameMap(state.history.environmentList);
     populateEnvironmentSelect();
+
+    await loadProjectTenants();
 
     if (!state.history.projects.length) {
         state.history.rows = [];
@@ -1712,6 +1817,10 @@ async function loadHistory(options) {
         if (environmentId) {
             query += '&environments=' + encodeURIComponent(environmentId);
         }
+        const tenantId = byId('historyTenant').value;
+        if (tenantId && tenantId !== UNTENANTED_FILTER) {
+            query += '&tenants=' + encodeURIComponent(tenantId);
+        }
 
         const deployments = await octoGet(state.serverUrl, query);
         const items = (deployments && deployments.Items) || [];
@@ -1735,8 +1844,12 @@ async function loadHistory(options) {
             }
         }
 
-        const newRows = items.map(deployment =>
-            describeDeployment(deployment, { versions, environments: state.history.environments, tasks }));
+        const newRows = items.map(deployment => describeDeployment(deployment, {
+            versions,
+            environments: state.history.environments,
+            tenants: state.history.tenants,
+            tasks,
+        }));
         state.history.rows = state.history.rows.concat(newRows);
 
         hideStatus();
@@ -1760,12 +1873,14 @@ function renderHistoryList() {
 
     const from = byId('historyFrom').value;
     const to = byId('historyTo').value;
-    const visible = filterRowsByDate(state.history.rows, from, to);
+    const visible = filterRowsByTenant(
+        filterRowsByDate(state.history.rows, from, to),
+        byId('historyTenant').value);
 
     if (!visible.length) {
         if (!state.history.loading) {
             const message = state.history.rows.length
-                ? 'No loaded deployments match the selected date range. Use "Load more" to fetch older deployments.'
+                ? 'No loaded deployments match the selected filters. Use "Load more" to fetch older deployments.'
                 : 'No deployments found for this project yet. Deployments older than the space retention policy are no longer available.';
             list.appendChild(el('p', 'panel-hint', message));
         }
@@ -1783,6 +1898,13 @@ function renderHistoryList() {
         main.appendChild(el('span', 'history-release', row.version ? 'Release ' + row.version : row.name));
         if (row.environmentName) {
             main.appendChild(el('span', 'history-env', row.environmentName));
+        }
+        // Only label the tenant where the project actually has tenants, so
+        // untenanted projects are not cluttered with "Untenanted" on every row.
+        if (state.history.tenantList.length) {
+            main.appendChild(row.tenantName
+                ? el('span', 'history-tenant', row.tenantName)
+                : el('span', 'history-tenant untenanted', 'Untenanted'));
         }
         button.appendChild(main);
 
@@ -1830,6 +1952,7 @@ async function selectHistoryDeployment(row) {
     stopPolling();
     state.task = null;
     state.taskId = row.taskId;
+    state.tenantName = row.tenantName;
     state.stepCandidates = [];
     state.activeStepName = null;
     state.stepName = null;
@@ -1841,8 +1964,11 @@ async function selectHistoryDeployment(row) {
     renderTaskPanel();
 
     const label = row.version ? 'release ' + row.version : row.name;
-    showStatus('loading', 'Loading plan for ' + label + '…',
-        row.environmentName ? 'Deployed to ' + row.environmentName + '.' : null);
+    const where = [
+        row.environmentName ? 'Deployed to ' + row.environmentName : null,
+        row.tenantName ? 'for ' + row.tenantName : null,
+    ].filter(Boolean).join(' ');
+    showStatus('loading', 'Loading plan for ' + label + '…', where ? where + '.' : null);
 
     await pollOnce();
 }
@@ -1872,6 +1998,7 @@ function setMode(mode) {
     state.activeStepName = null;
     state.interruption = null;
     state.taskDetailOpen = false;
+    state.tenantName = null;
     renderInterventionBanner();
     byId('searchInput').value = '';
 
@@ -1951,6 +2078,8 @@ function wireEvents() {
         state.history.projects = [];
         state.history.environments = null;
         state.history.environmentList = [];
+        state.history.tenants = null;
+        state.history.tenantList = [];
         state.history.rows = [];
         state.history.totalResults = 0;
         state.history.selectedDeploymentId = null;
@@ -1963,8 +2092,13 @@ function wireEvents() {
                 [{ label: 'Retry', primary: true, onClick: () => startHistoryMode() }]);
         }
     });
-    byId('historyProject').addEventListener('change', () => loadHistory({ reset: true }));
+    byId('historyProject').addEventListener('change', async () => {
+        // Tenants are project-scoped, so the filter is rebuilt before reloading
+        await loadProjectTenants();
+        await loadHistory({ reset: true });
+    });
     byId('historyEnvironment').addEventListener('change', () => loadHistory({ reset: true }));
+    byId('historyTenant').addEventListener('change', () => loadHistory({ reset: true }));
     byId('historyFrom').addEventListener('change', () => renderHistoryList());
     byId('historyTo').addEventListener('change', () => renderHistoryList());
     byId('historyRefreshBtn').addEventListener('click', () => loadHistory({ reset: true }));
@@ -2068,6 +2202,7 @@ if (typeof module !== 'undefined') {
         describeDeployment,
         relativeAge,
         filterRowsByDate,
+        filterRowsByTenant,
         filterMatches,
         extractPendingInterruption,
         parseInline,
