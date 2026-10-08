@@ -12,7 +12,7 @@ const Timeout = 8 * 60 * 1000 // 8 minutes
 
 // A failed prompt may still be processing on the server. Waiting before retrying allows the
 // retry to pick up the cached results.
-const RetryDelay = 4 * 60 * 1000 // 4 minutes
+const RetryDelay = 2 * 60 * 1000 // 2 minutes
 
 amplitude.init(AMPLITUDE_API_KEY, {
     autocapture: false,
