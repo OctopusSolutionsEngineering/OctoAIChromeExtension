@@ -1117,13 +1117,15 @@ function hidePromptUI() {
     }
 }
 
-const DEFAULT_FIRST_RUN_PROMPT = 'Create a Script project called "Basic Script App"';
-
 /**
  * The first time the dialog is opened we prepopulate the input with a default prompt
  * so new users have an example to run.
  */
 function applyFirstRunPrompt() {
+    // This is declared inside the function because the content scripts are injected more than once,
+    // and redeclaring a top level const throws a SyntaxError.
+    const DEFAULT_FIRST_RUN_PROMPT = 'Create a Script project called "Basic Script App"';
+
     if (localStorage.getItem("octoai-opened") !== "true") {
         localStorage.setItem("octoai-prompt", DEFAULT_FIRST_RUN_PROMPT);
         localStorage.setItem("octoai-opened", "true");
