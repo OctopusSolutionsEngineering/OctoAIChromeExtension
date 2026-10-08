@@ -10,6 +10,10 @@ const AMPLITUDE_IDENTIFIER = 'aiassistant-chrome-extension';
 // So we need a generous timeout.
 const Timeout = 8 * 60 * 1000 // 8 minutes
 
+// A failed prompt may still be processing on the server. Waiting before retrying allows the
+// retry to pick up the cached results.
+const RetryDelay = 4 * 60 * 1000 // 4 minutes
+
 amplitude.init(AMPLITUDE_API_KEY, {
     autocapture: false,
     defaultTracking: false,
@@ -118,9 +122,10 @@ chrome.runtime.onMessage.addListener(
     function (request, sender, sendResponse) {
         if (request.action === 'show_ui') {
             trackEvent('show_ui');
+            sendResponse({ok: true});
         } else if (request.action === 'prompt') {
             trackEvent('prompt_sent', {prompt: request.prompt});
-            callOctoAIAPI(request, sendResponse)
+            callOctoAIAPI(request, sendResponse, 0)
         } else if (request.action === 'confirmation') {
             trackEvent('confirmation_sent');
             callOctoAIAPIConfirmation(request, sendResponse, 0)
@@ -252,7 +257,7 @@ function callOctoAIAPIConfirmation(request, sendResponse, count) {
         });
 }
 
-function callOctoAIAPI(request, sendResponse) {
+function callOctoAIAPI(request, sendResponse, count) {
     const startTime = Date.now();
     let progressInterval = null;
 
@@ -279,7 +284,9 @@ function callOctoAIAPI(request, sendResponse) {
             console.log(`OctoAI API call completed in ${totalSeconds} seconds`);
 
             if (!response.ok) {
-                throw new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
+                const error = new Error(`OctoAI API call failed: ${response.status} ${response.statusText}`);
+                error.status = response.status;
+                throw error;
             }
             return response.text()
         })
@@ -292,9 +299,29 @@ function callOctoAIAPI(request, sendResponse) {
             const totalSeconds = Math.floor((Date.now() - startTime) / 1000);
             console.log(`OctoAI API call failed after ${totalSeconds} seconds:`, error);
 
-            // Always send a response to prevent message channel from closing
-            sendResponse({error: error, prompt: request.prompt});
+            // retry timeouts once
+            if (count >= 1 || !isTimeoutError(error)) {
+                // Always send a response to prevent message channel from closing
+                sendResponse({error: error, prompt: request.prompt});
+                return;
+            }
+
+            console.log(`Retrying OctoAI API call in ${RetryDelay / 1000} seconds`);
+
+            // A timer alone does not keep the service worker alive, so call an extension API
+            // periodically to stop it from being terminated while waiting.
+            const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
+            setTimeout(() => {
+                clearInterval(keepAlive);
+                callOctoAIAPI(request, sendResponse, count + 1);
+            }, RetryDelay);
         });
+}
+
+function isTimeoutError(error) {
+    // AbortSignal.timeout() rejects with a TimeoutError, and a 504 is a timeout between the
+    // gateway and the server
+    return error.name === 'TimeoutError' || error.status === 504;
 }
 
 function buildHeaders(request) {
